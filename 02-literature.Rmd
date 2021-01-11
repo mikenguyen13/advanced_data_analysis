@@ -1,0 +1,282 @@
+# Machine Learning
+
+This section based on notes in "Analyzing Unstructured Data" course taught by professor Kunpeng Zhang.  
+
+ * ML is concerned with the the development, the analysis, and the application of algorithm that allow computers to learn  
+ * Learning:  
+    + A computer learns if it improves its performance at some tasks with experience (i.e., data)  
+    + Extracting a model of system from the sole observation (or the simulation)  
+    + A model = some relationships between the variables used to describe the system.  
+ * Goals:  
+    + Make prediction  
+    + Understand the underlying mechanisms.  
+ * Learning if useful when:  
+    + Human expertise does not exist (navigating on Mars)  
+    + Humans are unable to explain their expertise (speech recognition)  
+    + Solution changes in time (routing on a computer network)  
+    Solution needs to be adapted to particular cases (user biometrics)  
+ * Applications in different domains:  
+    + Retail: Market basket analysis, customer relationship management (CRM)  
+    + Finance: Credit scoring, fraud detection.  
+    + Manufacturing: Optimization, troubleshooting  
+    + Medicine: medical diagnosis  
+    + Telecommunications: Quality of service optimization, routing  
+    + Bioinformatics: Motifs, alignment WEb mining, search engines.  
+ * Steps  
+    * Data generation: data types, sample size  
+    * Preprocessing: normalization, missing values, feature selection/extraction  
+    * Machine Learning: Hypothesis, choice of learning paradigm/algorithm.  
+    * Hypothesis validation: cross-validation, model deployment.  
+ * Types of machine learning:  
+    + Supervised: manually label variables  
+    + Unsupervised:  
+ * Training and testing  
+    + Training is the process of making the machine learn  
+    + No free lunch:  
+        - Training set and testing set come from the same distribution  
+        - Need to make some assumptions.  
+ * Factors affecting the performance:  
+    + Types of training provided  
+    + The form and extend of prior knowledge  
+    + Type of feedback provided  
+    + The learning algorithms used  
+ * Two factors:  
+    + Modeling  
+    + optimization  
+ * Algorithms:  
+    + ML depends on algorithms.  
+    + The algorithms control the search to find and build the knowledge structures  
+    + The learning algorithms should extract useful information from training examples.  
+ * Types of learning (algorithms):  
+    + Supervised learning ($\{ X_n \in R^d, y_n \in R\}^N_{n=1}$)  
+        - Prediction  
+        - Classification (discrete labels), regression (real values)  
+    + Unsupervised learning ($\{ X_n \in R^d\}^N_{n=1}$)  
+        - Clustering  
+        - Probability distribution estimation  
+        - Finding association (in features)  
+        - Dimension reduction  
+    + Semi-supervised learning  
+    + Reinforcement learning  
+        - Decision making (robot, chess machine)
+
+
+
+## Supervised Learning
+From the data, find a function f of the inputs that best approximates the outputs.  
+
+
+$$
+\hat{Y} = f(X_1,..,X_n)
+$$
+
+ * Predictive: Make predictions for a new object described by its attributes  
+ * Informative: help understand the relationship between inputs and outputs  
+
+Divide data into  
+
+ * Training set: train model  
+ * validation set: tune hyper parameters  
+ * Test set: evaluation of the model for generalization error.  
+
+
+Learning algorithm  
+
+ * defined by  
+    + a family of candidate models (= **hypothesis space H**)  
+    + a quality measure for a model  
+    + an optimization strategy  
+ * takes as input a leaning sample and outputs a function h in H of maximum quality  
+
+Model selection  
+
+ * Why not choose the model that minimizes the error rate on the learning sample? (**re-substitution error**)  
+ * How well are you going to predict future data drawn from the same distribution? (**generalization error**)
+ * Evaluation on test set  
+    1. Randomly choose a percentage (e.g., 30%) of the data to be in a test set  
+    2. The remainder is training set  
+    3. Learn the model from the training set  
+    4. Estimate its future performance on the test set.  
+ * Problems:  
+    + overfits: occurs when the learning algorithm starts fitting noise.  
+    + unfits  
+ * Evaluation on test set:  
+    + Good:  
+        - Very simple  
+        - Computationally efficient  
+    + Bad:  
+        - Waste data  
+        - very unstable when database is small  
+ * Another evaluation: **Leave-one-out cross validation** 
+    + For k = 1 to N  
+        - remove the k-th object from the learning sample  
+        - learn the model on the remaining objects  
+        - apply the model to get a prediction for the k-th object  
+    + report the proportion of mis-classified objects  
+ * Good:  
+    + Do not waste the data (you get an estimate of the best method to apply to N-1 data)  
+ * Bad:  
+    + Computationally intensive (train N models)  
+    + high variance.  
+ * Another evaluation: **K-fold cross validation**  
+    + randomly partition the dataset into k subsets (e.g., 10)  
+    + For each subset:  
+        - learn the model on the objects that are not in the subset  
+        - compute the error rate on the points in the subset. Report the mean error rate over the k subsets.  
+    + When k = the number of objects -> leave-one-out-cross validation.  
+
+Rule-of-thumb for evaluation  
+
+ * Lots of data (>1000) test set validation  
+ * small data (100-1000): 10-fold CV  
+ * very small data (<100) leave one out CV. 
+
+
+```{r fig.align='center', echo=FALSE}
+library("jpeg")
+knitr::include_graphics('images/Overfitting affect prediction.jpg')
+```
+
+
+Use the testing set to estimate the performance of the final model  
+
+Performance measures  
+
+ * The error rate is no the only way to assess a predictive model.  
+ * In binary classification, results can be summarized in a contingency table (i.e., confusion matrix)  
+
+```{r fig.align='center', echo=FALSE}
+library("jpeg")
+knitr::include_graphics('images/confusionMatrxiUpdated.jpg')
+```
+
+Various criteria  
+
+ * Error 
+
+**ROC and precision/recall curves**  
+
+ * Each point corresponds to a particular choice of the decision threshold.  
+
+Also known as robustness check 
+
+You want large area under the curve
+
+
+Compassion of learning models  
+
+ * Three main criteria:  
+    + Accuracy:  Measures by the generalization error (estimated by CV)  
+    + Efficiency: Computing times and scalabiility for learning and testing  
+    + Interpretability: Comprehension brought by the model about the input-output relationship.  
+ * Depends on the application, you have to make trade-off.  
+
+
+Learning Techniques  
+
+ * Supervised learning categories and techniques  
+    + Linear classifier (numerical functions):   
+        - Perceptron  
+        - Logistic regression  
+        - Support vector  machine (SVM): linear to nonlinear: feature transofrm and kernel function  
+        - Ada-line  
+        - Multi-layer perceptron (MLP)
+    + Parametric (Probabilistic functions)  
+        - Naive Bayes, Gaussian discriminant analysis (GDA), Hidden Markov models (HMM), probabilistic graphical models  
+    + Non-parametric (Instance-based functions)  
+        - K-nearest neighbors, Kernel regression, Kernel density estimation, local regression.  
+    + Non-metric (symbolic functions)  
+        - Classification and regression tree (CART), decision tree   
+    + Aggregation  
+        - Bagging (bootstrap + aggregation), Adaboost, Random forest.  
+ * Unsupervised learning categories and techniques:  
+    + Clustering  
+        - K-means clustering  
+        - Spectral clustering  
+    + Density Estimation  
+        - Gaussian mixture model (GMM)  
+        - Graphical models  
+    + Dimensionality reduction  
+        - Principal component analysis (PCA)  
+        - Factor analysis  
+ * Semi-supervised learning  
+    + goal: exploit both labeled and unlabeled data to build better models than using each one alone  
+    + Self-training:  
+        - Iteratively label some unlabeled examples with a model learned from the previously labeled examples  
+        - Active learning.  
+ * Reinforcement learning  
+    + Learning from interactions  
+    + Goal: learn to choose sequence of actions (=policy) that maximizes $r_0 + \gamma r_1 + \gamma^2r_2 + ...$ where $0 \le \gamma <1$
+
+
+## Unsupervised Learning
+
+### Clustering
+
+Clustering is used to find similar groups in data (i.e., clusters)  
+
+No class value denoting an a priori grouping (hence, [Unsupervised Learning])  
+
+Clustering algorithm  
+
+ * Partitional clustering  
+ * Hierarchical clustering  
+
+A distance (similarity, or dissimilarity) function  
+
+Clustering quality  
+
+ * Inter-clusters distance -> maximized  
+ * Intra-clusters distance -> minimized  
+
+The quality of a clustering result depends on  
+
+ * The algorithm  
+ * the distance function  
+ * the application  
+
+
+#### Similarity Measures
+
+It's your choice of how to define similarity  
+
+(Dis)similarity measure  
+
+ * Equivalently, we can use dissimilarity measures  
+ * Jagota defines a dissimilarity measure as a function f(x,y) such that f(x,y) > f(w,z) if and only if x is less similar to y than w is to z.  
+    Also known as **pair-wise** measure 
+
+Distance functions  
+
+Different distance functions for  
+
+ * Different types of data  
+    + Numeric data  
+    + Nominal data  
+ * Different applications  
+
+
+Numeric data  
+
+ * $dist(x_i, x_j)$,where  
+    + $dist(x_j, x_j) = ((x_{i1} - x_{j1})^h + (x_{i2} - x_{j2})^h + ... + (x_{ir} - x_{jr})^h)^{\frac{1}{h}}$
+    + $x_i$ and $x_j$ are data points (vectors)  
+ * Euclidean distance  
+    + If h = 2, it is the Euclidean distance: $dist(x_j, x_j) = ((x_{i1} - x_{j1})^2 + (x_{i2} - x_{j2})^2 + ... + (x_{ir} - x_{jr})^2)^{\frac{1}{2}}$
+    + Weighted Euclidean distance: $dist(x_j, x_j) = (w_1(x_{i1} - x_{j1})^2 + w_2(x_{i2} - x_{j2})^2 + ... + w_r(x_{ir} - x_{jr})^2)^{\frac{1}{2}}$
+    + Squared Eulidean distance: to place progressively greater weight on data points that are further apart: $dist(x_j, x_j) = (x_{i1} - x_{j1})^2 + (x_{i2} - x_{j2})^2 + ... + (x_{ir} - x_{jr})^2$
+ * Manhattan distance  
+    + If h = 1, it is the Manhattan distance: $dist(x_j, x_j) = |x_{i1} - x_{j1}| + |x_{i2} - x_{j2}| + ... + |x_{ir} - x_{jr}|$
+ * Minkowski distance (h is positive integer)
+    + $dist(x_j, x_j) = ((x_{i1} - x_{j1})^h + (x_{i2} - x_{j2})^h + ... + (x_{ir} - x_{jr})^h)^{\frac{1}{h}}$
+ * Chebychev distance: define 2 data points as "different" if they are different on any one of the attributes  
+    + $dist(x_j, x_j) = max(|x_{i1} - x_{j1}| + |x_{i2} - x_{j2}| + ... + |x_{ir} - x_{jr}|)$
+
+
+Binary and nominal Attributes  
+
+ * Binary attribute: has 2 values or states but no ordering relationship (e.g., gender)  
+ * We use a confusion matrix to introduce the distance function/measures  
+ * Let the i-th and j-th data points be $X_i$ and $x_j$ (vectors)
+
+#### K-mean Algorithm

@@ -113,7 +113,7 @@
 
 \title{Advanced Data Analysis}
 \author{Mike Nguyen}
-\date{2021-01-12}
+\date{2021-01-18}
 
 \begin{document}
 \maketitle
@@ -135,10 +135,20 @@
 
 This book's skeleton is based on several courses. Hence, I'd like to credit professors accordingly.
 
-Course \textbar{} Professor
-:-:\textbar:-"
-Analyzing Unstructured Data \textbar{} Kunpeng Zhang
-Deep Learning \textbar{} Yann LeCun
+\begin{longtable}[]{@{}cc@{}}
+\toprule
+Course & Professor\tabularnewline
+\midrule
+\endhead
+Analyzing Unstructured Data & Kunpeng Zhang\tabularnewline
+Deep Learning & Yann LeCun\tabularnewline
+\bottomrule
+\end{longtable}
+
+Compare to the last \href{https://bookdown.org/mike/data_analysis/}{book}, this book should differ as follows:
+
+\hypertarget{part-machine-learning}{%
+\part{MACHINE LEARNING}\label{part-machine-learning}}
 
 \hypertarget{intro}{%
 \chapter{Introduction}\label{intro}}
@@ -494,10 +504,24 @@ Model selection
     high variance.\\
   \end{itemize}
 \item
-  Another evaluation: \textbf{K-fold cross validation}
+  Another evaluation: \textbf{K-fold cross validation}:
 
   \begin{itemize}
   \tightlist
+  \item
+    Break up data into k folds\\
+  \item
+    For each fold
+
+    \begin{itemize}
+    \tightlist
+    \item
+      Choose the fold as a temporary test set\\
+    \item
+      Train on k-1 folds, compute performance on the test fold.\\
+    \end{itemize}
+  \item
+    Report average performance of the 10 runs.\\
   \item
     randomly partition the dataset into k subsets (e.g., 10)\\
   \item
@@ -545,11 +569,13 @@ Performance measures
 
 Various criteria
 
-\begin{itemize}
-\tightlist
-\item
-  Error
-\end{itemize}
+\[
+\text{Error rate} = \frac{FP + FN}{N + P} \\
+\text{Accuracy} = \frac{TP + TN}{N + P} = 1 - \text{Error rate} \\
+\text{Sensitivity or recall} = \frac{TP}{P} \\
+\text{Specificity} = \frac{TN}{TN + FP} \\
+\text{Precision} = \frac{TP}{TP + FP} \\
+\]
 
 \textbf{ROC and precision/recall curves}
 
@@ -707,8 +733,344 @@ Learning Techniques
   \end{itemize}
 \end{itemize}
 
+\hypertarget{decision-tree}{%
+\subsection{Decision Tree}\label{decision-tree}}
+
+\begin{itemize}
+\tightlist
+\item
+  Is a tree-structured plan of a set of attributes to test to predict the output.\\
+\item
+  Give one attribute, try to predict the value of new people's attribute by means of some other available attribute\\
+\item
+  Input attributes:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    \textbf{d} features/ attributes \(x^{(1)},x^{(2)},...,x^{(d)}\)\\
+  \item
+    Each \(x^{(j)}\) has domain \(O_j\)
+
+    \begin{itemize}
+    \tightlist
+    \item
+      Categorical \(O_j=(read,blue)\)\\
+    \item
+      Numerical: \(H_j = (0,10)\)\\
+    \end{itemize}
+  \item
+    Y is output variable with domain \(O_Y\):
+
+    \begin{itemize}
+    \tightlist
+    \item
+      Categorical: Classification\\
+    \item
+      Numerical: regression\\
+    \end{itemize}
+  \end{itemize}
+\item
+  Data D:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    n examples \((x_i, y_i)\) where
+
+    \begin{itemize}
+    \tightlist
+    \item
+      \(x_i\) is a d-dim feature vector\\
+    \item
+      \(y_i\in O_Y\)\\
+    \end{itemize}
+  \end{itemize}
+\item
+  Decision trees:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Split the data at each internal node
+  \item
+    Each leaf node makes a prediction
+  \end{itemize}
+\end{itemize}
+
+How to construct a tree
+
+\begin{itemize}
+\tightlist
+\item
+  \protect\hyperlink{find-best-split}{Find best split}\\
+\item
+  \protect\hyperlink{stopping-criteria}{Stopping Criteria}\\
+\item
+  \protect\hyperlink{find-prediction}{Find Prediction}
+\end{itemize}
+
+\hypertarget{find-best-split}{%
+\subsubsection{Find best split}\label{find-best-split}}
+
+Pick an attribute and value that optimizes some criterion\\
++ Regression: Purity
++ Classification: Information Gain: Measures how much a given attribute X tells us about the class Y.
+
+Information Gain? Entropy
+
+The entropy of X: \(H(X) = -\sum_{j=1}^{m} p_j log p_j\)
+
+\begin{itemize}
+\tightlist
+\item
+  ``High entropy'': X is from a uniform distribution
+
+  \begin{itemize}
+  \tightlist
+  \item
+    A histogram of the frequency distribution of values of X is flat\\
+  \end{itemize}
+\item
+  ``Low Entropy'': X is from varied distribution
+
+  \begin{itemize}
+  \tightlist
+  \item
+    A histogram of the frequency distribution of values of X would have many lows and one or two highs.\\
+  \end{itemize}
+\item
+  Def: Information Gain:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    \(IG(Y|X) = H(Y) - H(Y|X)\) I must transmit Y. How many bits on average would it save me if both ends of the line knew X?
+  \end{itemize}
+\end{itemize}
+
+\hypertarget{stopping-criteria}{%
+\subsubsection{Stopping Criteria}\label{stopping-criteria}}
+
+\begin{itemize}
+\tightlist
+\item
+  When the leaf is ``pure'': the target variable does not vary too much: Var(Y) \textless{} threshold.\\
+\item
+  When number of examples in the leaf is too small.\\
+\item
+  Could also use information as as a stopping criteria.
+\end{itemize}
+
+\hypertarget{find-prediction}{%
+\subsubsection{Find Prediction}\label{find-prediction}}
+
+\begin{itemize}
+\tightlist
+\item
+  Regression: Predict average y of the examples\\
+\item
+  Classification: Predict most common y of the examples the leaf.
+\end{itemize}
+
+\hypertarget{random-forest}{%
+\subsection{Random Forest}\label{random-forest}}
+
+Ensemble methods
+
+\begin{itemize}
+\tightlist
+\item
+  A single decision tree does not perform well.\\
+\item
+  But, it is super fast.\\
+\item
+  What if we learn multiple trees?
+\end{itemize}
+
+Bagging
+
+\begin{itemize}
+\tightlist
+\item
+  If we split the data in random different ways, decision trees give different results, high variance.\\
+\item
+  Bagging: Bootstrap aggregating is a method that result in low variance.\\
+\item
+  If we had multiple realizations of the data (or multiple samples) we could calculate the prediction multiple times and take the average of the fact that averaging multiple onerous estimations produce less uncertain results\\
+\item
+  say for each sample b, we calculate \(f^b(x)\), then \(\hat{f}_{avg} (x) = \frac{1}{B} \sum_{b=1}^{B} \hat{f}^b (x)\)
+\item
+  Bootstrap: Construct B (hundreds) of trees. Learn a classifier for each bootstrap sample and average them. Very effective.\\
+\item
+  Reduces overfitting (variance)\\
+\item
+  Could use one classifier, or multiple classifiers.
+\item
+  easy to parallelize\\
+\item
+  Variable Importance Measures
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Bagging results in improved accuracy over prediction using a single tree\\
+  \item
+    Unfortunately, difficult to interpret the resulting model. Bagging improves prediction accuracy at the expense of interpretability.\\
+  \end{itemize}
+\item
+  Issues:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Each tree is identically distributed (i.d)
+
+    \begin{itemize}
+    \tightlist
+    \item
+      The expectation of the average of B such trees\\
+    \item
+      The bias of bagged trees is the same as that of individual trees
+    \end{itemize}
+  \item
+    An average of B i.i.d random variables, each with variance \(\sigma^2\), has variance \(\sigma^2/B\). If i.d. (identical but not independent) and pair correlation \(\rho\) is present, then the variance is : \(\rho \sigma^2 + \frac{1-\rho}{B} \sigma^2\) . As B increases, the second term disappears but the first term remains.\\
+  \end{itemize}
+\item
+  Suppose that there is one very strong predictor in the data set, along with a number of other moderately strong predictors. Then all bagged trees will select the strong predictor at the top tree and therefore all trees will look similar.
+
+  \begin{itemize}
+  \tightlist
+  \item
+    We can penalize the splitting with a penalty term that depends on the number of times a predictor is selected at a given length.\\
+  \item
+    restrict how many items a predictor can be used.\\
+  \item
+    allow a certain number of predictors.\\
+  \end{itemize}
+\item
+  Since we want i.i.d so that the bias to be the same and variance to be less.
+
+  \begin{itemize}
+  \tightlist
+  \item
+    in bagging, we build a number of decision trees on bootstrapped training samples each time a split in a tree is considered, a random sample of m predictors is chosen as split candidates from the full set of p predictors (if m = p, then this is bagging).
+  \end{itemize}
+\end{itemize}
+
+\href{http://www.stat.berkeley.edu/~breiman/RandomForests/}{Random Forest software}
+
+Random Forests Algorithm
+
+For b = 1 to B:
+
+\begin{enumerate}
+\def\labelenumi{\alph{enumi}.}
+\tightlist
+\item
+  draw a bootstrap sample Z * of size N from the training data.\\
+\item
+  Grow a random-forest tree to the bootstrapped data, by recursively repeating the following steps for each terminal node of the tree, until the minimum node size \(n_{min}\) is reached.
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Select m variables at random from the p variables.\\
+  \item
+    Pick the best variable/split-point among the m.\\
+  \item
+    Split the node into two daughter nodes.
+  \end{itemize}
+\end{enumerate}
+
+Output the ensemble trees.
+
+\begin{longtable}[]{@{}lll@{}}
+\toprule
+\begin{minipage}[b]{0.30\columnwidth}\raggedright
+\strut
+\end{minipage} & \begin{minipage}[b]{0.30\columnwidth}\raggedright
+Regression\strut
+\end{minipage} & \begin{minipage}[b]{0.30\columnwidth}\raggedright
+Classification\strut
+\end{minipage}\tabularnewline
+\midrule
+\endhead
+\begin{minipage}[t]{0.30\columnwidth}\raggedright
+To make a prediction at a new point x\strut
+\end{minipage} & \begin{minipage}[t]{0.30\columnwidth}\raggedright
+average the results\strut
+\end{minipage} & \begin{minipage}[t]{0.30\columnwidth}\raggedright
+majority vote\strut
+\end{minipage}\tabularnewline
+\begin{minipage}[t]{0.30\columnwidth}\raggedright
+Tuning\strut
+\end{minipage} & \begin{minipage}[t]{0.30\columnwidth}\raggedright
+The default value for m is \(p/3\) and the minimum node size is 5\strut
+\end{minipage} & \begin{minipage}[t]{0.30\columnwidth}\raggedright
+The default value for m is \(\sqrt{p}\) and the minimum node size is one\strut
+\end{minipage}\tabularnewline
+\bottomrule
+\end{longtable}
+
+Another issue:
+
+When the number of variables is large, but the fraction of relevant variables is small, random forests are likely to perform poorly when m is small. Because: At each split the chance can be small that the relevant variables will be selected.
+
+Example: with 3 relevant and 100 not so relevant variables the probability of any of the relevant variables being selected at any split is approx 0.25.
+
+random forests ``cannot overfit'' the data because the number of trees (B) does not mean increase in the flexibility of the model.
+
+Always include Random Forest (ensembles) and XGBoost (like bagging)
+
+Alternative
+
+\begin{itemize}
+\tightlist
+\item
+  Support vector machine (SVM) dont usually use this because of computational reasons and because it is only 1 model.
+\end{itemize}
+
 \hypertarget{unsupervised-learning}{%
 \section{Unsupervised Learning}\label{unsupervised-learning}}
+
+Unsupervised learning tries to find regularities in the data without guidance about inputs and outputs
+
+Unsupervised learning categories and techniques:
+
+\begin{itemize}
+\tightlist
+\item
+  Clustering
+
+  \begin{itemize}
+  \tightlist
+  \item
+    K-means Clustering\\
+  \item
+    Spectral Clustering\\
+  \end{itemize}
+\item
+  Density Estimation
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Gaussian mixture model (GMM)\\
+  \item
+    Graphical models\\
+  \end{itemize}
+\item
+  Dimensionality reduction
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Principal component analysis (PCA)\\
+  \item
+    factor Analysis
+  \end{itemize}
+\end{itemize}
 
 \hypertarget{clustering}{%
 \subsection{Clustering}\label{clustering}}
@@ -737,6 +1099,43 @@ Clustering quality
   Inter-clusters distance -\textgreater{} maximized\\
 \item
   Intra-clusters distance -\textgreater{} minimized
+\end{itemize}
+
+which can be use to judge good clustering
+
+\begin{itemize}
+\tightlist
+\item
+  Internal criterion: A good clustering will produce high quality clusters in which:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    The intra-class (intra-cluster) similarity is high\\
+  \item
+    The inter-class similarity is low.\\
+  \item
+    The measured quality of a clustering depends on both the document representation and the similarity measure used.\\
+  \end{itemize}
+\item
+  External criteria:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Quality measured by its ability to discover some or all of the hidden patterns or latent classes in gold standard data.\\
+  \item
+    Assesses a clustering with respect to \textbf{ground truth}\\
+  \item
+    Assume documents with C gold standard classes, while our clustering algorithm produce cluster \(w_1,w_2,...,w_k\) with \(n_1,...,n_k\) members.\\
+  \item
+    Simple measure: \textbf{purity}, the ratio between the dominant class in the cluster \(\pi_i\) and the size of cluster \(w_i\)\\
+    \[
+    Purity(w_i) = \frac{1}{n_i}max_j (n_{ij})  j \in C
+    \]
+  \item
+    others are entropy of classes in clusters (or mutual inforamtion between classes and clusters).
+  \end{itemize}
 \end{itemize}
 
 The quality of a clustering result depends on
@@ -853,7 +1252,113 @@ Binary and nominal Attributes
   Let the i-th and j-th data points be \(X_i\) and \(x_j\) (vectors)
 \end{itemize}
 
-slide 79
+Confusion matrix
+
+\begin{longtable}[]{@{}lllll@{}}
+\toprule
+& & Data point j & &\tabularnewline
+\midrule
+\endhead
+& & 1 & 0 &\tabularnewline
+Data point i & 1 & a & b & a + b\tabularnewline
+& 0 & c & d & c + d\tabularnewline
+& & a + c & b + d & a + b + c + d\tabularnewline
+\bottomrule
+\end{longtable}
+
+\begin{itemize}
+\tightlist
+\item
+  a: the number of attributes with the value of 1 for both data points\\
+\item
+  b: The number of attributes with which \(x_{if} = 1\) and \(x_{jf}=0\) where \(x_{if}\) is the value of \(f\) attribute of the data point \(x_i\)\\
+\item
+  c: the number of attributes of which \(x_{if}=0\) and \(x_{jf} =1\)\\
+\item
+  d: the number of attributes with the value of 0 for both data points.
+\end{itemize}
+
+Symmetric binary attributes
+
+\begin{itemize}
+\tightlist
+\item
+  A binary attribute is symmetric if both of its states (0 and 1) have equal importance, and carry the same weights, e.g., Gender.\\
+\item
+  distance function: \textbf{Simple Matching Coefficient}, proportion of mismatches of their values\\
+  \[
+  dist(x_i,x_j) = \frac{b+c}{a+b+c+d}
+  \]
+\end{itemize}
+
+Asymmetric binary attributes
+
+\begin{itemize}
+\tightlist
+\item
+  if one of the states is more important or more valuable than the other
+
+  \begin{itemize}
+  \tightlist
+  \item
+    By convention, state 1 represents the more important state.\\
+  \item
+    Jaccard coefficient is popular measure\\
+    \[
+    dist(x_i,x_j) = \frac{b + c}{a + b +c}
+    \]
+  \item
+    We can have some variations, adding weights
+  \end{itemize}
+\end{itemize}
+
+Nominal attributes: with more than 2 states or values.\\
+* the common used distance measure is also based on the simple matching method.\\
+* Given two data points \(x_i\), \(x_j\) let the number of attributes be r, and the number of values that match in \(x_i\) and \(x_j\) be q. \(dist(x_i,x_j) = \frac{r-q}{r}\)
+
+Data standardization
+
+\begin{itemize}
+\tightlist
+\item
+  In the Euclidean space, standardization of attributes is recommended so that all attributes can have equal impact on the computation of distances.\\
+\item
+  standardize attributes: to force the attributes to have a common value range.\\
+\item
+  Real data have different types:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Interval-scaled
+  \item
+    symmetric binary\\
+  \item
+    asymmetric binary\\
+  \item
+    ratio-scaled\\
+  \item
+    ordinal\\
+  \item
+    nominal\\
+  \end{itemize}
+\item
+  Convert to a single type:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    To deal with mixed attributes:
+
+    \begin{itemize}
+    \tightlist
+    \item
+      Decide the dominant attribute type\\
+    \item
+      Convert the other types to this type
+    \end{itemize}
+  \end{itemize}
+\end{itemize}
 
 \hypertarget{k-mean-algorithm}{%
 \subsubsection{K-mean Algorithm}\label{k-mean-algorithm}}
@@ -943,38 +1448,570 @@ Cons
   \begin{itemize}
   \tightlist
   \item
-    outliers could be errors in the data recording or some special data points with very different values.
+    outliers could be errors in the data recording or some special data points with very different values.\\
   \end{itemize}
+\item
+  is not suitable for discovering clusters that are not hyper-ellipsoids (or hyper-spheres)
 \end{itemize}
 
 Solution
+
+\begin{itemize}
+\tightlist
+\item
+  To deal with outliers:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    remove some data points int the clustering process that are much further away from the centroids than other data points.\\
+  \item
+    Or perform random sampling. Since in sampling we only choose a small subset of the data points, the chance of selecting an outlier is very small.\\
+  \end{itemize}
+\item
+  To deal with sensitive algorithm
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Use different seeds
+  \end{itemize}
+\end{itemize}
+
+\hypertarget{semi-superivsed-learning}{%
+\section{Semi-superivsed learning}\label{semi-superivsed-learning}}
+
+\begin{itemize}
+\tightlist
+\item
+  Goal: exploit both labeled and unlabeled data to build better models than using each one alone\\
+\item
+  Self-training
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Iteratively label some unlabeled examples with a model learned from the previously labeled examples\\
+  \item
+    Active learning
+  \end{itemize}
+\end{itemize}
+
+\hypertarget{reinforcement-learning}{%
+\section{Reinforcement learning}\label{reinforcement-learning}}
+
+\begin{itemize}
+\tightlist
+\item
+  Learning from interactions\\
+\item
+  Goal: learn to choose sequence of actions (= policy) that maximizes \(r_0 + \gamma r_1 + \gamma^2r_2 + ...\)
+\end{itemize}
 
 \hypertarget{methods}{%
 \chapter{Methods}\label{methods}}
 
 We describe our methods in this chapter.
 
-\hypertarget{applications}{%
-\chapter{Applications}\label{applications}}
-
-Some \emph{significant} applications are demonstrated in this chapter.
-
-\hypertarget{example-one}{%
-\section{Example one}\label{example-one}}
-
-\hypertarget{example-two}{%
-\section{Example two}\label{example-two}}
-
 \hypertarget{final-words}{%
 \chapter{Final Words}\label{final-words}}
 
 We have finished a nice book.
 
-\hypertarget{part-advanced}{%
-\part{ADVANCED}\label{part-advanced}}
+\hypertarget{part-deep-learning}{%
+\part{DEEP LEARNING}\label{part-deep-learning}}
 
 \hypertarget{deep-learning}{%
 \chapter{Deep Learning}\label{deep-learning}}
+
+\citep{LeCun_2015} for a review. \citep{LeCun_2015} defines a deep-learning architecture as ``a multilayer stack of simple modules, all (or most) of which are subject to learning, and many of which compute non-linear input-output mappings''.
+
+\hypertarget{neural-network}{%
+\section{Neural Network}\label{neural-network}}
+
+Neuron
+
+\[
+z = a_1 w_1 + .. + a_k w_k + b
+\]
+
+Sigmoid function
+
+\[
+\sigma (z) = \frac{1}{1 +e^{-z}}
+\]
+
+Different connections lead to different network structures
+
+The neurons have different values of weights and biases.\\
+Fully connected Feedforward Network
+
+Framework
+
+Step 1: A set of function\\
+Step 2: Goodness of function f\\
+Step 3: Pick the best function
+
+\hypertarget{step-1-a-set-of-function}{%
+\subsection{Step 1: A set of function}\label{step-1-a-set-of-function}}
+
+Deep = many hidden layers
+
+Universality Theorem\\
+Any continuous, function f
+
+\[
+f: R^N \to R^M
+\]
+can be realized by a network with one hidden layer (given enough hidden neurons).
+
+Output layer
+
+\begin{itemize}
+\tightlist
+\item
+  Softmax layer as the output layer
+
+  \begin{itemize}
+  \tightlist
+  \item
+    probability:
+
+    \begin{itemize}
+    \tightlist
+    \item
+      \(1 > y_i > 0\)\\
+    \item
+      \(\sum_i y_i = 1\)
+    \end{itemize}
+  \item
+    Monotonicity\\
+  \item
+    Non-locality
+  \end{itemize}
+\end{itemize}
+
+\hypertarget{step-2-goodness-of-function}{%
+\subsection{Step 2: Goodness of function}\label{step-2-goodness-of-function}}
+
+Loss can be square error or cross entropy between the network output and target.
+
+With softmax, the summation of all the outputs would be one.
+
+A good function should make the loos of all examples as small as possible
+
+Total Loss:
+
+\[
+L = \sum_{r=1}^R l_r
+\]
+
+Find a function in function set (the network parameters \(\theta^*\)) that minimizes total loss.
+
+\hypertarget{step-3-pick-the-best-function}{%
+\subsection{Step 3: Pick the best function}\label{step-3-pick-the-best-function}}
+
+Find network parameters \(\theta^*\) that minimize total loss L.
+
+\textbf{Gradient Descent}
+
+Network parameters \(\theta = (w_1,w_2,..,b_1,b_2,...)\)
+
+\begin{itemize}
+\tightlist
+\item
+  Pick an initial value for w\\
+\item
+  Compute \(\frac{\partial L}{\partial w}\),
+
+  \begin{itemize}
+  \tightlist
+  \item
+    if negative, increase w\\
+  \item
+    if positive, decrease w\\
+  \end{itemize}
+\item
+  \(w_{new} = w_{old} - \eta \frac{partial L}{\partial w}\) where \(\eta\) is the learning rate.\\
+\item
+  You have problems with:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    plateau: \(\frac{\partial L}{\partial w} \approx 0\)\\
+  \item
+    saddle point: \(\frac{\partial L}{\partial w} = 0\)\\
+  \item
+    Stuck at local minima: \(\frac{\partial L}{\partial w} = 0\)\\
+  \end{itemize}
+\item
+  solution:
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Different initial point to reach different minima, so different results.
+  \end{itemize}
+\end{itemize}
+
+Backpropagation
+
+\begin{itemize}
+\tightlist
+\item
+  is an efficient way to compute \(\partial L / \partial w\)
+\end{itemize}
+
+\hypertarget{recipe-of-deep-learning}{%
+\subsection{Recipe of Deep learning}\label{recipe-of-deep-learning}}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  Not good result on training data
+\end{enumerate}
+
+\begin{itemize}
+\tightlist
+\item
+  \protect\hyperlink{choosing-proper-loss}{Choosing proper loss}
+\item
+  \protect\hyperlink{mini-batch}{Mini-batch}
+\item
+  \protect\hyperlink{new-activation-function}{New activation function}
+\item
+  \protect\hyperlink{adaptive-learning-rate}{Adaptive Learning Rate}
+\item
+  \protect\hyperlink{momentum}{Momentum}
+\end{itemize}
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{1}
+\tightlist
+\item
+  Not good result on testing data
+\end{enumerate}
+
+\begin{itemize}
+\tightlist
+\item
+  \protect\hyperlink{early-stopping}{Early Stopping}
+\item
+  \protect\hyperlink{regularization}{Regularization}
+\item
+  \protect\hyperlink{dropout}{Dropout}
+\item
+  \protect\hyperlink{network-structure}{Network Structure}
+\end{itemize}
+
+\hypertarget{choosing-proper-loss}{%
+\subsubsection{Choosing proper loss}\label{choosing-proper-loss}}
+
+When using softmax output layer, choose cross entropy. \href{http://proceedings.mlr.press/v9/glorot10a/glorot10a.pdf}{Problem}
+
+\hypertarget{mini-batch}{%
+\subsubsection{Mini-batch}\label{mini-batch}}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{model.fit(x_train,y_train,batch_size }\OperatorTok{=} \DecValTok{100}\NormalTok{,nb_epoch }\OperatorTok{=} \DecValTok{20}\NormalTok{) }\CommentTok{# 100 examples in a mini-batch }
+\CommentTok{# repeat 20 times}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{itemize}
+\tightlist
+\item
+  Randomly initialize network parameters
+\item
+  One epoch
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Pick the 1st batch \(L'= l^1 + l^{31} + ..\) Update parameters once.\\
+  \item
+    Pick the 2nd batch \(L''=l^2 + l^{16} +...\) Update parameters once\\
+  \item
+    Until all mini-batches have been picked
+  \end{itemize}
+\item
+  Repeat the above process
+\item
+  Mini-batch is faster (with mini-batch. if there are 20 batches, update 20 times in one epoch).
+\end{itemize}
+
+\hypertarget{new-activation-function}{%
+\subsubsection{New activation function}\label{new-activation-function}}
+
+\begin{itemize}
+\tightlist
+\item
+  Rectified Linear Unit (ReLU)
+\end{itemize}
+
+Reason:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  Fast to compute
+\item
+  Biological reason\\
+\item
+  Infinite sigmoid with different biases\\
+\item
+  Vanishing gradient problem.
+\end{enumerate}
+
+Parametric ReLU (PReLU) \citep{Glorot_2011}
+
+ReLU - Variant
+
+\begin{itemize}
+\tightlist
+\item
+  Leaky ReLU\\
+\item
+  Parametric ReLu
+\end{itemize}
+
+\hypertarget{adaptive-learning-rate}{%
+\subsubsection{Adaptive Learning Rate}\label{adaptive-learning-rate}}
+
+\begin{itemize}
+\tightlist
+\item
+  Set the learning rate \(\eta\) carefully\\
+\item
+  If learning rate is too large\\
+\item
+  Total loss may not decrease after each update.\\
+\item
+  If learning rate is too small
+\item
+  Training would be too slow\\
+\item
+  Popular and simple idea: reduce the learning rate by some factor every few epochs.
+
+  \begin{itemize}
+  \tightlist
+  \item
+    At the beginning, we are far from the destination, so we use larger learning rate\\
+  \item
+    After several epochs, we are close to the destination, so we reduce the learning rate\\
+  \item
+    E.g., 1/t decay \(\eta^t = \eta \sqrt{t+1}\)
+  \end{itemize}
+\item
+  Learning rate cannot be one-size-fits-all
+
+  \begin{itemize}
+  \tightlist
+  \item
+    Giving different parameters different learning rates.\\
+  \end{itemize}
+\item
+  \(\eta\) is unit-dependent (from 0 to 1)
+\end{itemize}
+
+Adagrad
+
+\begin{itemize}
+\tightlist
+\item
+  Original: \(w \leftarrow w - \eta \partial L /\partial w\)\\
+\item
+  Adagrad: \(w \leftarrow - \eta_{w} \partial L / \partial w\)
+
+  \begin{itemize}
+  \tightlist
+  \item
+    where \(\eta_w\) is parameter dependent learning rate.\\
+    \[
+    \eta_w = \frac{\eta}{\sqrt{\sum_{i=1}^{t}(g^i)^2}}
+    \]
+  \item
+    \(\eta\) is constant
+  \item
+    \(g^i\) is \(\partial L / \partial w\) obtained at the i-th update.
+  \end{itemize}
+\item
+  Learning rate is smaller and smaller for all parameters\\
+\item
+  Smaller derivatives, larger learning rate, and vice versa.
+\end{itemize}
+
+\href{https://courses.cs.washington.edu/courses/cse547/15sp/slides/adagrad.pdf}{link}
+
+\hypertarget{momentum}{%
+\subsubsection{Momentum}\label{momentum}}
+
+Hard to find optimal network parameters
+
+Movement = negative of \(\partial L/ \partial w\) + Momentum
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{# RMSProp (Advanced Adagrad) + Momentum}
+\NormalTok{model.}\BuiltInTok{compile}\NormalTok{(loss}\OperatorTok{=}\StringTok{'categorial_crossentropy'}\NormalTok{,optimizer }\OperatorTok{=}\NormalTok{ SGD(lr}\OperatorTok{=}\FloatTok{0.1}\NormalTok{),metrics }\OperatorTok{=}\NormalTok{ [}\StringTok{'accuracy'}\NormalTok{])}
+\NormalTok{model.}\BuiltInTok{compile}\NormalTok{(loss}\OperatorTok{=}\StringTok{'categorial_crossentropy'}\NormalTok{,optimizer}\OperatorTok{=}\NormalTok{Adam(),metrics }\OperatorTok{=}\NormalTok{ [}\StringTok{'accuracy'}\NormalTok{])}
+\end{Highlighting}
+\end{Shaded}
+
+\hypertarget{early-stopping}{%
+\subsubsection{Early Stopping}\label{early-stopping}}
+
+\begin{itemize}
+\tightlist
+\item
+  training data and testing data can be different.\\
+\item
+  Learning target is defined by the training data\\
+\item
+  The parameters achieving the learning target do not necessary have good results on the testing data.
+\end{itemize}
+
+\hypertarget{regularization}{%
+\subsubsection{Regularization}\label{regularization}}
+
+\hypertarget{dropout}{%
+\subsubsection{Dropout}\label{dropout}}
+
+Training
+
+\begin{itemize}
+\tightlist
+\item
+  each time before updating the parameters
+
+  \begin{itemize}
+  \tightlist
+  \item
+    each neuron has p\% to dropout.
+
+    \begin{itemize}
+    \tightlist
+    \item
+      The structure of the network is changed.\\
+    \end{itemize}
+  \item
+    Using the new network for training
+
+    \begin{itemize}
+    \tightlist
+    \item
+      For each min-batch, we resample the dropout neurons.
+    \end{itemize}
+  \end{itemize}
+\end{itemize}
+
+Testing
+
+\begin{itemize}
+\tightlist
+\item
+  No dropout
+
+  \begin{itemize}
+  \tightlist
+  \item
+    If the dropout rate training is p\%, all the weights times 1-p\%\\
+  \item
+    Assume that the dropout rate is 50\%. If a weight w = 1 by training, set w = 0.5 for testing.
+  \end{itemize}
+\end{itemize}
+
+Dropout is a kind of ensemble.
+
+\begin{itemize}
+\item
+  training of dropout: M neurons \(\to\) \(2^M\) possible networks.\\
+\item
+  Using one mini-batch to train one network\\
+\item
+  Some parameters int eh network are shared.
+\item
+  Training of dropout: assume dropout rate is 50\%\\
+\item
+  Testing of dropout: weight
+\end{itemize}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{model }\OperatorTok{=}\NormalTok{ Sequential()}
+\NormalTok{model.add(Dense(input_dim }\OperatorTok{=} \DecValTok{28}\OperatorTok{*}\DecValTok{28}\NormalTok{,output_dim }\OperatorTok{=} \DecValTok{500}\NormalTok{))}
+\NormalTok{model.add(Activation(}\StringTok{'sigmoid'}\NormalTok{))}
+\NormalTok{model.add(dropout(}\FloatTok{0.8}\NormalTok{))}
+\NormalTok{model.add(Dense (output_dim}\OperatorTok{=}\DecValTok{500}\NormalTok{))}
+\NormalTok{model.add(Activation(}\StringTok{'sigmoid'}\NormalTok{))}
+\NormalTok{model.add(dropout(}\FloatTok{0.8}\NormalTok{))}
+\NormalTok{model.add(Dense(output_dim }\OperatorTok{=} \DecValTok{10}\NormalTok{))}
+\NormalTok{model.add(Activation(}\StringTok{'softmax'}\NormalTok{))}
+\end{Highlighting}
+\end{Shaded}
+
+\hypertarget{network-structure}{%
+\subsubsection{Network Structure}\label{network-structure}}
+
+Convolutional Neural Network (CNN)
+
+\begin{itemize}
+\tightlist
+\item
+  Widely used in image processing
+\item
+  use in \protect\hyperlink{step-1-a-set-of-function}{the first step} for deep learning
+\end{itemize}
+
+The Whole CNN
+
+\begin{itemize}
+\tightlist
+\item
+  Property 1: Some patterns are much smaller than the whole image\\
+\item
+  Property 2: The same patterns appear in different regions.\\
+\item
+  Property 3: Subsampling the pixels will not change the object.
+\end{itemize}
+
+CNN in Keras: only modified the network structure and input format (vector to 3-D tensor)
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{model2.add(Convolution2D(}\DecValTok{25}\NormalTok{,}\DecValTok{3}\NormalTok{,}\DecValTok{3}\NormalTok{),input_shape}\OperatorTok{=}\NormalTok{ (}\DecValTok{1}\NormalTok{,}\DecValTok{28}\NormalTok{,}\DecValTok{28}\NormalTok{)) }
+\CommentTok{# 25 3x3 filters; 1:black/weight, 3: RFB, 28x28 pixels}
+\NormalTok{model2.add(MaxPooling2D(}\DecValTok{2}\NormalTok{,}\DecValTok{2}\NormalTok{))}
+\NormalTok{model2.add(Convolution2D(}\DecValTok{50}\NormalTok{,}\DecValTok{3}\NormalTok{,}\DecValTok{3}\NormalTok{))}
+\NormalTok{model2.add(MaxPooling2D(}\DecValTok{2}\NormalTok{,}\DecValTok{2}\NormalTok{))}
+\NormalTok{model2.add(Flatten())}
+\NormalTok{model2.add(Dense(output_dim }\OperatorTok{=} \DecValTok{100}\NormalTok{))}
+\NormalTok{model2.add(Activation(}\StringTok{'relu'}\NormalTok{))}
+\NormalTok{model2.add(Dense(output_dim}\OperatorTok{=}\DecValTok{10}\NormalTok{))}
+\NormalTok{model2.add(Activation(}\StringTok{'softmax'}\NormalTok{))}
+\end{Highlighting}
+\end{Shaded}
+
+will we always have to know our classes?
+Yes, and you have to retrain your model all the time. Or you could use\\
+Transfer learning in deep learning
+
+Neural topic modeling
+
+graph representation learning
+
+GNN
+
+DGL
+
+recurrent network
+
+BERT model
 
 \hypertarget{overview}{%
 \section{Overview}\label{overview}}
@@ -1204,6 +2241,48 @@ Deep Machines are more efficient than SVM in representing certain classes of fun
 The Manifold Hypothesis ``states that real-world high-dimensional data lie on low-dimensional manifolds embedded within the high-dimensional space''
 
 Difference between Deep Learning and PCA (Principal Components Analysis) is that Deep learning uses non-linear function, while PCA uses linear function.
+
+\hypertarget{applications}{%
+\chapter{Applications}\label{applications}}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{# Step 1: define a set of function  }
+\NormalTok{model }\OperatorTok{=}\NormalTok{ Sequential()}
+\NormalTok{model.add(Dense(input_dim }\OperatorTok{=} \DecValTok{28}\OperatorTok{*}\DecValTok{28}\NormalTok{,}
+\NormalTok{output_dim }\OperatorTok{=} \DecValTok{500}\NormalTok{))}
+
+\NormalTok{model.add(Activation(}\StringTok{'sigmoid'}\NormalTok{))}
+\NormalTok{model.add(Dense(output_dim }\OperatorTok{=} \DecValTok{500}\NormalTok{))}
+\NormalTok{model.add(Activation(}\StringTok{'sigmoid'}\NormalTok{))}
+\NormalTok{model.add(Dense(output_dim}\OperatorTok{=}\DecValTok{10}\NormalTok{))}
+\NormalTok{model.add(Activation(}\StringTok{'softmax'}\NormalTok{))}
+
+\CommentTok{# Step 2: goodness of function}
+\NormalTok{model.}\BuiltInTok{compile}\NormalTok{(loss }\OperatorTok{=} \StringTok{'mse'}\NormalTok{,optimizer }\OperatorTok{=}\NormalTok{ SGD(lr}\OperatorTok{=}\FloatTok{0.1}\NormalTok{),metrics }\OperatorTok{=}\NormalTok{ [}\StringTok{'accuracy'}\NormalTok{])}
+
+\CommentTok{# Step 3: Pick the best function  }
+\CommentTok{# Step 3.1: Configuration}
+\NormalTok{model.}\BuiltInTok{compile}\NormalTok{(loss }\OperatorTok{=} \StringTok{'mse'}\NormalTok{,optimizer}\OperatorTok{=}\NormalTok{SGD(lr}\OperatorTok{=}\FloatTok{0.1}\NormalTok{),metrics }\OperatorTok{=}\NormalTok{ [}\StringTok{'accuracy'}\NormalTok{])}
+
+\CommentTok{# Step 3.2: Find the optimal network parameters}
+\NormalTok{model.fit(x_train,y_train,batch_size }\OperatorTok{=} \DecValTok{100}\NormalTok{,nb_epoch}\OperatorTok{=}\DecValTok{20}\NormalTok{) }\CommentTok{# x_train = training data (images)}
+\CommentTok{# y_train: labels (digits) }
+
+
+\CommentTok{# Save and load models  }
+\CommentTok{# http://keras.io/getting-started/faq/#how-can-i-save-a-keras-model}
+
+\CommentTok{# How to use the neural network (testing): }
+\CommentTok{# case 1 }
+\NormalTok{score }\OperatorTok{=}\NormalTok{ model.evaluate(x_test,y_test)}
+\BuiltInTok{print}\NormalTok{(}\StringTok{'Total loss on Testing Set:'}\NormalTok{,score[}\DecValTok{0}\NormalTok{])}
+\BuiltInTok{print}\NormalTok{(}\StringTok{'Accuracy of Testing set:'}\NormalTok{,score[}\DecValTok{1}\NormalTok{])}
+
+\CommentTok{# case 2}
+\NormalTok{result }\OperatorTok{=}\NormalTok{ model.predict(x_test)}
+\end{Highlighting}
+\end{Shaded}
 
 \hypertarget{interpretable-machine-learning}{%
 \chapter{Interpretable Machine Learning}\label{interpretable-machine-learning}}

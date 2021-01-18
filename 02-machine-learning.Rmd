@@ -118,7 +118,12 @@ Model selection
  * Bad:  
     + Computationally intensive (train N models)  
     + high variance.  
- * Another evaluation: **K-fold cross validation**  
+ * Another evaluation: **K-fold cross validation**:  
+    + Break up data into k folds  
+    + For each fold  
+        - Choose the fold as a temporary test set  
+        - Train on k-1 folds, compute performance on the test fold.  
+    + Report average performance of the 10 runs.  
     + randomly partition the dataset into k subsets (e.g., 10)  
     + For each subset:  
         - learn the model on the objects that are not in the subset  
@@ -152,7 +157,14 @@ knitr::include_graphics('images/confusionMatrxiUpdated.jpg')
 
 Various criteria  
 
- * Error 
+$$
+\text{Error rate} = \frac{FP + FN}{N + P} \\
+\text{Accuracy} = \frac{TP + TN}{N + P} = 1 - \text{Error rate} \\
+\text{Sensitivity or recall} = \frac{TP}{P} \\
+\text{Specificity} = \frac{TN}{TN + FP} \\
+\text{Precision} = \frac{TP}{TP + FP} \\
+$$
+
 
 **ROC and precision/recall curves**  
 
@@ -209,7 +221,161 @@ Learning Techniques
     + Goal: learn to choose sequence of actions (=policy) that maximizes $r_0 + \gamma r_1 + \gamma^2r_2 + ...$ where $0 \le \gamma <1$
 
 
+
+### Decision Tree
+
+ * Is a tree-structured plan of a set of attributes to test to predict the output.  
+ * Give one attribute, try to predict the value of new people's attribute by means of some other available attribute  
+ * Input attributes:  
+    + **d** features/ attributes $x^{(1)},x^{(2)},...,x^{(d)}$  
+    + Each $x^{(j)}$ has domain $O_j$  
+        - Categorical $O_j=(read,blue)$  
+        - Numerical: $H_j = (0,10)$  
+    + Y is output variable with domain $O_Y$:  
+        - Categorical: Classification  
+        - Numerical: regression  
+ * Data D:  
+    + n examples $(x_i, y_i)$ where  
+        - $x_i$ is a d-dim feature vector  
+        - $y_i\in O_Y$  
+ * Decision trees:  
+    + Split the data at each internal node 
+    + Each leaf node makes a prediction  
+
+How to construct a tree  
+
+ * [Find best split]  
+ * [Stopping Criteria]  
+ * [Find Prediction]  
+
+
+#### Find best split
+
+Pick an attribute and value that optimizes some criterion  
+    + Regression: Purity
+    + Classification: Information Gain: Measures how much a given attribute X tells us about the class Y.  
+
+Information Gain? Entropy  
+
+The entropy of X: $H(X) = -\sum_{j=1}^{m} p_j log p_j$   
+
+ * "High entropy": X is from a uniform distribution  
+    + A histogram of the frequency distribution of values of X is flat  
+ * "Low Entropy": X is from varied distribution  
+    + A histogram of the frequency distribution of values of X would have many lows and one or two highs.  
+ * Def: Information Gain:  
+    + $IG(Y|X) = H(Y) - H(Y|X)$ I must transmit Y. How many bits on average would it save me if both ends of the line knew X? 
+
+
+#### Stopping Criteria
+
+ * When the leaf is "pure": the target variable does not vary too much: Var(Y) < threshold.  
+ * When number of examples in the leaf is too small.  
+ * Could also use information as as a stopping criteria.  
+ 
+#### Find Prediction
+
+ * Regression: Predict average y of the examples  
+ * Classification: Predict most common y of the examples the leaf.  
+
+
+### Random Forest
+
+Ensemble methods  
+
+ * A single decision tree does not perform well.  
+ * But, it is super fast.  
+ * What if we learn multiple trees? 
+ 
+Bagging  
+
+ * If we split the data in random different ways, decision trees give different results, high variance.  
+ * Bagging: Bootstrap aggregating is a method that result in low variance.  
+ * If we had multiple realizations of the data (or multiple samples) we could calculate the prediction multiple times and take the average of the fact that averaging multiple onerous estimations produce less uncertain results  
+ * say for each sample b, we calculate $f^b(x)$, then $\hat{f}_{avg} (x) = \frac{1}{B} \sum_{b=1}^{B} \hat{f}^b (x)$
+ * Bootstrap: Construct B (hundreds) of trees. Learn a classifier for each bootstrap sample and average them. Very effective.  
+ * Reduces overfitting (variance)  
+ * Could use one classifier, or multiple classifiers. 
+ * easy to parallelize  
+ * Variable Importance Measures  
+    + Bagging results in improved accuracy over prediction using a single tree  
+    + Unfortunately, difficult to interpret the resulting model. Bagging improves prediction accuracy at the expense of interpretability.  
+ * Issues:  
+    + Each tree is identically distributed (i.d)  
+        - The expectation of the average of B such trees  
+        - The bias of bagged trees is the same as that of individual trees 
+    + An average of B i.i.d random variables, each with variance $\sigma^2$, has variance $\sigma^2/B$. If i.d. (identical but not independent) and pair correlation $\rho$ is present, then the variance is : $\rho \sigma^2 + \frac{1-\rho}{B} \sigma^2$ . As B increases, the second term disappears but the first term remains.  
+ * Suppose that there is one very strong predictor in the data set, along with a number of other moderately strong predictors. Then all bagged trees will select the strong predictor at the top tree and therefore all trees will look similar.  
+    + We can penalize the splitting with a penalty term that depends on the number of times a predictor is selected at a given length.  
+    + restrict how many items a predictor can be used.  
+    + allow a certain number of predictors.  
+ * Since we want i.i.d so that the bias to be the same and variance to be less.  
+    + in bagging, we build a number of decision trees on bootstrapped training samples each time a split in a tree is considered, a random sample of m predictors is chosen as split candidates from the full set of p predictors (if m = p, then this is bagging).  
+
+
+[Random Forest software](http://www.stat.berkeley.edu/~breiman/RandomForests/)  
+
+
+<br>  
+
+Random Forests Algorithm  
+
+For b = 1 to B:  
+
+ a. draw a bootstrap sample Z * of size N from the training data.  
+ b. Grow a random-forest tree to the bootstrapped data, by recursively repeating the following steps for each terminal node of the tree, until the minimum node size $n_{min}$ is reached.  
+    + Select m variables at random from the p variables.  
+    + Pick the best variable/split-point among the m.  
+    + Split the node into two daughter nodes.  
+
+Output the ensemble trees.  
+
+| | Regression | Classification |
+|---|---|---|
+|To make a prediction at a new point x| average the results| majority vote |
+|Tuning | The default value for m is $p/3$  and the minimum node size is 5 | The default value for m is $\sqrt{p}$ and the minimum node size is one |
+
+
+Another issue:  
+
+When the number of variables is large, but the fraction of relevant variables is small, random forests are likely to perform poorly when m is small. Because: At each split the chance can be small that the relevant variables will be selected.  
+
+Example: with 3 relevant and 100 not so relevant variables the probability of any of the relevant variables being selected at any split is approx 0.25.  
+
+random forests "cannot overfit" the data because the number of trees (B) does not mean increase in the flexibility of the model.  
+
+
+
+
+Always include Random Forest (ensembles) and XGBoost (like bagging)
+
+Alternative  
+
+ * Support vector machine (SVM) dont usually use this because of computational reasons and because it is only 1 model. 
+
+
+
+
+
+
 ## Unsupervised Learning
+
+Unsupervised learning tries to find regularities in the data without guidance about inputs and outputs  
+
+Unsupervised learning categories and techniques:  
+
+ * Clustering  
+    + K-means Clustering  
+    + Spectral Clustering  
+ * Density Estimation  
+    + Gaussian mixture model (GMM)  
+    + Graphical models  
+ * Dimensionality reduction  
+    + Principal component analysis (PCA)  
+    + factor Analysis  
+
+
+
 
 ### Clustering
 
@@ -228,6 +394,27 @@ Clustering quality
 
  * Inter-clusters distance -> maximized  
  * Intra-clusters distance -> minimized  
+
+which can be use to judge good clustering  
+
+ * Internal criterion: A good clustering will produce high quality clusters in which:  
+    + The intra-class (intra-cluster) similarity is high  
+    + The inter-class similarity is low.  
+    + The measured quality of a clustering depends on both the document representation and the similarity measure used.  
+ * External criteria:  
+    + Quality measured by its ability to discover some or all of the hidden patterns or latent classes in gold standard data.  
+    + Assesses a clustering with respect to **ground truth**  
+    + Assume documents with C gold standard classes, while our clustering algorithm produce cluster $w_1,w_2,...,w_k$ with $n_1,...,n_k$ members.  
+    + Simple measure: **purity**, the ratio between the dominant class in the cluster $\pi_i$ and the size of cluster $w_i$  
+$$
+Purity(w_i) = \frac{1}{n_i}max_j (n_{ij})  j \in C
+$$
+    + others are entropy of classes in clusters (or mutual inforamtion between classes and clusters).  
+
+
+
+
+
 
 The quality of a clustering result depends on  
 
@@ -278,11 +465,69 @@ Binary and nominal Attributes
 
  * Binary attribute: has 2 values or states but no ordering relationship (e.g., gender)  
  * We use a confusion matrix to introduce the distance function/measures  
- * Let the i-th and j-th data points be $X_i$ and $x_j$ (vectors)
+ * Let the i-th and j-th data points be $X_i$ and $x_j$ (vectors)  
 
 
 
-slide 79
+Confusion matrix  
+
+| | | Data point j | | | 
+|---|---|---|---|---|
+| | | 1 | 0 | |
+|Data point i | 1 | a | b | a + b |
+|| 0 | c | d | c + d |
+| | | a + c | b + d | a + b + c + d |
+
+
+ * a: the number of attributes with the value of 1 for both data points  
+ * b: The number of attributes with which $x_{if} = 1$ and $x_{jf}=0$ where $x_{if}$ is the value of $f$ attribute of the data point $x_i$  
+ * c: the number of attributes of which $x_{if}=0$ and $x_{jf} =1$  
+ * d: the number of attributes with the value of 0 for both data points.  
+
+
+Symmetric binary attributes  
+
+ * A binary attribute is symmetric if both of its states (0 and 1) have equal importance, and carry the same weights, e.g., Gender.  
+ * distance function: **Simple Matching Coefficient**, proportion of mismatches of their values  
+$$
+dist(x_i,x_j) = \frac{b+c}{a+b+c+d}
+$$
+
+Asymmetric binary attributes  
+
+ * if one of the states is more important or more valuable than the other  
+     + By convention, state 1 represents the more important state.  
+     + Jaccard coefficient is popular measure  
+$$
+dist(x_i,x_j) = \frac{b + c}{a + b +c}
+$$
+    + We can have some variations, adding weights  
+
+
+Nominal attributes: with more than 2 states or values.  
+ * the common used distance measure is also based on the simple matching method.  
+ * Given two data points $x_i$, $x_j$ let the number of attributes be r, and the number of values that match in $x_i$ and $x_j$ be q.  $dist(x_i,x_j) = \frac{r-q}{r}$  
+
+Data standardization  
+
+ * In the Euclidean space, standardization of attributes is recommended  so that all attributes can have equal impact on the computation of distances.  
+ * standardize attributes: to force the attributes to have a common value range.  
+ * Real data have different types:  
+    + Interval-scaled
+    + symmetric binary  
+    + asymmetric binary  
+    + ratio-scaled  
+    + ordinal  
+    + nominal  
+ * Convert to a single type:  
+    + To deal with mixed attributes:  
+        - Decide the dominant attribute type  
+        - Convert the other types to this type  
+
+
+
+
+
 
 
 
@@ -304,6 +549,10 @@ Steps
  2. Assign each data point to the closest centroid  
  3. Re-compute the centroids using the current cluster memberships  
  4. If a convergence criterion is not met, go back to 2. 
+
+
+
+
 
 Convergence Criterion  
 
@@ -331,5 +580,27 @@ Cons
  * The user needs to specify k  
  * The algorithm is sensitive to outliers.  
     + outliers could be errors in the data recording or some special data points with very different values.  
+ * is not suitable for discovering clusters that are not hyper-ellipsoids (or hyper-spheres)
 
 Solution  
+
+ * To deal with outliers:  
+    + remove some data points int the clustering process that are much further away from the centroids than other data points.  
+    + Or perform random sampling. Since in sampling we only choose a small subset of the data points, the chance of selecting an outlier is very small.  
+ * To deal with sensitive algorithm  
+    + Use different seeds
+
+
+## Semi-superivsed learning
+
+ * Goal: exploit both labeled and unlabeled data to build better models than using each one alone  
+ * Self-training  
+    + Iteratively label some unlabeled examples with a model learned from the previously labeled examples  
+    + Active learning  
+
+
+## Reinforcement learning
+
+ * Learning from interactions  
+ * Goal: learn to choose sequence of actions (= policy) that maximizes $r_0 + \gamma r_1 + \gamma^2r_2 + ...$
+ 

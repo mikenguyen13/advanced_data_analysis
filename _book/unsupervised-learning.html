@@ -4,11 +4,11 @@
 
   <meta charset="utf-8" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-  <title>Chapter 7 Interpretable Machine Learning | Advanced Data Analysis</title>
+  <title>Chapter 4 Unsupervised Learning | Advanced Data Analysis</title>
   <meta name="description" content="Advanced guide on data analysis. This is a second part of Data Analysis" />
   <meta name="generator" content="bookdown 0.21 and GitBook 2.6.7" />
 
-  <meta property="og:title" content="Chapter 7 Interpretable Machine Learning | Advanced Data Analysis" />
+  <meta property="og:title" content="Chapter 4 Unsupervised Learning | Advanced Data Analysis" />
   <meta property="og:type" content="book" />
   
   
@@ -16,7 +16,7 @@
   
 
   <meta name="twitter:card" content="summary" />
-  <meta name="twitter:title" content="Chapter 7 Interpretable Machine Learning | Advanced Data Analysis" />
+  <meta name="twitter:title" content="Chapter 4 Unsupervised Learning | Advanced Data Analysis" />
   
   <meta name="twitter:description" content="Advanced guide on data analysis. This is a second part of Data Analysis" />
   
@@ -31,8 +31,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black" />
   
   
-<link rel="prev" href="reinforcement-learning.html"/>
-<link rel="next" href="introduction.html"/>
+<link rel="prev" href="supervised-learning.html"/>
+<link rel="next" href="semi-superivsed-learning.html"/>
 <script src="libs/jquery-2.2.3/jquery.min.js"></script>
 <link href="libs/gitbook-2.6.7/css/style.css" rel="stylesheet" />
 <link href="libs/gitbook-2.6.7/css/plugin-table.css" rel="stylesheet" />
@@ -211,62 +211,333 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
           <div class="page-inner">
 
             <section class="normal" id="section-">
-<div id="interpretable-machine-learning" class="section level1">
-<h1><span class="header-section-number">Chapter 7</span> Interpretable Machine Learning</h1>
-<p><a href="https://christophm.github.io/interpretable-ml-book/" class="uri">https://christophm.github.io/interpretable-ml-book/</a>
-<a href="https://en.wikipedia.org/wiki/Explainable_artificial_intelligence" class="uri">https://en.wikipedia.org/wiki/Explainable_artificial_intelligence</a>
-<a href="https://arxiv.org/pdf/1905.08883.pdf" class="uri">https://arxiv.org/pdf/1905.08883.pdf</a>
-<a href="https://arxiv.org/abs/2004.14545" class="uri">https://arxiv.org/abs/2004.14545</a>
-<a href="https://www.kaggle.com/learn/machine-learning-explainability" class="uri">https://www.kaggle.com/learn/machine-learning-explainability</a>
-<a href="https://towardsdatascience.com/interperable-vs-explainable-machine-learning-1fa525e12f48" class="uri">https://towardsdatascience.com/interperable-vs-explainable-machine-learning-1fa525e12f48</a></p>
-<div id="shap" class="section level2">
-<h2><span class="header-section-number">7.1</span> SHAP</h2>
-<p><a href="https://github.com/slundberg/shap" class="uri">https://github.com/slundberg/shap</a>
-<a href="https://meichenlu.com/2018-11-10-SHAP-explainable-machine-learning/" class="uri">https://meichenlu.com/2018-11-10-SHAP-explainable-machine-learning/</a>
-<a href="https://bjlkeng.github.io/posts/model-explanability-with-shapley-additive-explanations-shap/" class="uri">https://bjlkeng.github.io/posts/model-explanability-with-shapley-additive-explanations-shap/</a></p>
+<div id="unsupervised-learning" class="section level1">
+<h1><span class="header-section-number">Chapter 4</span> Unsupervised Learning</h1>
+<p>Unsupervised learning tries to find regularities in the data without guidance about inputs and outputs</p>
+<p>Unsupervised learning categories and techniques:</p>
+<ul>
+<li>Clustering
+<ul>
+<li>K-means Clustering<br />
+</li>
+<li>Spectral Clustering<br />
+</li>
+</ul></li>
+<li>Density Estimation
+<ul>
+<li>Gaussian mixture model (GMM)<br />
+</li>
+<li>Graphical models<br />
+</li>
+</ul></li>
+<li>Dimensionality reduction
+<ul>
+<li>Principal component analysis (PCA)<br />
+</li>
+<li>factor Analysis</li>
+</ul></li>
+</ul>
+<div id="clustering" class="section level2">
+<h2><span class="header-section-number">4.1</span> Clustering</h2>
+<p>Clustering is used to find similar groups in data (i.e., clusters)</p>
+<p>No class value denoting an a priori grouping (hence, <a href="unsupervised-learning.html#unsupervised-learning">Unsupervised Learning</a>)</p>
+<p>Clustering algorithm</p>
+<ul>
+<li>Partitional clustering<br />
+</li>
+<li>Hierarchical clustering</li>
+</ul>
+<p>A distance (similarity, or dissimilarity) function</p>
+<p>Clustering quality</p>
+<ul>
+<li>Inter-clusters distance -&gt; maximized<br />
+</li>
+<li>Intra-clusters distance -&gt; minimized</li>
+</ul>
+<p>which can be use to judge good clustering</p>
+<ul>
+<li>Internal criterion: A good clustering will produce high quality clusters in which:
+<ul>
+<li>The intra-class (intra-cluster) similarity is high<br />
+</li>
+<li>The inter-class similarity is low.<br />
+</li>
+<li>The measured quality of a clustering depends on both the document representation and the similarity measure used.<br />
+</li>
+</ul></li>
+<li>External criteria:
+<ul>
+<li>Quality measured by its ability to discover some or all of the hidden patterns or latent classes in gold standard data.<br />
+</li>
+<li>Assesses a clustering with respect to <strong>ground truth</strong><br />
+</li>
+<li>Assume documents with C gold standard classes, while our clustering algorithm produce cluster <span class="math inline">\(w_1,w_2,...,w_k\)</span> with <span class="math inline">\(n_1,...,n_k\)</span> members.<br />
+</li>
+<li>Simple measure: <strong>purity</strong>, the ratio between the dominant class in the cluster <span class="math inline">\(\pi_i\)</span> and the size of cluster <span class="math inline">\(w_i\)</span><br />
+<span class="math display">\[
+Purity(w_i) = \frac{1}{n_i}max_j (n_{ij})  j \in C
+\]</span></li>
+<li>others are entropy of classes in clusters (or mutual inforamtion between classes and clusters).</li>
+</ul></li>
+</ul>
+<p>The quality of a clustering result depends on</p>
+<ul>
+<li>The algorithm<br />
+</li>
+<li>the distance function<br />
+</li>
+<li>the application</li>
+</ul>
+<div id="similarity-measures" class="section level3">
+<h3><span class="header-section-number">4.1.1</span> Similarity Measures</h3>
+<p>It’s your choice of how to define similarity</p>
+<p>(Dis)similarity measure</p>
+<ul>
+<li>Equivalently, we can use dissimilarity measures<br />
+</li>
+<li>Jagota defines a dissimilarity measure as a function f(x,y) such that f(x,y) &gt; f(w,z) if and only if x is less similar to y than w is to z.<br />
+Also known as <strong>pair-wise</strong> measure</li>
+</ul>
+<p>Distance functions</p>
+<p>Different distance functions for</p>
+<ul>
+<li>Different types of data
+<ul>
+<li>Numeric data<br />
+</li>
+<li>Nominal data<br />
+</li>
+</ul></li>
+<li>Different applications</li>
+</ul>
+<p>Numeric data</p>
+<ul>
+<li><span class="math inline">\(dist(x_i, x_j)\)</span>,where
+<ul>
+<li><span class="math inline">\(dist(x_j, x_j) = ((x_{i1} - x_{j1})^h + (x_{i2} - x_{j2})^h + ... + (x_{ir} - x_{jr})^h)^{\frac{1}{h}}\)</span></li>
+<li><span class="math inline">\(x_i\)</span> and <span class="math inline">\(x_j\)</span> are data points (vectors)<br />
+</li>
+</ul></li>
+<li>Euclidean distance
+<ul>
+<li>If h = 2, it is the Euclidean distance: <span class="math inline">\(dist(x_j, x_j) = ((x_{i1} - x_{j1})^2 + (x_{i2} - x_{j2})^2 + ... + (x_{ir} - x_{jr})^2)^{\frac{1}{2}}\)</span></li>
+<li>Weighted Euclidean distance: <span class="math inline">\(dist(x_j, x_j) = (w_1(x_{i1} - x_{j1})^2 + w_2(x_{i2} - x_{j2})^2 + ... + w_r(x_{ir} - x_{jr})^2)^{\frac{1}{2}}\)</span></li>
+<li>Squared Eulidean distance: to place progressively greater weight on data points that are further apart: <span class="math inline">\(dist(x_j, x_j) = (x_{i1} - x_{j1})^2 + (x_{i2} - x_{j2})^2 + ... + (x_{ir} - x_{jr})^2\)</span></li>
+</ul></li>
+<li>Manhattan distance
+<ul>
+<li>If h = 1, it is the Manhattan distance: <span class="math inline">\(dist(x_j, x_j) = |x_{i1} - x_{j1}| + |x_{i2} - x_{j2}| + ... + |x_{ir} - x_{jr}|\)</span></li>
+</ul></li>
+<li>Minkowski distance (h is positive integer)
+<ul>
+<li><span class="math inline">\(dist(x_j, x_j) = ((x_{i1} - x_{j1})^h + (x_{i2} - x_{j2})^h + ... + (x_{ir} - x_{jr})^h)^{\frac{1}{h}}\)</span></li>
+<li>1st dimension, 2nd dimension, etc.<br />
+</li>
+</ul></li>
+<li>Chebychev distance: define 2 data points as “different” if they are different on any one of the attributes
+<ul>
+<li><span class="math inline">\(dist(x_j, x_j) = max(|x_{i1} - x_{j1}| + |x_{i2} - x_{j2}| + ... + |x_{ir} - x_{jr}|)\)</span></li>
+</ul></li>
+</ul>
+<p>Binary and nominal Attributes</p>
+<ul>
+<li>Binary attribute: has 2 values or states but no ordering relationship (e.g., gender)<br />
+</li>
+<li>We use a confusion matrix to introduce the distance function/measures<br />
+</li>
+<li>Let the i-th and j-th data points be <span class="math inline">\(X_i\)</span> and <span class="math inline">\(x_j\)</span> (vectors)</li>
+</ul>
+<p>Confusion matrix</p>
+<table>
+<thead>
+<tr class="header">
+<th></th>
+<th></th>
+<th>Data point j</th>
+<th></th>
+<th></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td></td>
+<td></td>
+<td>1</td>
+<td>0</td>
+<td></td>
+</tr>
+<tr class="even">
+<td>Data point i</td>
+<td>1</td>
+<td>a</td>
+<td>b</td>
+<td>a + b</td>
+</tr>
+<tr class="odd">
+<td></td>
+<td>0</td>
+<td>c</td>
+<td>d</td>
+<td>c + d</td>
+</tr>
+<tr class="even">
+<td></td>
+<td></td>
+<td>a + c</td>
+<td>b + d</td>
+<td>a + b + c + d</td>
+</tr>
+</tbody>
+</table>
+<ul>
+<li>a: the number of attributes with the value of 1 for both data points<br />
+</li>
+<li>b: The number of attributes with which <span class="math inline">\(x_{if} = 1\)</span> and <span class="math inline">\(x_{jf}=0\)</span> where <span class="math inline">\(x_{if}\)</span> is the value of <span class="math inline">\(f\)</span> attribute of the data point <span class="math inline">\(x_i\)</span><br />
+</li>
+<li>c: the number of attributes of which <span class="math inline">\(x_{if}=0\)</span> and <span class="math inline">\(x_{jf} =1\)</span><br />
+</li>
+<li>d: the number of attributes with the value of 0 for both data points.</li>
+</ul>
+<p>Symmetric binary attributes</p>
+<ul>
+<li>A binary attribute is symmetric if both of its states (0 and 1) have equal importance, and carry the same weights, e.g., Gender.<br />
+</li>
+<li>distance function: <strong>Simple Matching Coefficient</strong>, proportion of mismatches of their values<br />
+<span class="math display">\[
+dist(x_i,x_j) = \frac{b+c}{a+b+c+d}
+\]</span></li>
+</ul>
+<p>Asymmetric binary attributes</p>
+<ul>
+<li>if one of the states is more important or more valuable than the other
+<ul>
+<li>By convention, state 1 represents the more important state.<br />
+</li>
+<li>Jaccard coefficient is popular measure<br />
+<span class="math display">\[
+dist(x_i,x_j) = \frac{b + c}{a + b +c}
+\]</span></li>
+<li>We can have some variations, adding weights</li>
+</ul></li>
+</ul>
+<p>Nominal attributes: with more than 2 states or values.<br />
+* the common used distance measure is also based on the simple matching method.<br />
+* Given two data points <span class="math inline">\(x_i\)</span>, <span class="math inline">\(x_j\)</span> let the number of attributes be r, and the number of values that match in <span class="math inline">\(x_i\)</span> and <span class="math inline">\(x_j\)</span> be q. <span class="math inline">\(dist(x_i,x_j) = \frac{r-q}{r}\)</span></p>
+<p>Data standardization</p>
+<ul>
+<li>In the Euclidean space, standardization of attributes is recommended so that all attributes can have equal impact on the computation of distances.<br />
+</li>
+<li>standardize attributes: to force the attributes to have a common value range.<br />
+</li>
+<li>Real data have different types:
+<ul>
+<li>Interval-scaled</li>
+<li>symmetric binary<br />
+</li>
+<li>asymmetric binary<br />
+</li>
+<li>ratio-scaled<br />
+</li>
+<li>ordinal<br />
+</li>
+<li>nominal<br />
+</li>
+</ul></li>
+<li>Convert to a single type:
+<ul>
+<li>To deal with mixed attributes:
+<ul>
+<li>Decide the dominant attribute type<br />
+</li>
+<li>Convert the other types to this type</li>
+</ul></li>
+</ul></li>
+</ul>
 </div>
-<div id="video-classification" class="section level2">
-<h2><span class="header-section-number">7.2</span> Video Classification</h2>
-<p><a href="https://hackernoon.com/continuous-video-classification-with-tensorflow-inception-and-recurrent-nets-250ba9ff6b85" class="uri">https://hackernoon.com/continuous-video-classification-with-tensorflow-inception-and-recurrent-nets-250ba9ff6b85</a>
-<a href="https://cloud.google.com/video-intelligence" class="uri">https://cloud.google.com/video-intelligence</a>
-<a href="https://arxiv.org/pdf/1609.06782.pdf" class="uri">https://arxiv.org/pdf/1609.06782.pdf</a>
-<a href="https://www.tubefilter.com/2019/02/12/taxonomy-youtube-videos-develop-original-content-that-works/" class="uri">https://www.tubefilter.com/2019/02/12/taxonomy-youtube-videos-develop-original-content-that-works/</a>
-<a href="https://medium.com/swlh/converting-news-into-video-stories-5d8d4fc5a32b" class="uri">https://medium.com/swlh/converting-news-into-video-stories-5d8d4fc5a32b</a>
-<a href="https://towardsdatascience.com/introduction-to-video-classification-6c6acbc57356" class="uri">https://towardsdatascience.com/introduction-to-video-classification-6c6acbc57356</a>
-<a href="https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0228579" class="uri">https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0228579</a></p>
+<div id="k-mean-algorithm" class="section level3">
+<h3><span class="header-section-number">4.1.2</span> K-mean Algorithm</h3>
+<p>K-means is a partitional clustering algorithm.</p>
+<p>Let the set of data points (or instances) D to be <span class="math inline">\((x_1,...,x_n)\)</span>, where <span class="math inline">\(x_i = (c_{i1},...,x_{ir})\)</span> is a vector in a real-valued space <span class="math inline">\(X \subseteq R^r\)</span> and r is the number of attributes (dimensions) in the data</p>
+<p>The k-means algorithm partitions the given data into k clusters</p>
+<ul>
+<li>Each cluster has a cluster center (centroid)<br />
+</li>
+<li>k is specified by user.</li>
+</ul>
+<p>Steps</p>
+<ol style="list-style-type: decimal">
+<li>Randomly choose k data points (seeds) to be the initial centroids (cluster centers)<br />
+</li>
+<li>Assign each data point to the closest centroid<br />
+</li>
+<li>Re-compute the centroids using the current cluster memberships<br />
+</li>
+<li>If a convergence criterion is not met, go back to 2.</li>
+</ol>
+<p>Convergence Criterion</p>
+<ol style="list-style-type: decimal">
+<li>No(or minimum) re-assignments of data points to different clusters,<br />
+</li>
+<li>No (or minimum) change of centroids, or<br />
+</li>
+<li>minimum decreases in the sum of squared error (SSE)
+<span class="math display">\[
+SSE = \sum_{j=1}^{k}\sum_{x\in C_j}dist(x.m_j)^2
+\]</span></li>
+</ol>
+<ul>
+<li>C is the j-th cluster,m is the centroid of cluster <span class="math inline">\(C_j\)</span> (the mean vector of all the data points in C). and dist(x,m) is the distance between data point x and centroid <span class="math inline">\(m_j\)</span>.</li>
+</ul>
+<p>Pros</p>
+<ul>
+<li>Simple: easy to understand and implement<br />
+</li>
+<li>Efficient: time complexity: O(tkn), where n is the number of data points, k is the number of clusters, and t is the number of iterations.<br />
+</li>
+<li>Since both ka nd t are small, k-means is considered a linear algorithm<br />
+</li>
+<li>Note: it terminates at a local optimum if SSE is used. The global optimum is hard to find due to complexity.</li>
+</ul>
+<p>Cons</p>
+<ul>
+<li>The algorithm is only applicable if the mean is defined.
+<ul>
+<li>For categorical data, k-mode<br />
+</li>
+</ul></li>
+<li>The user needs to specify k<br />
+</li>
+<li>The algorithm is sensitive to outliers.
+<ul>
+<li>outliers could be errors in the data recording or some special data points with very different values.<br />
+</li>
+</ul></li>
+<li>is not suitable for discovering clusters that are not hyper-ellipsoids (or hyper-spheres)</li>
+</ul>
+<p>Solution</p>
+<ul>
+<li>To deal with outliers:
+<ul>
+<li>remove some data points int the clustering process that are much further away from the centroids than other data points.<br />
+</li>
+<li>Or perform random sampling. Since in sampling we only choose a small subset of the data points, the chance of selecting an outlier is very small.<br />
+</li>
+</ul></li>
+<li>To deal with sensitive algorithm
+<ul>
+<li>Use different seeds</li>
+</ul></li>
+</ul>
 </div>
-<div id="image-memorability" class="section level2">
-<h2><span class="header-section-number">7.3</span> Image Memorability</h2>
-<p>(AMNET)</p>
-<p><a href="https://www.researchgate.net/publication/335603628_Image_Memorability_Using_Diverse_Visual_Features_and_Soft_Attention" class="uri">https://www.researchgate.net/publication/335603628_Image_Memorability_Using_Diverse_Visual_Features_and_Soft_Attention</a>
-<a href="https://www.researchgate.net/publication/308812354_Deep_Learning_for_Image_Memorability_Prediction_the_Emotional_Bias" class="uri">https://www.researchgate.net/publication/308812354_Deep_Learning_for_Image_Memorability_Prediction_the_Emotional_Bias</a>
-<a href="https://arxiv.org/pdf/2005.02969.pdf" class="uri">https://arxiv.org/pdf/2005.02969.pdf</a>
-<a href="https://github.com/dazcona/memorability" class="uri">https://github.com/dazcona/memorability</a>
-<a href="https://arxiv.org/abs/1804.03115" class="uri">https://arxiv.org/abs/1804.03115</a>
-<a href="https://www.researchgate.net/publication/324387176_AMNet_Memorability_Estimation_with_Attention" class="uri">https://www.researchgate.net/publication/324387176_AMNet_Memorability_Estimation_with_Attention</a>
-<a href="http://ceur-ws.org/Vol-2283/MediaEval_18_paper_24.pdf" class="uri">http://ceur-ws.org/Vol-2283/MediaEval_18_paper_24.pdf</a>
-<a href="https://jov.arvojournals.org/article.aspx?articleid=2771173" class="uri">https://jov.arvojournals.org/article.aspx?articleid=2771173</a>
-<a href="https://openaccess.thecvf.com/content_cvpr_2018/papers/Fajtl_AMNet_Memorability_Estimation_CVPR_2018_paper.pdf" class="uri">https://openaccess.thecvf.com/content_cvpr_2018/papers/Fajtl_AMNet_Memorability_Estimation_CVPR_2018_paper.pdf</a>
-<a href="https://ieeexplore.ieee.org/document/8578764" class="uri">https://ieeexplore.ieee.org/document/8578764</a></p>
-<p><a href="https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=7382237&amp;tag=1" class="uri">https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=7382237&amp;tag=1</a>
-<a href="https://people.umass.edu/~yangzhou/" class="uri">https://people.umass.edu/~yangzhou/</a></p>
-<p><a href="http://people.csail.mit.edu/khosla/projects/regionmem/" class="uri">http://people.csail.mit.edu/khosla/projects/regionmem/</a>
-<a href="https://github.com/adikhosla/feature-extraction" class="uri">https://github.com/adikhosla/feature-extraction</a>
-<a href="https://expertprogrammanagement.com/2019/12/elaboration-likelihood-model/" class="uri">https://expertprogrammanagement.com/2019/12/elaboration-likelihood-model/</a></p>
-
 </div>
-</div>
-
-
-
 </div>
             </section>
 
           </div>
         </div>
       </div>
-<a href="reinforcement-learning.html" class="navigation navigation-prev " aria-label="Previous page"><i class="fa fa-angle-left"></i></a>
-<a href="introduction.html" class="navigation navigation-next " aria-label="Next page"><i class="fa fa-angle-right"></i></a>
+<a href="supervised-learning.html" class="navigation navigation-prev " aria-label="Previous page"><i class="fa fa-angle-left"></i></a>
+<a href="semi-superivsed-learning.html" class="navigation navigation-next " aria-label="Next page"><i class="fa fa-angle-right"></i></a>
     </div>
   </div>
 <script src="libs/gitbook-2.6.7/js/app.min.js"></script>

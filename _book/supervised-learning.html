@@ -4,11 +4,11 @@
 
   <meta charset="utf-8" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-  <title>Chapter 2 Introduction | Advanced Data Analysis</title>
+  <title>Chapter 3 Supervised Learning | Advanced Data Analysis</title>
   <meta name="description" content="Advanced guide on data analysis. This is a second part of Data Analysis" />
   <meta name="generator" content="bookdown 0.21 and GitBook 2.6.7" />
 
-  <meta property="og:title" content="Chapter 2 Introduction | Advanced Data Analysis" />
+  <meta property="og:title" content="Chapter 3 Supervised Learning | Advanced Data Analysis" />
   <meta property="og:type" content="book" />
   
   
@@ -16,7 +16,7 @@
   
 
   <meta name="twitter:card" content="summary" />
-  <meta name="twitter:title" content="Chapter 2 Introduction | Advanced Data Analysis" />
+  <meta name="twitter:title" content="Chapter 3 Supervised Learning | Advanced Data Analysis" />
   
   <meta name="twitter:description" content="Advanced guide on data analysis. This is a second part of Data Analysis" />
   
@@ -31,8 +31,8 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black" />
   
   
-<link rel="prev" href="index.html"/>
-<link rel="next" href="supervised-learning.html"/>
+<link rel="prev" href="intro.html"/>
+<link rel="next" href="unsupervised-learning.html"/>
 <script src="libs/jquery-2.2.3/jquery.min.js"></script>
 <link href="libs/gitbook-2.6.7/css/style.css" rel="stylesheet" />
 <link href="libs/gitbook-2.6.7/css/plugin-table.css" rel="stylesheet" />
@@ -211,166 +211,465 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
           <div class="page-inner">
 
             <section class="normal" id="section-">
-<div id="intro" class="section level1">
-<h1><span class="header-section-number">Chapter 2</span> Introduction</h1>
-<p>Resources</p>
+<div id="supervised-learning" class="section level1">
+<h1><span class="header-section-number">Chapter 3</span> Supervised Learning</h1>
+<p>From the data, find a function f of the inputs that best approximates the outputs.</p>
+<p><span class="math display">\[
+\hat{Y} = f(X_1,..,X_n)
+\]</span></p>
 <ul>
-<li><a href="http://alex.smola.org/drafts/thebook.pdf">INTRODUCTION TO MACHINE LEARNING</a></li>
+<li>Predictive: Make predictions for a new object described by its attributes<br />
+</li>
+<li>Informative: help understand the relationship between inputs and outputs</li>
 </ul>
-<p>3 types of data</p>
+<p>Divide data into</p>
 <ul>
-<li>Structured Data (tables form)<br />
+<li>Training set: train model<br />
 </li>
-<li>Semi-structured Data (e.g., XML, JSON, HTML)<br />
+<li>validation set: tune hyper parameters<br />
 </li>
-<li>Unstructured Data
+<li>Test set: evaluation of the model for generalization error.</li>
+</ul>
+<p>Learning algorithm</p>
 <ul>
-<li>Texts<br />
+<li>defined by
+<ul>
+<li>a family of candidate models (= <strong>hypothesis space H</strong>)<br />
 </li>
-<li>Images: Videos, photos,<br />
+<li>a quality measure for a model<br />
 </li>
-<li>Networks: Social Networks</li>
+<li>an optimization strategy<br />
+</li>
+</ul></li>
+<li>takes as input a leaning sample and outputs a function h in H of maximum quality</li>
+</ul>
+<p>Model selection</p>
+<ul>
+<li>Why not choose the model that minimizes the error rate on the learning sample? (<strong>re-substitution error</strong>)<br />
+</li>
+<li>How well are you going to predict future data drawn from the same distribution? (<strong>generalization error</strong>)</li>
+<li>Evaluation on test set
+<ol style="list-style-type: decimal">
+<li>Randomly choose a percentage (e.g., 30%) of the data to be in a test set<br />
+</li>
+<li>The remainder is training set<br />
+</li>
+<li>Learn the model from the training set<br />
+</li>
+<li>Estimate its future performance on the test set.<br />
+</li>
+</ol></li>
+<li>Problems:
+<ul>
+<li>overfits: occurs when the learning algorithm starts fitting noise.<br />
+</li>
+<li>unfits<br />
+</li>
+</ul></li>
+<li>Evaluation on test set:
+<ul>
+<li>Good:
+<ul>
+<li>Very simple<br />
+</li>
+<li>Computationally efficient<br />
+</li>
+</ul></li>
+<li>Bad:
+<ul>
+<li>Waste data<br />
+</li>
+<li>very unstable when database is small<br />
+</li>
+</ul></li>
+</ul></li>
+<li>Another evaluation: <strong>Leave-one-out cross validation</strong>
+<ul>
+<li>For k = 1 to N
+<ul>
+<li>remove the k-th object from the learning sample<br />
+</li>
+<li>learn the model on the remaining objects<br />
+</li>
+<li>apply the model to get a prediction for the k-th object<br />
+</li>
+</ul></li>
+<li>report the proportion of mis-classified objects<br />
+</li>
+</ul></li>
+<li>Good:
+<ul>
+<li>Do not waste the data (you get an estimate of the best method to apply to N-1 data)<br />
+</li>
+</ul></li>
+<li>Bad:
+<ul>
+<li>Computationally intensive (train N models)<br />
+</li>
+<li>high variance.<br />
+</li>
+</ul></li>
+<li>Another evaluation: <strong>K-fold cross validation</strong>:
+<ul>
+<li>Break up data into k folds<br />
+</li>
+<li>For each fold
+<ul>
+<li>Choose the fold as a temporary test set<br />
+</li>
+<li>Train on k-1 folds, compute performance on the test fold.<br />
+</li>
+</ul></li>
+<li>Report average performance of the 10 runs.<br />
+</li>
+<li>randomly partition the dataset into k subsets (e.g., 10)<br />
+</li>
+<li>For each subset:
+<ul>
+<li>learn the model on the objects that are not in the subset<br />
+</li>
+<li>compute the error rate on the points in the subset. Report the mean error rate over the k subsets.<br />
+</li>
+</ul></li>
+<li>When k = the number of objects -&gt; leave-one-out-cross validation.</li>
 </ul></li>
 </ul>
-<p>This section based on notes in “Analyzing Unstructured Data” course taught by professor Kunpeng Zhang.</p>
+<p>Rule-of-thumb for evaluation</p>
 <ul>
-<li>ML is concerned with the the development, the analysis, and the application of algorithm that allow computers to learn<br />
+<li>Lots of data (&gt;1000) test set validation<br />
 </li>
-<li>Learning:
+<li>small data (100-1000): 10-fold CV<br />
+</li>
+<li>very small data (&lt;100) leave one out CV.</li>
+</ul>
+<p><img src="images/Overfitting%20affect%20prediction.jpg" width="364" style="display: block; margin: auto;" /></p>
+<p>Use the testing set to estimate the performance of the final model</p>
+<p>Performance measures</p>
 <ul>
-<li>A computer learns if it improves its performance at some tasks with experience (i.e., data)<br />
+<li>The error rate is no the only way to assess a predictive model.<br />
 </li>
-<li>Extracting a model of system from the sole observation (or the simulation)<br />
+<li>In binary classification, results can be summarized in a contingency table (i.e., confusion matrix)</li>
+</ul>
+<p><img src="images/confusionMatrxiUpdated.jpg" width="377" style="display: block; margin: auto;" /></p>
+<p>Various criteria</p>
+<p><span class="math display">\[
+\text{Error rate} = \frac{FP + FN}{N + P} \\
+\text{Accuracy} = \frac{TP + TN}{N + P} = 1 - \text{Error rate} \\
+\text{Sensitivity or recall} = \frac{TP}{P} \\
+\text{Specificity} = \frac{TN}{TN + FP} \\
+\text{Precision} = \frac{TP}{TP + FP} \\
+\]</span></p>
+<p><strong>ROC and precision/recall curves</strong></p>
+<ul>
+<li>Each point corresponds to a particular choice of the decision threshold.</li>
+</ul>
+<p>Also known as robustness check</p>
+<p>You want large area under the curve</p>
+<p>Compassion of learning models</p>
+<ul>
+<li>Three main criteria:
+<ul>
+<li>Accuracy: Measures by the generalization error (estimated by CV)<br />
 </li>
-<li>A model = some relationships between the variables used to describe the system.<br />
+<li>Efficiency: Computing times and scalabiility for learning and testing<br />
+</li>
+<li>Interpretability: Comprehension brought by the model about the input-output relationship.<br />
 </li>
 </ul></li>
-<li>Goals:
+<li>Depends on the application, you have to make trade-off.</li>
+</ul>
+<p>Learning Techniques</p>
 <ul>
-<li>Make prediction<br />
+<li>Supervised learning categories and techniques
+<ul>
+<li>Linear classifier (numerical functions):
+<ul>
+<li>Perceptron<br />
 </li>
-<li>Understand the underlying mechanisms.<br />
+<li>Logistic regression<br />
+</li>
+<li>Support vector machine (SVM): linear to nonlinear: feature transofrm and kernel function<br />
+</li>
+<li>Ada-line<br />
+</li>
+<li>Multi-layer perceptron (MLP)</li>
+</ul></li>
+<li>Parametric (Probabilistic functions)
+<ul>
+<li>Naive Bayes, Gaussian discriminant analysis (GDA), Hidden Markov models (HMM), probabilistic graphical models<br />
 </li>
 </ul></li>
-<li>Learning if useful when:
+<li>Non-parametric (Instance-based functions)
 <ul>
-<li>Human expertise does not exist (navigating on Mars)<br />
-</li>
-<li>Humans are unable to explain their expertise (speech recognition)<br />
-</li>
-<li>Solution changes in time (routing on a computer network)<br />
-Solution needs to be adapted to particular cases (user biometrics)<br />
+<li>K-nearest neighbors, Kernel regression, Kernel density estimation, local regression.<br />
 </li>
 </ul></li>
-<li>Applications in different domains:
+<li>Non-metric (symbolic functions)
 <ul>
-<li>Retail: Market basket analysis, customer relationship management (CRM)<br />
-</li>
-<li>Finance: Credit scoring, fraud detection.<br />
-</li>
-<li>Manufacturing: Optimization, troubleshooting<br />
-</li>
-<li>Medicine: medical diagnosis<br />
-</li>
-<li>Telecommunications: Quality of service optimization, routing<br />
-</li>
-<li>Bioinformatics: Motifs, alignment WEb mining, search engines.<br />
+<li>Classification and regression tree (CART), decision tree<br />
 </li>
 </ul></li>
-<li>Steps
+<li>Aggregation
 <ul>
-<li>Data generation: data types, sample size<br />
-</li>
-<li>Preprocessing: normalization, missing values, feature selection/extraction<br />
-</li>
-<li>Machine Learning: Hypothesis, choice of learning paradigm/algorithm.<br />
-</li>
-<li>Hypothesis validation: cross-validation, model deployment.<br />
-</li>
-</ul></li>
-<li>Types of machine learning:
-<ul>
-<li>Supervised: manually label variables<br />
-</li>
-<li>Unsupervised:<br />
-</li>
-</ul></li>
-<li>Training and testing
-<ul>
-<li>Training is the process of making the machine learn<br />
-</li>
-<li>No free lunch:
-<ul>
-<li>Training set and testing set come from the same distribution<br />
-</li>
-<li>Need to make some assumptions.<br />
+<li>Bagging (bootstrap + aggregation), Adaboost, Random forest.<br />
 </li>
 </ul></li>
 </ul></li>
-<li>Factors affecting the performance:
+<li>Unsupervised learning categories and techniques:
 <ul>
-<li>Types of training provided<br />
+<li>Clustering
+<ul>
+<li>K-means clustering<br />
 </li>
-<li>The form and extend of prior knowledge<br />
-</li>
-<li>Type of feedback provided<br />
-</li>
-<li>The learning algorithms used<br />
+<li>Spectral clustering<br />
 </li>
 </ul></li>
-<li>Two factors:
+<li>Density Estimation
 <ul>
-<li>Modeling<br />
+<li>Gaussian mixture model (GMM)<br />
 </li>
-<li>optimization<br />
+<li>Graphical models<br />
 </li>
 </ul></li>
-<li>Algorithms:
+<li>Dimensionality reduction
 <ul>
-<li>ML depends on algorithms.<br />
+<li>Principal component analysis (PCA)<br />
 </li>
-<li>The algorithms control the search to find and build the knowledge structures<br />
-</li>
-<li>The learning algorithms should extract useful information from training examples.<br />
+<li>Factor analysis<br />
 </li>
 </ul></li>
-<li>Types of learning (algorithms):
+</ul></li>
+<li>Semi-supervised learning
 <ul>
-<li>Supervised learning (<span class="math inline">\(\{ X_n \in R^d, y_n \in R\}^N_{n=1}\)</span>)
-<ul>
-<li>Prediction<br />
+<li>goal: exploit both labeled and unlabeled data to build better models than using each one alone<br />
 </li>
-<li>Classification (discrete labels), regression (real values)<br />
+<li>Self-training:
+<ul>
+<li>Iteratively label some unlabeled examples with a model learned from the previously labeled examples<br />
+</li>
+<li>Active learning.<br />
 </li>
 </ul></li>
-<li>Unsupervised learning (<span class="math inline">\(\{ X_n \in R^d\}^N_{n=1}\)</span>)
-<ul>
-<li>Clustering<br />
-</li>
-<li>Probability distribution estimation<br />
-</li>
-<li>Finding association (in features)<br />
-</li>
-<li>Dimension reduction<br />
-</li>
 </ul></li>
-<li>Semi-supervised learning<br />
-</li>
 <li>Reinforcement learning
 <ul>
-<li>Decision making (robot, chess machine)</li>
-</ul></li>
+<li>Learning from interactions<br />
+</li>
+<li>Goal: learn to choose sequence of actions (=policy) that maximizes <span class="math inline">\(r_0 + \gamma r_1 + \gamma^2r_2 + ...\)</span> where <span class="math inline">\(0 \le \gamma &lt;1\)</span></li>
 </ul></li>
 </ul>
-
+<div id="decision-tree" class="section level2">
+<h2><span class="header-section-number">3.1</span> Decision Tree</h2>
+<ul>
+<li>Is a tree-structured plan of a set of attributes to test to predict the output.<br />
+</li>
+<li>Give one attribute, try to predict the value of new people’s attribute by means of some other available attribute<br />
+</li>
+<li>Input attributes:
+<ul>
+<li><strong>d</strong> features/ attributes <span class="math inline">\(x^{(1)},x^{(2)},...,x^{(d)}\)</span><br />
+</li>
+<li>Each <span class="math inline">\(x^{(j)}\)</span> has domain <span class="math inline">\(O_j\)</span>
+<ul>
+<li>Categorical <span class="math inline">\(O_j=(read,blue)\)</span><br />
+</li>
+<li>Numerical: <span class="math inline">\(H_j = (0,10)\)</span><br />
+</li>
+</ul></li>
+<li>Y is output variable with domain <span class="math inline">\(O_Y\)</span>:
+<ul>
+<li>Categorical: Classification<br />
+</li>
+<li>Numerical: regression<br />
+</li>
+</ul></li>
+</ul></li>
+<li>Data D:
+<ul>
+<li>n examples <span class="math inline">\((x_i, y_i)\)</span> where
+<ul>
+<li><span class="math inline">\(x_i\)</span> is a d-dim feature vector<br />
+</li>
+<li><span class="math inline">\(y_i\in O_Y\)</span><br />
+</li>
+</ul></li>
+</ul></li>
+<li>Decision trees:
+<ul>
+<li>Split the data at each internal node</li>
+<li>Each leaf node makes a prediction</li>
+</ul></li>
+</ul>
+<p>How to construct a tree</p>
+<ul>
+<li><a href="supervised-learning.html#find-best-split">Find best split</a><br />
+</li>
+<li><a href="supervised-learning.html#stopping-criteria">Stopping Criteria</a><br />
+</li>
+<li><a href="supervised-learning.html#find-prediction">Find Prediction</a></li>
+</ul>
+<div id="find-best-split" class="section level3">
+<h3><span class="header-section-number">3.1.1</span> Find best split</h3>
+<p>Pick an attribute and value that optimizes some criterion<br />
++ Regression: Purity
++ Classification: Information Gain: Measures how much a given attribute X tells us about the class Y.</p>
+<p>Information Gain? Entropy</p>
+<p>The entropy of X: <span class="math inline">\(H(X) = -\sum_{j=1}^{m} p_j log p_j\)</span></p>
+<ul>
+<li>“High entropy”: X is from a uniform distribution
+<ul>
+<li>A histogram of the frequency distribution of values of X is flat<br />
+</li>
+</ul></li>
+<li>“Low Entropy”: X is from varied distribution
+<ul>
+<li>A histogram of the frequency distribution of values of X would have many lows and one or two highs.<br />
+</li>
+</ul></li>
+<li>Def: Information Gain:
+<ul>
+<li><span class="math inline">\(IG(Y|X) = H(Y) - H(Y|X)\)</span> I must transmit Y. How many bits on average would it save me if both ends of the line knew X?</li>
+</ul></li>
+</ul>
+</div>
+<div id="stopping-criteria" class="section level3">
+<h3><span class="header-section-number">3.1.2</span> Stopping Criteria</h3>
+<ul>
+<li>When the leaf is “pure”: the target variable does not vary too much: Var(Y) &lt; threshold.<br />
+</li>
+<li>When number of examples in the leaf is too small.<br />
+</li>
+<li>Could also use information as as a stopping criteria.</li>
+</ul>
+</div>
+<div id="find-prediction" class="section level3">
+<h3><span class="header-section-number">3.1.3</span> Find Prediction</h3>
+<ul>
+<li>Regression: Predict average y of the examples<br />
+</li>
+<li>Classification: Predict most common y of the examples the leaf.</li>
+</ul>
+</div>
+</div>
+<div id="random-forest" class="section level2">
+<h2><span class="header-section-number">3.2</span> Random Forest</h2>
+<p>Ensemble methods</p>
+<ul>
+<li>A single decision tree does not perform well.<br />
+</li>
+<li>But, it is super fast.<br />
+</li>
+<li>What if we learn multiple trees?</li>
+</ul>
+<p>Bagging</p>
+<ul>
+<li>If we split the data in random different ways, decision trees give different results, high variance.<br />
+</li>
+<li>Bagging: Bootstrap aggregating is a method that result in low variance.<br />
+</li>
+<li>If we had multiple realizations of the data (or multiple samples) we could calculate the prediction multiple times and take the average of the fact that averaging multiple onerous estimations produce less uncertain results<br />
+</li>
+<li>say for each sample b, we calculate <span class="math inline">\(f^b(x)\)</span>, then <span class="math inline">\(\hat{f}_{avg} (x) = \frac{1}{B} \sum_{b=1}^{B} \hat{f}^b (x)\)</span></li>
+<li>Bootstrap: Construct B (hundreds) of trees. Learn a classifier for each bootstrap sample and average them. Very effective.<br />
+</li>
+<li>Reduces overfitting (variance)<br />
+</li>
+<li>Could use one classifier, or multiple classifiers.</li>
+<li>easy to parallelize<br />
+</li>
+<li>Variable Importance Measures
+<ul>
+<li>Bagging results in improved accuracy over prediction using a single tree<br />
+</li>
+<li>Unfortunately, difficult to interpret the resulting model. Bagging improves prediction accuracy at the expense of interpretability.<br />
+</li>
+</ul></li>
+<li>Issues:
+<ul>
+<li>Each tree is identically distributed (i.d)
+<ul>
+<li>The expectation of the average of B such trees<br />
+</li>
+<li>The bias of bagged trees is the same as that of individual trees</li>
+</ul></li>
+<li>An average of B i.i.d random variables, each with variance <span class="math inline">\(\sigma^2\)</span>, has variance <span class="math inline">\(\sigma^2/B\)</span>. If i.d. (identical but not independent) and pair correlation <span class="math inline">\(\rho\)</span> is present, then the variance is : <span class="math inline">\(\rho \sigma^2 + \frac{1-\rho}{B} \sigma^2\)</span> . As B increases, the second term disappears but the first term remains.<br />
+</li>
+</ul></li>
+<li>Suppose that there is one very strong predictor in the data set, along with a number of other moderately strong predictors. Then all bagged trees will select the strong predictor at the top tree and therefore all trees will look similar.
+<ul>
+<li>We can penalize the splitting with a penalty term that depends on the number of times a predictor is selected at a given length.<br />
+</li>
+<li>restrict how many items a predictor can be used.<br />
+</li>
+<li>allow a certain number of predictors.<br />
+</li>
+</ul></li>
+<li>Since we want i.i.d so that the bias to be the same and variance to be less.
+<ul>
+<li>in bagging, we build a number of decision trees on bootstrapped training samples each time a split in a tree is considered, a random sample of m predictors is chosen as split candidates from the full set of p predictors (if m = p, then this is bagging).</li>
+</ul></li>
+</ul>
+<p><a href="http://www.stat.berkeley.edu/~breiman/RandomForests/">Random Forest software</a></p>
+<p><br></p>
+<p>Random Forests Algorithm</p>
+<p>For b = 1 to B:</p>
+<ol style="list-style-type: lower-alpha">
+<li>draw a bootstrap sample Z * of size N from the training data.<br />
+</li>
+<li>Grow a random-forest tree to the bootstrapped data, by recursively repeating the following steps for each terminal node of the tree, until the minimum node size <span class="math inline">\(n_{min}\)</span> is reached.
+<ul>
+<li>Select m variables at random from the p variables.<br />
+</li>
+<li>Pick the best variable/split-point among the m.<br />
+</li>
+<li>Split the node into two daughter nodes.</li>
+</ul></li>
+</ol>
+<p>Output the ensemble trees.</p>
+<table>
+<colgroup>
+<col width="33%" />
+<col width="33%" />
+<col width="33%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th>Regression</th>
+<th>Classification</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>To make a prediction at a new point x</td>
+<td>average the results</td>
+<td>majority vote</td>
+</tr>
+<tr class="even">
+<td>Tuning</td>
+<td>The default value for m is <span class="math inline">\(p/3\)</span> and the minimum node size is 5</td>
+<td>The default value for m is <span class="math inline">\(\sqrt{p}\)</span> and the minimum node size is one</td>
+</tr>
+</tbody>
+</table>
+<p>Another issue:</p>
+<p>When the number of variables is large, but the fraction of relevant variables is small, random forests are likely to perform poorly when m is small. Because: At each split the chance can be small that the relevant variables will be selected.</p>
+<p>Example: with 3 relevant and 100 not so relevant variables the probability of any of the relevant variables being selected at any split is approx 0.25.</p>
+<p>random forests “cannot overfit” the data because the number of trees (B) does not mean increase in the flexibility of the model.</p>
+<p>Always include Random Forest (ensembles) and XGBoost (like bagging)</p>
+<p>Alternative</p>
+<ul>
+<li>Support vector machine (SVM) dont usually use this because of computational reasons and because it is only 1 model.</li>
+</ul>
+</div>
 </div>
             </section>
 
           </div>
         </div>
       </div>
-<a href="index.html" class="navigation navigation-prev " aria-label="Previous page"><i class="fa fa-angle-left"></i></a>
-<a href="supervised-learning.html" class="navigation navigation-next " aria-label="Next page"><i class="fa fa-angle-right"></i></a>
+<a href="intro.html" class="navigation navigation-prev " aria-label="Previous page"><i class="fa fa-angle-left"></i></a>
+<a href="unsupervised-learning.html" class="navigation navigation-next " aria-label="Next page"><i class="fa fa-angle-right"></i></a>
     </div>
   </div>
 <script src="libs/gitbook-2.6.7/js/app.min.js"></script>

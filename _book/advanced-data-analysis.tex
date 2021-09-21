@@ -5,12 +5,13 @@
 \documentclass[
 ]{book}
 \usepackage{lmodern}
-\usepackage{amssymb,amsmath}
+\usepackage{amsmath}
 \usepackage{ifxetex,ifluatex}
 \ifnum 0\ifxetex 1\fi\ifluatex 1\fi=0 % if pdftex
   \usepackage[T1]{fontenc}
   \usepackage[utf8]{inputenc}
   \usepackage{textcomp} % provide euro and other symbols
+  \usepackage{amssymb}
 \else % if luatex or xetex
   \usepackage{unicode-math}
   \defaultfontfeatures{Scale=MatchLowercase}
@@ -82,6 +83,7 @@
 \newcommand{\VerbatimStringTok}[1]{\textcolor[rgb]{0.31,0.60,0.02}{#1}}
 \newcommand{\WarningTok}[1]{\textcolor[rgb]{0.56,0.35,0.01}{\textbf{\textit{#1}}}}
 \usepackage{longtable,booktabs}
+\usepackage{calc} % for calculating minipage widths
 % Correct order of tables after \paragraph or \subparagraph
 \usepackage{etoolbox}
 \makeatletter
@@ -90,7 +92,7 @@
 % Allow footnotes in longtable head/foot
 \IfFileExists{footnotehyper.sty}{\usepackage{footnotehyper}}{\usepackage{footnote}}
 \makesavenoteenv{longtable}
-\usepackage{graphicx,grffile}
+\usepackage{graphicx}
 \makeatletter
 \def\maxwidth{\ifdim\Gin@nat@width>\linewidth\linewidth\else\Gin@nat@width\fi}
 \def\maxheight{\ifdim\Gin@nat@height>\textheight\textheight\else\Gin@nat@height\fi}
@@ -108,12 +110,15 @@
   \setlength{\itemsep}{0pt}\setlength{\parskip}{0pt}}
 \setcounter{secnumdepth}{5}
 \usepackage{booktabs}
+\ifluatex
+  \usepackage{selnolig}  % disable illegal ligatures
+\fi
 \usepackage[]{natbib}
 \bibliographystyle{apalike}
 
 \title{Advanced Data Analysis}
 \author{Mike Nguyen}
-\date{2021-01-18}
+\date{2021-09-20}
 
 \begin{document}
 \maketitle
@@ -127,9 +132,9 @@
 
 \begin{Shaded}
 \begin{Highlighting}[]
-\KeywordTok{install.packages}\NormalTok{(}\StringTok{"bookdown"}\NormalTok{)}
-\CommentTok{# or the development version}
-\CommentTok{# devtools::install_github("rstudio/bookdown")}
+\FunctionTok{install.packages}\NormalTok{(}\StringTok{"bookdown"}\NormalTok{)}
+\CommentTok{\# or the development version}
+\CommentTok{\# devtools::install\_github("rstudio/bookdown")}
 \end{Highlighting}
 \end{Shaded}
 
@@ -140,6 +145,7 @@ This book's skeleton is based on several courses. Hence, I'd like to credit prof
 Course & Professor\tabularnewline
 \midrule
 \endhead
+Data Analysis 3 & Christopher Wikle\tabularnewline
 Analyzing Unstructured Data & Kunpeng Zhang\tabularnewline
 Deep Learning & Yann LeCun\tabularnewline
 \bottomrule
@@ -159,47 +165,58 @@ Resources
 \tightlist
 \item
   \href{http://alex.smola.org/drafts/thebook.pdf}{INTRODUCTION TO MACHINE LEARNING}
+\item
+  \href{https://web.stanford.edu/~hastie/ISLRv2_website.pdf}{An introduction to Statistical Learning}
+\item
+  \href{https://web.stanford.edu/~hastie/ElemStatLearn/printings/ESLII_print12.pdf}{The Elements of Statistical Learning}
+\end{itemize}
+
+Machine learning is also known as statistical learning
+
+\begin{itemize}
+\item
+  two types of learning:
+
+  \begin{itemize}
+  \item
+    supervised learning: predicting or estimating output based on inputs
+  \item
+    unsupervised learning: understanding the relationships among inputs without output
+  \end{itemize}
 \end{itemize}
 
 3 types of data
 
 \begin{itemize}
-\tightlist
 \item
-  Structured Data (tables form)\\
+  Structured Data (tables form)
 \item
-  Semi-structured Data (e.g., XML, JSON, HTML)\\
+  Semi-structured Data (e.g., XML, JSON, HTML)
 \item
   Unstructured Data
 
   \begin{itemize}
   \tightlist
   \item
-    Texts\\
+    Texts
   \item
-    Images: Videos, photos,\\
+    Images: Videos, photos,
   \item
     Networks: Social Networks
   \end{itemize}
-\end{itemize}
-
-This section based on notes in ``Analyzing Unstructured Data'' course taught by professor Kunpeng Zhang.
-
-\begin{itemize}
-\tightlist
 \item
-  ML is concerned with the the development, the analysis, and the application of algorithm that allow computers to learn\\
+  ML is concerned with the the development, the analysis, and the application of algorithm that allow computers to learn
 \item
   Learning:
 
   \begin{itemize}
   \tightlist
   \item
-    A computer learns if it improves its performance at some tasks with experience (i.e., data)\\
+    A computer learns if it improves its performance at some tasks with experience (i.e., data)
   \item
-    Extracting a model of system from the sole observation (or the simulation)\\
+    Extracting a model of system from the sole observation (or the simulation)
   \item
-    A model = some relationships between the variables used to describe the system.\\
+    A model = some relationships between the variables used to describe the system.
   \end{itemize}
 \item
   Goals:
@@ -207,9 +224,9 @@ This section based on notes in ``Analyzing Unstructured Data'' course taught by 
   \begin{itemize}
   \tightlist
   \item
-    Make prediction\\
+    Prediction
   \item
-    Understand the underlying mechanisms.\\
+    Inference
   \end{itemize}
 \item
   Learning if useful when:
@@ -217,12 +234,13 @@ This section based on notes in ``Analyzing Unstructured Data'' course taught by 
   \begin{itemize}
   \tightlist
   \item
-    Human expertise does not exist (navigating on Mars)\\
+    Human expertise does not exist (navigating on Mars)
   \item
-    Humans are unable to explain their expertise (speech recognition)\\
+    Humans are unable to explain their expertise (speech recognition)
   \item
-    Solution changes in time (routing on a computer network)\\
-    Solution needs to be adapted to particular cases (user biometrics)\\
+    Solution changes in time (routing on a computer network)
+  \item
+    Solution needs to be adapted to particular cases (user biometrics)
   \end{itemize}
 \item
   Applications in different domains:
@@ -230,31 +248,31 @@ This section based on notes in ``Analyzing Unstructured Data'' course taught by 
   \begin{itemize}
   \tightlist
   \item
-    Retail: Market basket analysis, customer relationship management (CRM)\\
+    Retail: Market basket analysis, customer relationship management (CRM)
   \item
-    Finance: Credit scoring, fraud detection.\\
+    Finance: Credit scoring, fraud detection.
   \item
-    Manufacturing: Optimization, troubleshooting\\
+    Manufacturing: Optimization, troubleshooting
   \item
-    Medicine: medical diagnosis\\
+    Medicine: medical diagnosis
   \item
-    Telecommunications: Quality of service optimization, routing\\
+    Telecommunications: Quality of service optimization, routing
   \item
-    Bioinformatics: Motifs, alignment WEb mining, search engines.\\
+    Bioinformatics: Motifs, alignment WEb mining, search engines.
   \end{itemize}
 \item
-  Steps
+  \textbf{Steps}
 
   \begin{itemize}
   \tightlist
   \item
-    Data generation: data types, sample size\\
+    Data generation: data types, sample size
   \item
-    Preprocessing: normalization, missing values, feature selection/extraction\\
+    Preprocessing: normalization, missing values, feature selection/extraction
   \item
-    Machine Learning: Hypothesis, choice of learning paradigm/algorithm.\\
+    Machine Learning: Hypothesis, choice of learning paradigm/algorithm.
   \item
-    Hypothesis validation: cross-validation, model deployment.\\
+    Hypothesis validation: cross-validation, model deployment.
   \end{itemize}
 \item
   Types of machine learning:
@@ -262,26 +280,25 @@ This section based on notes in ``Analyzing Unstructured Data'' course taught by 
   \begin{itemize}
   \tightlist
   \item
-    Supervised: manually label variables\\
+    Supervised: manually label variables
   \item
-    Unsupervised:\\
+    Unsupervised:
   \end{itemize}
 \item
   Training and testing
 
   \begin{itemize}
-  \tightlist
   \item
-    Training is the process of making the machine learn\\
+    Training is the process of making the machine learn
   \item
     No free lunch:
 
     \begin{itemize}
     \tightlist
     \item
-      Training set and testing set come from the same distribution\\
+      Training set and testing set come from the same distribution
     \item
-      Need to make some assumptions.\\
+      Need to make some assumptions.
     \end{itemize}
   \end{itemize}
 \item
@@ -290,13 +307,13 @@ This section based on notes in ``Analyzing Unstructured Data'' course taught by 
   \begin{itemize}
   \tightlist
   \item
-    Types of training provided\\
+    Types of training provided
   \item
-    The form and extend of prior knowledge\\
+    The form and extend of prior knowledge
   \item
-    Type of feedback provided\\
+    Type of feedback provided
   \item
-    The learning algorithms used\\
+    The learning algorithms used
   \end{itemize}
 \item
   Two factors:
@@ -304,9 +321,9 @@ This section based on notes in ``Analyzing Unstructured Data'' course taught by 
   \begin{itemize}
   \tightlist
   \item
-    Modeling\\
+    Modeling
   \item
-    optimization\\
+    Optimization
   \end{itemize}
 \item
   Algorithms:
@@ -314,26 +331,25 @@ This section based on notes in ``Analyzing Unstructured Data'' course taught by 
   \begin{itemize}
   \tightlist
   \item
-    ML depends on algorithms.\\
+    ML depends on algorithms.
   \item
-    The algorithms control the search to find and build the knowledge structures\\
+    The algorithms control the search to find and build the knowledge structures
   \item
-    The learning algorithms should extract useful information from training examples.\\
+    The learning algorithms should extract useful information from training examples.
   \end{itemize}
 \item
   Types of learning (algorithms):
 
   \begin{itemize}
-  \tightlist
   \item
     Supervised learning (\(\{ X_n \in R^d, y_n \in R\}^N_{n=1}\))
 
     \begin{itemize}
     \tightlist
     \item
-      Prediction\\
+      Prediction
     \item
-      Classification (discrete labels), regression (real values)\\
+      Classification (discrete labels), regression (real values)
     \end{itemize}
   \item
     Unsupervised learning (\(\{ X_n \in R^d\}^N_{n=1}\))
@@ -341,16 +357,16 @@ This section based on notes in ``Analyzing Unstructured Data'' course taught by 
     \begin{itemize}
     \tightlist
     \item
-      Clustering\\
+      Clustering
     \item
-      Probability distribution estimation\\
+      Probability distribution estimation
     \item
-      Finding association (in features)\\
+      Finding association (in features)
     \item
-      Dimension reduction\\
+      Dimension reduction
     \end{itemize}
   \item
-    Semi-supervised learning\\
+    Semi-supervised learning
   \item
     Reinforcement learning
 
@@ -359,6 +375,1420 @@ This section based on notes in ``Analyzing Unstructured Data'' course taught by 
     \item
       Decision making (robot, chess machine)
     \end{itemize}
+  \end{itemize}
+\end{itemize}
+
+\hypertarget{general-framework}{%
+\section{General Framework}\label{general-framework}}
+
+\begin{itemize}
+\item
+  \(Y\) = output
+\item
+  \(X = (X_1,...,X_p)\) = p inputs
+\end{itemize}
+
+Under supervised learning, additive error model:
+
+\[
+Y = f(x) + \epsilon
+\]
+
+where
+
+\begin{itemize}
+\item
+  \(f(.)\) = unknown fixed function
+\item
+  \(\epsilon\) = random error (\(E(\epsilon) = 0; \epsilon \perp X\))
+\end{itemize}
+
+For prediction (blackbox)
+
+\[
+\hat{Y} = \hat{f}(X)
+\]
+
+where
+
+\begin{itemize}
+\item
+  Reducible Error: \(\hat{f}(.)\) can be improved (in principle)
+\item
+  Irreducible Error: \(\epsilon\) because it's not a function of the inputs, which might contain unknown variables or uncontrolled variation
+\end{itemize}
+
+\[
+\begin{aligned}
+E(Y - \hat{Y})^2 &= E[f(X) + \epsilon - \hat{f}(X)]^2 \\
+&= [f(X) - \hat{f}(X)]^2 + var(\epsilon) \\
+&= \text{reducible} + \text{irreducible}
+\end{aligned}
+\]
+
+For inference, \(f(X) = E(Y|X)\), but the distribution of Y\textbar X is unknown; hence, must be estimated.
+
+We try to find \(\hat{f}\) such that \(Y \approx \hat{f}(X) \forall (X,Y)\)
+
+Ways to estimate \(f\):
+
+\begin{itemize}
+\item
+  Parametric
+
+  \begin{enumerate}
+  \def\labelenumi{\arabic{enumi}.}
+  \item
+    Make an assumption about the function form of \(f(X)\)
+  \item
+    Try to fit data to that specified form (i.e., estimate the parameters) using OLS in regression or MLE in general.
+  \end{enumerate}
+\item
+  Nonparametric
+\end{itemize}
+
+Tradeoff between prediction accuracy and model interpretability
+
+\begin{longtable}[]{@{}ll@{}}
+\toprule
+\begin{minipage}[b]{(\columnwidth - 1\tabcolsep) * \real{0.29}}\raggedright
+Restrictive Model\strut
+\end{minipage} & \begin{minipage}[b]{(\columnwidth - 1\tabcolsep) * \real{0.25}}\raggedright
+Flexible Model\strut
+\end{minipage}\tabularnewline
+\midrule
+\endhead
+\begin{minipage}[t]{(\columnwidth - 1\tabcolsep) * \real{0.29}}\raggedright
+More inference
+
+More interpretable\strut
+\end{minipage} & \begin{minipage}[t]{(\columnwidth - 1\tabcolsep) * \real{0.25}}\raggedright
+More prediction\strut
+\end{minipage}\tabularnewline
+\bottomrule
+\end{longtable}
+
+\hypertarget{assessing-model-accuracy---model-fit}{%
+\section{Assessing Model Accuracy - Model fit}\label{assessing-model-accuracy---model-fit}}
+
+\hypertarget{continuous-output-mean-squared-error-mse}{%
+\subsection{Continuous output: Mean squared error (MSE)}\label{continuous-output-mean-squared-error-mse}}
+
+\[
+MSE = \frac{1}{n} \sum_{i=1}^n (y_i - \hat{f}(x_i))^2
+\]
+
+Generalization Error is a measure of how accurately an algorithm or model is able to predict outcome values for test set.
+
+Tradeoff between flexibility of the method and training MSE , but there is an U-shaped relationship between flexibility and test MSE. This is a manifestation of bias-variance tradeoff
+
+\[
+E(MSE) = E(y_0 - \hat{f}(x_0))^2\\
+= var(\hat{f}(x_0)) + [bias(\hat{f}(x_0))]^2 + var(\epsilon)
+\]
+
+where \(0\) subscript means training data set
+
+\begin{itemize}
+\item
+  \(E(MSE) \ge var(\epsilon)\) because \(\epsilon\) is irreducible model error and serves as the lower bound on the quality of potential model fit
+\item
+  More flexible means more variance, but less bias.
+\item
+  Less flexible (parametric) means less variance, but more bias.
+\end{itemize}
+
+\hypertarget{categorical-output-training-error-rate}{%
+\subsection{Categorical output: training error rate}\label{categorical-output-training-error-rate}}
+
+\textbf{Training error rate} is the proportion of mistakes in classification from applying \(\hat{f}\) to the training set:
+
+\[
+\frac{1}{n} \sum_{i=1}^n I(y_i \neq \hat{y}_i)
+\]
+
+and \textbf{test error rate} is
+
+\[
+\frac{1}{n} \sum_{i=1}^n I(y_0 \neq \hat{y}_0)
+\]
+
+\textbf{Bayes classifier} is a simple classifier where it assigns each observation to the most likely class, given its predictor values (i.e., conditional probability that \(Y = j | x_0\) )
+
+In other words, assigns \(x_i\) to class j where \(P(Y=j | X=x_0)\) is largest
+
+Bayes classifier should produce the lowest possible test error rate, known as Bayes error rate:
+
+\[
+1 - E_x(max_j [P(Y = j |X)])
+\]
+
+\begin{itemize}
+\item
+  where it is greater than 0 if the classes overlap
+\item
+  analogous to the irreducible error
+\end{itemize}
+
+In reality, we don't know \(P(Y|X)\), hence, we try to approximate this conditional probability.
+
+For example, KNN
+
+\[
+P(Y =j |X = x_0 ) \approx \frac{1}{K}\sum_{i \in N_0} I(y_i = j)
+\]
+
+\hypertarget{curse-of-dimensionality}{%
+\subsection{Curse of dimensionality}\label{curse-of-dimensionality}}
+
+Example: with a p-dimensional hypercube of unit volume, to capture a fraction (r) of the observations in a subcude, the length of a side of the sub-cube averages to \(e_p(r) = r^{1/p}\)
+
+\[
+e_1(.01) = .01 ; e_1(.1) = .1\\
+e_{10}(.01) = .63; e_{10} (.1) = .8
+\]
+
+To cover 1\% of the observation in 10 dimensional cub, we have to cover 60\% of the entire sample space.
+
+Hence, there is no ``local'' neighborhood in high-dimensions.
+
+\hypertarget{reminder}{%
+\subsection{Reminder}\label{reminder}}
+
+Linear Regression
+
+\[
+Y = f(X) + \epsilon
+\]
+
+where \(f(X) = \beta_0 + \sum_{j=1}^p X_j \beta_j\) and \(X_J\) can be:
+
+\begin{itemize}
+\item
+  quantitative inputs
+\item
+  transformations of quantitative inputs
+\item
+  polynomial terms
+\item
+  interactions
+\item
+  Discretize (i.e., dummy) variable of quantitative inputs.
+\end{itemize}
+
+We assume additive independent errors.
+
+\begin{longtable}[]{@{}ll@{}}
+\toprule
+Relationship between n and p & Result\tabularnewline
+\midrule
+\endhead
+\(n >>p\) & low bias, low predictive variance, fit well with test data\tabularnewline
+\(n \approx p\) & substantial variability, overfit, fit poorly with test data\tabularnewline
+\(n <p\) & no unique solution, variance is infinite\tabularnewline
+\bottomrule
+\end{longtable}
+
+And we fit to (i.e., find \(\beta\)) to minimize the residual sum of squares (RSS):
+
+\[
+RSS(\beta) = \sum_{i=1}^n(y_i - f(x_i))^2 = \sum_{i=1}^n (y_i -\beta_0 - \sum_{j=1}^p x_{ij} \beta_j)^2 \\
+= (\mathbf{y} - \mathbf{X\beta})^T (\mathbf{y} - \mathbf{X\beta}) \equiv  ||\mathbf{y} - \mathbf{X\beta}||^2
+\]
+
+which is the square of the \(L^2\) norm
+
+differentiating with respect to \(\beta\)
+
+\[
+\mathbf{X}^T  (\mathbf{y} - \mathbf{X\beta}) = 0 
+\]
+
+then
+
+\[
+\hat{\beta} = \mathbf{X}^T\mathbf{X}^{-1}\mathbf{X}^T \mathbf{y}
+\]
+
+and
+
+\[
+var(\hat{\beta}) = (\mathbf{X}^T \mathbf{X})^{-1} \sigma^2 \\
+ = (\mathbf{X}^T \mathbf{X})^{-1} var(\epsilon)
+\]
+
+\textbf{Prediction}
+
+\[
+\hat{\mathbf{y}} = \mathbf{X} \hat{\beta} = \mathbf{X}(\mathbf{X}^T \mathbf{X})^{-1}\mathbf{X}^T\mathbf{y}
+\]
+
+where
+
+\[
+\mathbf{H} \equiv \mathbf{X}(\mathbf{X}^T \mathbf{X})^{-1}\mathbf{X}^T
+\]
+
+known as the hat matrix, which projects orthogonally the \(\mathbf{y}\) vector onto the subspace of \(\mathbf{X}\)
+
+From the Gauss-Markov theorem, OLS estimates are unbiased and have the smallest variance among all linear unbiased estimates.
+
+For an etimator \(\tilde{\beta}\)
+
+\[
+MSE(\tilde{\beta}) = E(\tilde{\beta} - \beta)^2 = var(\tilde{\beta} + [E(\tilde{\beta}) - \beta]^2 \\
+ = variance + bias ^2 
+\]
+
+Since OLS is an unbiased estimator \(\tilde{\beta} = \hat{\beta}\)
+
+We could get smaller MSE if we allow the estimator to be biased. Hence, OLS might not be the best variance-bias trade-off.
+
+Inference
+
+\[
+\hat{\sigma}^2 = \frac{1}{n - p - 1} \sum_{i=1}^n (y_i - \hat{y}_i)^2
+\]
+
+assuming that \(\epsilon \sim N(0, \sigma^2)\) then
+
+\[
+\hat{\beta} \sim N(\beta, (\mathbf{X}^T \mathbf{X})^{-1}\sigma^2)
+\]
+
+\[
+(n-p-1) \hat{\sigma}^2 \sim \sigma^2 \chi^2_{n-p-1}
+\]
+
+If p is large (i.e., a lot of covariates), you will likely find at least one variable to be significant by chance, thus, you could find a significant partial t-statistics. The F-test does not suffer from this issue because it accounts for the number of predictors.
+
+Issues with linear regression
+
+\begin{itemize}
+\item
+  Nonlinearity of the response -predictor relationship
+\item
+  correlated errors
+\item
+  Non-constant error variance
+\item
+  high-leverage points
+\item
+  Collinearity
+\end{itemize}
+
+Rule of thumb:
+
+\begin{itemize}
+\tightlist
+\item
+  parametric methods will tend to outperform non-parametric methods when the number of observations per predictor is small.
+\end{itemize}
+
+\hypertarget{model-assessment}{%
+\subsection{Model Assessment}\label{model-assessment}}
+
+The ``generalization'' performance of a learning method is how well it predicts independent test data, which is an objective way to choose between models (in terms of \textbf{model selection} and \textbf{model assessment})
+
+Suppose we have
+
+\begin{itemize}
+\item
+  Y = output variable
+\item
+  X = vector of inputs
+\item
+  \(\hat{f}(X)\) = prediction model estimated form a training set \(T\)
+\end{itemize}
+
+Consider errors between Y and \(\hat{f}(X)\) through some loss function. For example, \textbf{squared-error loss}
+
+\[
+L(Y, \hat{f}(X)) = (Y- \hat{f}(X))^2
+\]
+
+or \textbf{absolute error loss}
+
+\[
+L(Y, \hat{f}(X)) = |Y- \hat{f}(X)|
+\]
+
+\hypertarget{types-of-error}{%
+\subsubsection{Types of Error}\label{types-of-error}}
+
+\textbf{Test error (or generalization error)} is the prediction error over an independent test sample, and is defined as
+
+\[
+Err_T = E_{X^\circ, Y^\circ}[L(Y^\circ, \hat{f}(X^\circ))|T]
+\]
+
+where X and Y are assumed to be drawn randomly from their joint population distribution and training set \(T\) is fixed
+
+Thus, the test error refers to the error over an independent sample when \(f(.)\) is estimated with this specific training set
+
+\textbf{Expected prediction error (expected test error)}
+
+\[
+Err = E_T E_{X^\circ, Y^\circ}[L(Y^\circ, \hat{f}(X^\circ))|T] = E_T [Err_T]
+\]
+
+which averages over possible training sets
+
+\textbf{Training error} is the average loss over the specific training sample, given by
+
+\[
+\bar{err} = \frac{1}{n} \sum_{i=1}^n L(y_i, \hat{f}(x_i))
+\]
+
+Even though the interest is in the test error, \(Err_T\) , which is almost impossible without a separate test data set. because within a single data set, we attempt to approximate such a validation step by adjusting the training error (e.g., AIC model selection) or by efficient re-use (cross-validation/bootstrap) of the training sample, but then we can only get good estimates of \(Err\) (expected prediction error), not \(Err_T\)
+
+The bias-variance tradeoff when considering loss function is related to the performance of the training error as a measure of test error
+
+\hypertarget{model-error-model-selection}{%
+\subsubsection{Model Error/ Model Selection}\label{model-error-model-selection}}
+
+Training error is more optimistic (less than) the true test error
+
+To read more on quantifying this optimism \citep{hastie2001a} Ch. 7.4 where
+
+the amount that \(\bar{err}\) underestimates the true test error depends on how strongly \(y_i\) affects its own prediction.
+
+In other words, the larger \(cov(\hat{y}_i, y_i)\), the more optimistic the training error is.
+
+The greater the effective number of parameters (less degrees of freedom) (more flexible model), the larger this co variance
+
+\citep{hastie2001a} Ch. 7.5 showed that most of model selection criterion (e.g., AIC, BIC \(C_p\)) try to estimate prediction error by estimating the optimism and adjusting the training error accordingly to obtain an unbiased estimate of prediction error.
+
+Alternatively, cross-validation and bootstrap methods provide direct estimates of the expected prediction (test) error, \(Err\)
+
+Note:
+
+\begin{itemize}
+\tightlist
+\item
+  A model with more effective number of parameters is more flexible
+\end{itemize}
+
+Let
+
+\[
+\mathbf{y} = (y_1, \dots, y_n)'
+\]
+
+then a linear fitting method can be written as \(\mathbf{\hat{y}} = \mathbf{Sy}\)
+
+where \(\mathbf{S} = n \times n\) matrix depending on the input vectors \(x_i\), but not on \(y_i\)
+
+For example, in linear regression \(\mathbf{S = X(X'X)^{-1}X'}\)
+
+Then the effective number of parameters (df) is
+
+\[
+df(\hat{\mathbf{y}}) = df (\mathbf{S}) = trace(\mathbf{S})
+\]
+
+which is the sum of the diagonal elements fo \(\mathbf{S}\)
+
+If \(\hat{\mathbf{y}}\) arises from an additive-error model, \(Y = f(X) + \epsilon\), with \(var(\epsilon) = \sigma^2_\epsilon\), then
+
+\[
+df(\hat{\mathbf{y}}) = \frac{\sum_{i=1}^ncov(\hat{y}_i, y_i)}{\sigma^2_\epsilon}
+\]
+
+\hypertarget{cross-validation}{%
+\subsubsection{Cross-validation}\label{cross-validation}}
+
+If you have a large data set, you could randomly divide it into a training set (to fit the model) and a validation (or holdout, or test) set (to evaluate the test error rate relative to your loss function of choice such as MSE). But it has 2 issues:
+
+\begin{itemize}
+\item
+  It can be highly variable
+\item
+  With fewer observations to fit the model, the statistical models perform worse, and validation set error rate may overestimate the test error rate
+\end{itemize}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(tidyverse)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning: package 'tidyverse' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'ggplot2' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'tibble' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'readr' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'dplyr' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(ISLR2)}
+\NormalTok{train }\OtherTok{\textless{}{-}} \FunctionTok{sample}\NormalTok{(}\DecValTok{392}\NormalTok{, }\DecValTok{120}\NormalTok{) }\CommentTok{\# select random subset of 120 out of 392}
+\NormalTok{Auto }\OtherTok{\textless{}{-}}\NormalTok{ Auto }\SpecialCharTok{\%\textgreater{}\%} \FunctionTok{drop\_na}\NormalTok{()}
+\NormalTok{lm.fit }\OtherTok{\textless{}{-}} \FunctionTok{lm}\NormalTok{(mpg }\SpecialCharTok{\textasciitilde{}}\NormalTok{ horsepower , }\AttributeTok{data =}\NormalTok{ Auto , }\AttributeTok{subset =}\NormalTok{ train)}
+
+\FunctionTok{attach}\NormalTok{(Auto)}
+\FunctionTok{mean}\NormalTok{((mpg }\SpecialCharTok{{-}} \FunctionTok{predict}\NormalTok{(lm.fit, Auto))[}\SpecialCharTok{{-}}\NormalTok{train] }\SpecialCharTok{\^{}} \DecValTok{2}\NormalTok{) }\CommentTok{\# MSE in the validation set (not the training set)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## [1] 23.52911
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# Quadratic regression}
+\NormalTok{lm.fit2 }\OtherTok{\textless{}{-}} \FunctionTok{lm}\NormalTok{(mpg }\SpecialCharTok{\textasciitilde{}} \FunctionTok{poly}\NormalTok{(horsepower, }\DecValTok{2}\NormalTok{), }\AttributeTok{data =}\NormalTok{ Auto, }\AttributeTok{subset =}\NormalTok{ train)}
+\FunctionTok{mean}\NormalTok{((mpg }\SpecialCharTok{{-}} \FunctionTok{predict}\NormalTok{(lm.fit2, Auto))[}\SpecialCharTok{{-}}\NormalTok{train] }\SpecialCharTok{\^{}} \DecValTok{2}\NormalTok{) }\CommentTok{\# MSE}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## [1] 19.85131
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# Cubic regression}
+\NormalTok{lm.fit3 }\OtherTok{\textless{}{-}} \FunctionTok{lm}\NormalTok{(mpg }\SpecialCharTok{\textasciitilde{}} \FunctionTok{poly}\NormalTok{(horsepower, }\DecValTok{3}\NormalTok{), }\AttributeTok{data =}\NormalTok{ Auto, }\AttributeTok{subset =}\NormalTok{ train)}
+\FunctionTok{mean}\NormalTok{((mpg }\SpecialCharTok{{-}} \FunctionTok{predict}\NormalTok{(lm.fit3, Auto))[}\SpecialCharTok{{-}}\NormalTok{train] }\SpecialCharTok{\^{}} \DecValTok{2}\NormalTok{) }\CommentTok{\# MSE}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## [1] 20.02277
+\end{verbatim}
+
+\hypertarget{leave-one-out-cv-loocv}{%
+\paragraph{Leave-One-Out CV (LOOCV)}\label{leave-one-out-cv-loocv}}
+
+A special case of K-fold CV when K = n
+
+\[
+CV_{(n)} = \frac{1}{n} \sum_{i=1}^n MSE_i
+\]
+
+where \(MSE_i = (y_i - \hat{f}^{-i}(x_i))^2\) (alternative loss function could also be used)
+
+\begin{itemize}
+\item
+  LOOCV has low bias as an estimate of the expected test error rate, but very high variance
+\item
+  Individual MSE's in LOOCV are highly correlated because they pretty much have the same data set expect one observation.
+\item
+  LOOCV is expensive to implement
+\end{itemize}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{Auto }\OtherTok{\textless{}{-}}\NormalTok{ Auto }\SpecialCharTok{\%\textgreater{}\%} \FunctionTok{drop\_na}\NormalTok{()}
+\FunctionTok{library}\NormalTok{(tidyverse)}
+\NormalTok{glm.fit }\OtherTok{\textless{}{-}} \FunctionTok{glm}\NormalTok{ (mpg }\SpecialCharTok{\textasciitilde{}}\NormalTok{ horsepower , }\AttributeTok{data =}\NormalTok{ Auto) }\CommentTok{\# allows to be passed to cv.glm()}
+\FunctionTok{coef}\NormalTok{(glm.fit)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## (Intercept)  horsepower 
+##  39.9358610  -0.1578447
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# exactly the same as glm without binomial link}
+\NormalTok{lm.fit }\OtherTok{\textless{}{-}} \FunctionTok{lm}\NormalTok{(mpg }\SpecialCharTok{\textasciitilde{}}\NormalTok{ horsepower , }\AttributeTok{data =}\NormalTok{ Auto)}
+\FunctionTok{coef}\NormalTok{(lm.fit)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## (Intercept)  horsepower 
+##  39.9358610  -0.1578447
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(boot)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning: package 'boot' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{glm.fit }\OtherTok{\textless{}{-}} \FunctionTok{glm}\NormalTok{ (mpg }\SpecialCharTok{\textasciitilde{}}\NormalTok{ horsepower , }\AttributeTok{data =}\NormalTok{ Auto)}
+\NormalTok{cv.err }\OtherTok{\textless{}{-}} \FunctionTok{cv.glm}\NormalTok{ (Auto , glm.fit)}
+\NormalTok{cv.err}\SpecialCharTok{$}\NormalTok{delta }\CommentTok{\# cross{-}validation estimate for the test error}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## [1] 24.23151 24.23114
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# the first delta is the standard CV estimate, the second delta is a bias{-}corrected version}
+
+
+\CommentTok{\# automate to different polynomial}
+\NormalTok{cv.error }\OtherTok{\textless{}{-}} \FunctionTok{rep}\NormalTok{ (}\DecValTok{0}\NormalTok{, }\DecValTok{10}\NormalTok{)}
+\ControlFlowTok{for}\NormalTok{ (i }\ControlFlowTok{in} \DecValTok{1}\SpecialCharTok{:}\DecValTok{10}\NormalTok{) \{}
+\NormalTok{    glm.fit }\OtherTok{\textless{}{-}} \FunctionTok{glm}\NormalTok{(mpg }\SpecialCharTok{\textasciitilde{}} \FunctionTok{poly}\NormalTok{(horsepower , i), }\AttributeTok{data =}\NormalTok{ Auto)}
+\NormalTok{    cv.error[i] }\OtherTok{\textless{}{-}} \FunctionTok{cv.glm}\NormalTok{(Auto , glm.fit)}\SpecialCharTok{$}\NormalTok{delta[}\DecValTok{1}\NormalTok{] }\CommentTok{\# cross{-}validation estimate for the test error}
+\NormalTok{\}}
+\NormalTok{cv.error }\CommentTok{\# a drop from lienar to quadratic fit}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+##  [1] 24.23151 19.24821 19.33498 19.42443 19.03321 18.97864 18.83305 18.96115
+##  [9] 19.06863 19.49093
+\end{verbatim}
+
+\hypertarget{k-fold-cross-validation}{%
+\paragraph{K-Fold Cross-Validation}\label{k-fold-cross-validation}}
+
+We randomly split the data set into K equal size parts (or folds). Each fold is held out and the model is trained on the remaining K -1 folds and then the loss function of choice is evaluated on the fold that was held out
+
+Consider \(k = 1, \dots, K\) folds
+
+let \(\hat{f}^{-k}(x)\) denote the fitted function computed with the k-th fold removed. We compute the loss based on the samples in the k-th fold.
+
+For example, with squared-error loss, we compute \(MSE_k\) for the observations in the k-th fold, \(k = 1,\dots,K\). The K-fold cross-validation estimate is
+
+\[
+CV_{(K)} = \frac{1}{K} \sum_{k=1}^K MSE_k
+\]
+
+Empirically, good choices for K are 5 or 10.
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{cv.error}\FloatTok{.10} \OtherTok{\textless{}{-}} \FunctionTok{rep}\NormalTok{(}\DecValTok{0}\NormalTok{, }\DecValTok{10}\NormalTok{)}
+\ControlFlowTok{for}\NormalTok{ (i }\ControlFlowTok{in} \DecValTok{1}\SpecialCharTok{:}\DecValTok{10}\NormalTok{) \{}
+\NormalTok{    glm.fit }\OtherTok{\textless{}{-}} \FunctionTok{glm}\NormalTok{(mpg }\SpecialCharTok{\textasciitilde{}} \FunctionTok{poly}\NormalTok{(horsepower, i), }\AttributeTok{data =}\NormalTok{ Auto)}
+\NormalTok{    cv.error}\FloatTok{.10}\NormalTok{[i] }\OtherTok{\textless{}{-}} \FunctionTok{cv.glm}\NormalTok{(Auto, glm.fit, }\AttributeTok{K =} \DecValTok{10}\NormalTok{)}\SpecialCharTok{$}\NormalTok{delta[}\DecValTok{1}\NormalTok{] }\CommentTok{\# K{-}fold cross validation}
+\NormalTok{\}}
+\NormalTok{cv.error}\FloatTok{.10}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+##  [1] 24.25534 19.14866 19.55732 19.44966 18.95243 19.08938 18.83776 18.86857
+##  [9] 18.89654 19.41675
+\end{verbatim}
+
+\hypertarget{generalized-cross-validation}{%
+\paragraph{Generalized Cross-Validation}\label{generalized-cross-validation}}
+
+Recall PRESS statistics
+
+\[
+\frac{1}{n} \sum_{i=1}^n [y_i - \hat{f}^{-i}(x_i)]^2 = \frac{1}{n} \sum_{i=1}^n [\frac{y_i - \hat{f}(x_i)}{1- S_{ii}}]^2
+\]
+
+where \(S_{ii}\) is the i-th diagonal element of \(\mathbf{S}\) (or the i-th element of the ``hat matrix'' diagonal in linear regression). Hence, we only have to fit the model once.
+
+Generalized cross-validation (GCV)is a similar approximation when the trace of \(\mathbf{S}\) can be computed more easily than the individual elements \(S_{ii}\)
+
+\[
+GCV(\hat{f})= \frac{1}{n} \sum_{i=1}^n [\frac{y_i - \hat{f}(x_i)}{1- trace(\mathbf{S})/n}]^2
+\]
+
+\hypertarget{cv-and-classification}{%
+\paragraph{CV and Classification}\label{cv-and-classification}}
+
+Common loss function is 0-1 loss where the error rate is defined as
+
+\[
+L(G, \hat{G}(X)) = I(G \neq \hat{G}(X))
+\]
+
+where \(\hat{G}(X)\) is the highest estimated conditional probability given the inputs.
+
+Alternatively, we could also use deviances that factor in the estimated conditional probability directly. If \(p_k(X) = P(G = k|X)\) and \(\hat{G}(X)\) = the k that gives the maximum \(\hat{p}_k(X)\)
+
+\[
+L(G, \hat{p}(X)) = -2 \sum_{k=1}^K I(G = k) \log \hat{p}_k (X) \equiv -2 \log \hat{p}_G (X)
+\]
+
+which is -2 times the log-likelihood (i.e., the deviance).
+
+Note:
+
+\begin{itemize}
+\item
+  CV must be applied to the entire sequence of modeling steps (i.e., samples must be removed before any selection or filtering steps are applied so long as these steps involve the outputs
+
+  \begin{itemize}
+  \tightlist
+  \item
+    An exception: if there was an unsupervised step in the process associated with the inputs. Since it's unrelated to the outputs, we don't need to do CV on this component.
+  \end{itemize}
+\end{itemize}
+
+\hypertarget{bootstrapping}{%
+\subsubsection{Bootstrapping}\label{bootstrapping}}
+
+\begin{itemize}
+\item
+  To quantify the uncertainty associated with a given estimator
+\item
+  Get new data sets by sampling from the observed data set many times with replacement
+\item
+  Sample \(B\) different sets and calculate the quantity of interest about which you want to do inference \(\hat{\alpha}^{*1},\dots, \hat{\alpha}^{*B}\)
+\item
+  Then, you look at the distribution of samples and apply Monte Carlo procedures to do inference
+\item
+  For example, you want to get the standard error
+\end{itemize}
+
+\[
+SE_B (\hat{\alpha}) = \sqrt{\frac{1}{B-1} \sum_{r=1}^B (\hat{\alpha}^{*r} - \frac{1}{B} \sum_{r'=1}^B \hat{\alpha}^{*r'})^2}
+\]
+
+\begin{itemize}
+\item
+  In principle, you could evaluate model error, but it often overfits because the training and test samples contain some of the same observations, which can be improved by ``leave-one-out'' bootstrap procedures, but there are still large training set bias problems with the bootstrap.
+\item
+  \citep{hastie2001a} give an estimator that helps reduce this bias.
+\item
+  In general, cross-validation is more effective for evaluating model performance, and bootstrapping is more effective when evaluating the properties of estimators (for inference).
+\item
+  Rule of thumb for ``big data'' prediction problem, we can combine cross-validation and hold-out validation:
+
+  \begin{itemize}
+  \item
+    Use K-fold CV on the training data to choose the parameters that control flexibility of the model
+  \item
+    Use the entire training data to fit the model selected by CV
+  \item
+    Use a large hold-out sample to evaluate the test error from this fitted model (compare to the CV error).
+  \end{itemize}
+\end{itemize}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{summary}\NormalTok{(Portfolio)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+##        X                  Y           
+##  Min.   :-2.43276   Min.   :-2.72528  
+##  1st Qu.:-0.88847   1st Qu.:-0.88572  
+##  Median :-0.26889   Median :-0.22871  
+##  Mean   :-0.07713   Mean   :-0.09694  
+##  3rd Qu.: 0.55809   3rd Qu.: 0.80671  
+##  Max.   : 2.46034   Max.   : 2.56599
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{alpha.fn }\OtherTok{\textless{}{-}} \ControlFlowTok{function}\NormalTok{(data, index) \{}
+\NormalTok{    X }\OtherTok{\textless{}{-}}\NormalTok{ data}\SpecialCharTok{$}\NormalTok{X[index]}
+\NormalTok{    Y }\OtherTok{\textless{}{-}}\NormalTok{ data}\SpecialCharTok{$}\NormalTok{Y[index]}
+\NormalTok{    (}\FunctionTok{var}\NormalTok{(Y) }\SpecialCharTok{{-}} \FunctionTok{cov}\NormalTok{(X, Y)) }\SpecialCharTok{/}\NormalTok{ (}\FunctionTok{var}\NormalTok{(X) }\SpecialCharTok{+} \FunctionTok{var}\NormalTok{(Y) }\SpecialCharTok{{-}} \DecValTok{2} \SpecialCharTok{*} \FunctionTok{cov}\NormalTok{(X, Y)) }\CommentTok{\# statistic of interest}
+\NormalTok{\}}
+
+\FunctionTok{alpha.fn}\NormalTok{(Portfolio, }\DecValTok{1}\SpecialCharTok{:}\DecValTok{100}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## [1] 0.5758321
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{alpha.fn}\NormalTok{(Portfolio, }\FunctionTok{sample}\NormalTok{(}\DecValTok{100}\NormalTok{, }\DecValTok{100}\NormalTok{, }\AttributeTok{replace =}\NormalTok{ T)) }\CommentTok{\# randomly select 100 obs from 1:100 with replacement}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## [1] 0.5192834
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# Another faster way}
+\FunctionTok{boot}\NormalTok{(Portfolio, alpha.fn, }\AttributeTok{R =} \DecValTok{100}\NormalTok{) }\CommentTok{\# R = number of replicates (samples)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## 
+## ORDINARY NONPARAMETRIC BOOTSTRAP
+## 
+## 
+## Call:
+## boot(data = Portfolio, statistic = alpha.fn, R = 100)
+## 
+## 
+## Bootstrap Statistics :
+##      original     bias    std. error
+## t1* 0.5758321 0.01697836  0.09289736
+\end{verbatim}
+
+Another example: SE estimate for linear model
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{boot.fn }\OtherTok{\textless{}{-}} \ControlFlowTok{function}\NormalTok{(data,index)\{}
+    \FunctionTok{coef}\NormalTok{(}\FunctionTok{lm}\NormalTok{(mpg }\SpecialCharTok{\textasciitilde{}}\NormalTok{ horsepower, }\AttributeTok{data =}\NormalTok{ data, }\AttributeTok{subset =}\NormalTok{ index))}
+\NormalTok{\}}
+\FunctionTok{boot.fn}\NormalTok{(Auto, }\DecValTok{1}\SpecialCharTok{:}\DecValTok{392}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## (Intercept)  horsepower 
+##  39.9358610  -0.1578447
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{boot.fn}\NormalTok{(Auto, }\FunctionTok{sample}\NormalTok{(}\DecValTok{392}\NormalTok{,}\DecValTok{392}\NormalTok{,}\AttributeTok{replace =}\NormalTok{T))}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## (Intercept)  horsepower 
+##  40.1613888  -0.1613057
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{boot}\NormalTok{(Auto, boot.fn,}\DecValTok{1000}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## 
+## ORDINARY NONPARAMETRIC BOOTSTRAP
+## 
+## 
+## Call:
+## boot(data = Auto, statistic = boot.fn, R = 1000)
+## 
+## 
+## Bootstrap Statistics :
+##       original        bias    std. error
+## t1* 39.9358610  0.0206364619 0.900008625
+## t2* -0.1578447 -0.0003838949 0.007782374
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# there is a difference between the 2 SE estimates}
+\FunctionTok{summary}\NormalTok{(}\FunctionTok{lm}\NormalTok{(mpg }\SpecialCharTok{\textasciitilde{}}\NormalTok{ horsepower, }\AttributeTok{data =}\NormalTok{ Auto))}\SpecialCharTok{$}\NormalTok{coef}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+##               Estimate  Std. Error   t value      Pr(>|t|)
+## (Intercept) 39.9358610 0.717498656  55.65984 1.220362e-187
+## horsepower  -0.1578447 0.006445501 -24.48914  7.031989e-81
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# Quadratic example}
+\CommentTok{\# boot.fn \textless{}{-} function(data,index)\{}
+\CommentTok{\#     coef(}
+\CommentTok{\#         lm(mpg \textasciitilde{} horsepower + I(horsepower\^{}2),}
+\CommentTok{\#            data = data, subset = index)}
+\CommentTok{\#     )}
+\CommentTok{\# \}}
+\CommentTok{\# boot(Auto, boot.fn, 1000)}
+\CommentTok{\# summary(}
+\CommentTok{\#     lm(mpg \textasciitilde{} horsepower + I(horsepower\^{}2), data = Auto)$coef}
+\CommentTok{\# )}
+\end{Highlighting}
+\end{Shaded}
+
+The difference in SE estimates from bootstrapping and from a linear model comes from:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  LM estimates \(\sigma^2\) suing the RSS, which relies heavily on the linear model being correct. In other words, for example, if we have non-linearity in our data, the residuals (\(e\)) will be inflated, and leads to \(\hat{\sigma}^2\) being inflated as well.
+\item
+  LM assumes \(x_i\) fixed and variability comes from \(var(\epsilon_i)\)
+\end{enumerate}
+
+\hypertarget{improving-prediction-accuracy-and-interpretability}{%
+\section{Improving Prediction Accuracy and Interpretability}\label{improving-prediction-accuracy-and-interpretability}}
+
+If we have
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  large number of predictors
+\item
+  highly dependent predictors
+\item
+  low interpretability
+\end{enumerate}
+
+then, we can either
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  \protect\hyperlink{subset-selection}{Subset Selection}
+\item
+  \protect\hyperlink{shrinkage-methods}{Shrinkage Methods} (also known as ``\emph{regularization}''): force (shrink) p predictors' parameters towards zero to reduce variance. It can also be used for variable selection
+\item
+  \protect\hyperlink{dimension-reduction}{Dimension Reduction}: Project the p predictors in an M-dimensional subpsace where \(M <p\) (i.e., compute M different linear combination or projection of the p predictors and use them as new predictors). (e.g., principal component analysis)
+\end{enumerate}
+
+\hypertarget{subset-selection}{%
+\subsection{Subset Selection}\label{subset-selection}}
+
+\begin{itemize}
+\tightlist
+\item
+  Also known as \href{https://bookdown.org/mike/data_analysis/ordinary-least-squares.html\#variable-selection}{Variable Selection} (for more detail click the hyperlink)
+\end{itemize}
+
+\hypertarget{best-subset-selection}{%
+\subsubsection{Best Subset Selection}\label{best-subset-selection}}
+
+\begin{itemize}
+\item
+  Fit all \(p\) one by one, then all \(p(p-1)/2\) two predicotrs models, etc. to have \(2^p\) possible models. Then you find the best one using
+
+  \begin{itemize}
+  \item
+    \(C_p\)
+  \item
+    AIC
+  \item
+    BIC
+  \item
+    Adjusted \(R^2\)
+  \item
+    cross-validation error measure
+  \end{itemize}
+\item
+  A possible algorithm is the leaps and bounds algorithm by \citet{furnival1974} (up to 40 p)
+\item
+  Usually, we do best-subset first then apply cross-validation
+\end{itemize}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(tidyverse)}
+\FunctionTok{library}\NormalTok{(ISLR2)}
+\FunctionTok{head}\NormalTok{(Hitters) }\CommentTok{\# check dataset }
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+##                   AtBat Hits HmRun Runs RBI Walks Years CAtBat CHits CHmRun
+## -Andy Allanson      293   66     1   30  29    14     1    293    66      1
+## -Alan Ashby         315   81     7   24  38    39    14   3449   835     69
+## -Alvin Davis        479  130    18   66  72    76     3   1624   457     63
+## -Andre Dawson       496  141    20   65  78    37    11   5628  1575    225
+## -Andres Galarraga   321   87    10   39  42    30     2    396   101     12
+## -Alfredo Griffin    594  169     4   74  51    35    11   4408  1133     19
+##                   CRuns CRBI CWalks League Division PutOuts Assists Errors
+## -Andy Allanson       30   29     14      A        E     446      33     20
+## -Alan Ashby         321  414    375      N        W     632      43     10
+## -Alvin Davis        224  266    263      A        W     880      82     14
+## -Andre Dawson       828  838    354      N        E     200      11      3
+## -Andres Galarraga    48   46     33      N        E     805      40      4
+## -Alfredo Griffin    501  336    194      A        W     282     421     25
+##                   Salary NewLeague
+## -Andy Allanson        NA         A
+## -Alan Ashby        475.0         N
+## -Alvin Davis       480.0         A
+## -Andre Dawson      500.0         N
+## -Andres Galarraga   91.5         N
+## -Alfredo Griffin   750.0         A
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# check missing values }
+\FunctionTok{sum}\NormalTok{(}\FunctionTok{is.na}\NormalTok{(Hitters}\SpecialCharTok{$}\NormalTok{Salary)) }\CommentTok{\# 59 missing data poitns}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## [1] 59
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# eliminate missing values }
+\NormalTok{Hitters }\OtherTok{\textless{}{-}}\NormalTok{ Hitters }\SpecialCharTok{\%\textgreater{}\%} 
+    \FunctionTok{drop\_na}\NormalTok{(Salary)}
+
+\CommentTok{\# Best subset seleciton (by RSS)}
+\FunctionTok{library}\NormalTok{(leaps)}
+\NormalTok{regfit.full }\OtherTok{\textless{}{-}} \FunctionTok{regsubsets}\NormalTok{(Salary }\SpecialCharTok{\textasciitilde{}}\NormalTok{ ., Hitters)}
+\CommentTok{\# summary(regfit.full)}
+\end{Highlighting}
+\end{Shaded}
+
+\hypertarget{stepwise-selection}{%
+\subsubsection{Stepwise Selection}\label{stepwise-selection}}
+
+\begin{itemize}
+\item
+  With very large numbers of p, stepwise selection can be less computational intensive
+\item
+  Forward stepwise selection
+
+  \begin{itemize}
+  \tightlist
+  \item
+    can be used when \(p >n\), but only models up to order \(n-1\)
+  \end{itemize}
+\item
+  Backward stepwise selection
+
+  \begin{itemize}
+  \tightlist
+  \item
+    can't be applied when \(p>n\)
+  \end{itemize}
+\item
+  Hybrid stepwise
+\item
+  When applying cross-validation, to account fro the variability, we apply the \textbf{one-standard-error rule}
+
+  \begin{itemize}
+  \item
+    Evaluates cross-validation criteria (MSE) for each model size
+  \item
+    Select the smallest model where the estimated test error is within one SE of the lowest point on the curve (i.e.more parsimonious model)
+  \end{itemize}
+\end{itemize}
+
+\hypertarget{shrinkage-methods}{%
+\subsection{Shrinkage Methods}\label{shrinkage-methods}}
+
+\begin{itemize}
+\item
+  Constrain the Least Squares solution in a way that regularizes (shrinks) the coefficients towards 0.
+\item
+  This leads to biased estimates, but reduce variance
+\end{itemize}
+
+\hypertarget{ridge-regression}{%
+\subsubsection{Ridge regression}\label{ridge-regression}}
+
+\begin{itemize}
+\item
+  can also deal with multicolinnearity
+\item
+  Adding a constant to the diagonal of the \(\mathbf{X}^T \mathbf{X}\) matrix to get well-behaved (low variance) regression estimates even when \(\mathbf{X}^T \mathbf{X}\) is nearly singular.
+\end{itemize}
+
+In LS regression, we minimize the residual sum of squares
+
+\[
+RSS = \sum_{i=1}^n(y_i - \beta_0 - \sum_{j=1}^p \beta_j x_{ij})^2
+\]
+
+whereas in ridge regression, we estimate \(\hat{\beta}^R\) that minimize
+
+\[
+\sum_{i=1}^n (y_i- \beta - \sum_{j=1}^p \beta_j x_{ij})^2 + \lambda \sum_{j=1}^p \beta_j^2
+\]
+
+where \(\lambda\) = tuning parameter
+
+\(\lambda \sum_{j=1}^p \beta_j^2\) is an \(l_2\)-norm shrinkage penalty that is small if the \(\beta\) are near 0.
+
+Minimizing this objective function subject to this constraint forces \(\hat{\beta}^R\) to be closer to 0 than the LS estimates.
+
+\begin{itemize}
+\item
+  When \(\lambda = 0\), we get the LS estimates
+\item
+  When \(\lambda \to \infty\) , the coefficients go to 0.
+\end{itemize}
+
+Because in the \(l_2\)-norm does not contain the intercept (i.e, we don't shrink the intercept), we have to center all the covariates by removing the mean of each column before we do the regression (\(\hat{\beta}_0= \bar{y}\)).
+
+\[
+\hat{\beta}^R = (\mathbf{X}^T \mathbf{X} + \lambda \mathbf{I})^{-1}\mathbf{X}^T \mathbf{y}
+\]
+
+To estimate \(\lambda\), we use cross-validation
+
+\begin{itemize}
+\item
+  Ridge estimator is not scale-invariant, so coefficients change substantially depending on the scale of the covariates. Hence, before performing ridge regression, we have to scaled and centered covariates (i.e., after removing the mean, divided each column of \(\mathbf{X}\) by its standard deviation.
+\item
+  \(\lambda\) allows for a continuous range of bias-variance trade-offs.
+
+  \begin{itemize}
+  \tightlist
+  \item
+    As \(\lambda\) increases, the variance decreases but the bias increases. Hence, it works well when LS estimates have high variance.
+  \end{itemize}
+\item
+  Possible even when \(p>n\)
+\item
+  Under Bayesian framework, if \(y_i \sim N(\beta_0 + x^T_i\beta, \sigma^2)\) is the likelihood and the parameters have the independent prior distributions \(\beta_j \sim N(0, \tau^2)\) with known \(\tau^2, \sigma^2\), then \(\lambda = \sigma^2 / \tau^2\) (the ratio of regression to prior variances), and the ridge estimate is the posterior mode (and mean, since the posterior is Gaussian)
+\item
+  The ridge estimates are related to principal component regression. When principal components associated with the predictors, ridge regression shrinks the low variance principal component the most.
+\end{itemize}
+
+\hypertarget{lasso-regression}{%
+\subsubsection{Lasso regression}\label{lasso-regression}}
+
+\begin{itemize}
+\tightlist
+\item
+  Even though ridge regression shrinks the parameters to 0, unless \(\lambda= \infty\), it cant set any parameter exactly equal 0. Hence, \citet{tibshirani1996} proposed lasso to handle this problem
+\end{itemize}
+
+The lasso coefficients, \(\hat{\beta}^L\) are those that minimize the objective function
+
+\[
+\sum_{i=1}^n (y_i - \beta_0- \sum_{j=1}^p \beta_j x_{ij})^2 + \lambda\sum_{j=1}^p|\beta_j|
+\]
+
+The only difference between ridge and lasso is the penalty term:
+
+\begin{itemize}
+\item
+  Lasso considers \(l_1\) norm penalty (given by \(||\beta||_1 = \sum_j |\beta_j|\))
+\item
+  Ridge considers \(l_2\) norm penalty (given by \(||\beta||_2 = \sqrt{\sum_j \beta_j^2}\)) similar to Euclidean distance
+\end{itemize}
+
+When tuning parameter (\(\lambda\)) is large enough, some coefficients are 0 (are dropped from the model)
+
+There is no closed form for the lasso estimates \(\hat{\beta}^L\) , the choice of \(\lambda\) can be derived from cross-validation
+
+Note:
+
+\begin{itemize}
+\item
+  Lasso outperforms ridge when there are redundant predictors, but ridge outperforms lasso when all included predictors are needed
+\item
+  Lasso shrinks each parameter by approximately the same amount, while ridge shrinks proportionally
+\item
+  Lasso equivalent Bayesian interpretation is that: if the prior distribution on the parameters \(\beta_j\) are independent double exponential (Laplace) distribution with mean 0 and scale parameter \(\lambda\), the posterior mode for \(\beta\) is the lasso solution (but no the posterior mean); the Laplace prior puts more ``mass'' at 0, giving more a priori belief that the coefficients are 0.
+\end{itemize}
+
+\hypertarget{comparison}{%
+\subsubsection{Comparison}\label{comparison}}
+
+\[
+\displaystyle{\min_{\beta}} \sum_{i=1}^n (y_i - \beta_0- \sum_{j=1}^p \beta_j x_{ij})^2 \text{ subject to }
+\begin{cases}
+\sum_{j=1}^p |\beta_j| \le s \text{ (lasso)} \\
+\sum_{j=1}^p \beta_j^2 \le s \text{ (ridge)} \\
+\sum_{j=1}^p I(\beta_j \neq 0) \le s \text{ (best subset)}
+\end{cases}
+\]
+
+All seek to minimize the RSS subject to constraints on the parameters.
+
+In the best subset method, no more than s coefficients can be nonzero, and can't be computed for large p
+
+\hypertarget{cross-validation-fitting}{%
+\subsubsection{Cross-validation Fitting}\label{cross-validation-fitting}}
+
+Steps:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  Choose a ``grid'' of \(\lambda\) values
+\item
+  COmpute the cross-validation error for each vlaue of \(\lambda\)
+\item
+  Select the \(\lambda\) for which the cross-validation error is smallest (one-standard error rule)
+\item
+  Refit the model using all available observations for the selected tuning parameter.
+\end{enumerate}
+
+\hypertarget{generalization}{%
+\subsubsection{Generalization}\label{generalization}}
+
+We could generalize the objective function to
+
+\[
+\sum_{i=1}^n (y_i - \beta_0- \sum_{j=1}^p \beta_j x_{ij})^2 + \lambda \sum_{j=1}^p |\beta_j|^q
+\]
+
+for \(q \ge 0\), and \(q =0,1,2\) correspond to subset selection lasso, and ridge respectively
+
+We could estimate q from the data, but it isn't worth.
+
+Elastic net penalty (= combination of ridge and lasso) will be an alternative
+
+The penalty component in the objective function is the priori distribution on the \(\beta\) under Bayesian framework (e.g., a normal prior = ridge regression and a Laplace prior = lasso). Hence, we can use \textbf{stochastic search variable selection (SSVS)} to consider model selection \citet{george1993}
+
+SSVS is a hierarchical mixture of normal distribution
+
+\[
+\beta_j |\gamma_j \sim \gamma_j N(0, c_j \tau^2_j) + (1- \gamma_j)N(0, \tau^2_j)
+\]
+
+\[
+\gamma_j \sim^{idd}Bern(\pi_j)
+\]
+
+where \(\gamma_j=1\) means the j-th variable is in the model with probability \(\pi_j\)
+
+We would want \(\tau_j\) to be small so that when \(\gamma_j =0\), it's reasonable to estimate \(\beta_j\) close to 0.
+
+We would want \(c_j\) to be large so that we are more likely to get a non-zero \(\beta)j\) when \(\gamma_j = 1\) (which is analogous to ridge regression)
+
+An alternative to SSVS produce is \textbf{spike and slab} which replaces the second mixture distribution with a delta function at 0 (analogous to lasso)
+
+\hypertarget{dimension-reduction}{%
+\subsection{Dimension Reduction}\label{dimension-reduction}}
+
+Let \(Z_1, \dots, Z_M\) represent \(M<p\) linear combination of the original \(p\) predictors:
+
+\[
+Z_m = \sum_{j=1}^p \phi_{jm} X_j, m = 1,\dots, M
+\]
+
+for constants \(\phi_{1m}, \dots, \phi_{pm}\)
+
+Consider the least squared linear regression model
+
+\[
+y_i = \theta_0 + \sum_{m=1}^M \theta_m z_{im} + \epsilon_i, i = 1, \dots,n
+\]
+
+Hence, we will try to find an optimal way to choose \(\phi_{jm}\) so that we will have better results than the least squared solution on the original inputs
+
+Special note
+
+\[
+\begin{aligned}
+\sum_{m=1}^M \theta_m z_{im} &= \sum_{m=1}^M \theta_m \sum_{j=1}^p \phi_{jm} x_{ij} \\
+&= \sum_{j=1}^p  \sum_{m=1}^M \theta_m \phi_{jm} x_{ij} \\
+&= \sum_{j=1}^p \beta_j x_{ij} \\
+\end{aligned}
+\]
+
+Hence,
+
+\[
+\beta_j = \sum_{m=1}^M \theta_m \phi_{jm}
+\]
+
+This means the reduced dimension regression is a special case of OLS except that the parameters \(\beta_j\) are constrained.
+
+Hence, when \(M = p\) and \(Z_m\) are all linearly independent (no constraints), the reduced dimension regression is equivalent to the OLS . The only benefit is that \(Z_m\)'s are orthogonal to each other
+
+Similarly to the \protect\hyperlink{shrinkage-methods}{Shrinkage Methods}, the constrained solution is biased, but typically leads to lower variance in the fitted coefficients - especially when \(M << p\)
+
+\hypertarget{principal-component-regression}{%
+\subsubsection{Principal Component Regression}\label{principal-component-regression}}
+
+Steps:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  Find the linear combination of the inputs that accounted for the largest fraction of variance of the inputs
+\item
+  Find another linear combination of the inputs that accounted for the next highest amount of variation (subject to being orthogonal to the first)
+\item
+  Continue the process
+\end{enumerate}
+
+Mathematically, principal components could also be obtained using \textbf{singular value decomposition} (SVD) fo the centered data matrix
+
+Let \(\mathbf{X}\) (\(n \times p\)) be the centered data matrix, then
+
+\[
+\mathbf{X} = \mathbf{UDV}^T
+\]
+
+where \(\mathbf{U}\) and \(\mathbf{V}\) are \(n \times p\) and \(p \times p\) orthogonal matrices
+
+\(\mathbf{D}\) (\textbf{singular values}) is \(p \times p\) diagonal matrix with diagonal entries \(d_1 \ge d_2 \ge \dots \ge d_p \ge 0\)
+
+Then,
+
+\[
+\mathbf{X}^T \mathbf{X} = \mathbf{VD}^2 \mathbf{V}^T
+\]
+
+which is the eigen-decomposition of \(\mathbf{X}^T \mathbf{X}\) and of the sample covariance matrix \(\mathbf{S} = \frac{\mathbf{X}^T \mathbf{X}}{n}\) up to the factor n
+
+And the columns of \(\mathbf{V}\) are \textbf{eigenvectors} and correspond to the \textbf{principal component weights}
+
+Hence, the new variables are
+
+\[
+\mathbf{z}_1 = \mathbf{Xv}_1 , \dots, \mathbf{z}_M = \mathbf{Xv}_M
+\]
+
+where \(\mathbf{v}_m\) is the m-th column of \(\mathbf{V}\)
+
+These \(\mathbf{z}\)'s are the principal components.
+
+The elements of \(\mathbf{v}_m\) are \(\phi\)'s in the dimension reduction summary
+
+\[
+var(\mathbf{z}_m) = \frac{d^2_m}{n}
+\]
+
+Thus, large (small) singular values correspond to directions in the column space of \(\mathbf{X}\) that have large (small) variance
+
+Then principle component regression basically construct the first \(M\) principal components (i.e., \(Z_1, \dots, Z_M\)) and uses these components as predictors int the linear regression model fit by least squares
+
+Assumption:
+
+\begin{itemize}
+\tightlist
+\item
+  Directions in which \(X_1, \dots , X_p\) have the most variation are the directions that are most associated with \(Y\) (not always the case, but typically effective). In other words, these X's are mostly associated with Y (best predict), but we cannot be certain that X's variation causes Y's variation.
+\end{itemize}
+
+Notes:
+
+\begin{itemize}
+\item
+  While capturing most of the variance from inputs, since \(M <<p\) we don't run into the problem of overfitting
+\item
+  Another benefit is that the new predictors are orthogonal (\(\mathbf{z}^T_j \mathbf{z}_k =0, j \neq k\)), which in the LS estimation we typically run into the problem of collinearity
+\item
+  Even though PCR uses a low-dimensional set of predictors, no model selection was performed because we only translate all \(p\) variables into a linear combination that makes the new PC inputs. Hence, it's closely related to \protect\hyperlink{ridge-regression}{Ridge regression} than \protect\hyperlink{lasso-regression}{Lasso regression} or \protect\hyperlink{best-subset-selection}{Best Subset Selection}. Seeing Singular Value Decomposition
+
+  \begin{itemize}
+  \item
+    \(\mathbf{X}\hat{\beta}^R = \sum_{j=1}^p \mathbf{u}_j \frac{d_j^2}{d_j^2+ \lambda}\mathbf{u}_j^T \mathbf{y}\)
+  \item
+    where \(\mathbf{u}_j\) corresponds to the j-th column of \(\mathbf{U}\) from the SVD
+  \item
+    Since LS estimate gives \(\mathbf{X}\hat{\beta} = \mathbf{UU}^T \mathbf{y}\), ridge regression goes to the LS solution when \(\lambda = 0\)
+  \item
+    The singular vectors that have smaller variation (i.e., smaller \(d_j^2\)) are shrunk more than those with larger variation
+  \end{itemize}
+\item
+  Rule of thumb: standardize the predictors before performing the Singular Value Decomposition to generate the principle components.
+
+  \begin{itemize}
+  \tightlist
+  \item
+    If we don't standardize, the predictors with the largest scale typically account for the most variance, regardless of their importance relative to the output.
+  \end{itemize}
+\end{itemize}
+
+\hypertarget{partial-least-squares}{%
+\subsubsection{Partial Least Squares}\label{partial-least-squares}}
+
+\begin{itemize}
+\item
+  Find linear combinations of the data (or directions in the \(\mathbf{X}\) matrix) that maximize \textbf{variance} and are \textbf{orthogonal}
+\item
+  Find the weight just like {[}Principle Component Regression{]}, but PCR in a unsupervised way because the choice of these directions is not dependent on \(Y\). Hence, might not provide good predictions of \(Y\)
+\item
+  PLS is a supervised way to do dimension reduction that finds new features \(Z_1, \dots, Z_M\) that are linear combinations of the original inputs, but it selects these in a away to account for the covariability withe the response Y
+\end{itemize}
+
+Steps to calculate the PLS directions (\(Z_m = \sum_{j=1}^p\phi_{jm}X_j\))
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  Standardize the \(p\) predictors
+\item
+  For \(Z_1\), set each \(\phi_{j1}\) = the coefficient from the simple linear regression of Y on \(X_j\) (this is proportional to the correlation between Y and \(X_j\))
+\item
+  Calculate \(Z_2\), by calculating the residuals of a regression of each variable (separately) on \(Z_1\) (call these \(e_j\)), which corresponds to the info remaining that has not been accounted for by \(Z_1\)
+\item
+  Set \(\phi_{j2}\) = the coefficient from the simple linear regression of \(Y\) on each \(e_j\) to get \(Z_2\)
+\item
+  Repeat \(M\) to get \(Z_1, \dots, Z_2\)
+\end{enumerate}
+
+\textbf{Comparison to PCR:} \citet{hastie2001a} (chapter 3.5)
+
+The m-th PC direction coefficients \(\mathbf{v}_m\) are the \(\alpha\) that solve
+
+\[
+\max_\alpha[var(\mathbf{X\alpha})]
+\]
+
+subject to \(||\alpha||=1, \alpha^T \mathbf{Sv}_l = 0, l = 1,\dots, m-1\) (the last condition ensures that each \(\mathbf{z}_m = \mathbf{Xv}_m\) is uncorrelated with all of the previous \(\mathbf{z}_l\))
+
+where \(\mathbf{S}\) is the sample covariance matrix associated with \(\mathbf{X}\)
+
+The m-th PLS direction \(\hat{\phi}_m\) have the \(\alpha\) that solves:
+
+\[
+\max_\alpha  [corr^2(\mathbf{y}, \mathbf{X \alpha}) var(\mathbf{X \alpha})]
+\]
+
+subject to \(||\alpha|| =1, \alpha^T \mathbf{S}\hat{\phi}_l =0,l = 1, \dots, m-1\)
+
+Notes:
+
+\begin{itemize}
+\item
+  The extra component in PLS helps make the weight more relatable to Y (but sometimes it's more efficient, but sometimes it isn't)
+\item
+  Both X and Y should be standardized before performing PLS
+\item
+  The choice of \(M\) is made based on \protect\hyperlink{cross-validation}{Cross-validation}
+\item
+  Although PLS tries to maximize both the correlation to the output and the variance in the inputs, the variance tends to dominate and PLS behaves very similarly to ridge regression and PCR
+\item
+  The use of the output to supervise the selection of the reduced dimension can reduce bias, but increase variance (bias-variance trade-off), and reduce the added value of the approach relative to PCR
+\item
+  PLS is closely related to canonical correlation analysis (CCA) in multivariate statistic, which seeks to find a reduced set of linear combinations of inputs and linear combination of outputs that maximize the correlation (e.lg., finding the coefficient \(\alpha, \beta\) s.t
+\end{itemize}
+
+\[
+\max_{\alpha, \beta} [corr(\mathbf{Y \beta}, \mathbf{X \alpha})]
+\]
+
+where a set of \(M\) with orthogonality constraints
+
+\begin{itemize}
+\item
+  In high-dimensional space ( \(p \approx n; p >n\) ), models are easily overfitted (too flexible). Hence, they might appear better than they really are. Hence, to deal with high dimensional data, we use less flexible models (i.e., those that are regularized or constrained), such as \protect\hyperlink{best-subset-selection}{Best Subset Selection}, \protect\hyperlink{ridge-regression}{Ridge regression}, \protect\hyperlink{lasso-regression}{Lasso regression}, \protect\hyperlink{principal-component-regression}{Principal Component Regression}, \protect\hyperlink{partial-least-squares}{Partial Least Squares}. But we still need to consider their issues
+
+  \begin{itemize}
+  \item
+    Large \(p\) always has collinearity; \protect\hyperlink{best-subset-selection}{Best Subset Selection} or \protect\hyperlink{lasso-regression}{Lasso regression} can't guarantee the chosen model is a scientific one
+  \item
+    p-values are not considered under high-dimensional regressions
+  \item
+    Tuning parameter selection is utmost important for good predictive performance
+  \item
+    The test error tends to increase as the dimensionality of the problem increases (\protect\hyperlink{curse-of-dimensionality}{Curse of dimensionality})
   \end{itemize}
 \end{itemize}
 
@@ -374,7 +1804,7 @@ From the data, find a function f of the inputs that best approximates the output
 \begin{itemize}
 \tightlist
 \item
-  Predictive: Make predictions for a new object described by its attributes\\
+  Predictive: Make predictions for a new object described by its attributes
 \item
   Informative: help understand the relationship between inputs and outputs
 \end{itemize}
@@ -384,9 +1814,9 @@ Divide data into
 \begin{itemize}
 \tightlist
 \item
-  Training set: train model\\
+  Training set: train model
 \item
-  validation set: tune hyper parameters\\
+  Validation set: tune hyper parameters
 \item
   Test set: evaluation of the model for generalization error.
 \end{itemize}
@@ -394,18 +1824,17 @@ Divide data into
 Learning algorithm
 
 \begin{itemize}
-\tightlist
 \item
   defined by
 
   \begin{itemize}
   \tightlist
   \item
-    a family of candidate models (= \textbf{hypothesis space H})\\
+    a family of candidate models (= \textbf{hypothesis space H})
   \item
-    a quality measure for a model\\
+    a quality measure for a model
   \item
-    an optimization strategy\\
+    an optimization strategy
   \end{itemize}
 \item
   takes as input a leaning sample and outputs a function h in H of maximum quality
@@ -414,9 +1843,8 @@ Learning algorithm
 Model selection
 
 \begin{itemize}
-\tightlist
 \item
-  Why not choose the model that minimizes the error rate on the learning sample? (\textbf{re-substitution error})\\
+  Why not choose the model that minimizes the error rate on the learning sample? (\textbf{re-substitution error})
 \item
   How well are you going to predict future data drawn from the same distribution? (\textbf{generalization error})
 \item
@@ -426,13 +1854,13 @@ Model selection
   \def\labelenumi{\arabic{enumi}.}
   \tightlist
   \item
-    Randomly choose a percentage (e.g., 30\%) of the data to be in a test set\\
+    Randomly choose a percentage (e.g., 30\%) of the data to be in a test set
   \item
-    The remainder is training set\\
+    The remainder is training set
   \item
-    Learn the model from the training set\\
+    Learn the model from the training set
   \item
-    Estimate its future performance on the test set.\\
+    Estimate its future performance on the test set.
   \end{enumerate}
 \item
   Problems:
@@ -440,24 +1868,23 @@ Model selection
   \begin{itemize}
   \tightlist
   \item
-    overfits: occurs when the learning algorithm starts fitting noise.\\
+    overfits: occurs when the learning algorithm starts fitting noise.
   \item
-    unfits\\
+    underfits
   \end{itemize}
 \item
   Evaluation on test set:
 
   \begin{itemize}
-  \tightlist
   \item
     Good:
 
     \begin{itemize}
     \tightlist
     \item
-      Very simple\\
+      Very simple
     \item
-      Computationally efficient\\
+      Computationally efficient
     \end{itemize}
   \item
     Bad:
@@ -465,27 +1892,26 @@ Model selection
     \begin{itemize}
     \tightlist
     \item
-      Waste data\\
+      Waste data
     \item
-      very unstable when database is small\\
+      very unstable when database is small
     \end{itemize}
   \end{itemize}
 \item
   Another evaluation: \textbf{Leave-one-out cross validation}
 
   \begin{itemize}
-  \tightlist
   \item
     For k = 1 to N
 
     \begin{itemize}
     \tightlist
     \item
-      remove the k-th object from the learning sample\\
+      remove the k-th object from the learning sample
     \item
-      learn the model on the remaining objects\\
+      learn the model on the remaining objects
     \item
-      apply the model to get a prediction for the k-th object\\
+      apply the model to get a prediction for the k-th object
     \end{itemize}
   \item
     report the proportion of mis-classified objects\\
@@ -496,7 +1922,7 @@ Model selection
   \begin{itemize}
   \tightlist
   \item
-    Do not waste the data (you get an estimate of the best method to apply to N-1 data)\\
+    Do not waste the data (you get an estimate of the best method to apply to N-1 data)
   \end{itemize}
 \item
   Bad:
@@ -504,40 +1930,39 @@ Model selection
   \begin{itemize}
   \tightlist
   \item
-    Computationally intensive (train N models)\\
+    Computationally intensive (train N models)
   \item
-    high variance.\\
+    high variance.
   \end{itemize}
 \item
   Another evaluation: \textbf{K-fold cross validation}:
 
   \begin{itemize}
-  \tightlist
   \item
-    Break up data into k folds\\
+    Break up data into k folds
   \item
     For each fold
 
     \begin{itemize}
     \tightlist
     \item
-      Choose the fold as a temporary test set\\
+      Choose the fold as a temporary test set
     \item
-      Train on k-1 folds, compute performance on the test fold.\\
+      Train on k-1 folds, compute performance on the test fold.
     \end{itemize}
   \item
-    Report average performance of the 10 runs.\\
+    Report average performance of the 10 runs.
   \item
-    randomly partition the dataset into k subsets (e.g., 10)\\
+    randomly partition the dataset into k subsets (e.g., 10)
   \item
     For each subset:
 
     \begin{itemize}
     \tightlist
     \item
-      learn the model on the objects that are not in the subset\\
+      learn the model on the objects that are not in the subset
     \item
-      compute the error rate on the points in the subset. Report the mean error rate over the k subsets.\\
+      compute the error rate on the points in the subset. Report the mean error rate over the k subsets.
     \end{itemize}
   \item
     When k = the number of objects -\textgreater{} leave-one-out-cross validation.
@@ -549,12 +1974,16 @@ Rule-of-thumb for evaluation
 \begin{itemize}
 \tightlist
 \item
-  Lots of data (\textgreater1000) test set validation\\
+  Lots of data (\textgreater1000) test set validation
 \item
-  small data (100-1000): 10-fold CV\\
+  small data (100-1000): 10-fold CV
 \item
   very small data (\textless100) leave one out CV.
 \end{itemize}
+
+\begin{verbatim}
+## Warning: package 'jpeg' was built under R version 4.0.5
+\end{verbatim}
 
 \begin{center}\includegraphics[width=10.11in]{images/Overfitting affect prediction} \end{center}
 
@@ -565,7 +1994,7 @@ Performance measures
 \begin{itemize}
 \tightlist
 \item
-  The error rate is no the only way to assess a predictive model.\\
+  The error rate is no the only way to assess a predictive model.
 \item
   In binary classification, results can be summarized in a contingency table (i.e., confusion matrix)
 \end{itemize}
@@ -597,7 +2026,6 @@ You want large area under the curve
 Compassion of learning models
 
 \begin{itemize}
-\tightlist
 \item
   Three main criteria:
 
@@ -617,25 +2045,23 @@ Compassion of learning models
 Learning Techniques
 
 \begin{itemize}
-\tightlist
 \item
   Supervised learning categories and techniques
 
   \begin{itemize}
-  \tightlist
   \item
     Linear classifier (numerical functions):
 
     \begin{itemize}
     \tightlist
     \item
-      Perceptron\\
+      Perceptron
     \item
-      Logistic regression\\
+      Logistic regression
     \item
-      Support vector machine (SVM): linear to nonlinear: feature transofrm and kernel function\\
+      Support vector machine (SVM): linear to nonlinear: feature transform and kernel function
     \item
-      Ada-line\\
+      Ada-line
     \item
       Multi-layer perceptron (MLP)
     \end{itemize}
@@ -645,7 +2071,7 @@ Learning Techniques
     \begin{itemize}
     \tightlist
     \item
-      Naive Bayes, Gaussian discriminant analysis (GDA), Hidden Markov models (HMM), probabilistic graphical models\\
+      Naive Bayes, Gaussian discriminant analysis (GDA), Hidden Markov models (HMM), probabilistic graphical model
     \end{itemize}
   \item
     Non-parametric (Instance-based functions)
@@ -653,7 +2079,7 @@ Learning Techniques
     \begin{itemize}
     \tightlist
     \item
-      K-nearest neighbors, Kernel regression, Kernel density estimation, local regression.\\
+      K-nearest neighbors, Kernel regression, Kernel density estimation, local regression.
     \end{itemize}
   \item
     Non-metric (symbolic functions)
@@ -661,7 +2087,7 @@ Learning Techniques
     \begin{itemize}
     \tightlist
     \item
-      Classification and regression tree (CART), decision tree\\
+      Classification and regression tree (CART), decision tree
     \end{itemize}
   \item
     Aggregation
@@ -669,23 +2095,22 @@ Learning Techniques
     \begin{itemize}
     \tightlist
     \item
-      Bagging (bootstrap + aggregation), Adaboost, Random forest.\\
+      Bagging (bootstrap + aggregation), Adaboost, Random forest.
     \end{itemize}
   \end{itemize}
 \item
   Unsupervised learning categories and techniques:
 
   \begin{itemize}
-  \tightlist
   \item
     Clustering
 
     \begin{itemize}
     \tightlist
     \item
-      K-means clustering\\
+      K-means clustering
     \item
-      Spectral clustering\\
+      Spectral clustering
     \end{itemize}
   \item
     Density Estimation
@@ -693,9 +2118,9 @@ Learning Techniques
     \begin{itemize}
     \tightlist
     \item
-      Gaussian mixture model (GMM)\\
+      Gaussian mixture model (GMM)
     \item
-      Graphical models\\
+      Graphical models
     \end{itemize}
   \item
     Dimensionality reduction
@@ -703,27 +2128,26 @@ Learning Techniques
     \begin{itemize}
     \tightlist
     \item
-      Principal component analysis (PCA)\\
+      Principal component analysis (PCA)
     \item
-      Factor analysis\\
+      Factor analysis
     \end{itemize}
   \end{itemize}
 \item
   Semi-supervised learning
 
   \begin{itemize}
-  \tightlist
   \item
-    goal: exploit both labeled and unlabeled data to build better models than using each one alone\\
+    goal: exploit both labeled and unlabeled data to build better models than using each one alone
   \item
     Self-training:
 
     \begin{itemize}
     \tightlist
     \item
-      Iteratively label some unlabeled examples with a model learned from the previously labeled examples\\
+      Iteratively label some unlabeled examples with a model learned from the previously labeled examples
     \item
-      Active learning.\\
+      Active learning.
     \end{itemize}
   \end{itemize}
 \item
@@ -732,7 +2156,7 @@ Learning Techniques
   \begin{itemize}
   \tightlist
   \item
-    Learning from interactions\\
+    Learning from interactions
   \item
     Goal: learn to choose sequence of actions (=policy) that maximizes \(r_0 + \gamma r_1 + \gamma^2r_2 + ...\) where \(0 \le \gamma <1\)
   \end{itemize}
@@ -742,27 +2166,25 @@ Learning Techniques
 \section{Decision Tree}\label{decision-tree}}
 
 \begin{itemize}
-\tightlist
 \item
-  Is a tree-structured plan of a set of attributes to test to predict the output.\\
+  Is a tree-structured plan of a set of attributes to test to predict the output.
 \item
-  Give one attribute, try to predict the value of new people's attribute by means of some other available attribute\\
+  Give one attribute, try to predict the value of new people's attribute by means of some other available attribute
 \item
   Input attributes:
 
   \begin{itemize}
-  \tightlist
   \item
-    \textbf{d} features/ attributes \(x^{(1)},x^{(2)},...,x^{(d)}\)\\
+    \textbf{d} features/ attributes \(x^{(1)},x^{(2)},...,x^{(d)}\)
   \item
     Each \(x^{(j)}\) has domain \(O_j\)
 
     \begin{itemize}
     \tightlist
     \item
-      Categorical \(O_j=(read,blue)\)\\
+      Categorical \(O_j=(read,blue)\)
     \item
-      Numerical: \(H_j = (0,10)\)\\
+      Numerical: \(H_j = (0,10)\)
     \end{itemize}
   \item
     Y is output variable with domain \(O_Y\):
@@ -770,25 +2192,24 @@ Learning Techniques
     \begin{itemize}
     \tightlist
     \item
-      Categorical: Classification\\
+      Categorical: Classification
     \item
-      Numerical: regression\\
+      Numerical: regression
     \end{itemize}
   \end{itemize}
 \item
   Data D:
 
   \begin{itemize}
-  \tightlist
   \item
     n examples \((x_i, y_i)\) where
 
     \begin{itemize}
     \tightlist
     \item
-      \(x_i\) is a d-dim feature vector\\
+      \(x_i\) is a d-dim feature vector
     \item
-      \(y_i\in O_Y\)\\
+      \(y_i\in O_Y\)
     \end{itemize}
   \end{itemize}
 \item
@@ -819,15 +2240,13 @@ How to construct a tree
 \subsection{Find best split}\label{find-best-split}}
 
 Pick an attribute and value that optimizes some criterion\\
-+ Regression: Purity
-+ Classification: Information Gain: Measures how much a given attribute X tells us about the class Y.
++ Regression: Purity + Classification: Information Gain: Measures how much a given attribute X tells us about the class Y.
 
 Information Gain? Entropy
 
 The entropy of X: \(H(X) = -\sum_{j=1}^{m} p_j log p_j\)
 
 \begin{itemize}
-\tightlist
 \item
   ``High entropy'': X is from a uniform distribution
 
@@ -896,7 +2315,6 @@ Ensemble methods
 Bagging
 
 \begin{itemize}
-\tightlist
 \item
   If we split the data in random different ways, decision trees give different results, high variance.\\
 \item
@@ -906,40 +2324,39 @@ Bagging
 \item
   say for each sample b, we calculate \(f^b(x)\), then \(\hat{f}_{avg} (x) = \frac{1}{B} \sum_{b=1}^{B} \hat{f}^b (x)\)
 \item
-  Bootstrap: Construct B (hundreds) of trees. Learn a classifier for each bootstrap sample and average them. Very effective.\\
+  Bootstrap: Construct B (hundreds) of trees. Learn a classifier for each bootstrap sample and average them. Very effective.
 \item
-  Reduces overfitting (variance)\\
+  Reduces overfitting (variance)
 \item
   Could use one classifier, or multiple classifiers.
 \item
-  easy to parallelize\\
+  Easy to parallelize
 \item
   Variable Importance Measures
 
   \begin{itemize}
   \tightlist
   \item
-    Bagging results in improved accuracy over prediction using a single tree\\
+    Bagging results in improved accuracy over prediction using a single tree
   \item
-    Unfortunately, difficult to interpret the resulting model. Bagging improves prediction accuracy at the expense of interpretability.\\
+    Unfortunately, difficult to interpret the resulting model. Bagging improves prediction accuracy at the expense of interpretability.
   \end{itemize}
 \item
   Issues:
 
   \begin{itemize}
-  \tightlist
   \item
     Each tree is identically distributed (i.d)
 
     \begin{itemize}
     \tightlist
     \item
-      The expectation of the average of B such trees\\
+      The expectation of the average of B such trees
     \item
       The bias of bagged trees is the same as that of individual trees
     \end{itemize}
   \item
-    An average of B i.i.d random variables, each with variance \(\sigma^2\), has variance \(\sigma^2/B\). If i.d. (identical but not independent) and pair correlation \(\rho\) is present, then the variance is : \(\rho \sigma^2 + \frac{1-\rho}{B} \sigma^2\) . As B increases, the second term disappears but the first term remains.\\
+    An average of B i.i.d random variables, each with variance \(\sigma^2\), has variance \(\sigma^2/B\). If i.d. (identical but not independent) and pair correlation \(\rho\) is present, then the variance is : \(\rho \sigma^2 + \frac{1-\rho}{B} \sigma^2\) . As B increases, the second term disappears but the first term remains.
   \end{itemize}
 \item
   Suppose that there is one very strong predictor in the data set, along with a number of other moderately strong predictors. Then all bagged trees will select the strong predictor at the top tree and therefore all trees will look similar.
@@ -947,11 +2364,11 @@ Bagging
   \begin{itemize}
   \tightlist
   \item
-    We can penalize the splitting with a penalty term that depends on the number of times a predictor is selected at a given length.\\
+    We can penalize the splitting with a penalty term that depends on the number of times a predictor is selected at a given length.
   \item
-    restrict how many items a predictor can be used.\\
+    restrict how many items a predictor can be used.
   \item
-    allow a certain number of predictors.\\
+    allow a certain number of predictors.
   \end{itemize}
 \item
   Since we want i.i.d so that the bias to be the same and variance to be less.
@@ -971,7 +2388,6 @@ For b = 1 to B:
 
 \begin{enumerate}
 \def\labelenumi{\alph{enumi}.}
-\tightlist
 \item
   draw a bootstrap sample Z * of size N from the training data.\\
 \item
@@ -992,27 +2408,27 @@ Output the ensemble trees.
 
 \begin{longtable}[]{@{}lll@{}}
 \toprule
-\begin{minipage}[b]{0.30\columnwidth}\raggedright
+\begin{minipage}[b]{(\columnwidth - 2\tabcolsep) * \real{0.22}}\raggedright
 \strut
-\end{minipage} & \begin{minipage}[b]{0.30\columnwidth}\raggedright
+\end{minipage} & \begin{minipage}[b]{(\columnwidth - 2\tabcolsep) * \real{0.37}}\raggedright
 Regression\strut
-\end{minipage} & \begin{minipage}[b]{0.30\columnwidth}\raggedright
+\end{minipage} & \begin{minipage}[b]{(\columnwidth - 2\tabcolsep) * \real{0.41}}\raggedright
 Classification\strut
 \end{minipage}\tabularnewline
 \midrule
 \endhead
-\begin{minipage}[t]{0.30\columnwidth}\raggedright
+\begin{minipage}[t]{(\columnwidth - 2\tabcolsep) * \real{0.22}}\raggedright
 To make a prediction at a new point x\strut
-\end{minipage} & \begin{minipage}[t]{0.30\columnwidth}\raggedright
+\end{minipage} & \begin{minipage}[t]{(\columnwidth - 2\tabcolsep) * \real{0.37}}\raggedright
 average the results\strut
-\end{minipage} & \begin{minipage}[t]{0.30\columnwidth}\raggedright
+\end{minipage} & \begin{minipage}[t]{(\columnwidth - 2\tabcolsep) * \real{0.41}}\raggedright
 majority vote\strut
 \end{minipage}\tabularnewline
-\begin{minipage}[t]{0.30\columnwidth}\raggedright
+\begin{minipage}[t]{(\columnwidth - 2\tabcolsep) * \real{0.22}}\raggedright
 Tuning\strut
-\end{minipage} & \begin{minipage}[t]{0.30\columnwidth}\raggedright
+\end{minipage} & \begin{minipage}[t]{(\columnwidth - 2\tabcolsep) * \real{0.37}}\raggedright
 The default value for m is \(p/3\) and the minimum node size is 5\strut
-\end{minipage} & \begin{minipage}[t]{0.30\columnwidth}\raggedright
+\end{minipage} & \begin{minipage}[t]{(\columnwidth - 2\tabcolsep) * \real{0.41}}\raggedright
 The default value for m is \(\sqrt{p}\) and the minimum node size is one\strut
 \end{minipage}\tabularnewline
 \bottomrule
@@ -1044,7 +2460,6 @@ Unsupervised learning tries to find regularities in the data without guidance ab
 Unsupervised learning categories and techniques:
 
 \begin{itemize}
-\tightlist
 \item
   Clustering
 
@@ -1073,7 +2488,7 @@ Unsupervised learning categories and techniques:
   \item
     Principal component analysis (PCA)\\
   \item
-    factor Analysis
+    Factor Analysis
   \end{itemize}
 \end{itemize}
 
@@ -1109,7 +2524,6 @@ Clustering quality
 which can be use to judge good clustering
 
 \begin{itemize}
-\tightlist
 \item
   Internal criterion: A good clustering will produce high quality clusters in which:
 
@@ -1176,7 +2590,6 @@ Distance functions
 Different distance functions for
 
 \begin{itemize}
-\tightlist
 \item
   Different types of data
 
@@ -1194,7 +2607,6 @@ Different distance functions for
 Numeric data
 
 \begin{itemize}
-\tightlist
 \item
   \(dist(x_i, x_j)\),where
 
@@ -1299,7 +2711,6 @@ Symmetric binary attributes
 Asymmetric binary attributes
 
 \begin{itemize}
-\tightlist
 \item
   if one of the states is more important or more valuable than the other
 
@@ -1324,7 +2735,6 @@ Nominal attributes: with more than 2 states or values.\\
 Data standardization
 
 \begin{itemize}
-\tightlist
 \item
   In the Euclidean space, standardization of attributes is recommended so that all attributes can have equal impact on the computation of distances.\\
 \item
@@ -1337,13 +2747,13 @@ Data standardization
   \item
     Interval-scaled
   \item
-    symmetric binary\\
+    symmetric binary
   \item
-    asymmetric binary\\
+    asymmetric binary
   \item
-    ratio-scaled\\
+    ratio-scaled
   \item
-    ordinal\\
+    ordinal
   \item
     nominal\\
   \end{itemize}
@@ -1351,14 +2761,13 @@ Data standardization
   Convert to a single type:
 
   \begin{itemize}
-  \tightlist
   \item
     To deal with mixed attributes:
 
     \begin{itemize}
     \tightlist
     \item
-      Decide the dominant attribute type\\
+      Decide the dominant attribute type
     \item
       Convert the other types to this type
     \end{itemize}
@@ -1407,8 +2816,7 @@ Convergence Criterion
 \item
   No (or minimum) change of centroids, or\\
 \item
-  minimum decreases in the sum of squared error (SSE)
-  \[
+  minimum decreases in the sum of squared error (SSE) \[
   SSE = \sum_{j=1}^{k}\sum_{x\in C_j}dist(x.m_j)^2
   \]
 \end{enumerate}
@@ -1424,11 +2832,11 @@ Pros
 \begin{itemize}
 \tightlist
 \item
-  Simple: easy to understand and implement\\
+  Simple: easy to understand and implement
 \item
-  Efficient: time complexity: O(tkn), where n is the number of data points, k is the number of clusters, and t is the number of iterations.\\
+  Efficient: time complexity: O(tkn), where n is the number of data points, k is the number of clusters, and t is the number of iterations.
 \item
-  Since both ka nd t are small, k-means is considered a linear algorithm\\
+  Since both ka nd t are small, k-means is considered a linear algorithm
 \item
   Note: it terminates at a local optimum if SSE is used. The global optimum is hard to find due to complexity.
 \end{itemize}
@@ -1436,24 +2844,23 @@ Pros
 Cons
 
 \begin{itemize}
-\tightlist
 \item
   The algorithm is only applicable if the mean is defined.
 
   \begin{itemize}
   \tightlist
   \item
-    For categorical data, k-mode\\
+    For categorical data, k-mode
   \end{itemize}
 \item
-  The user needs to specify k\\
+  The user needs to specify k
 \item
   The algorithm is sensitive to outliers.
 
   \begin{itemize}
   \tightlist
   \item
-    outliers could be errors in the data recording or some special data points with very different values.\\
+    outliers could be errors in the data recording or some special data points with very different values.
   \end{itemize}
 \item
   is not suitable for discovering clusters that are not hyper-ellipsoids (or hyper-spheres)
@@ -1462,16 +2869,15 @@ Cons
 Solution
 
 \begin{itemize}
-\tightlist
 \item
   To deal with outliers:
 
   \begin{itemize}
   \tightlist
   \item
-    remove some data points int the clustering process that are much further away from the centroids than other data points.\\
+    remove some data points int the clustering process that are much further away from the centroids than other data points.
   \item
-    Or perform random sampling. Since in sampling we only choose a small subset of the data points, the chance of selecting an outlier is very small.\\
+    Or perform random sampling. Since in sampling we only choose a small subset of the data points, the chance of selecting an outlier is very small.
   \end{itemize}
 \item
   To deal with sensitive algorithm
@@ -1487,16 +2893,15 @@ Solution
 \chapter{Semi-superivsed learning}\label{semi-superivsed-learning}}
 
 \begin{itemize}
-\tightlist
 \item
-  Goal: exploit both labeled and unlabeled data to build better models than using each one alone\\
+  Goal: exploit both labeled and unlabeled data to build better models than using each one alone
 \item
   Self-training
 
   \begin{itemize}
   \tightlist
   \item
-    Iteratively label some unlabeled examples with a model learned from the previously labeled examples\\
+    Iteratively label some unlabeled examples with a model learned from the previously labeled examples
   \item
     Active learning
   \end{itemize}
@@ -1508,7 +2913,7 @@ Solution
 \begin{itemize}
 \tightlist
 \item
-  Learning from interactions\\
+  Learning from interactions
 \item
   Goal: learn to choose sequence of actions (= policy) that maximizes \(r_0 + \gamma r_1 + \gamma^2r_2 + ...\)
 \end{itemize}
@@ -1522,6 +2927,46 @@ Solution
 \url{https://arxiv.org/abs/2004.14545}
 \url{https://www.kaggle.com/learn/machine-learning-explainability}
 \url{https://towardsdatascience.com/interperable-vs-explainable-machine-learning-1fa525e12f48}
+
+TCAV:
+
+\begin{itemize}
+\tightlist
+\item
+  \url{https://github.com/tensorflow/tcav}
+\item
+  \url{http://proceedings.mlr.press/v80/kim18d.html}
+\item
+  \url{https://arxiv.org/abs/1711.11279}
+\end{itemize}
+
+PAIR:
+
+\begin{itemize}
+\tightlist
+\item
+  \url{https://pair-code.github.io/facets/}
+\item
+  \url{https://research.google/teams/brain/pair/}
+\end{itemize}
+
+Embedding Project:
+
+\begin{itemize}
+\tightlist
+\item
+  \url{https://projector.tensorflow.org/}
+\end{itemize}
+
+What-If tools:
+
+\begin{itemize}
+\tightlist
+\item
+  \url{https://pair-code.github.io/what-if-tool/}
+\item
+  \url{https://cloud.google.com/ai-platform/prediction/docs/using-what-if-tool}
+\end{itemize}
 
 \hypertarget{shap}{%
 \section{SHAP}\label{shap}}
@@ -1564,11 +3009,856 @@ Solution
 \url{https://github.com/adikhosla/feature-extraction}
 \url{https://expertprogrammanagement.com/2019/12/elaboration-likelihood-model/}
 
+\hypertarget{generalized-method-of-moments}{%
+\chapter{Generalized Method of Moments}\label{generalized-method-of-moments}}
+
+\hypertarget{minimum-distance}{%
+\chapter{Minimum Distance}\label{minimum-distance}}
+
+\hypertarget{spline-regression}{%
+\chapter{Spline Regression}\label{spline-regression}}
+
+Beyond Linearity (including transformation of variables), we have arbitrary basis expansion (where the basis functions are dependent on X)
+
+\textbf{Basis Function Representations}
+
+Let the k-th basis function of X be denoted by \(b_k(X), k = 1,\dots, K\) which is function that maps from the p-dimensional real numbers to the real line.
+
+Then, the linear functional representation of \(f(X)\) given by these basis functions is
+
+\[
+f(X) = \beta_0 + \sum_{k=1}^K \beta_k b_k(X)
+\]
+
+Equivalently
+
+\[
+\mathbf{Y} = \mathbf{B} \beta + \mathbf{\epsilon}
+\]
+
+where \(\mathbf{B}\) is the \(n \times (K+1)\) matrix columns given by a vector of 1 for the intercept and \(\mathbf{b}_k =(b_k(x_1), \dots, b_k (x_n))', k = 1, \dots, K\)
+
+Then, we have
+
+\[
+\hat{\beta} = (\mathbf{B}^T \mathbf{B})^{-1} \mathbf{B}^T\mathbf{y}
+\]
+
+if the basis functions are \textbf{orthogonal}, then we have a special case \(\hat{\beta} = \mathbf{B}^T \mathbf{y}\)
+
+Some common basis functions;
+
+\begin{itemize}
+\item
+  Original linear model: \(b_k(X) = X_k, k = 1, \dots, p\)
+\item
+  Polynomials: \(b_k(X) = X^2_j; X^3_j; X_jX_m\)
+\item
+  Non-linear transformations: \(b_k(X)= \log(X_j); \sqrt{X_j}\)
+\item
+  Step-functions: \(b_k(X) = I(c_k \le X \le v_k)\), an indicator for a region of \(X\)
+
+  \begin{enumerate}
+  \def\labelenumi{\arabic{enumi}.}
+  \item
+    Breaking the region up into non-overlapping regions and step-function response
+  \item
+    Example: for a single \(X\), \(b_0 (X) = I(X < c_1), \dots, b_{K-1}(X) = I(c_{K-1} \le X \le c_K)\) where \(c_1, \dots, c_k\) are cut points (i.e., making dummy variables and piece wise constant regression fits)
+  \end{enumerate}
+\item
+  Other: sines and cosines, wavelets, empirical basis functions
+\end{itemize}
+
+Another representation
+
+More info can be found on \href{https://www.stat.cmu.edu/~ryantibs/advmethods/notes/smoothspline.pdf}{CMU stat}
+
+Definition: a k-th order spline is a piecewise polynomial function of degree k, that is continuous and has continuous derivatives of orders 1,\ldots, k -1, at its knot points
+
+Equivalently, a function f is a k-th order spline with knot points at \(t_1 < ...< t_m\) if
+
+\begin{itemize}
+\tightlist
+\item
+  f is a polynomial of degree k on each of the intervals \((-\infty, t_1], [t_1,t_2],...,[t_m, \infty)\)\\
+\item
+  \(f^{(j)}\), the j-th derivative of f, is continuous at \(t_1,...,t_m\) for each j = 0,1,\ldots,k-1
+\end{itemize}
+
+A common case is when k = 3, called cubic splines. (piecewise cubic functions are continuous, and also continuous at its first and second derivatives)
+
+To parameterize the set of splines, we could use \textbf{truncated power basis}, defined as
+
+\[
+g_1(x) = 1 \\
+g_2(x) = x \\
+... \\
+g_{k+1}(x) = x^k \\
+g_{k+1+j}(x) = (x-t_j)^k_+
+\]
+
+where j = 1,\ldots,m and \(x_+\) = max\{x,0\}
+
+However, now software typically use B-spline basis.
+
+\hypertarget{regression-splines}{%
+\section{Regression Splines}\label{regression-splines}}
+
+\begin{itemize}
+\item
+  Spline basis functions are built upon polynomial regression and piecewise constant regression
+
+  \begin{itemize}
+  \tightlist
+  \item
+    We fit piece wise polynomial regressions, but add some continuity and smoothness constraints.
+  \end{itemize}
+\end{itemize}
+
+Example:
+
+\[
+y_i =
+\begin{cases}
+\beta_{01} + \beta_{11}+ \beta_{21}x_i^2 + \beta_{31}x_i^3+ \epsilon & \text{if } x_i <c \\
+\beta_{02} + \beta_{12}+ \beta_{22}x_i^2 + \beta_{32}x_i^3+ \epsilon & \text{if } x_i \ge c 
+\end{cases}
+\]
+
+where \(c\) is a \textbf{knot} point
+
+The more flexible we want our model to be, the more knots to be added.
+
+If we have \(K\) knots through the range of \(X\), we fit \(K+1\) different (cubic or any or constants) polynomials.
+
+To restrict piece coming together at the knot points, we add the constraint that the fitted curve must be \textbf{continuous}.
+
+We constrain the first and second derivatives to be continuous for \textbf{smoothness}.
+
+If the polynomials are cubic, then it's cubic spline.
+
+Each constraint that we add reduces the number of parameters to be fit (frees up df), and less complex
+
+A cubic spline with \(K\) knots has \(K +4\) df
+
+We can rewrite the cubic spline into the general basis notation
+
+\[
+b_1(X) = X; b_2(X) = X^2; b_3(X) = X^2; b_4(X) = h(X,\xi_1);\\
+b_5(X) = h(X, \xi_2) , \dots, b_{K+3} (X) = h(X, \xi_K)
+\]
+
+where
+
+\[
+h(x, \xi) = (x- \xi)^3_+ = 
+\begin{cases}
+(x- \xi)^3 & \text{if } x > \xi \\
+0 & \text{otherwise}
+\end{cases}
+\]
+
+and \(\xi\) is the knot. Fitting this model with an intercept requires estimating \(K+4\) regression coefficients (i.e., \(K +4\) df)
+
+Notes:
+
+\begin{itemize}
+\item
+  Splines have high variance at the outer range of the predictors.
+
+  \begin{itemize}
+  \item
+    \protect\hyperlink{natural-splines}{Natural splines} are regression splines with extra constrains on the boundary that mitigates this variance problem by requiring the function to be linear in the regions where \(X\) is smaller than the smallest knot, and larger than the largest knot.
+  \item
+    To decide number and place of knots (\(K\))
+
+    \begin{itemize}
+    \item
+      To choose number of \(K\), people usually do cross-validation
+    \item
+      Given \(K\) knots, we locate them uniformly in the quantile domain of \(X\)
+
+      \begin{itemize}
+      \item
+        Ex: \(K = 3\), a knot would be placed at the 25th, 50th, and 75th percentiles of the variable X.
+      \item
+        Alternatively, we can place knots based on local data abundance.
+      \end{itemize}
+    \end{itemize}
+  \end{itemize}
+\end{itemize}
+
+Another representation
+
+To estimate the regression function \(r(X) = E(Y|X =x)\), we can fit a k-th order spline with \textbf{knots} at some prespecified locations \(t_1,...,t_m\)
+
+Regression splines are functions of
+
+\[
+\sum_{j=1}^{m+k+1} \beta_jg_j
+\]
+
+where
+
+\(\beta_1,..\beta_{m+k+1}\) are coefficients \(g_1,...,g_{m+k+1}\) are the truncated power basis functions for k-th order splines over the knots \(t_1,...,t_m\)
+
+To estimate the coefficients
+
+\[
+\sum_{i=1}^{n} (y_i - \sum_{j=1}^{m} \beta_j g_j (x_i))^2
+\]
+
+then regression spline is
+
+\[
+\hat{r}(x) = \sum_{j=1}^{m+k+1} \hat{\beta}_j g_j (x)
+\]
+
+If we define the basis matrix \(G \in R^{n \times (m+k+1)}\) by
+
+\[
+G_{ij} = g_j(x_i) 
+\]
+
+where \(i = 1,..,n\) , \(j = 1,..,m+k+1\)
+
+Then,
+
+\[
+\sum_{i=1}^{n} (y_i - \sum_{j=1}^{m} \beta_j g_j (x_i))^2 = ||y - G \beta||_2^2
+\]
+
+and the regression spline estimate at x is
+
+\[
+\hat{r} (x) = g(x)^T \hat{\beta}= g(x)^T(G^TG)^{-1}G^Ty
+\]
+
+\hypertarget{natural-splines}{%
+\section{Natural splines}\label{natural-splines}}
+
+A natural spline of order k, with knots at \(t_1 <...< t_m\), is a piecewise polynomial function f such that
+
+\begin{itemize}
+\tightlist
+\item
+  f is polynomial of degree k on each of \([t_1,t_2],...,[t_{m-1},t_m]\)
+\item
+  f is a polynomial of degree \((k-1)/2\) on \((-\infty,t_1]\) and \([t_m,\infty)\)
+\item
+  f is continuous and has continuous derivatives of orders 1,.,,, k -1 at its knots \(t_1,..,t_m\)
+\end{itemize}
+
+\textbf{Note}
+
+natural splines are only defined for odd orders k.
+
+\hypertarget{smoothing-splines}{%
+\section{Smoothing splines}\label{smoothing-splines}}
+
+We are interested in a function \(g(x)\) and try to minimize \(RSS = \sum_{i=1}^n (y_i -g(x_i))^2\)
+
+But we wouldn't want to overfit (because \(g(x)\) that minimizes this RSS will try to interpolate all of the \(y_i\)), then we want to a smooth \(g(x)\) that minimizes RSS:
+
+\[
+\sum_{i=1}^n (y_i - g(x_i))^2 + \lambda g''(x)^2 dx
+\]
+
+where
+
+\begin{itemize}
+\item
+  \(\lambda\) is a non-negative smoothness
+\item
+  \(g(.)\) is a \textbf{smoothing spline}
+\end{itemize}
+
+Notes:
+
+\begin{itemize}
+\item
+  RSS here is a \emph{loss function}
+\item
+  second term is a \emph{smoothness penalty term}
+
+  \begin{itemize}
+  \item
+    Second derivative controls the smoothness of the function (smaller in absolute value means smoother)
+  \item
+    Parameter \(\lambda\) controls the tradeoff between the smoothness and fit
+  \end{itemize}
+\item
+  When \(\lambda =0\), the function is just like linear function (not smooth at all)
+\item
+  When \(\lambda \to \infty\), then \(g\) approaches a straight line that passes through the training data
+\item
+  The smoothing spline function corresponds to a cubic polynomial basis with knots at the unique values of \(x_1, \dots, x_n\) with continuous first and second derivatives at each knot
+
+  \begin{enumerate}
+  \def\labelenumi{\arabic{enumi}.}
+  \item
+    \(g(x)\) that minimizes the smoothing spline constraint is just a natural cubic spline with knots at the unique \(x\) observations
+  \item
+    \(\lambda\) controls the level of shrinkage for smoothing splines, but there is none in regression spline
+  \item
+    At first glance, we might think that smoothing splines might have too many degrees of freedom since we have knots at every data points (i.e., \(K = n\)). But \(\lambda\) controls roughness and make the \textbf{effective degrees of freedom} much smaller (as \(\lambda\) increases from \(0 \to \infty\), \(df_\lambda\) decreases from \(n \to 2\))
+  \end{enumerate}
+\end{itemize}
+
+Let \(\hat{\mathbf{y}}_\lambda\) be the n-vector containing the fitted values for the smoothing spline function for a given \(\lambda\),
+
+\[
+\hat{\mathbf{y}}_\lambda = \mathbf{S}_\lambda \mathbf{y}
+\]
+
+\(\mathbf{S}_\lambda = \mathbf{N}(\mathbf{N}^T\mathbf{N}+ \lambda \mathbf{\Omega}_N)^{-1} \mathbf{N}^T\) where \(\{N\}_{ij} = b_j (x_i);\)
+
+\[
+df_\lambda = \sum_{i=1}^n \{\mathbf{S}_\lambda\}_{ii}
+\]
+
+\[
+\begin{aligned}
+RSS_{CV}(\lambda)&= \sum_{i=1}^n(y_i - \hat{y}_\lambda^{(-i)}(x_i))^2 \\
+&= \sum_{i=1}^n[\frac{y_i - \hat{y}_\lambda(x_i)}{1-\{\mathbf{S}_\lambda\}_{ii}}]^2
+\end{aligned}
+\]
+
+\[
+g_{jk}(X) = b_{1j}(X_1)b_{2k}(X_2)
+\]
+
+where \(j = 1, \dots, K_1, k = 1, \dots, K_2\)
+
+which can be used as
+
+\[
+f(X) = \sum_{j=1}^{K_1} \sum_{k=1}^{K_2}\beta_{jk}g_{jk}(X)
+\]
+
+\[
+\sum_{i=1}^n (y_i - f(x_i))^2 + \lambda J[f]
+\]
+
+where \(J\) is the penalty function for the dimension of the problem
+
+\[
+J[f] = \int\int[(\frac{\partial^2f(x)}{\partial x_1^2})^2 + 2(\frac{\partial^2 f(x)}{\partial x_1 \partial x_2})^2 + (\frac{\partial^2f(x)}{\partial x^2_2})^2]dx_1 dx_2
+\]
+
+\[
+f(x) = \beta_0 + \beta^T x + \sum_{j=1}^n \alpha_j b_j(x)
+\]
+
+where \(b_j(x) = ||x - x_j||^2\log ||x-x_j||\)
+
+Another representation
+
+These estimators use a regularized regression over the natural spline basis: placing knots at all points \(x_1,...x_n\)
+
+For the case of cubic splines, the coefficients are the minimization of
+
+\[
+||y - G\beta||^2_2 + \lambda \beta^T \Omega \beta
+\]
+
+where \(\Omega \in R^{n \times n}\) is the penalty matrix
+
+\[
+\Omega_{ij} = \int g''_i(t) g''_j(t) dt,
+\]
+
+and i,j = 1,..,n
+
+and \(\lambda \beta^T \Omega \beta\) is the \textbf{regularization term} used to shrink the components of \(\hat{\beta}\) towards 0. \(\lambda > 0\) is the tuning parameter (or smoothing parameter). Higher value of \(\lambda\), faster shrinkage (shrinking away basis functions)
+
+\textbf{Note}\\
+smoothing splines have similar fits as kernel regression.
+
+\begin{longtable}[]{@{}lll@{}}
+\toprule
+& Smoothing splines & kernel regression\tabularnewline
+\midrule
+\endhead
+tuning parameter & smoothing parameter \(\lambda\) & bandwidth h\tabularnewline
+\bottomrule
+\end{longtable}
+
+\hypertarget{application}{%
+\section{Application}\label{application}}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(tidyverse)}
+\FunctionTok{library}\NormalTok{(caret)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Loading required package: lattice
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'lattice' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## 
+## Attaching package: 'lattice'
+\end{verbatim}
+
+\begin{verbatim}
+## The following object is masked from 'package:boot':
+## 
+##     melanoma
+\end{verbatim}
+
+\begin{verbatim}
+## 
+## Attaching package: 'caret'
+\end{verbatim}
+
+\begin{verbatim}
+## The following object is masked from 'package:purrr':
+## 
+##     lift
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{theme\_set}\NormalTok{(}\FunctionTok{theme\_classic}\NormalTok{())}
+
+\CommentTok{\# Load the data}
+\FunctionTok{data}\NormalTok{(}\StringTok{"Boston"}\NormalTok{, }\AttributeTok{package =} \StringTok{"MASS"}\NormalTok{)}
+\CommentTok{\# Split the data into training and test set}
+\FunctionTok{set.seed}\NormalTok{(}\DecValTok{123}\NormalTok{)}
+\NormalTok{training.samples }\OtherTok{\textless{}{-}}\NormalTok{ Boston}\SpecialCharTok{$}\NormalTok{medv }\SpecialCharTok{\%\textgreater{}\%}
+  \FunctionTok{createDataPartition}\NormalTok{(}\AttributeTok{p =} \FloatTok{0.8}\NormalTok{, }\AttributeTok{list =} \ConstantTok{FALSE}\NormalTok{)}
+\NormalTok{train.data  }\OtherTok{\textless{}{-}}\NormalTok{ Boston[training.samples, ]}
+\NormalTok{test.data }\OtherTok{\textless{}{-}}\NormalTok{ Boston[}\SpecialCharTok{{-}}\NormalTok{training.samples, ]}
+
+\NormalTok{knots }\OtherTok{\textless{}{-}} \FunctionTok{quantile}\NormalTok{(train.data}\SpecialCharTok{$}\NormalTok{lstat, }\AttributeTok{p =} \FunctionTok{c}\NormalTok{(}\FloatTok{0.25}\NormalTok{, }\FloatTok{0.5}\NormalTok{, }\FloatTok{0.75}\NormalTok{)) }\CommentTok{\# we use 3 knots at 25,50,and 75 quantile.}
+
+\FunctionTok{library}\NormalTok{(splines)}
+\CommentTok{\# Build the model}
+\NormalTok{knots }\OtherTok{\textless{}{-}} \FunctionTok{quantile}\NormalTok{(train.data}\SpecialCharTok{$}\NormalTok{lstat, }\AttributeTok{p =} \FunctionTok{c}\NormalTok{(}\FloatTok{0.25}\NormalTok{, }\FloatTok{0.5}\NormalTok{, }\FloatTok{0.75}\NormalTok{))}
+\NormalTok{model }\OtherTok{\textless{}{-}} \FunctionTok{lm}\NormalTok{ (medv }\SpecialCharTok{\textasciitilde{}} \FunctionTok{bs}\NormalTok{(lstat, }\AttributeTok{knots =}\NormalTok{ knots), }\AttributeTok{data =}\NormalTok{ train.data)}
+\CommentTok{\# Make predictions}
+\NormalTok{predictions }\OtherTok{\textless{}{-}}\NormalTok{ model }\SpecialCharTok{\%\textgreater{}\%} \FunctionTok{predict}\NormalTok{(test.data)}
+\CommentTok{\# Model performance}
+\FunctionTok{data.frame}\NormalTok{(}
+  \AttributeTok{RMSE =} \FunctionTok{RMSE}\NormalTok{(predictions, test.data}\SpecialCharTok{$}\NormalTok{medv),}
+  \AttributeTok{R2 =} \FunctionTok{R2}\NormalTok{(predictions, test.data}\SpecialCharTok{$}\NormalTok{medv)}
+\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+##       RMSE        R2
+## 1 5.317372 0.6786367
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{ggplot}\NormalTok{(train.data, }\FunctionTok{aes}\NormalTok{(lstat, medv) ) }\SpecialCharTok{+}
+  \FunctionTok{geom\_point}\NormalTok{() }\SpecialCharTok{+}
+  \FunctionTok{stat\_smooth}\NormalTok{(}\AttributeTok{method =}\NormalTok{ lm, }\AttributeTok{formula =}\NormalTok{ y }\SpecialCharTok{\textasciitilde{}}\NormalTok{ splines}\SpecialCharTok{::}\FunctionTok{bs}\NormalTok{(x, }\AttributeTok{df =} \DecValTok{3}\NormalTok{))}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-11-1.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{attach}\NormalTok{(train.data)}
+\CommentTok{\#fitting smoothing splines using smooth.spline(X,Y,df=...)}
+
+\NormalTok{fit1}\OtherTok{\textless{}{-}}\FunctionTok{smooth.spline}\NormalTok{(train.data}\SpecialCharTok{$}\NormalTok{lstat,train.data}\SpecialCharTok{$}\NormalTok{medv,}\AttributeTok{df=}\DecValTok{3}\NormalTok{ ) }\CommentTok{\# 3 degrees of freedom}
+\CommentTok{\#Plotting both cubic and Smoothing Splines }
+\FunctionTok{plot}\NormalTok{(train.data}\SpecialCharTok{$}\NormalTok{lstat,train.data}\SpecialCharTok{$}\NormalTok{medv,}\AttributeTok{col=}\StringTok{"grey"}\NormalTok{)}
+\NormalTok{lstat.grid }\OtherTok{=} \FunctionTok{seq}\NormalTok{(}\AttributeTok{from =} \FunctionTok{range}\NormalTok{(lstat)[}\DecValTok{1}\NormalTok{], }\AttributeTok{to =} \FunctionTok{range}\NormalTok{(lstat)[}\DecValTok{2}\NormalTok{])}
+\FunctionTok{points}\NormalTok{(lstat.grid,}\FunctionTok{predict}\NormalTok{(model,}\AttributeTok{newdata =} \FunctionTok{list}\NormalTok{(}\AttributeTok{lstat=}\NormalTok{lstat.grid)),}\AttributeTok{col=}\StringTok{"darkgreen"}\NormalTok{,}\AttributeTok{lwd=}\DecValTok{2}\NormalTok{,}\AttributeTok{type=}\StringTok{"l"}\NormalTok{)}
+\CommentTok{\#adding cutpoints}
+\FunctionTok{abline}\NormalTok{(}\AttributeTok{v=}\FunctionTok{c}\NormalTok{(}\DecValTok{10}\NormalTok{,}\DecValTok{20}\NormalTok{,}\DecValTok{30}\NormalTok{),}\AttributeTok{lty=}\DecValTok{2}\NormalTok{,}\AttributeTok{col=}\StringTok{"darkgreen"}\NormalTok{)}
+\FunctionTok{lines}\NormalTok{(fit1,}\AttributeTok{col=}\StringTok{"red"}\NormalTok{,}\AttributeTok{lwd=}\DecValTok{2}\NormalTok{)}
+
+\FunctionTok{legend}\NormalTok{(}\StringTok{"topright"}\NormalTok{,}\FunctionTok{c}\NormalTok{(}\StringTok{"Smoothing Spline with 3 df"}\NormalTok{,}\StringTok{"Cubic Spline"}\NormalTok{),}\AttributeTok{col=}\FunctionTok{c}\NormalTok{(}\StringTok{"red"}\NormalTok{,}\StringTok{"darkgreen"}\NormalTok{),}\AttributeTok{lwd=}\DecValTok{2}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-11-2.pdf}
+
+\hypertarget{generalized-additive-models}{%
+\chapter{Generalized Additive Models}\label{generalized-additive-models}}
+
+To overcome \protect\hyperlink{spline-regression}{Spline Regression}'s requirements for specifying the knots, we can use \protect\hyperlink{generalized-additive-models}{Generalized Additive Models} or GAM.
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(mgcv)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning: package 'mgcv' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## Loading required package: nlme
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'nlme' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## 
+## Attaching package: 'nlme'
+\end{verbatim}
+
+\begin{verbatim}
+## The following object is masked from 'package:dplyr':
+## 
+##     collapse
+\end{verbatim}
+
+\begin{verbatim}
+## This is mgcv 1.8-36. For overview type 'help("mgcv-package")'.
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# Build the model}
+\NormalTok{model }\OtherTok{\textless{}{-}} \FunctionTok{gam}\NormalTok{(medv }\SpecialCharTok{\textasciitilde{}} \FunctionTok{s}\NormalTok{(lstat), }\AttributeTok{data =}\NormalTok{ train.data)}
+\FunctionTok{plot}\NormalTok{(model)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-12-1.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# Make predictions}
+\CommentTok{\# predictions \textless{}{-} model \%\textgreater{}\% predict(test.data)}
+\CommentTok{\# Model performance}
+\FunctionTok{data.frame}\NormalTok{(}
+  \AttributeTok{RMSE =} \FunctionTok{RMSE}\NormalTok{(predictions, test.data}\SpecialCharTok{$}\NormalTok{medv),}
+  \AttributeTok{R2 =} \FunctionTok{R2}\NormalTok{(predictions, test.data}\SpecialCharTok{$}\NormalTok{medv)}
+\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+##       RMSE        R2
+## 1 5.317372 0.6786367
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{ggplot}\NormalTok{(train.data, }\FunctionTok{aes}\NormalTok{(lstat, medv) ) }\SpecialCharTok{+}
+  \FunctionTok{geom\_point}\NormalTok{() }\SpecialCharTok{+}
+  \FunctionTok{stat\_smooth}\NormalTok{(}\AttributeTok{method =}\NormalTok{ gam, }\AttributeTok{formula =}\NormalTok{ y }\SpecialCharTok{\textasciitilde{}} \FunctionTok{s}\NormalTok{(x))}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-12-2.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{detach}\NormalTok{(train.data)}
+\end{Highlighting}
+\end{Shaded}
+
+\hypertarget{quantile-regression}{%
+\chapter{Quantile Regression}\label{quantile-regression}}
+
+For academic review on quantile regression, check \citep{Yu_2003}
+
+Linear Regression is based on the conditional mean function \(E(y|x)\)
+
+In Quantile regression, we can view each points in the conditional distribution of y. Quantile regression estimates the conditional median or any other quantile of Y.
+
+In the case that we're interested in the 50th percentile, quantile regression is median regression, also known as least-absolute-deviations (LAD) regression, minimizes \(\sum_{i}|e_i|\)
+
+Properties of estimators \(\beta\)
+
+\begin{itemize}
+\tightlist
+\item
+  Asymptotically normally distributed
+\end{itemize}
+
+Advantages
+
+\begin{itemize}
+\tightlist
+\item
+  More robust to outliers compared to OLS
+\item
+  In the case the dependent variable has a bimodal or multimodal (multiple humps with multiple modes) distribution, quantile regression can be extremely useful.
+\item
+  Avoids parametric distribution assumption of the error process. In another word, no assumptions regarding the distribution of the error term.
+\item
+  Better characterization of the data (not just its conditional mean)
+\item
+  is invariant to monotonic transformations (such as log) while OLS is not. In another word, \(E(g(y))=g(E(y))\)
+\end{itemize}
+
+Disadvantages
+
+\begin{itemize}
+\tightlist
+\item
+  The dependent variable needs to be continuous with no zeroes or too many repeated values.
+\end{itemize}
+
+\[
+y_i = x_i'\beta_q + e_i
+\]
+
+Let \(e(x) = y -\hat{y}(x)\), then \(L(e(x)) = L(y -\hat{y}(x))\) is the loss function of the error term.
+
+If \(L(e) = |e|\) (called absolute-error loss function) then \(\hat{\beta}\) can be estimated by minimizing \(\sum_{i}|y_i-x_i'\beta|\)
+
+More specifically, the objective function is
+
+\[
+Q(\beta_q)=\sum_{i:y_i \ge x_i'\beta}^{N} q|y_i - x_i'\beta_q| + \sum_{i:y_i < x_i'\beta}^{N} (1-q)|y_i-x_i'\beta_q
+\]
+
+where \(0<q<1\)
+
+The sum penalizes \(q|e_i|\) for under-prediction and \((1-q)|e_i|\) for over-prediction
+
+We use simplex method to minimize this function (cannot use analytical solution since it's non-differentiable). Standard errors can be estimated by bootstrap.
+
+The absolute-error loss function is symmetric.
+
+\textbf{Interpretation} For the jth regressor (\(x_j\)), the marginal effect is the coefficient for the qth quantile
+
+\[
+\frac{\partial Q_q(y|x)}{\partial x_j} = \beta_{qj}
+\]
+
+At the quantile q of the dependent variable y, \(\beta_q\) represents a one unit change in the independent variable \(x_j\) on the dependent variable y.
+
+In other words, at the qth percentile, a one unit change in x results in \(\beta_q\) unit change in y.
+
+\hypertarget{application-1}{%
+\section{Application}\label{application-1}}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# generate data with non{-}constant variance}
+
+\NormalTok{x }\OtherTok{\textless{}{-}} \FunctionTok{seq}\NormalTok{(}\DecValTok{0}\NormalTok{,}\DecValTok{100}\NormalTok{,}\AttributeTok{length.out =} \DecValTok{100}\NormalTok{)        }\CommentTok{\# independent variable}
+\NormalTok{sig }\OtherTok{\textless{}{-}} \FloatTok{0.1} \SpecialCharTok{+} \FloatTok{0.05}\SpecialCharTok{*}\NormalTok{x                     }\CommentTok{\# non{-}constant variance}
+\NormalTok{b\_0 }\OtherTok{\textless{}{-}} \DecValTok{3}                                \CommentTok{\# true intercept}
+\NormalTok{b\_1 }\OtherTok{\textless{}{-}} \FloatTok{0.05}                             \CommentTok{\# true slope}
+\FunctionTok{set.seed}\NormalTok{(}\DecValTok{1}\NormalTok{)                             }\CommentTok{\# reproducibility}
+\NormalTok{e }\OtherTok{\textless{}{-}} \FunctionTok{rnorm}\NormalTok{(}\DecValTok{100}\NormalTok{,}\AttributeTok{mean =} \DecValTok{0}\NormalTok{, }\AttributeTok{sd =}\NormalTok{ sig)      }\CommentTok{\# normal random error with non{-}constant variance}
+\NormalTok{y }\OtherTok{\textless{}{-}}\NormalTok{ b\_0 }\SpecialCharTok{+}\NormalTok{ b\_1}\SpecialCharTok{*}\NormalTok{x }\SpecialCharTok{+}\NormalTok{ e                    }\CommentTok{\# dependent variable}
+\NormalTok{dat }\OtherTok{\textless{}{-}} \FunctionTok{data.frame}\NormalTok{(x,y)}
+\FunctionTok{hist}\NormalTok{(y)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-13-1.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(ggplot2)}
+\FunctionTok{ggplot}\NormalTok{(dat, }\FunctionTok{aes}\NormalTok{(x,y)) }\SpecialCharTok{+} \FunctionTok{geom\_point}\NormalTok{()}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-13-2.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{ggplot}\NormalTok{(dat, }\FunctionTok{aes}\NormalTok{(x,y)) }\SpecialCharTok{+} \FunctionTok{geom\_point}\NormalTok{() }\SpecialCharTok{+} \FunctionTok{geom\_smooth}\NormalTok{(}\AttributeTok{method=}\StringTok{"lm"}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## `geom_smooth()` using formula 'y ~ x'
+\end{verbatim}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-13-3.pdf}
+
+We follow \citep{Roger_1996} to estimate quantile regression
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(quantreg)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning: package 'quantreg' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## Loading required package: SparseM
+\end{verbatim}
+
+\begin{verbatim}
+## 
+## Attaching package: 'SparseM'
+\end{verbatim}
+
+\begin{verbatim}
+## The following object is masked from 'package:base':
+## 
+##     backsolve
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{qr }\OtherTok{\textless{}{-}} \FunctionTok{rq}\NormalTok{(y }\SpecialCharTok{\textasciitilde{}}\NormalTok{ x, }\AttributeTok{data=}\NormalTok{dat, }\AttributeTok{tau =} \FloatTok{0.5}\NormalTok{) }\CommentTok{\# tau: quantile of interest. Here we have it at 50th percentile.}
+\FunctionTok{summary}\NormalTok{(qr)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+\end{verbatim}
+
+\begin{verbatim}
+## 
+## Call: rq(formula = y ~ x, tau = 0.5, data = dat)
+## 
+## tau: [1] 0.5
+## 
+## Coefficients:
+##             coefficients lower bd upper bd
+## (Intercept) 3.02410      2.80975  3.29408 
+## x           0.05351      0.03838  0.06690
+\end{verbatim}
+
+adding the regression line
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{ggplot}\NormalTok{(dat, }\FunctionTok{aes}\NormalTok{(x,y)) }\SpecialCharTok{+} \FunctionTok{geom\_point}\NormalTok{() }\SpecialCharTok{+} 
+  \FunctionTok{geom\_abline}\NormalTok{(}\AttributeTok{intercept=}\FunctionTok{coef}\NormalTok{(qr)[}\DecValTok{1}\NormalTok{], }\AttributeTok{slope=}\FunctionTok{coef}\NormalTok{(qr)[}\DecValTok{2}\NormalTok{])}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-15-1.pdf}
+
+To have R estimate multiple quantile at once
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{qs }\OtherTok{\textless{}{-}} \DecValTok{1}\SpecialCharTok{:}\DecValTok{9}\SpecialCharTok{/}\DecValTok{10}
+\NormalTok{qr1 }\OtherTok{\textless{}{-}} \FunctionTok{rq}\NormalTok{(y }\SpecialCharTok{\textasciitilde{}}\NormalTok{ x, }\AttributeTok{data=}\NormalTok{dat, }\AttributeTok{tau =}\NormalTok{ qs)}
+\CommentTok{\#check for its coefficients}
+\FunctionTok{coef}\NormalTok{(qr1)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+##                tau= 0.1   tau= 0.2   tau= 0.3   tau= 0.4   tau= 0.5   tau= 0.6
+## (Intercept)  2.95735740 2.93735462 3.19112214 3.08146314 3.02409828 3.16840820
+## x           -0.01203696 0.01942669 0.02394535 0.04208019 0.05350556 0.06507385
+##               tau= 0.7   tau= 0.8 tau= 0.9
+## (Intercept) 3.09507770 3.10539343 3.041681
+## x           0.07783556 0.08782548 0.111254
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# plot}
+\FunctionTok{ggplot}\NormalTok{(dat, }\FunctionTok{aes}\NormalTok{(x,y)) }\SpecialCharTok{+} \FunctionTok{geom\_point}\NormalTok{() }\SpecialCharTok{+} \FunctionTok{geom\_quantile}\NormalTok{(}\AttributeTok{quantiles =}\NormalTok{ qs)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Smoothing formula not specified. Using: y ~ x
+\end{verbatim}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-16-1.pdf}
+
+To examine if the quantile regression is appropriate, we can see its plot compared to least squares regression
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{plot}\NormalTok{(}\FunctionTok{summary}\NormalTok{(qr1), }\AttributeTok{parm=}\StringTok{"x"}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+\end{verbatim}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-17-1.pdf}
+
+where red line is the least squares estimates, and its confidence interval. x-axis is the quantile y-axis is the value of the quantile regression coefficients at different quantile
+
+If the error term is normally distributed, the quantile regression line will fall inside the coefficient interval of least squares regression.
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# generate data with constant variance}
+
+\NormalTok{x }\OtherTok{\textless{}{-}} \FunctionTok{seq}\NormalTok{(}\DecValTok{0}\NormalTok{, }\DecValTok{100}\NormalTok{, }\AttributeTok{length.out =} \DecValTok{100}\NormalTok{)    }\CommentTok{\# independent variable}
+\NormalTok{b\_0 }\OtherTok{\textless{}{-}} \DecValTok{3}                              \CommentTok{\# true intercept}
+\NormalTok{b\_1 }\OtherTok{\textless{}{-}} \FloatTok{0.05}                           \CommentTok{\# true slope}
+\FunctionTok{set.seed}\NormalTok{(}\DecValTok{1}\NormalTok{)                           }\CommentTok{\# reproducibility}
+\NormalTok{e }\OtherTok{\textless{}{-}} \FunctionTok{rnorm}\NormalTok{(}\DecValTok{100}\NormalTok{, }\AttributeTok{mean =} \DecValTok{0}\NormalTok{, }\AttributeTok{sd =} \DecValTok{1}\NormalTok{)     }\CommentTok{\# normal random error with constant variance}
+\NormalTok{y }\OtherTok{\textless{}{-}}\NormalTok{ b\_0 }\SpecialCharTok{+}\NormalTok{ b\_1 }\SpecialCharTok{*}\NormalTok{ x }\SpecialCharTok{+}\NormalTok{ e                }\CommentTok{\# dependent variable}
+\NormalTok{dat2 }\OtherTok{\textless{}{-}} \FunctionTok{data.frame}\NormalTok{(x, y)}
+\NormalTok{qr2 }\OtherTok{=} \FunctionTok{rq}\NormalTok{(y }\SpecialCharTok{\textasciitilde{}}\NormalTok{ x, }\AttributeTok{data =}\NormalTok{ dat2, }\AttributeTok{tau =}\NormalTok{ qs)}
+\FunctionTok{plot}\NormalTok{(}\FunctionTok{summary}\NormalTok{(qr2), }\AttributeTok{parm =} \StringTok{"x"}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+\end{verbatim}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-18-1.pdf}
+
 \hypertarget{part-deep-learning}{%
 \part{DEEP LEARNING}\label{part-deep-learning}}
 
 \hypertarget{introduction}{%
 \chapter{Introduction}\label{introduction}}
+
+Note: Even though deep learning can be a powerful tool when it comes to fitting a function to data. Unless you have a causal diagram/model, its knowledge is still not tranferable. For example, when you get a new population, you will have to train your deep learning model again.
 
 \citep{LeCun_2015} for a review. \citep{LeCun_2015} defines a deep-learning architecture as ``a multilayer stack of simple modules, all (or most) of which are subject to learning, and many of which compute non-linear input-output mappings''.
 
@@ -1608,13 +3898,11 @@ Any continuous, function f
 
 \[
 f: R^N \to R^M
-\]
-can be realized by a network with one hidden layer (given enough hidden neurons).
+\] can be realized by a network with one hidden layer (given enough hidden neurons).
 
 Output layer
 
 \begin{itemize}
-\tightlist
 \item
   Softmax layer as the output layer\\
   \[
@@ -1622,7 +3910,6 @@ Output layer
   \]
 
   \begin{itemize}
-  \tightlist
   \item
     where
 
@@ -1683,7 +3970,6 @@ Find network parameters \(\theta^*\) that minimize total loss L.
 Network parameters \(\theta = (w_1,w_2,..,b_1,b_2,...)\)
 
 \begin{itemize}
-\tightlist
 \item
   Pick an initial value for w\\
 \item
@@ -1782,13 +4068,12 @@ When using softmax output layer, choose cross entropy. \href{http://proceedings.
 
 \begin{Shaded}
 \begin{Highlighting}[]
-\NormalTok{model.fit(x_train,y_train,batch_size }\OperatorTok{=} \DecValTok{100}\NormalTok{,nb_epoch }\OperatorTok{=} \DecValTok{20}\NormalTok{) }\CommentTok{# 100 examples in a mini-batch }
-\CommentTok{# repeat 20 times}
+\NormalTok{model.fit(x\_train,y\_train,batch\_size }\OperatorTok{=} \DecValTok{100}\NormalTok{,nb\_epoch }\OperatorTok{=} \DecValTok{20}\NormalTok{) }\CommentTok{\# 100 examples in a mini{-}batch }
+\CommentTok{\# repeat 20 times}
 \end{Highlighting}
 \end{Shaded}
 
 \begin{itemize}
-\tightlist
 \item
   Randomly initialize network parameters
 \item
@@ -1849,7 +4134,6 @@ ReLU - Variant
 \subsection{Adaptive Learning Rate}\label{adaptive-learning-rate}}
 
 \begin{itemize}
-\tightlist
 \item
   Set the learning rate \(\eta\) carefully\\
 \item
@@ -1887,7 +4171,6 @@ ReLU - Variant
 Adagrad
 
 \begin{itemize}
-\tightlist
 \item
   Original: \(w \leftarrow w - \eta \partial L /\partial w\)\\
 \item
@@ -1922,9 +4205,9 @@ Movement = negative of \(\partial L/ \partial w\) + Momentum
 
 \begin{Shaded}
 \begin{Highlighting}[]
-\CommentTok{# RMSProp (Advanced Adagrad) + Momentum}
-\NormalTok{model.}\BuiltInTok{compile}\NormalTok{(loss}\OperatorTok{=}\StringTok{'categorial_crossentropy'}\NormalTok{,optimizer }\OperatorTok{=}\NormalTok{ SGD(lr}\OperatorTok{=}\FloatTok{0.1}\NormalTok{),metrics }\OperatorTok{=}\NormalTok{ [}\StringTok{'accuracy'}\NormalTok{])}
-\NormalTok{model.}\BuiltInTok{compile}\NormalTok{(loss}\OperatorTok{=}\StringTok{'categorial_crossentropy'}\NormalTok{,optimizer}\OperatorTok{=}\NormalTok{Adam(),metrics }\OperatorTok{=}\NormalTok{ [}\StringTok{'accuracy'}\NormalTok{])}
+\CommentTok{\# RMSProp (Advanced Adagrad) + Momentum}
+\NormalTok{model.}\BuiltInTok{compile}\NormalTok{(loss}\OperatorTok{=}\StringTok{\textquotesingle{}categorial\_crossentropy\textquotesingle{}}\NormalTok{,optimizer }\OperatorTok{=}\NormalTok{ SGD(lr}\OperatorTok{=}\FloatTok{0.1}\NormalTok{),metrics }\OperatorTok{=}\NormalTok{ [}\StringTok{\textquotesingle{}accuracy\textquotesingle{}}\NormalTok{])}
+\NormalTok{model.}\BuiltInTok{compile}\NormalTok{(loss}\OperatorTok{=}\StringTok{\textquotesingle{}categorial\_crossentropy\textquotesingle{}}\NormalTok{,optimizer}\OperatorTok{=}\NormalTok{Adam(),metrics }\OperatorTok{=}\NormalTok{ [}\StringTok{\textquotesingle{}accuracy\textquotesingle{}}\NormalTok{])}
 \end{Highlighting}
 \end{Shaded}
 
@@ -1950,12 +4233,10 @@ Movement = negative of \(\partial L/ \partial w\) + Momentum
 Training
 
 \begin{itemize}
-\tightlist
 \item
   each time before updating the parameters
 
   \begin{itemize}
-  \tightlist
   \item
     each neuron has p\% to dropout.
 
@@ -1978,7 +4259,6 @@ Training
 Testing
 
 \begin{itemize}
-\tightlist
 \item
   No dropout
 
@@ -2009,14 +4289,14 @@ Dropout is a kind of ensemble.
 \begin{Shaded}
 \begin{Highlighting}[]
 \NormalTok{model }\OperatorTok{=}\NormalTok{ Sequential()}
-\NormalTok{model.add(Dense(input_dim }\OperatorTok{=} \DecValTok{28}\OperatorTok{*}\DecValTok{28}\NormalTok{,output_dim }\OperatorTok{=} \DecValTok{500}\NormalTok{))}
-\NormalTok{model.add(Activation(}\StringTok{'sigmoid'}\NormalTok{))}
+\NormalTok{model.add(Dense(input\_dim }\OperatorTok{=} \DecValTok{28}\OperatorTok{*}\DecValTok{28}\NormalTok{,output\_dim }\OperatorTok{=} \DecValTok{500}\NormalTok{))}
+\NormalTok{model.add(Activation(}\StringTok{\textquotesingle{}sigmoid\textquotesingle{}}\NormalTok{))}
 \NormalTok{model.add(dropout(}\FloatTok{0.8}\NormalTok{))}
-\NormalTok{model.add(Dense (output_dim}\OperatorTok{=}\DecValTok{500}\NormalTok{))}
-\NormalTok{model.add(Activation(}\StringTok{'sigmoid'}\NormalTok{))}
+\NormalTok{model.add(Dense (output\_dim}\OperatorTok{=}\DecValTok{500}\NormalTok{))}
+\NormalTok{model.add(Activation(}\StringTok{\textquotesingle{}sigmoid\textquotesingle{}}\NormalTok{))}
 \NormalTok{model.add(dropout(}\FloatTok{0.8}\NormalTok{))}
-\NormalTok{model.add(Dense(output_dim }\OperatorTok{=} \DecValTok{10}\NormalTok{))}
-\NormalTok{model.add(Activation(}\StringTok{'softmax'}\NormalTok{))}
+\NormalTok{model.add(Dense(output\_dim }\OperatorTok{=} \DecValTok{10}\NormalTok{))}
+\NormalTok{model.add(Activation(}\StringTok{\textquotesingle{}softmax\textquotesingle{}}\NormalTok{))}
 \end{Highlighting}
 \end{Shaded}
 
@@ -2049,21 +4329,20 @@ CNN in Keras: only modified the network structure and input format (vector to 3-
 
 \begin{Shaded}
 \begin{Highlighting}[]
-\NormalTok{model2.add(Convolution2D(}\DecValTok{25}\NormalTok{,}\DecValTok{3}\NormalTok{,}\DecValTok{3}\NormalTok{),input_shape}\OperatorTok{=}\NormalTok{ (}\DecValTok{1}\NormalTok{,}\DecValTok{28}\NormalTok{,}\DecValTok{28}\NormalTok{)) }
-\CommentTok{# 25 3x3 filters; 1:black/weight, 3: RFB, 28x28 pixels}
+\NormalTok{model2.add(Convolution2D(}\DecValTok{25}\NormalTok{,}\DecValTok{3}\NormalTok{,}\DecValTok{3}\NormalTok{),input\_shape}\OperatorTok{=}\NormalTok{ (}\DecValTok{1}\NormalTok{,}\DecValTok{28}\NormalTok{,}\DecValTok{28}\NormalTok{)) }
+\CommentTok{\# 25 3x3 filters; 1:black/weight, 3: RFB, 28x28 pixels}
 \NormalTok{model2.add(MaxPooling2D(}\DecValTok{2}\NormalTok{,}\DecValTok{2}\NormalTok{))}
 \NormalTok{model2.add(Convolution2D(}\DecValTok{50}\NormalTok{,}\DecValTok{3}\NormalTok{,}\DecValTok{3}\NormalTok{))}
 \NormalTok{model2.add(MaxPooling2D(}\DecValTok{2}\NormalTok{,}\DecValTok{2}\NormalTok{))}
 \NormalTok{model2.add(Flatten())}
-\NormalTok{model2.add(Dense(output_dim }\OperatorTok{=} \DecValTok{100}\NormalTok{))}
-\NormalTok{model2.add(Activation(}\StringTok{'relu'}\NormalTok{))}
-\NormalTok{model2.add(Dense(output_dim}\OperatorTok{=}\DecValTok{10}\NormalTok{))}
-\NormalTok{model2.add(Activation(}\StringTok{'softmax'}\NormalTok{))}
+\NormalTok{model2.add(Dense(output\_dim }\OperatorTok{=} \DecValTok{100}\NormalTok{))}
+\NormalTok{model2.add(Activation(}\StringTok{\textquotesingle{}relu\textquotesingle{}}\NormalTok{))}
+\NormalTok{model2.add(Dense(output\_dim}\OperatorTok{=}\DecValTok{10}\NormalTok{))}
+\NormalTok{model2.add(Activation(}\StringTok{\textquotesingle{}softmax\textquotesingle{}}\NormalTok{))}
 \end{Highlighting}
 \end{Shaded}
 
-will we always have to know our classes?
-Yes, and you have to retrain your model all the time. Or you could use\\
+will we always have to know our classes? Yes, and you have to retrain your model all the time. Or you could use\\
 Transfer learning in deep learning
 
 Neural topic modeling
@@ -2083,11 +4362,9 @@ BERT model
 
 \begin{itemize}
 \item
-  What is deep learning?
-  Input to output via layers of representation
+  What is deep learning? Input to output via layers of representation
 \item
-  What are layers?
-  A layer is a geometric transformation function on the data that goes through it Weights determine the data transformation behavior of a layer
+  What are layers? A layer is a geometric transformation function on the data that goes through it Weights determine the data transformation behavior of a layer
 \end{itemize}
 
 Learning Representation
@@ -2101,7 +4378,6 @@ Learning Representation
 The ``deep'' in deep learning
 
 \begin{itemize}
-\tightlist
 \item
   multiple layers
 \item
@@ -2133,7 +4409,6 @@ New problem domains for R:
 How do we train deep learning models?
 
 \begin{itemize}
-\tightlist
 \item
   Basic of machine learning algorithms\\
 \item
@@ -2155,8 +4430,7 @@ How do we train deep learning models?
 Machine learning algorithms\\
 Learning model parameters via exposure to many example data points
 
-Statistics: Often focused on inferring the process by which data is generated
-Machine Learning: Principally focused on predicting future data
+Statistics: Often focused on inferring the process by which data is generated Machine Learning: Principally focused on predicting future data
 
 Deep learning frontiers
 
@@ -2192,16 +4466,10 @@ TensorFlow APIs
 \hypertarget{r-packages}{%
 \section{R packages}\label{r-packages}}
 
-TensorFlow APIs
-* keras: Interface for neural networks, with a focus on enabling fast experimentation.
-* tfestimators: Implementations of common model types such as regressors and classifiers.\\
-* tensorflow: Low \emph{level interface to the TensorFlow computational graph.
-} tfdatasets: Scalable input pipelines for TensorFlow models.
+TensorFlow APIs * keras: Interface for neural networks, with a focus on enabling fast experimentation. * tfestimators: Implementations of common model types such as regressors and classifiers.\\
+* tensorflow: Low \emph{level interface to the TensorFlow computational graph.} tfdatasets: Scalable input pipelines for TensorFlow models.
 
-Supporting Tools
-* tfruns : Track , visualize, and manage TensorFlow training runs and experiments
-* tfdeploy : Tools designed to make exporting and serving TensorFlow models straightforward.
-* cloudml : R interface to Google Cloud Machine Learning Engine.
+Supporting Tools * tfruns : Track , visualize, and manage TensorFlow training runs and experiments * tfdeploy : Tools designed to make exporting and serving TensorFlow models straightforward. * cloudml : R interface to Google Cloud Machine Learning Engine.
 
 R interface to Keras
 
@@ -2258,8 +4526,7 @@ Materials in this chapter is based on \href{https://atcold.github.io/pytorch-Dee
 
 Deep in Deep Learning means multi-layers. ``A deep network has several layers and uses them to build a hierarchy of features of increasing complexity''
 
-Supervised Learning (= Function Optimization): With inputs and outputs, you train the machine to tweak its parameter to have the correct outputs from inputs.
-In ``traditional machine learning'', you have to engineer \textbf{feature extractor}, but in deep learning you can multi-layers feature extractor can be trained. And all layers are non-linear, because if they are linear, then all layers would be collapse into one layer.
+Supervised Learning (= Function Optimization): With inputs and outputs, you train the machine to tweak its parameter to have the correct outputs from inputs. In ``traditional machine learning'', you have to engineer \textbf{feature extractor}, but in deep learning you can multi-layers feature extractor can be trained. And all layers are non-linear, because if they are linear, then all layers would be collapse into one layer.
 
 Natural Data is compositional. Hence, it is efficiently representable hierarchically.
 
@@ -2275,8 +4542,7 @@ Revolutions in Deep Learning:
   Natural Language Processing (NLP): 2015
 \end{itemize}
 
-Deep Learning = Learning Representations/ Features
-Representation means you turn raw data into something useful
+Deep Learning = Learning Representations/ Features Representation means you turn raw data into something useful
 
 Image Recognition:\\
 Pixel, edge, texton, motif, part, object
@@ -2312,40 +4578,40 @@ Difference between Deep Learning and PCA (Principal Components Analysis) is that
 
 \begin{Shaded}
 \begin{Highlighting}[]
-\CommentTok{# Step 1: define a set of function  }
+\CommentTok{\# Step 1: define a set of function  }
 \NormalTok{model }\OperatorTok{=}\NormalTok{ Sequential()}
-\NormalTok{model.add(Dense(input_dim }\OperatorTok{=} \DecValTok{28}\OperatorTok{*}\DecValTok{28}\NormalTok{,}
-\NormalTok{output_dim }\OperatorTok{=} \DecValTok{500}\NormalTok{))}
+\NormalTok{model.add(Dense(input\_dim }\OperatorTok{=} \DecValTok{28}\OperatorTok{*}\DecValTok{28}\NormalTok{,}
+\NormalTok{output\_dim }\OperatorTok{=} \DecValTok{500}\NormalTok{))}
 
-\NormalTok{model.add(Activation(}\StringTok{'sigmoid'}\NormalTok{))}
-\NormalTok{model.add(Dense(output_dim }\OperatorTok{=} \DecValTok{500}\NormalTok{))}
-\NormalTok{model.add(Activation(}\StringTok{'sigmoid'}\NormalTok{))}
-\NormalTok{model.add(Dense(output_dim}\OperatorTok{=}\DecValTok{10}\NormalTok{))}
-\NormalTok{model.add(Activation(}\StringTok{'softmax'}\NormalTok{))}
+\NormalTok{model.add(Activation(}\StringTok{\textquotesingle{}sigmoid\textquotesingle{}}\NormalTok{))}
+\NormalTok{model.add(Dense(output\_dim }\OperatorTok{=} \DecValTok{500}\NormalTok{))}
+\NormalTok{model.add(Activation(}\StringTok{\textquotesingle{}sigmoid\textquotesingle{}}\NormalTok{))}
+\NormalTok{model.add(Dense(output\_dim}\OperatorTok{=}\DecValTok{10}\NormalTok{))}
+\NormalTok{model.add(Activation(}\StringTok{\textquotesingle{}softmax\textquotesingle{}}\NormalTok{))}
 
-\CommentTok{# Step 2: goodness of function}
-\NormalTok{model.}\BuiltInTok{compile}\NormalTok{(loss }\OperatorTok{=} \StringTok{'mse'}\NormalTok{,optimizer }\OperatorTok{=}\NormalTok{ SGD(lr}\OperatorTok{=}\FloatTok{0.1}\NormalTok{),metrics }\OperatorTok{=}\NormalTok{ [}\StringTok{'accuracy'}\NormalTok{])}
+\CommentTok{\# Step 2: goodness of function}
+\NormalTok{model.}\BuiltInTok{compile}\NormalTok{(loss }\OperatorTok{=} \StringTok{\textquotesingle{}mse\textquotesingle{}}\NormalTok{,optimizer }\OperatorTok{=}\NormalTok{ SGD(lr}\OperatorTok{=}\FloatTok{0.1}\NormalTok{),metrics }\OperatorTok{=}\NormalTok{ [}\StringTok{\textquotesingle{}accuracy\textquotesingle{}}\NormalTok{])}
 
-\CommentTok{# Step 3: Pick the best function  }
-\CommentTok{# Step 3.1: Configuration}
-\NormalTok{model.}\BuiltInTok{compile}\NormalTok{(loss }\OperatorTok{=} \StringTok{'mse'}\NormalTok{,optimizer}\OperatorTok{=}\NormalTok{SGD(lr}\OperatorTok{=}\FloatTok{0.1}\NormalTok{),metrics }\OperatorTok{=}\NormalTok{ [}\StringTok{'accuracy'}\NormalTok{])}
+\CommentTok{\# Step 3: Pick the best function  }
+\CommentTok{\# Step 3.1: Configuration}
+\NormalTok{model.}\BuiltInTok{compile}\NormalTok{(loss }\OperatorTok{=} \StringTok{\textquotesingle{}mse\textquotesingle{}}\NormalTok{,optimizer}\OperatorTok{=}\NormalTok{SGD(lr}\OperatorTok{=}\FloatTok{0.1}\NormalTok{),metrics }\OperatorTok{=}\NormalTok{ [}\StringTok{\textquotesingle{}accuracy\textquotesingle{}}\NormalTok{])}
 
-\CommentTok{# Step 3.2: Find the optimal network parameters}
-\NormalTok{model.fit(x_train,y_train,batch_size }\OperatorTok{=} \DecValTok{100}\NormalTok{,nb_epoch}\OperatorTok{=}\DecValTok{20}\NormalTok{) }\CommentTok{# x_train = training data (images)}
-\CommentTok{# y_train: labels (digits) }
+\CommentTok{\# Step 3.2: Find the optimal network parameters}
+\NormalTok{model.fit(x\_train,y\_train,batch\_size }\OperatorTok{=} \DecValTok{100}\NormalTok{,nb\_epoch}\OperatorTok{=}\DecValTok{20}\NormalTok{) }\CommentTok{\# x\_train = training data (images)}
+\CommentTok{\# y\_train: labels (digits) }
 
 
-\CommentTok{# Save and load models  }
-\CommentTok{# http://keras.io/getting-started/faq/#how-can-i-save-a-keras-model}
+\CommentTok{\# Save and load models  }
+\CommentTok{\# http://keras.io/getting{-}started/faq/\#how{-}can{-}i{-}save{-}a{-}keras{-}model}
 
-\CommentTok{# How to use the neural network (testing): }
-\CommentTok{# case 1 }
-\NormalTok{score }\OperatorTok{=}\NormalTok{ model.evaluate(x_test,y_test)}
-\BuiltInTok{print}\NormalTok{(}\StringTok{'Total loss on Testing Set:'}\NormalTok{,score[}\DecValTok{0}\NormalTok{])}
-\BuiltInTok{print}\NormalTok{(}\StringTok{'Accuracy of Testing set:'}\NormalTok{,score[}\DecValTok{1}\NormalTok{])}
+\CommentTok{\# How to use the neural network (testing): }
+\CommentTok{\# case 1 }
+\NormalTok{score }\OperatorTok{=}\NormalTok{ model.evaluate(x\_test,y\_test)}
+\BuiltInTok{print}\NormalTok{(}\StringTok{\textquotesingle{}Total loss on Testing Set:\textquotesingle{}}\NormalTok{,score[}\DecValTok{0}\NormalTok{])}
+\BuiltInTok{print}\NormalTok{(}\StringTok{\textquotesingle{}Accuracy of Testing set:\textquotesingle{}}\NormalTok{,score[}\DecValTok{1}\NormalTok{])}
 
-\CommentTok{# case 2}
-\NormalTok{result }\OperatorTok{=}\NormalTok{ model.predict(x_test)}
+\CommentTok{\# case 2}
+\NormalTok{result }\OperatorTok{=}\NormalTok{ model.predict(x\_test)}
 \end{Highlighting}
 \end{Shaded}
 
@@ -2357,6 +4623,1035 @@ Difference between Deep Learning and PCA (Principal Components Analysis) is that
 
 \citep{Mahajan_1993}
 \citep{Landsman_2020}
+
+\hypertarget{model-card}{%
+\chapter{Model Card}\label{model-card}}
+
+Originate from the \citep{Mitchell_2019}
+\href{https://modelcards.withgoogle.com/about}{Google's Model Card}. This is scientists' attempt to bring transparency, fairness and equity to other stakeholders that are affected by AI models. Two specific examples that serve as a template are:
+
+\begin{itemize}
+\tightlist
+\item
+  \href{https://modelcards.withgoogle.com/face-detection}{Face Detection}\\
+\item
+  \href{https://modelcards.withgoogle.com/object-detection}{Object Detection}
+\end{itemize}
+
+Although we have pre-defined template in \href{https://github.com/tensorflow/model-card-toolkit}{Python} and \href{https://www.googlenewsapp.com/using-model-card-toolkit-for-tf-model-transparency/}{example}, and \href{https://cloud.google.com/blog/products/ai-machine-learning/create-a-model-card-with-scikit-learn}{deploy}, there doesn't seem to be one in R
+
+\hypertarget{model-tuning}{%
+\chapter{Model Tuning}\label{model-tuning}}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(}\StringTok{"finetune"}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning: package 'finetune' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## Loading required package: tune
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'tune' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## Registered S3 method overwritten by 'tune':
+##   method                   from   
+##   required_pkgs.model_spec parsnip
+\end{verbatim}
+
+\citep{Kuhn_2014} for detail
+
+\begin{itemize}
+\tightlist
+\item
+  Grid Search
+\item
+  Annealing Search
+\end{itemize}
+
+\hypertarget{model-stacking}{%
+\chapter{Model Stacking}\label{model-stacking}}
+
+Codes are from \href{https://cran.r-project.org/web/packages/stacks/vignettes/basics.html}{stack vignettes} basic and
+
+\href{https://github.com/tidymodels/stacks}{Source Code}
+
+Steps in doing model staking:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  Define your candidate (ensemble) models
+\item
+  Initialize a \texttt{data\_stack} object with \texttt{stacks()}
+\item
+  Add candidate candidate models using \texttt{add\_candidates()}
+\item
+  Evaluate the combined predictions \texttt{blend\_predictions()}
+\item
+  'fit\_members()` allows you to fit models with non-zero staking coefficients
+\item
+  \texttt{predict()} new data
+\end{enumerate}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(tidymodels)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning: package 'tidymodels' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## -- Attaching packages -------------------------------------- tidymodels 0.1.3 --
+\end{verbatim}
+
+\begin{verbatim}
+## v broom        0.7.9      v recipes      0.1.16
+## v dials        0.0.10     v rsample      0.1.0 
+## v infer        1.0.0      v workflows    0.2.3 
+## v modeldata    0.1.1      v workflowsets 0.1.0 
+## v parsnip      0.1.7      v yardstick    0.0.8
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'broom' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'dials' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'modeldata' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'parsnip' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'recipes' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'rsample' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'workflows' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'workflowsets' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'yardstick' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## -- Conflicts ----------------------------------------- tidymodels_conflicts() --
+## x nlme::collapse()         masks dplyr::collapse()
+## x scales::discard()        masks purrr::discard()
+## x dplyr::filter()          masks stats::filter()
+## x recipes::fixed()         masks stringr::fixed()
+## x dplyr::lag()             masks stats::lag()
+## x caret::lift()            masks purrr::lift()
+## x yardstick::precision()   masks caret::precision()
+## x yardstick::recall()      masks caret::recall()
+## x yardstick::sensitivity() masks caret::sensitivity()
+## x yardstick::spec()        masks readr::spec()
+## x yardstick::specificity() masks caret::specificity()
+## x recipes::step()          masks stats::step()
+## * Use tidymodels_prefer() to resolve common conflicts.
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(stacks)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning: package 'stacks' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(dplyr)}
+\FunctionTok{library}\NormalTok{(purrr)}
+\FunctionTok{library}\NormalTok{(tune)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{data}\NormalTok{(}\StringTok{"tree\_frogs"}\NormalTok{)}
+\CommentTok{\# subset the data}
+\NormalTok{tree\_frogs }\OtherTok{\textless{}{-}}\NormalTok{ tree\_frogs }\SpecialCharTok{\%\textgreater{}\%}
+    \FunctionTok{filter}\NormalTok{(}\SpecialCharTok{!}\FunctionTok{is.na}\NormalTok{(latency)) }\SpecialCharTok{\%\textgreater{}\%}
+    \FunctionTok{select}\NormalTok{(}\SpecialCharTok{{-}}\FunctionTok{c}\NormalTok{(clutch, hatched))}
+\FunctionTok{library}\NormalTok{(ggplot2)}
+
+\FunctionTok{ggplot}\NormalTok{(tree\_frogs) }\SpecialCharTok{+}
+    \FunctionTok{aes}\NormalTok{(}\AttributeTok{x =}\NormalTok{ age, }\AttributeTok{y =}\NormalTok{ latency, }\AttributeTok{color =}\NormalTok{ treatment) }\SpecialCharTok{+}
+    \FunctionTok{geom\_point}\NormalTok{() }\SpecialCharTok{+}
+    \FunctionTok{labs}\NormalTok{(}\AttributeTok{x =} \StringTok{"Embryo Age (s)"}\NormalTok{, }\AttributeTok{y =} \StringTok{"Time to Hatch (s)"}\NormalTok{, }\AttributeTok{col =} \StringTok{"Treatment"}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-26-1.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{ggplot}\NormalTok{(tree\_frogs) }\SpecialCharTok{+}
+    \FunctionTok{aes}\NormalTok{(}\AttributeTok{x =}\NormalTok{ treatment, }\AttributeTok{y =}\NormalTok{ age, }\AttributeTok{color =}\NormalTok{ reflex) }\SpecialCharTok{+}
+    \FunctionTok{geom\_jitter}\NormalTok{() }\SpecialCharTok{+}
+    \FunctionTok{labs}\NormalTok{(}\AttributeTok{y =} \StringTok{"Embryo Age (s)"}\NormalTok{,}
+         \AttributeTok{x =} \StringTok{"treatment"}\NormalTok{,}
+         \AttributeTok{color =} \StringTok{"Response"}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-26-2.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# some setup: resampling and a basic recipe}
+\FunctionTok{set.seed}\NormalTok{(}\DecValTok{1}\NormalTok{)}
+
+\NormalTok{tree\_frogs\_split }\OtherTok{\textless{}{-}} \FunctionTok{initial\_split}\NormalTok{(tree\_frogs)}
+\NormalTok{tree\_frogs\_train }\OtherTok{\textless{}{-}} \FunctionTok{training}\NormalTok{(tree\_frogs\_split)}
+\NormalTok{tree\_frogs\_test  }\OtherTok{\textless{}{-}} \FunctionTok{testing}\NormalTok{(tree\_frogs\_split)}
+
+\NormalTok{folds }\OtherTok{\textless{}{-}}\NormalTok{ rsample}\SpecialCharTok{::}\FunctionTok{vfold\_cv}\NormalTok{(tree\_frogs\_train, }\AttributeTok{v =} \DecValTok{5}\NormalTok{)}
+
+\NormalTok{tree\_frogs\_rec }\OtherTok{\textless{}{-}}
+    \FunctionTok{recipe}\NormalTok{(reflex }\SpecialCharTok{\textasciitilde{}}\NormalTok{ ., }\AttributeTok{data =}\NormalTok{ tree\_frogs\_train) }\SpecialCharTok{\%\textgreater{}\%}
+    \FunctionTok{step\_dummy}\NormalTok{(}\FunctionTok{all\_nominal}\NormalTok{(),}\SpecialCharTok{{-}}\NormalTok{reflex) }\SpecialCharTok{\%\textgreater{}\%}
+    \FunctionTok{step\_zv}\NormalTok{(}\FunctionTok{all\_predictors}\NormalTok{())}
+
+\NormalTok{tree\_frogs\_wflow }\OtherTok{\textless{}{-}}
+    \FunctionTok{workflow}\NormalTok{() }\SpecialCharTok{\%\textgreater{}\%}
+    \FunctionTok{add\_recipe}\NormalTok{(tree\_frogs\_rec)}
+\NormalTok{ctrl\_grid }\OtherTok{\textless{}{-}} \FunctionTok{control\_stack\_grid}\NormalTok{() }\CommentTok{\# same control settings}
+\NormalTok{ctrl\_res }\OtherTok{\textless{}{-}} \FunctionTok{control\_stack\_resamples}\NormalTok{()}
+\end{Highlighting}
+\end{Shaded}
+
+Add random forest model
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{rand\_forest\_spec }\OtherTok{\textless{}{-}}
+    \FunctionTok{rand\_forest}\NormalTok{(}\AttributeTok{mtry =} \FunctionTok{tune}\NormalTok{(),}
+                \AttributeTok{min\_n =} \FunctionTok{tune}\NormalTok{(),}
+                \AttributeTok{trees =} \DecValTok{500}\NormalTok{) }\SpecialCharTok{\%\textgreater{}\%}
+    \FunctionTok{set\_mode}\NormalTok{(}\StringTok{"classification"}\NormalTok{) }\SpecialCharTok{\%\textgreater{}\%}
+    \FunctionTok{set\_engine}\NormalTok{(}\StringTok{"ranger"}\NormalTok{)}
+
+\NormalTok{rand\_forest\_wflow }\OtherTok{\textless{}{-}}
+\NormalTok{    tree\_frogs\_wflow }\SpecialCharTok{\%\textgreater{}\%}
+    \FunctionTok{add\_model}\NormalTok{(rand\_forest\_spec)}
+
+\NormalTok{rand\_forest\_res }\OtherTok{\textless{}{-}}
+    \FunctionTok{tune\_grid}\NormalTok{(}
+        \AttributeTok{object =}\NormalTok{ rand\_forest\_wflow,}
+        \AttributeTok{resamples =}\NormalTok{ folds,}
+        \AttributeTok{grid =} \DecValTok{10}\NormalTok{,}
+        \AttributeTok{control =}\NormalTok{ ctrl\_grid}
+\NormalTok{    )}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## i Creating pre-processing data to finalize unknown parameter: mtry
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'rlang' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'vctrs' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'ranger' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## ! Fold2: internal: No observations were detected in `truth` for level(s): 'low'
+## C...
+\end{verbatim}
+
+\begin{verbatim}
+## ! Fold4: internal: No observations were detected in `truth` for level(s): 'low'
+## C...
+\end{verbatim}
+
+Add neural network model
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{nnet\_spec }\OtherTok{\textless{}{-}}
+    \FunctionTok{mlp}\NormalTok{(}\AttributeTok{hidden\_units =} \FunctionTok{tune}\NormalTok{(),}
+        \AttributeTok{penalty =} \FunctionTok{tune}\NormalTok{(),}
+        \AttributeTok{epochs =} \FunctionTok{tune}\NormalTok{()) }\SpecialCharTok{\%\textgreater{}\%}
+    \FunctionTok{set\_mode}\NormalTok{(}\StringTok{"classification"}\NormalTok{) }\SpecialCharTok{\%\textgreater{}\%}
+    \FunctionTok{set\_engine}\NormalTok{(}\StringTok{"nnet"}\NormalTok{)}
+
+\NormalTok{nnet\_rec }\OtherTok{\textless{}{-}}
+\NormalTok{    tree\_frogs\_rec }\SpecialCharTok{\%\textgreater{}\%}
+    \FunctionTok{step\_normalize}\NormalTok{(}\FunctionTok{all\_predictors}\NormalTok{())}
+
+\NormalTok{nnet\_wflow }\OtherTok{\textless{}{-}}
+\NormalTok{    tree\_frogs\_wflow }\SpecialCharTok{\%\textgreater{}\%}
+    \FunctionTok{add\_model}\NormalTok{(nnet\_spec)}
+
+\NormalTok{nnet\_res }\OtherTok{\textless{}{-}}
+    \FunctionTok{tune\_grid}\NormalTok{(}
+        \AttributeTok{object =}\NormalTok{ nnet\_wflow,}
+        \AttributeTok{resamples =}\NormalTok{ folds,}
+        \AttributeTok{grid =} \DecValTok{10}\NormalTok{,}
+        \AttributeTok{control =}\NormalTok{ ctrl\_grid}
+\NormalTok{    )}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning: package 'nnet' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## ! Fold2: internal: No observations were detected in `truth` for level(s): 'low'
+## C...
+\end{verbatim}
+
+\begin{verbatim}
+## ! Fold4: internal: No observations were detected in `truth` for level(s): 'low'
+## C...
+\end{verbatim}
+
+Build stacks
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{tree\_frogs\_model\_st }\OtherTok{\textless{}{-}}
+    \CommentTok{\# initialize the stack}
+    \FunctionTok{stacks}\NormalTok{() }\SpecialCharTok{\%\textgreater{}\%}
+    \CommentTok{\# add candidate members}
+    \FunctionTok{add\_candidates}\NormalTok{(rand\_forest\_res) }\SpecialCharTok{\%\textgreater{}\%}
+    \FunctionTok{add\_candidates}\NormalTok{(nnet\_res) }\SpecialCharTok{\%\textgreater{}\%}
+    \CommentTok{\# determine how to combine their predictions}
+    \FunctionTok{blend\_predictions}\NormalTok{() }\SpecialCharTok{\%\textgreater{}\%}
+    \CommentTok{\# fit the candidates with nonzero stacking coefficients}
+    \FunctionTok{fit\_members}\NormalTok{()}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning: package 'glmnet' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: package 'Matrix' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## ! Bootstrap01: preprocessor 1/1, model 1/1: from glmnet Fortran code (error code -52); ...
+\end{verbatim}
+
+\begin{verbatim}
+## ! Bootstrap02: preprocessor 1/1, model 1/1: from glmnet Fortran code (error code -59); ...
+\end{verbatim}
+
+\begin{verbatim}
+## ! Bootstrap03: preprocessor 1/1, model 1/1: from glmnet Fortran code (error code -61); ...
+\end{verbatim}
+
+\begin{verbatim}
+## ! Bootstrap04: preprocessor 1/1, model 1/1: from glmnet Fortran code (error code -54); ...
+\end{verbatim}
+
+\begin{verbatim}
+## ! Bootstrap05: preprocessor 1/1, model 1/1: from glmnet Fortran code (error code -52); ...
+\end{verbatim}
+
+\begin{verbatim}
+## ! Bootstrap06: preprocessor 1/1, model 1/1: from glmnet Fortran code (error code -57); ...
+\end{verbatim}
+
+\begin{verbatim}
+## ! Bootstrap07: preprocessor 1/1, model 1/1: from glmnet Fortran code (error code -56); ...
+\end{verbatim}
+
+\begin{verbatim}
+## ! Bootstrap08: internal: No observations were detected in `truth` for level(s): 'low', ...
+\end{verbatim}
+
+\begin{verbatim}
+## ! Bootstrap09: preprocessor 1/1, model 1/1: from glmnet Fortran code (error code -55); ...
+\end{verbatim}
+
+\begin{verbatim}
+## ! Bootstrap10: preprocessor 1/1, model 1/1: from glmnet Fortran code (error code -59); ...
+\end{verbatim}
+
+\begin{verbatim}
+## ! Bootstrap11: preprocessor 1/1, model 1/1: one multinomial or binomial class has fewer...
+\end{verbatim}
+
+\begin{verbatim}
+## ! Bootstrap12: preprocessor 1/1, model 1/1: one multinomial or binomial class has fewer...
+\end{verbatim}
+
+\begin{verbatim}
+## ! Bootstrap13: preprocessor 1/1, model 1/1: from glmnet Fortran code (error code -58); ...
+\end{verbatim}
+
+\begin{verbatim}
+## ! Bootstrap14: preprocessor 1/1, model 1/1: from glmnet Fortran code (error code -59); ...
+\end{verbatim}
+
+\begin{verbatim}
+## ! Bootstrap15: preprocessor 1/1, model 1/1: one multinomial or binomial class has fewer...
+\end{verbatim}
+
+\begin{verbatim}
+## ! Bootstrap16: preprocessor 1/1, model 1/1: from glmnet Fortran code (error code -60); ...
+\end{verbatim}
+
+\begin{verbatim}
+## ! Bootstrap17: internal: No observations were detected in `truth` for level(s): 'low', ...
+\end{verbatim}
+
+\begin{verbatim}
+## ! Bootstrap18: preprocessor 1/1, model 1/1: from glmnet Fortran code (error code -53); ...
+\end{verbatim}
+
+\begin{verbatim}
+## ! Bootstrap19: preprocessor 1/1, model 1/1: from glmnet Fortran code (error code -59); ...
+\end{verbatim}
+
+\begin{verbatim}
+## ! Bootstrap20: preprocessor 1/1, model 1/1: from glmnet Fortran code (error code -59); ...
+\end{verbatim}
+
+\begin{verbatim}
+## ! Bootstrap21: preprocessor 1/1, model 1/1: from glmnet Fortran code (error code -58); ...
+\end{verbatim}
+
+\begin{verbatim}
+## ! Bootstrap22: preprocessor 1/1, model 1/1: from glmnet Fortran code (error code -50); ...
+\end{verbatim}
+
+\begin{verbatim}
+## ! Bootstrap23: preprocessor 1/1, model 1/1: from glmnet Fortran code (error code -51); ...
+\end{verbatim}
+
+\begin{verbatim}
+## ! Bootstrap24: preprocessor 1/1, model 1/1: from glmnet Fortran code (error code -52); ...
+\end{verbatim}
+
+\begin{verbatim}
+## ! Bootstrap25: preprocessor 1/1, model 1/1: from glmnet Fortran code (error code -60); ...
+\end{verbatim}
+
+\begin{verbatim}
+## Warning: from glmnet Fortran code (error code -55); Convergence for 55th lambda
+## value not reached after maxit=100000 iterations; solutions for larger lambdas
+## returned
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{tree\_frogs\_model\_st}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## -- A stacked ensemble model -------------------------------------
+\end{verbatim}
+
+\begin{verbatim}
+## 
+## Out of 40 possible candidate members, the ensemble retained 5.
+## Penalty: 0.01.
+## Mixture: 1.
+\end{verbatim}
+
+\begin{verbatim}
+## Across the 3 classes, there are an average of 1.67 coefficients per class.
+\end{verbatim}
+
+\begin{verbatim}
+## 
+## The 5 highest weighted member classes are:
+\end{verbatim}
+
+\begin{verbatim}
+## # A tibble: 5 x 4
+##   member                          type        weight class
+##   <chr>                           <chr>        <dbl> <chr>
+## 1 .pred_mid_nnet_res_1_10         mlp         12.7   low  
+## 2 .pred_mid_nnet_res_1_09         mlp          7.25  mid  
+## 3 .pred_full_rand_forest_res_1_10 rand_forest  6.62  full 
+## 4 .pred_mid_rand_forest_res_1_07  rand_forest  1.89  mid  
+## 5 .pred_full_rand_forest_res_1_07 rand_forest  0.586 full
+\end{verbatim}
+
+Check performance
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{theme\_set}\NormalTok{(}\FunctionTok{theme\_bw}\NormalTok{())}
+\FunctionTok{autoplot}\NormalTok{(tree\_frogs\_model\_st)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-31-1.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{autoplot}\NormalTok{(tree\_frogs\_model\_st, }\AttributeTok{type =} \StringTok{"members"}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-31-2.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{autoplot}\NormalTok{(tree\_frogs\_model\_st, }\AttributeTok{type =} \StringTok{"weights"}\NormalTok{) }\CommentTok{\# to see penalty}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-31-3.pdf}
+
+See parameters
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{collect\_parameters}\NormalTok{(tree\_frogs\_model\_st, }\StringTok{"rand\_forest\_res"}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## # A tibble: 60 x 6
+##    member                mtry min_n class terms                            coef
+##    <chr>                <int> <int> <chr> <chr>                           <dbl>
+##  1 rand_forest_res_1_01     1    32 low   .pred_mid_rand_forest_res_1_01      0
+##  2 rand_forest_res_1_01     1    32 low   .pred_full_rand_forest_res_1_01     0
+##  3 rand_forest_res_1_01     1    32 mid   .pred_mid_rand_forest_res_1_01      0
+##  4 rand_forest_res_1_01     1    32 mid   .pred_full_rand_forest_res_1_01     0
+##  5 rand_forest_res_1_01     1    32 full  .pred_mid_rand_forest_res_1_01      0
+##  6 rand_forest_res_1_01     1    32 full  .pred_full_rand_forest_res_1_01     0
+##  7 rand_forest_res_1_02     1    27 low   .pred_mid_rand_forest_res_1_02      0
+##  8 rand_forest_res_1_02     1    27 low   .pred_full_rand_forest_res_1_02     0
+##  9 rand_forest_res_1_02     1    27 mid   .pred_mid_rand_forest_res_1_02      0
+## 10 rand_forest_res_1_02     1    27 mid   .pred_full_rand_forest_res_1_02     0
+## # ... with 50 more rows
+\end{verbatim}
+
+Predict new data
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{tree\_frogs\_pred }\OtherTok{\textless{}{-}}
+\NormalTok{    tree\_frogs\_test }\SpecialCharTok{\%\textgreater{}\%}
+    \FunctionTok{bind\_cols}\NormalTok{(}\FunctionTok{predict}\NormalTok{(tree\_frogs\_model\_st, .,}\AttributeTok{type =} \StringTok{"prob"}\NormalTok{))}
+\end{Highlighting}
+\end{Shaded}
+
+ROC AUC
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{yardstick}\SpecialCharTok{::}\FunctionTok{roc\_auc}\NormalTok{(tree\_frogs\_pred,}
+                   \AttributeTok{truth =}\NormalTok{ reflex,}
+                   \FunctionTok{contains}\NormalTok{(}\StringTok{".pred\_"}\NormalTok{))}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## # A tibble: 1 x 3
+##   .metric .estimator .estimate
+##   <chr>   <chr>          <dbl>
+## 1 roc_auc hand_till      0.364
+\end{verbatim}
+
+Compare predictions with actual observations
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# ggplot(tree\_frogs\_pred) +}
+\CommentTok{\#     aes(x = latency,}
+\CommentTok{\#         y = .pred) +}
+\CommentTok{\#     geom\_point() +}
+\CommentTok{\#     coord\_obs\_pred()}
+\end{Highlighting}
+\end{Shaded}
+
+Comparison between stacks and member model
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{member\_preds }\OtherTok{\textless{}{-}}
+\NormalTok{    tree\_frogs\_test }\SpecialCharTok{\%\textgreater{}\%}
+    \FunctionTok{select}\NormalTok{(latency) }\SpecialCharTok{\%\textgreater{}\%}
+    \FunctionTok{bind\_cols}\NormalTok{(}\FunctionTok{predict}\NormalTok{(tree\_frogs\_model\_st, tree\_frogs\_test, }\AttributeTok{members =} \ConstantTok{TRUE}\NormalTok{))}
+\end{Highlighting}
+\end{Shaded}
+
+Compare different model predictions
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{map\_dfr}\NormalTok{(}\FunctionTok{setNames}\NormalTok{(}\FunctionTok{colnames}\NormalTok{(tree\_frogs\_pred), }\FunctionTok{colnames}\NormalTok{(tree\_frogs\_pred)),}
+        \SpecialCharTok{\textasciitilde{}} \FunctionTok{mean}\NormalTok{(tree\_frogs\_pred}\SpecialCharTok{$}\NormalTok{reflex }\SpecialCharTok{==} \FunctionTok{pull}\NormalTok{(tree\_frogs\_pred, .x))) }\SpecialCharTok{\%\textgreater{}\%}
+    \FunctionTok{pivot\_longer}\NormalTok{(}\FunctionTok{c}\NormalTok{(}\FunctionTok{everything}\NormalTok{(),}\SpecialCharTok{{-}}\NormalTok{reflex))}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## # A tibble: 7 x 3
+##   reflex name       value
+##    <dbl> <chr>      <dbl>
+## 1      1 treatment      0
+## 2      1 age            0
+## 3      1 t_o_d          0
+## 4      1 latency        0
+## 5      1 .pred_full     0
+## 6      1 .pred_low      0
+## 7      1 .pred_mid      0
+\end{verbatim}
+
+\hypertarget{data-storage}{%
+\chapter{Data Storage}\label{data-storage}}
+
+\begin{longtable}[]{@{}lll@{}}
+\toprule
+\begin{minipage}[b]{(\columnwidth - 2\tabcolsep) * \real{0.11}}\raggedright
+\strut
+\end{minipage} & \begin{minipage}[b]{(\columnwidth - 2\tabcolsep) * \real{0.40}}\raggedright
+\protect\hyperlink{structured-databases}{Structured Databases}\strut
+\end{minipage} & \begin{minipage}[b]{(\columnwidth - 2\tabcolsep) * \real{0.48}}\raggedright
+\protect\hyperlink{unstructured-databases}{Unstructured Databases}\strut
+\end{minipage}\tabularnewline
+\midrule
+\endhead
+\begin{minipage}[t]{(\columnwidth - 2\tabcolsep) * \real{0.11}}\raggedright
+Structure\strut
+\end{minipage} & \begin{minipage}[t]{(\columnwidth - 2\tabcolsep) * \real{0.40}}\raggedright
+every element has the same number of attributes (i.e., column)\strut
+\end{minipage} & \begin{minipage}[t]{(\columnwidth - 2\tabcolsep) * \real{0.48}}\raggedright
+Different elements can have different number of attributes (more efficient)\strut
+\end{minipage}\tabularnewline
+\begin{minipage}[t]{(\columnwidth - 2\tabcolsep) * \real{0.11}}\raggedright
+Latency\strut
+\end{minipage} & \begin{minipage}[t]{(\columnwidth - 2\tabcolsep) * \real{0.40}}\raggedright
+Slower\strut
+\end{minipage} & \begin{minipage}[t]{(\columnwidth - 2\tabcolsep) * \real{0.48}}\raggedright
+Faster\strut
+\end{minipage}\tabularnewline
+\begin{minipage}[t]{(\columnwidth - 2\tabcolsep) * \real{0.11}}\raggedright
+Ease of learning\strut
+\end{minipage} & \begin{minipage}[t]{(\columnwidth - 2\tabcolsep) * \real{0.40}}\raggedright
+Easy\strut
+\end{minipage} & \begin{minipage}[t]{(\columnwidth - 2\tabcolsep) * \real{0.48}}\raggedright
+Harder, more steep\strut
+\end{minipage}\tabularnewline
+\begin{minipage}[t]{(\columnwidth - 2\tabcolsep) * \real{0.11}}\raggedright
+Storage Volume\strut
+\end{minipage} & \begin{minipage}[t]{(\columnwidth - 2\tabcolsep) * \real{0.40}}\raggedright
+Not appropriate for strong Big Data\strut
+\end{minipage} & \begin{minipage}[t]{(\columnwidth - 2\tabcolsep) * \real{0.48}}\raggedright
+handle Big Data well\strut
+\end{minipage}\tabularnewline
+\begin{minipage}[t]{(\columnwidth - 2\tabcolsep) * \real{0.11}}\raggedright
+Data Types\strut
+\end{minipage} & \begin{minipage}[t]{(\columnwidth - 2\tabcolsep) * \real{0.40}}\raggedright
+numerical, texture\strut
+\end{minipage} & \begin{minipage}[t]{(\columnwidth - 2\tabcolsep) * \real{0.48}}\raggedright
+any (e.g., audio, video)\strut
+\end{minipage}\tabularnewline
+\begin{minipage}[t]{(\columnwidth - 2\tabcolsep) * \real{0.11}}\raggedright
+Examples\strut
+\end{minipage} & \begin{minipage}[t]{(\columnwidth - 2\tabcolsep) * \real{0.40}}\raggedright
+MySQL, PostgreSQL\strut
+\end{minipage} & \begin{minipage}[t]{(\columnwidth - 2\tabcolsep) * \real{0.48}}\raggedright
+MongoDB, Neo4j\strut
+\end{minipage}\tabularnewline
+\bottomrule
+\end{longtable}
+
+\hypertarget{structured-databases}{%
+\section{Structured Databases}\label{structured-databases}}
+
+\hypertarget{unstructured-databases}{%
+\section{Unstructured Databases}\label{unstructured-databases}}
+
+\hypertarget{mongodb}{%
+\subsection{MongoDB}\label{mongodb}}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\ImportTok{import}\NormalTok{ pymongo}
+
+\CommentTok{\#\%\% Create a Database}
+\NormalTok{myclient }\OperatorTok{=}\NormalTok{ pymongo.MongoClient(}\StringTok{"mongodb://localhost:27017/"}\NormalTok{)}
+
+\NormalTok{mydb }\OperatorTok{=}\NormalTok{ myclient[}\StringTok{"mydatabase"}\NormalTok{]}
+
+\CommentTok{\#\%\% Check if database exists}
+
+\CommentTok{\#check if a database exist by listing all databases in you system}
+\BuiltInTok{print}\NormalTok{(myclient.list\_database\_names())}
+
+\CommentTok{\#check a specific database by name}
+\NormalTok{dblist }\OperatorTok{=}\NormalTok{ myclient.list\_database\_names()}
+\ControlFlowTok{if} \StringTok{"mydatabase"} \KeywordTok{in}\NormalTok{ dblist:}
+  \BuiltInTok{print}\NormalTok{(}\StringTok{"The database exists."}\NormalTok{)}
+
+\CommentTok{\#\%\% Insert Into Collection}
+\CommentTok{\#The first parameter of the insert\_one() method is a dictionary containing the name(s) and value(s) of each field in the document you want to insert.}
+
+
+\NormalTok{myclient }\OperatorTok{=}\NormalTok{ pymongo.MongoClient(}\StringTok{"mongodb://localhost:27017/"}\NormalTok{)}
+\NormalTok{mydb }\OperatorTok{=}\NormalTok{ myclient[}\StringTok{"mydatabase"}\NormalTok{]}
+\NormalTok{mycol }\OperatorTok{=}\NormalTok{ mydb[}\StringTok{"customers"}\NormalTok{]}
+
+\NormalTok{mydict }\OperatorTok{=}\NormalTok{ \{ }\StringTok{"name"}\NormalTok{: }\StringTok{"John"}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\StringTok{"Highway 37"}\NormalTok{ \}}
+
+\NormalTok{x }\OperatorTok{=}\NormalTok{ mycol.insert\_one(mydict)}
+
+\CommentTok{\#\%\% Return the \_id field}
+\NormalTok{mydict }\OperatorTok{=}\NormalTok{ \{ }\StringTok{"name"}\NormalTok{: }\StringTok{"Peter"}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\StringTok{"Lowstreet 27"}\NormalTok{ \}}
+
+\NormalTok{x }\OperatorTok{=}\NormalTok{ mycol.insert\_one(mydict)}
+
+\BuiltInTok{print}\NormalTok{(x.inserted\_id)}
+
+\CommentTok{\#\%\% Insert Multiple documents}
+\ImportTok{import}\NormalTok{ pymongo}
+
+\NormalTok{myclient }\OperatorTok{=}\NormalTok{ pymongo.MongoClient(}\StringTok{"mongodb://localhost:27017/"}\NormalTok{)}
+\NormalTok{mydb }\OperatorTok{=}\NormalTok{ myclient[}\StringTok{"mydatabase"}\NormalTok{]}
+\NormalTok{mycol }\OperatorTok{=}\NormalTok{ mydb[}\StringTok{"customers"}\NormalTok{]}
+
+\NormalTok{mylist }\OperatorTok{=}\NormalTok{ [}
+\NormalTok{  \{ }\StringTok{"name"}\NormalTok{: }\StringTok{"Amy"}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\StringTok{"Apple st 652"}\NormalTok{\},}
+\NormalTok{  \{ }\StringTok{"name"}\NormalTok{: }\StringTok{"Hannah"}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\StringTok{"Mountain 21"}\NormalTok{\},}
+\NormalTok{  \{ }\StringTok{"name"}\NormalTok{: }\StringTok{"Michael"}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\StringTok{"Valley 345"}\NormalTok{\},}
+\NormalTok{  \{ }\StringTok{"name"}\NormalTok{: }\StringTok{"Sandy"}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\StringTok{"Ocean blvd 2"}\NormalTok{\},}
+\NormalTok{  \{ }\StringTok{"name"}\NormalTok{: }\StringTok{"Betty"}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\StringTok{"Green Grass 1"}\NormalTok{\},}
+\NormalTok{  \{ }\StringTok{"name"}\NormalTok{: }\StringTok{"Richard"}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\StringTok{"Sky st 331"}\NormalTok{\},}
+\NormalTok{  \{ }\StringTok{"name"}\NormalTok{: }\StringTok{"Susan"}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\StringTok{"One way 98"}\NormalTok{\},}
+\NormalTok{  \{ }\StringTok{"name"}\NormalTok{: }\StringTok{"Vicky"}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\StringTok{"Yellow Garden 2"}\NormalTok{\},}
+\NormalTok{  \{ }\StringTok{"name"}\NormalTok{: }\StringTok{"Ben"}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\StringTok{"Park Lane 38"}\NormalTok{\},}
+\NormalTok{  \{ }\StringTok{"name"}\NormalTok{: }\StringTok{"William"}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\StringTok{"Central st 954"}\NormalTok{\},}
+\NormalTok{  \{ }\StringTok{"name"}\NormalTok{: }\StringTok{"Chuck"}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\StringTok{"Main Road 989"}\NormalTok{\},}
+\NormalTok{  \{ }\StringTok{"name"}\NormalTok{: }\StringTok{"Viola"}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\StringTok{"Sideway 1633"}\NormalTok{\}}
+\NormalTok{]}
+
+\NormalTok{x }\OperatorTok{=}\NormalTok{ mycol.insert\_many(mylist)}
+
+\CommentTok{\#print list of the \_id values of the inserted documents:}
+\BuiltInTok{print}\NormalTok{(x.inserted\_ids)}
+
+\CommentTok{\#\%\% Insert Multiple Documents, with Specified IDs}
+\ImportTok{import}\NormalTok{ pymongo}
+
+\NormalTok{myclient }\OperatorTok{=}\NormalTok{ pymongo.MongoClient(}\StringTok{"mongodb://localhost:27017/"}\NormalTok{)}
+\NormalTok{mydb }\OperatorTok{=}\NormalTok{ myclient[}\StringTok{"mydatabase"}\NormalTok{]}
+\NormalTok{mycol }\OperatorTok{=}\NormalTok{ mydb[}\StringTok{"customers"}\NormalTok{]}
+
+\NormalTok{mylist }\OperatorTok{=}\NormalTok{ [}
+\NormalTok{  \{ }\StringTok{"\_id"}\NormalTok{: }\DecValTok{1}\NormalTok{, }\StringTok{"name"}\NormalTok{: }\StringTok{"John"}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\StringTok{"Highway 37"}\NormalTok{\},}
+\NormalTok{  \{ }\StringTok{"\_id"}\NormalTok{: }\DecValTok{2}\NormalTok{, }\StringTok{"name"}\NormalTok{: }\StringTok{"Peter"}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\StringTok{"Lowstreet 27"}\NormalTok{\},}
+\NormalTok{  \{ }\StringTok{"\_id"}\NormalTok{: }\DecValTok{3}\NormalTok{, }\StringTok{"name"}\NormalTok{: }\StringTok{"Amy"}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\StringTok{"Apple st 652"}\NormalTok{\},}
+\NormalTok{  \{ }\StringTok{"\_id"}\NormalTok{: }\DecValTok{4}\NormalTok{, }\StringTok{"name"}\NormalTok{: }\StringTok{"Hannah"}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\StringTok{"Mountain 21"}\NormalTok{\},}
+\NormalTok{  \{ }\StringTok{"\_id"}\NormalTok{: }\DecValTok{5}\NormalTok{, }\StringTok{"name"}\NormalTok{: }\StringTok{"Michael"}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\StringTok{"Valley 345"}\NormalTok{\},}
+\NormalTok{  \{ }\StringTok{"\_id"}\NormalTok{: }\DecValTok{6}\NormalTok{, }\StringTok{"name"}\NormalTok{: }\StringTok{"Sandy"}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\StringTok{"Ocean blvd 2"}\NormalTok{\},}
+\NormalTok{  \{ }\StringTok{"\_id"}\NormalTok{: }\DecValTok{7}\NormalTok{, }\StringTok{"name"}\NormalTok{: }\StringTok{"Betty"}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\StringTok{"Green Grass 1"}\NormalTok{\},}
+\NormalTok{  \{ }\StringTok{"\_id"}\NormalTok{: }\DecValTok{8}\NormalTok{, }\StringTok{"name"}\NormalTok{: }\StringTok{"Richard"}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\StringTok{"Sky st 331"}\NormalTok{\},}
+\NormalTok{  \{ }\StringTok{"\_id"}\NormalTok{: }\DecValTok{9}\NormalTok{, }\StringTok{"name"}\NormalTok{: }\StringTok{"Susan"}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\StringTok{"One way 98"}\NormalTok{\},}
+\NormalTok{  \{ }\StringTok{"\_id"}\NormalTok{: }\DecValTok{10}\NormalTok{, }\StringTok{"name"}\NormalTok{: }\StringTok{"Vicky"}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\StringTok{"Yellow Garden 2"}\NormalTok{\},}
+\NormalTok{  \{ }\StringTok{"\_id"}\NormalTok{: }\DecValTok{11}\NormalTok{, }\StringTok{"name"}\NormalTok{: }\StringTok{"Ben"}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\StringTok{"Park Lane 38"}\NormalTok{\},}
+\NormalTok{  \{ }\StringTok{"\_id"}\NormalTok{: }\DecValTok{12}\NormalTok{, }\StringTok{"name"}\NormalTok{: }\StringTok{"William"}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\StringTok{"Central st 954"}\NormalTok{\},}
+\NormalTok{  \{ }\StringTok{"\_id"}\NormalTok{: }\DecValTok{13}\NormalTok{, }\StringTok{"name"}\NormalTok{: }\StringTok{"Chuck"}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\StringTok{"Main Road 989"}\NormalTok{\},}
+\NormalTok{  \{ }\StringTok{"\_id"}\NormalTok{: }\DecValTok{14}\NormalTok{, }\StringTok{"name"}\NormalTok{: }\StringTok{"Viola"}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\StringTok{"Sideway 1633"}\NormalTok{\}}
+\NormalTok{]}
+
+\NormalTok{x }\OperatorTok{=}\NormalTok{ mycol.insert\_many(mylist)}
+
+\CommentTok{\#print list of the \_id values of the inserted documents:}
+\BuiltInTok{print}\NormalTok{(x.inserted\_ids)}
+
+\CommentTok{\#\%\% Find One}
+
+\ImportTok{import}\NormalTok{ pymongo}
+
+\NormalTok{myclient }\OperatorTok{=}\NormalTok{ pymongo.MongoClient(}\StringTok{"mongodb://localhost:27017/"}\NormalTok{)}
+\NormalTok{mydb }\OperatorTok{=}\NormalTok{ myclient[}\StringTok{"mydatabase"}\NormalTok{]}
+\NormalTok{mycol }\OperatorTok{=}\NormalTok{ mydb[}\StringTok{"customers"}\NormalTok{]}
+
+\NormalTok{x }\OperatorTok{=}\NormalTok{ mycol.find\_one()}
+
+\BuiltInTok{print}\NormalTok{(x)}
+
+\CommentTok{\#\%\% Find All}
+
+
+\ImportTok{import}\NormalTok{ pymongo}
+
+\NormalTok{myclient }\OperatorTok{=}\NormalTok{ pymongo.MongoClient(}\StringTok{"mongodb://localhost:27017/"}\NormalTok{)}
+\NormalTok{mydb }\OperatorTok{=}\NormalTok{ myclient[}\StringTok{"mydatabase"}\NormalTok{]}
+\NormalTok{mycol }\OperatorTok{=}\NormalTok{ mydb[}\StringTok{"customers"}\NormalTok{]}
+
+\ControlFlowTok{for}\NormalTok{ x }\KeywordTok{in}\NormalTok{ mycol.find():}
+  \BuiltInTok{print}\NormalTok{(x)}
+  
+\CommentTok{\#\%\% Return Only Some Fields}
+
+\ImportTok{import}\NormalTok{ pymongo}
+
+\NormalTok{myclient }\OperatorTok{=}\NormalTok{ pymongo.MongoClient(}\StringTok{"mongodb://localhost:27017/"}\NormalTok{)}
+\NormalTok{mydb }\OperatorTok{=}\NormalTok{ myclient[}\StringTok{"mydatabase"}\NormalTok{]}
+\NormalTok{mycol }\OperatorTok{=}\NormalTok{ mydb[}\StringTok{"customers"}\NormalTok{]}
+
+\ControlFlowTok{for}\NormalTok{ x }\KeywordTok{in}\NormalTok{ mycol.find(\{\},\{ }\StringTok{"\_id"}\NormalTok{: }\DecValTok{0}\NormalTok{, }\StringTok{"name"}\NormalTok{: }\DecValTok{1}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\DecValTok{1}\NormalTok{ \}):}
+  \BuiltInTok{print}\NormalTok{(x)}
+
+\CommentTok{\#\%\% Example exclude "address" }
+  
+\ImportTok{import}\NormalTok{ pymongo}
+
+\NormalTok{myclient }\OperatorTok{=}\NormalTok{ pymongo.MongoClient(}\StringTok{"mongodb://localhost:27017/"}\NormalTok{)}
+\NormalTok{mydb }\OperatorTok{=}\NormalTok{ myclient[}\StringTok{"mydatabase"}\NormalTok{]}
+\NormalTok{mycol }\OperatorTok{=}\NormalTok{ mydb[}\StringTok{"customers"}\NormalTok{]}
+
+\ControlFlowTok{for}\NormalTok{ x }\KeywordTok{in}\NormalTok{ mycol.find(\{\},\{ }\StringTok{"address"}\NormalTok{: }\DecValTok{0}\NormalTok{ \}):}
+  \BuiltInTok{print}\NormalTok{(x)}
+
+
+\CommentTok{\#\%\% get error if you specify both}
+\ImportTok{import}\NormalTok{ pymongo}
+
+\NormalTok{myclient }\OperatorTok{=}\NormalTok{ pymongo.MongoClient(}\StringTok{"mongodb://localhost:27017/"}\NormalTok{)}
+\NormalTok{mydb }\OperatorTok{=}\NormalTok{ myclient[}\StringTok{"mydatabase"}\NormalTok{]}
+\NormalTok{mycol }\OperatorTok{=}\NormalTok{ mydb[}\StringTok{"customers"}\NormalTok{]}
+
+\ControlFlowTok{for}\NormalTok{ x }\KeywordTok{in}\NormalTok{ mycol.find(\{\},\{ }\StringTok{"name"}\NormalTok{: }\DecValTok{1}\NormalTok{, }\StringTok{"address"}\NormalTok{: }\DecValTok{0}\NormalTok{ \}):}
+  \BuiltInTok{print}\NormalTok{(x)}
+
+
+\CommentTok{\#\%\%  Filter the Result}
+  
+\ImportTok{import}\NormalTok{ pymongo}
+
+\NormalTok{myclient }\OperatorTok{=}\NormalTok{ pymongo.MongoClient(}\StringTok{"mongodb://localhost:27017/"}\NormalTok{)}
+\NormalTok{mydb }\OperatorTok{=}\NormalTok{ myclient[}\StringTok{"mydatabase"}\NormalTok{]}
+\NormalTok{mycol }\OperatorTok{=}\NormalTok{ mydb[}\StringTok{"customers"}\NormalTok{]}
+
+\NormalTok{myquery }\OperatorTok{=}\NormalTok{ \{ }\StringTok{"address"}\NormalTok{: }\StringTok{"Park Lane 38"}\NormalTok{ \}}
+
+\NormalTok{mydoc }\OperatorTok{=}\NormalTok{ mycol.find(myquery)}
+
+\ControlFlowTok{for}\NormalTok{ x }\KeywordTok{in}\NormalTok{ mydoc:}
+  \BuiltInTok{print}\NormalTok{(x)}
+
+
+\CommentTok{\#\%\% Advanced Query}
+
+\ImportTok{import}\NormalTok{ pymongo}
+
+\NormalTok{myclient }\OperatorTok{=}\NormalTok{ pymongo.MongoClient(}\StringTok{"mongodb://localhost:27017/"}\NormalTok{)}
+\NormalTok{mydb }\OperatorTok{=}\NormalTok{ myclient[}\StringTok{"mydatabase"}\NormalTok{]}
+\NormalTok{mycol }\OperatorTok{=}\NormalTok{ mydb[}\StringTok{"customers"}\NormalTok{]}
+
+\NormalTok{myquery }\OperatorTok{=}\NormalTok{ \{ }\StringTok{"address"}\NormalTok{: \{ }\StringTok{"$gt"}\NormalTok{: }\StringTok{"S"}\NormalTok{ \} \} }\CommentTok{\# o find the documents where the "address" field starts with the letter "S" or higher (alphabetically), use the greater than modifier: \{"$gt": "S"\}:}
+
+\NormalTok{mydoc }\OperatorTok{=}\NormalTok{ mycol.find(myquery)}
+
+\ControlFlowTok{for}\NormalTok{ x }\KeywordTok{in}\NormalTok{ mydoc:}
+  \BuiltInTok{print}\NormalTok{(x)}
+
+\CommentTok{\#\%\% Filter With Regular Expressions}
+\ImportTok{import}\NormalTok{ pymongo}
+
+\NormalTok{myclient }\OperatorTok{=}\NormalTok{ pymongo.MongoClient(}\StringTok{"mongodb://localhost:27017/"}\NormalTok{)}
+\NormalTok{mydb }\OperatorTok{=}\NormalTok{ myclient[}\StringTok{"mydatabase"}\NormalTok{]}
+\NormalTok{mycol }\OperatorTok{=}\NormalTok{ mydb[}\StringTok{"customers"}\NormalTok{]}
+
+\NormalTok{myquery }\OperatorTok{=}\NormalTok{ \{ }\StringTok{"address"}\NormalTok{: \{ }\StringTok{"$regex"}\NormalTok{: }\StringTok{"\^{}S"}\NormalTok{ \} \} }\CommentTok{\#Find documents where the address starts with the letter "S":}
+
+\NormalTok{mydoc }\OperatorTok{=}\NormalTok{ mycol.find(myquery)}
+
+\ControlFlowTok{for}\NormalTok{ x }\KeywordTok{in}\NormalTok{ mydoc:}
+  \BuiltInTok{print}\NormalTok{(x)}
+
+
+\CommentTok{\#\%\% Sort the Result}
+
+\ImportTok{import}\NormalTok{ pymongo}
+
+\NormalTok{myclient }\OperatorTok{=}\NormalTok{ pymongo.MongoClient(}\StringTok{"mongodb://localhost:27017/"}\NormalTok{)}
+\NormalTok{mydb }\OperatorTok{=}\NormalTok{ myclient[}\StringTok{"mydatabase"}\NormalTok{]}
+\NormalTok{mycol }\OperatorTok{=}\NormalTok{ mydb[}\StringTok{"customers"}\NormalTok{]}
+
+\NormalTok{mydoc }\OperatorTok{=}\NormalTok{ mycol.find().sort(}\StringTok{"name"}\NormalTok{) }\CommentTok{\#method takes one parameter for "fieldname" and one parameter for "direction" (ascending is the default direction).}
+
+\ControlFlowTok{for}\NormalTok{ x }\KeywordTok{in}\NormalTok{ mydoc:}
+  \BuiltInTok{print}\NormalTok{(x)}
+
+\CommentTok{\#\%\% Sort Descending}
+  
+\ImportTok{import}\NormalTok{ pymongo}
+
+\NormalTok{myclient }\OperatorTok{=}\NormalTok{ pymongo.MongoClient(}\StringTok{"mongodb://localhost:27017/"}\NormalTok{)}
+\NormalTok{mydb }\OperatorTok{=}\NormalTok{ myclient[}\StringTok{"mydatabase"}\NormalTok{]}
+\NormalTok{mycol }\OperatorTok{=}\NormalTok{ mydb[}\StringTok{"customers"}\NormalTok{]}
+
+\NormalTok{mydoc }\OperatorTok{=}\NormalTok{ mycol.find().sort(}\StringTok{"name"}\NormalTok{, }\OperatorTok{{-}}\DecValTok{1}\NormalTok{) }\CommentTok{\#Sort the result reverse alphabetically by name:}
+
+\ControlFlowTok{for}\NormalTok{ x }\KeywordTok{in}\NormalTok{ mydoc:}
+  \BuiltInTok{print}\NormalTok{(x)}
+
+\CommentTok{\#\%\% Delete Document}
+
+\ImportTok{import}\NormalTok{ pymongo}
+
+\NormalTok{myclient }\OperatorTok{=}\NormalTok{ pymongo.MongoClient(}\StringTok{"mongodb://localhost:27017/"}\NormalTok{)}
+\NormalTok{mydb }\OperatorTok{=}\NormalTok{ myclient[}\StringTok{"mydatabase"}\NormalTok{]}
+\NormalTok{mycol }\OperatorTok{=}\NormalTok{ mydb[}\StringTok{"customers"}\NormalTok{]}
+
+\NormalTok{myquery }\OperatorTok{=}\NormalTok{ \{ }\StringTok{"address"}\NormalTok{: }\StringTok{"Mountain 21"}\NormalTok{ \} }\CommentTok{\#delete document with address "Mountain 21"}
+
+\NormalTok{mycol.delete\_one(myquery)}
+
+\CommentTok{\#\%\% Delete Many Documents}
+\ImportTok{import}\NormalTok{ pymongo}
+
+\NormalTok{myclient }\OperatorTok{=}\NormalTok{ pymongo.MongoClient(}\StringTok{"mongodb://localhost:27017/"}\NormalTok{)}
+\NormalTok{mydb }\OperatorTok{=}\NormalTok{ myclient[}\StringTok{"mydatabase"}\NormalTok{]}
+\NormalTok{mycol }\OperatorTok{=}\NormalTok{ mydb[}\StringTok{"customers"}\NormalTok{]}
+
+\NormalTok{myquery }\OperatorTok{=}\NormalTok{ \{ }\StringTok{"address"}\NormalTok{: \{}\StringTok{"$regex"}\NormalTok{: }\StringTok{"\^{}S"}\NormalTok{\} \} }\CommentTok{\#Delete all documents were the address starts with the letter S:}
+
+\NormalTok{x }\OperatorTok{=}\NormalTok{ mycol.delete\_many(myquery)}
+
+\BuiltInTok{print}\NormalTok{(x.deleted\_count, }\StringTok{" documents deleted."}\NormalTok{)}
+
+\CommentTok{\#\%\% Delete All Documents in a Collection}
+\ImportTok{import}\NormalTok{ pymongo}
+
+\NormalTok{myclient }\OperatorTok{=}\NormalTok{ pymongo.MongoClient(}\StringTok{"mongodb://localhost:27017/"}\NormalTok{)}
+\NormalTok{mydb }\OperatorTok{=}\NormalTok{ myclient[}\StringTok{"mydatabase"}\NormalTok{]}
+\NormalTok{mycol }\OperatorTok{=}\NormalTok{ mydb[}\StringTok{"customers"}\NormalTok{]}
+
+\NormalTok{x }\OperatorTok{=}\NormalTok{ mycol.delete\_many(\{\}) }\CommentTok{\# Delete all documents in the "customers" collection:}
+
+\BuiltInTok{print}\NormalTok{(x.deleted\_count, }\StringTok{" documents deleted."}\NormalTok{)}
+
+\CommentTok{\#\%\% Delete Collection}
+
+\ImportTok{import}\NormalTok{ pymongo}
+
+\NormalTok{myclient }\OperatorTok{=}\NormalTok{ pymongo.MongoClient(}\StringTok{"mongodb://localhost:27017/"}\NormalTok{)}
+\NormalTok{mydb }\OperatorTok{=}\NormalTok{ myclient[}\StringTok{"mydatabase"}\NormalTok{]}
+\NormalTok{mycol }\OperatorTok{=}\NormalTok{ mydb[}\StringTok{"customers"}\NormalTok{] }\CommentTok{\#Delete the "customers" collection:}
+
+\NormalTok{mycol.drop()}
+\CommentTok{\# The drop() method returns true if the collection was dropped successfully, and false if the collection does not exist.}
+
+\CommentTok{\#\%\% Update Collection}
+\CommentTok{\# If the query finds more than one record, only the first occurrence is updated.}
+\ImportTok{import}\NormalTok{ pymongo}
+
+\NormalTok{myclient }\OperatorTok{=}\NormalTok{ pymongo.MongoClient(}\StringTok{"mongodb://localhost:27017/"}\NormalTok{)}
+\NormalTok{mydb }\OperatorTok{=}\NormalTok{ myclient[}\StringTok{"mydatabase"}\NormalTok{]}
+\NormalTok{mycol }\OperatorTok{=}\NormalTok{ mydb[}\StringTok{"customers"}\NormalTok{]}
+
+\NormalTok{myquery }\OperatorTok{=}\NormalTok{ \{ }\StringTok{"address"}\NormalTok{: }\StringTok{"Valley 345"}\NormalTok{ \} }\CommentTok{\#Change the address from "Valley 345" to "Canyon 123":}
+\NormalTok{newvalues }\OperatorTok{=}\NormalTok{ \{ }\StringTok{"$set"}\NormalTok{: \{ }\StringTok{"address"}\NormalTok{: }\StringTok{"Canyon 123"}\NormalTok{ \} \}}
+
+\NormalTok{mycol.update\_one(myquery, newvalues)}
+
+\CommentTok{\#print "customers" after the update:}
+\ControlFlowTok{for}\NormalTok{ x }\KeywordTok{in}\NormalTok{ mycol.find():}
+  \BuiltInTok{print}\NormalTok{(x)}
+
+\CommentTok{\#\%\% Update Many}
+  \CommentTok{\#o update all documents that meets the criteria of the query, use the update\_many() method.}
+
+\NormalTok{myclient }\OperatorTok{=}\NormalTok{ pymongo.MongoClient(}\StringTok{"mongodb://localhost:27017/"}\NormalTok{)}
+\NormalTok{mydb }\OperatorTok{=}\NormalTok{ myclient[}\StringTok{"mydatabase"}\NormalTok{]}
+\NormalTok{mycol }\OperatorTok{=}\NormalTok{ mydb[}\StringTok{"customers"}\NormalTok{]}
+
+\NormalTok{myquery }\OperatorTok{=}\NormalTok{ \{ }\StringTok{"address"}\NormalTok{: \{ }\StringTok{"$regex"}\NormalTok{: }\StringTok{"\^{}S"}\NormalTok{ \} \} }\CommentTok{\#Update all documents where the address starts with the letter "S":}
+\NormalTok{newvalues }\OperatorTok{=}\NormalTok{ \{ }\StringTok{"$set"}\NormalTok{: \{ }\StringTok{"name"}\NormalTok{: }\StringTok{"Minnie"}\NormalTok{ \} \}}
+
+\NormalTok{x }\OperatorTok{=}\NormalTok{ mycol.update\_many(myquery, newvalues)}
+
+\BuiltInTok{print}\NormalTok{(x.modified\_count, }\StringTok{"documents updated."}\NormalTok{)}
+
+\CommentTok{\#\%\% Limit the Result}
+\CommentTok{\# Limit the result to only return 5 documents:}
+\ImportTok{import}\NormalTok{ pymongo}
+
+\NormalTok{myclient }\OperatorTok{=}\NormalTok{ pymongo.MongoClient(}\StringTok{"mongodb://localhost:27017/"}\NormalTok{)}
+\NormalTok{mydb }\OperatorTok{=}\NormalTok{ myclient[}\StringTok{"mydatabase"}\NormalTok{]}
+\NormalTok{mycol }\OperatorTok{=}\NormalTok{ mydb[}\StringTok{"customers"}\NormalTok{]}
+
+\NormalTok{myresult }\OperatorTok{=}\NormalTok{ mycol.find().limit(}\DecValTok{5}\NormalTok{)}
+
+\CommentTok{\#print the result:}
+\ControlFlowTok{for}\NormalTok{ x }\KeywordTok{in}\NormalTok{ myresult:}
+  \BuiltInTok{print}\NormalTok{(x)}
+\end{Highlighting}
+\end{Shaded}
+
+\hypertarget{api}{%
+\chapter{API}\label{api}}
+
+\hypertarget{r}{%
+\section{R}\label{r}}
+
+Example
+
+check Blair's \href{https://github.com/blairj09-talks/plumber-webinar-2020}{talk}
+
+\url{https://www.rplumber.io/}
+\url{https://community.rstudio.com/tag/plumber}
+\url{https://github.com/rstudio/webinars}
+\url{https://github.com/meztez/rapidoc}
+\url{https://github.com/meztez/plumberDeploy}
+\url{https://github.com/rstudio/plumber}
+\url{https://github.com/sol-eng/plumberExamples}
+
+\hypertarget{bert}{%
+\chapter{BERT}\label{bert}}
+
+\url{https://github.com/google-research/bert}
+
+\url{https://www.freecodecamp.org/news/google-bert-nlp-machine-learning-tutorial/}
+
+\url{https://jalammar.github.io/a-visual-guide-to-using-bert-for-the-first-time/}
+
+\url{https://towardsml.com/2019/09/17/bert-explained-a-complete-guide-with-theory-and-tutorial/}
 
   \bibliography{book.bib,packages.bib,references.bib}
 

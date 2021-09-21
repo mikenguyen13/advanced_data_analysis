@@ -1,0 +1,672 @@
+<!DOCTYPE html>
+<html lang="" xml:lang="">
+<head>
+
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <title>Chapter 10 Spline Regression | Advanced Data Analysis</title>
+  <meta name="description" content="Advanced guide on data analysis. This is a second part of Data Analysis" />
+  <meta name="generator" content="bookdown 0.24 and GitBook 2.6.7" />
+
+  <meta property="og:title" content="Chapter 10 Spline Regression | Advanced Data Analysis" />
+  <meta property="og:type" content="book" />
+  
+  
+  <meta property="og:description" content="Advanced guide on data analysis. This is a second part of Data Analysis" />
+  
+
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Chapter 10 Spline Regression | Advanced Data Analysis" />
+  
+  <meta name="twitter:description" content="Advanced guide on data analysis. This is a second part of Data Analysis" />
+  
+
+<meta name="author" content="Mike Nguyen" />
+
+
+<meta name="date" content="2021-09-20" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  
+  
+<link rel="prev" href="minimum-distance.html"/>
+<link rel="next" href="generalized-additive-models.html"/>
+<script src="libs/header-attrs-2.11/header-attrs.js"></script>
+<script src="libs/jquery-3.6.0/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fuse.js@6.4.6/dist/fuse.min.js"></script>
+<link href="libs/gitbook-2.6.7/css/style.css" rel="stylesheet" />
+<link href="libs/gitbook-2.6.7/css/plugin-table.css" rel="stylesheet" />
+<link href="libs/gitbook-2.6.7/css/plugin-bookdown.css" rel="stylesheet" />
+<link href="libs/gitbook-2.6.7/css/plugin-highlight.css" rel="stylesheet" />
+<link href="libs/gitbook-2.6.7/css/plugin-search.css" rel="stylesheet" />
+<link href="libs/gitbook-2.6.7/css/plugin-fontsettings.css" rel="stylesheet" />
+<link href="libs/gitbook-2.6.7/css/plugin-clipboard.css" rel="stylesheet" />
+
+
+
+
+
+
+
+
+<link href="libs/anchor-sections-1.0.1/anchor-sections.css" rel="stylesheet" />
+<script src="libs/anchor-sections-1.0.1/anchor-sections.js"></script>
+
+
+<style type="text/css">
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+</style>
+
+<style type="text/css">
+/* Used with Pandoc 2.11+ new --citeproc when CSL is used */
+div.csl-bib-body { }
+div.csl-entry {
+  clear: both;
+}
+.hanging div.csl-entry {
+  margin-left:2em;
+  text-indent:-2em;
+}
+div.csl-left-margin {
+  min-width:2em;
+  float:left;
+}
+div.csl-right-inline {
+  margin-left:2em;
+  padding-left:1em;
+}
+div.csl-indent {
+  margin-left: 2em;
+}
+</style>
+
+<link rel="stylesheet" href="style.css" type="text/css" />
+</head>
+
+<body>
+
+
+
+  <div class="book without-animation with-summary font-size-2 font-family-1" data-basepath=".">
+
+    <div class="book-summary">
+      <nav role="navigation">
+
+<ul class="summary">
+<li><a href="./">Advanced Data Analysis</a></li>
+
+<li class="divider"></li>
+<li class="chapter" data-level="1" data-path="index.html"><a href="index.html"><i class="fa fa-check"></i><b>1</b> Prerequisites</a></li>
+<li class="part"><span><b>I MACHINE LEARNING</b></span></li>
+<li class="chapter" data-level="2" data-path="intro.html"><a href="intro.html"><i class="fa fa-check"></i><b>2</b> Introduction</a>
+<ul>
+<li class="chapter" data-level="2.1" data-path="intro.html"><a href="intro.html#general-framework"><i class="fa fa-check"></i><b>2.1</b> General Framework</a></li>
+<li class="chapter" data-level="2.2" data-path="intro.html"><a href="intro.html#assessing-model-accuracy---model-fit"><i class="fa fa-check"></i><b>2.2</b> Assessing Model Accuracy - Model fit</a>
+<ul>
+<li class="chapter" data-level="2.2.1" data-path="intro.html"><a href="intro.html#continuous-output-mean-squared-error-mse"><i class="fa fa-check"></i><b>2.2.1</b> Continuous output: Mean squared error (MSE)</a></li>
+<li class="chapter" data-level="2.2.2" data-path="intro.html"><a href="intro.html#categorical-output-training-error-rate"><i class="fa fa-check"></i><b>2.2.2</b> Categorical output: training error rate</a></li>
+<li class="chapter" data-level="2.2.3" data-path="intro.html"><a href="intro.html#curse-of-dimensionality"><i class="fa fa-check"></i><b>2.2.3</b> Curse of dimensionality</a></li>
+<li class="chapter" data-level="2.2.4" data-path="intro.html"><a href="intro.html#reminder"><i class="fa fa-check"></i><b>2.2.4</b> Reminder</a></li>
+<li class="chapter" data-level="2.2.5" data-path="intro.html"><a href="intro.html#model-assessment"><i class="fa fa-check"></i><b>2.2.5</b> Model Assessment</a></li>
+</ul></li>
+<li class="chapter" data-level="2.3" data-path="intro.html"><a href="intro.html#improving-prediction-accuracy-and-interpretability"><i class="fa fa-check"></i><b>2.3</b> Improving Prediction Accuracy and Interpretability</a>
+<ul>
+<li class="chapter" data-level="2.3.1" data-path="intro.html"><a href="intro.html#subset-selection"><i class="fa fa-check"></i><b>2.3.1</b> Subset Selection</a></li>
+<li class="chapter" data-level="2.3.2" data-path="intro.html"><a href="intro.html#shrinkage-methods"><i class="fa fa-check"></i><b>2.3.2</b> Shrinkage Methods</a></li>
+<li class="chapter" data-level="2.3.3" data-path="intro.html"><a href="intro.html#dimension-reduction"><i class="fa fa-check"></i><b>2.3.3</b> Dimension Reduction</a></li>
+</ul></li>
+</ul></li>
+<li class="chapter" data-level="3" data-path="supervised-learning.html"><a href="supervised-learning.html"><i class="fa fa-check"></i><b>3</b> Supervised Learning</a>
+<ul>
+<li class="chapter" data-level="3.1" data-path="supervised-learning.html"><a href="supervised-learning.html#decision-tree"><i class="fa fa-check"></i><b>3.1</b> Decision Tree</a>
+<ul>
+<li class="chapter" data-level="3.1.1" data-path="supervised-learning.html"><a href="supervised-learning.html#find-best-split"><i class="fa fa-check"></i><b>3.1.1</b> Find best split</a></li>
+<li class="chapter" data-level="3.1.2" data-path="supervised-learning.html"><a href="supervised-learning.html#stopping-criteria"><i class="fa fa-check"></i><b>3.1.2</b> Stopping Criteria</a></li>
+<li class="chapter" data-level="3.1.3" data-path="supervised-learning.html"><a href="supervised-learning.html#find-prediction"><i class="fa fa-check"></i><b>3.1.3</b> Find Prediction</a></li>
+</ul></li>
+<li class="chapter" data-level="3.2" data-path="supervised-learning.html"><a href="supervised-learning.html#random-forest"><i class="fa fa-check"></i><b>3.2</b> Random Forest</a></li>
+</ul></li>
+<li class="chapter" data-level="4" data-path="unsupervised-learning.html"><a href="unsupervised-learning.html"><i class="fa fa-check"></i><b>4</b> Unsupervised Learning</a>
+<ul>
+<li class="chapter" data-level="4.1" data-path="unsupervised-learning.html"><a href="unsupervised-learning.html#clustering"><i class="fa fa-check"></i><b>4.1</b> Clustering</a>
+<ul>
+<li class="chapter" data-level="4.1.1" data-path="unsupervised-learning.html"><a href="unsupervised-learning.html#similarity-measures"><i class="fa fa-check"></i><b>4.1.1</b> Similarity Measures</a></li>
+<li class="chapter" data-level="4.1.2" data-path="unsupervised-learning.html"><a href="unsupervised-learning.html#k-mean-algorithm"><i class="fa fa-check"></i><b>4.1.2</b> K-mean Algorithm</a></li>
+</ul></li>
+</ul></li>
+<li class="chapter" data-level="5" data-path="semi-superivsed-learning.html"><a href="semi-superivsed-learning.html"><i class="fa fa-check"></i><b>5</b> Semi-superivsed learning</a></li>
+<li class="chapter" data-level="6" data-path="reinforcement-learning.html"><a href="reinforcement-learning.html"><i class="fa fa-check"></i><b>6</b> Reinforcement learning</a></li>
+<li class="chapter" data-level="7" data-path="interpretable-machine-learning.html"><a href="interpretable-machine-learning.html"><i class="fa fa-check"></i><b>7</b> Interpretable Machine Learning</a>
+<ul>
+<li class="chapter" data-level="7.1" data-path="interpretable-machine-learning.html"><a href="interpretable-machine-learning.html#shap"><i class="fa fa-check"></i><b>7.1</b> SHAP</a></li>
+<li class="chapter" data-level="7.2" data-path="interpretable-machine-learning.html"><a href="interpretable-machine-learning.html#video-classification"><i class="fa fa-check"></i><b>7.2</b> Video Classification</a></li>
+<li class="chapter" data-level="7.3" data-path="interpretable-machine-learning.html"><a href="interpretable-machine-learning.html#image-memorability"><i class="fa fa-check"></i><b>7.3</b> Image Memorability</a></li>
+</ul></li>
+<li class="chapter" data-level="8" data-path="generalized-method-of-moments.html"><a href="generalized-method-of-moments.html"><i class="fa fa-check"></i><b>8</b> Generalized Method of Moments</a></li>
+<li class="chapter" data-level="9" data-path="minimum-distance.html"><a href="minimum-distance.html"><i class="fa fa-check"></i><b>9</b> Minimum Distance</a></li>
+<li class="chapter" data-level="10" data-path="spline-regression.html"><a href="spline-regression.html"><i class="fa fa-check"></i><b>10</b> Spline Regression</a>
+<ul>
+<li class="chapter" data-level="10.1" data-path="spline-regression.html"><a href="spline-regression.html#regression-splines"><i class="fa fa-check"></i><b>10.1</b> Regression Splines</a></li>
+<li class="chapter" data-level="10.2" data-path="spline-regression.html"><a href="spline-regression.html#natural-splines"><i class="fa fa-check"></i><b>10.2</b> Natural splines</a></li>
+<li class="chapter" data-level="10.3" data-path="spline-regression.html"><a href="spline-regression.html#smoothing-splines"><i class="fa fa-check"></i><b>10.3</b> Smoothing splines</a></li>
+<li class="chapter" data-level="10.4" data-path="spline-regression.html"><a href="spline-regression.html#application"><i class="fa fa-check"></i><b>10.4</b> Application</a></li>
+</ul></li>
+<li class="chapter" data-level="11" data-path="generalized-additive-models.html"><a href="generalized-additive-models.html"><i class="fa fa-check"></i><b>11</b> Generalized Additive Models</a></li>
+<li class="chapter" data-level="12" data-path="quantile-regression.html"><a href="quantile-regression.html"><i class="fa fa-check"></i><b>12</b> Quantile Regression</a>
+<ul>
+<li class="chapter" data-level="12.1" data-path="quantile-regression.html"><a href="quantile-regression.html#application-1"><i class="fa fa-check"></i><b>12.1</b> Application</a></li>
+</ul></li>
+<li class="part"><span><b>II DEEP LEARNING</b></span></li>
+<li class="chapter" data-level="13" data-path="introduction.html"><a href="introduction.html"><i class="fa fa-check"></i><b>13</b> Introduction</a></li>
+<li class="chapter" data-level="14" data-path="neural-network.html"><a href="neural-network.html"><i class="fa fa-check"></i><b>14</b> Neural Network</a>
+<ul>
+<li class="chapter" data-level="14.1" data-path="neural-network.html"><a href="neural-network.html#step-1-a-set-of-function"><i class="fa fa-check"></i><b>14.1</b> Step 1: A set of function</a></li>
+<li class="chapter" data-level="14.2" data-path="neural-network.html"><a href="neural-network.html#step-2-goodness-of-function"><i class="fa fa-check"></i><b>14.2</b> Step 2: Goodness of function</a></li>
+<li class="chapter" data-level="14.3" data-path="neural-network.html"><a href="neural-network.html#step-3-pick-the-best-function"><i class="fa fa-check"></i><b>14.3</b> Step 3: Pick the best function</a></li>
+<li class="chapter" data-level="14.4" data-path="neural-network.html"><a href="neural-network.html#recipe-of-deep-learning"><i class="fa fa-check"></i><b>14.4</b> Recipe of Deep learning</a>
+<ul>
+<li class="chapter" data-level="14.4.1" data-path="neural-network.html"><a href="neural-network.html#choosing-proper-loss"><i class="fa fa-check"></i><b>14.4.1</b> Choosing proper loss</a></li>
+<li class="chapter" data-level="14.4.2" data-path="neural-network.html"><a href="neural-network.html#mini-batch"><i class="fa fa-check"></i><b>14.4.2</b> Mini-batch</a></li>
+<li class="chapter" data-level="14.4.3" data-path="neural-network.html"><a href="neural-network.html#new-activation-function"><i class="fa fa-check"></i><b>14.4.3</b> New activation function</a></li>
+<li class="chapter" data-level="14.4.4" data-path="neural-network.html"><a href="neural-network.html#adaptive-learning-rate"><i class="fa fa-check"></i><b>14.4.4</b> Adaptive Learning Rate</a></li>
+<li class="chapter" data-level="14.4.5" data-path="neural-network.html"><a href="neural-network.html#momentum"><i class="fa fa-check"></i><b>14.4.5</b> Momentum</a></li>
+<li class="chapter" data-level="14.4.6" data-path="neural-network.html"><a href="neural-network.html#early-stopping"><i class="fa fa-check"></i><b>14.4.6</b> Early Stopping</a></li>
+<li class="chapter" data-level="14.4.7" data-path="neural-network.html"><a href="neural-network.html#regularization"><i class="fa fa-check"></i><b>14.4.7</b> Regularization</a></li>
+<li class="chapter" data-level="14.4.8" data-path="neural-network.html"><a href="neural-network.html#dropout"><i class="fa fa-check"></i><b>14.4.8</b> Dropout</a></li>
+<li class="chapter" data-level="14.4.9" data-path="neural-network.html"><a href="neural-network.html#network-structure"><i class="fa fa-check"></i><b>14.4.9</b> Network Structure</a></li>
+</ul></li>
+</ul></li>
+<li class="chapter" data-level="15" data-path="overview.html"><a href="overview.html"><i class="fa fa-check"></i><b>15</b> Overview</a></li>
+<li class="chapter" data-level="16" data-path="tensor-flow-and-r.html"><a href="tensor-flow-and-r.html"><i class="fa fa-check"></i><b>16</b> Tensor Flow and R</a>
+<ul>
+<li class="chapter" data-level="16.1" data-path="tensor-flow-and-r.html"><a href="tensor-flow-and-r.html#r-packages"><i class="fa fa-check"></i><b>16.1</b> R packages</a></li>
+<li class="chapter" data-level="16.2" data-path="tensor-flow-and-r.html"><a href="tensor-flow-and-r.html#keras-layers"><i class="fa fa-check"></i><b>16.2</b> Keras layers</a></li>
+</ul></li>
+<li class="chapter" data-level="17" data-path="compiling-models.html"><a href="compiling-models.html"><i class="fa fa-check"></i><b>17</b> Compiling models</a></li>
+<li class="chapter" data-level="18" data-path="losses-optimizers-and-metrics.html"><a href="losses-optimizers-and-metrics.html"><i class="fa fa-check"></i><b>18</b> Losses, Optimizers, and Metrics</a></li>
+<li class="chapter" data-level="19" data-path="nyu.html"><a href="nyu.html"><i class="fa fa-check"></i><b>19</b> NYU</a></li>
+<li class="chapter" data-level="20" data-path="applications.html"><a href="applications.html"><i class="fa fa-check"></i><b>20</b> Applications</a></li>
+<li class="chapter" data-level="21" data-path="research-methods.html"><a href="research-methods.html"><i class="fa fa-check"></i><b>21</b> Research Methods</a>
+<ul>
+<li class="chapter" data-level="21.1" data-path="research-methods.html"><a href="research-methods.html#but-for-world"><i class="fa fa-check"></i><b>21.1</b> But-for World</a></li>
+</ul></li>
+<li class="chapter" data-level="22" data-path="model-card.html"><a href="model-card.html"><i class="fa fa-check"></i><b>22</b> Model Card</a></li>
+<li class="chapter" data-level="" data-path="references.html"><a href="references.html"><i class="fa fa-check"></i>References</a></li>
+<li class="chapter" data-level="23" data-path="model-tuning.html"><a href="model-tuning.html"><i class="fa fa-check"></i><b>23</b> Model Tuning</a></li>
+<li class="chapter" data-level="24" data-path="model-stacking.html"><a href="model-stacking.html"><i class="fa fa-check"></i><b>24</b> Model Stacking</a></li>
+<li class="chapter" data-level="25" data-path="data-storage.html"><a href="data-storage.html"><i class="fa fa-check"></i><b>25</b> Data Storage</a>
+<ul>
+<li class="chapter" data-level="25.1" data-path="data-storage.html"><a href="data-storage.html#structured-databases"><i class="fa fa-check"></i><b>25.1</b> Structured Databases</a></li>
+<li class="chapter" data-level="25.2" data-path="data-storage.html"><a href="data-storage.html#unstructured-databases"><i class="fa fa-check"></i><b>25.2</b> Unstructured Databases</a>
+<ul>
+<li class="chapter" data-level="25.2.1" data-path="data-storage.html"><a href="data-storage.html#mongodb"><i class="fa fa-check"></i><b>25.2.1</b> MongoDB</a></li>
+</ul></li>
+</ul></li>
+<li class="chapter" data-level="26" data-path="api.html"><a href="api.html"><i class="fa fa-check"></i><b>26</b> API</a>
+<ul>
+<li class="chapter" data-level="26.1" data-path="api.html"><a href="api.html#r"><i class="fa fa-check"></i><b>26.1</b> R</a></li>
+</ul></li>
+<li class="chapter" data-level="27" data-path="bert.html"><a href="bert.html"><i class="fa fa-check"></i><b>27</b> BERT</a></li>
+<li class="divider"></li>
+<li><a href="https://github.com/rstudio/bookdown" target="blank">Published with bookdown</a></li>
+
+</ul>
+
+      </nav>
+    </div>
+
+    <div class="book-body">
+      <div class="body-inner">
+        <div class="book-header" role="navigation">
+          <h1>
+            <i class="fa fa-circle-o-notch fa-spin"></i><a href="./">Advanced Data Analysis</a>
+          </h1>
+        </div>
+
+        <div class="page-wrapper" tabindex="-1" role="main">
+          <div class="page-inner">
+
+            <section class="normal" id="section-">
+<div id="spline-regression" class="section level1" number="10">
+<h1><span class="header-section-number">Chapter 10</span> Spline Regression</h1>
+<p>Beyond Linearity (including transformation of variables), we have arbitrary basis expansion (where the basis functions are dependent on X)</p>
+<p><strong>Basis Function Representations</strong></p>
+<p>Let the k-th basis function of X be denoted by <span class="math inline">\(b_k(X), k = 1,\dots, K\)</span> which is function that maps from the p-dimensional real numbers to the real line.</p>
+<p>Then, the linear functional representation of <span class="math inline">\(f(X)\)</span> given by these basis functions is</p>
+<p><span class="math display">\[
+f(X) = \beta_0 + \sum_{k=1}^K \beta_k b_k(X)
+\]</span></p>
+<p>Equivalently</p>
+<p><span class="math display">\[
+\mathbf{Y} = \mathbf{B} \beta + \mathbf{\epsilon}
+\]</span></p>
+<p>where <span class="math inline">\(\mathbf{B}\)</span> is the <span class="math inline">\(n \times (K+1)\)</span> matrix columns given by a vector of 1 for the intercept and <span class="math inline">\(\mathbf{b}_k =(b_k(x_1), \dots, b_k (x_n))&#39;, k = 1, \dots, K\)</span></p>
+<p>Then, we have</p>
+<p><span class="math display">\[
+\hat{\beta} = (\mathbf{B}^T \mathbf{B})^{-1} \mathbf{B}^T\mathbf{y}
+\]</span></p>
+<p>if the basis functions are <strong>orthogonal</strong>, then we have a special case <span class="math inline">\(\hat{\beta} = \mathbf{B}^T \mathbf{y}\)</span></p>
+<p>Some common basis functions;</p>
+<ul>
+<li><p>Original linear model: <span class="math inline">\(b_k(X) = X_k, k = 1, \dots, p\)</span></p></li>
+<li><p>Polynomials: <span class="math inline">\(b_k(X) = X^2_j; X^3_j; X_jX_m\)</span></p></li>
+<li><p>Non-linear transformations: <span class="math inline">\(b_k(X)= \log(X_j); \sqrt{X_j}\)</span></p></li>
+<li><p>Step-functions: <span class="math inline">\(b_k(X) = I(c_k \le X \le v_k)\)</span>, an indicator for a region of <span class="math inline">\(X\)</span></p>
+<ol style="list-style-type: decimal">
+<li><p>Breaking the region up into non-overlapping regions and step-function response</p></li>
+<li><p>Example: for a single <span class="math inline">\(X\)</span>, <span class="math inline">\(b_0 (X) = I(X &lt; c_1), \dots, b_{K-1}(X) = I(c_{K-1} \le X \le c_K)\)</span> where <span class="math inline">\(c_1, \dots, c_k\)</span> are cut points (i.e., making dummy variables and piece wise constant regression fits)</p></li>
+</ol></li>
+<li><p>Other: sines and cosines, wavelets, empirical basis functions</p></li>
+</ul>
+<p><br></p>
+<p>Another representation</p>
+<p>More info can be found on <a href="https://www.stat.cmu.edu/~ryantibs/advmethods/notes/smoothspline.pdf">CMU stat</a></p>
+<p>Definition: a k-th order spline is a piecewise polynomial function of degree k, that is continuous and has continuous derivatives of orders 1,…, k -1, at its knot points</p>
+<p>Equivalently, a function f is a k-th order spline with knot points at <span class="math inline">\(t_1 &lt; ...&lt; t_m\)</span> if</p>
+<ul>
+<li>f is a polynomial of degree k on each of the intervals <span class="math inline">\((-\infty, t_1], [t_1,t_2],...,[t_m, \infty)\)</span><br />
+</li>
+<li><span class="math inline">\(f^{(j)}\)</span>, the j-th derivative of f, is continuous at <span class="math inline">\(t_1,...,t_m\)</span> for each j = 0,1,…,k-1</li>
+</ul>
+<p>A common case is when k = 3, called cubic splines. (piecewise cubic functions are continuous, and also continuous at its first and second derivatives)</p>
+<p>To parameterize the set of splines, we could use <strong>truncated power basis</strong>, defined as</p>
+<p><span class="math display">\[
+g_1(x) = 1 \\
+g_2(x) = x \\
+... \\
+g_{k+1}(x) = x^k \\
+g_{k+1+j}(x) = (x-t_j)^k_+
+\]</span></p>
+<p>where j = 1,…,m and <span class="math inline">\(x_+\)</span> = max{x,0}</p>
+<p>However, now software typically use B-spline basis.</p>
+<div id="regression-splines" class="section level2" number="10.1">
+<h2><span class="header-section-number">10.1</span> Regression Splines</h2>
+<ul>
+<li><p>Spline basis functions are built upon polynomial regression and piecewise constant regression</p>
+<ul>
+<li>We fit piece wise polynomial regressions, but add some continuity and smoothness constraints.</li>
+</ul></li>
+</ul>
+<p>Example:</p>
+<p><span class="math display">\[
+y_i =
+\begin{cases}
+\beta_{01} + \beta_{11}+ \beta_{21}x_i^2 + \beta_{31}x_i^3+ \epsilon &amp; \text{if } x_i &lt;c \\
+\beta_{02} + \beta_{12}+ \beta_{22}x_i^2 + \beta_{32}x_i^3+ \epsilon &amp; \text{if } x_i \ge c 
+\end{cases}
+\]</span></p>
+<p>where <span class="math inline">\(c\)</span> is a <strong>knot</strong> point</p>
+<p>The more flexible we want our model to be, the more knots to be added.</p>
+<p>If we have <span class="math inline">\(K\)</span> knots through the range of <span class="math inline">\(X\)</span>, we fit <span class="math inline">\(K+1\)</span> different (cubic or any or constants) polynomials.</p>
+<p>To restrict piece coming together at the knot points, we add the constraint that the fitted curve must be <strong>continuous</strong>.</p>
+<p>We constrain the first and second derivatives to be continuous for <strong>smoothness</strong>.</p>
+<p>If the polynomials are cubic, then it’s cubic spline.</p>
+<p>Each constraint that we add reduces the number of parameters to be fit (frees up df), and less complex</p>
+<p>A cubic spline with <span class="math inline">\(K\)</span> knots has <span class="math inline">\(K +4\)</span> df</p>
+<p>We can rewrite the cubic spline into the general basis notation</p>
+<p><span class="math display">\[
+b_1(X) = X; b_2(X) = X^2; b_3(X) = X^2; b_4(X) = h(X,\xi_1);\\
+b_5(X) = h(X, \xi_2) , \dots, b_{K+3} (X) = h(X, \xi_K)
+\]</span></p>
+<p>where</p>
+<p><span class="math display">\[
+h(x, \xi) = (x- \xi)^3_+ = 
+\begin{cases}
+(x- \xi)^3 &amp; \text{if } x &gt; \xi \\
+0 &amp; \text{otherwise}
+\end{cases}
+\]</span></p>
+<p>and <span class="math inline">\(\xi\)</span> is the knot. Fitting this model with an intercept requires estimating <span class="math inline">\(K+4\)</span> regression coefficients (i.e., <span class="math inline">\(K +4\)</span> df)</p>
+<p>Notes:</p>
+<ul>
+<li><p>Splines have high variance at the outer range of the predictors.</p>
+<ul>
+<li><p><a href="spline-regression.html#natural-splines">Natural splines</a> are regression splines with extra constrains on the boundary that mitigates this variance problem by requiring the function to be linear in the regions where <span class="math inline">\(X\)</span> is smaller than the smallest knot, and larger than the largest knot.</p></li>
+<li><p>To decide number and place of knots (<span class="math inline">\(K\)</span>)</p>
+<ul>
+<li><p>To choose number of <span class="math inline">\(K\)</span>, people usually do cross-validation</p></li>
+<li><p>Given <span class="math inline">\(K\)</span> knots, we locate them uniformly in the quantile domain of <span class="math inline">\(X\)</span></p>
+<ul>
+<li><p>Ex: <span class="math inline">\(K = 3\)</span>, a knot would be placed at the 25th, 50th, and 75th percentiles of the variable X.</p></li>
+<li><p>Alternatively, we can place knots based on local data abundance.</p></li>
+</ul></li>
+</ul></li>
+</ul></li>
+</ul>
+<p><br></p>
+<p>Another representation</p>
+<p>To estimate the regression function <span class="math inline">\(r(X) = E(Y|X =x)\)</span>, we can fit a k-th order spline with <strong>knots</strong> at some prespecified locations <span class="math inline">\(t_1,...,t_m\)</span></p>
+<p>Regression splines are functions of</p>
+<p><span class="math display">\[
+\sum_{j=1}^{m+k+1} \beta_jg_j
+\]</span></p>
+<p>where</p>
+<p><span class="math inline">\(\beta_1,..\beta_{m+k+1}\)</span> are coefficients <span class="math inline">\(g_1,...,g_{m+k+1}\)</span> are the truncated power basis functions for k-th order splines over the knots <span class="math inline">\(t_1,...,t_m\)</span></p>
+<p>To estimate the coefficients</p>
+<p><span class="math display">\[
+\sum_{i=1}^{n} (y_i - \sum_{j=1}^{m} \beta_j g_j (x_i))^2
+\]</span></p>
+<p>then regression spline is</p>
+<p><span class="math display">\[
+\hat{r}(x) = \sum_{j=1}^{m+k+1} \hat{\beta}_j g_j (x)
+\]</span></p>
+<p>If we define the basis matrix <span class="math inline">\(G \in R^{n \times (m+k+1)}\)</span> by</p>
+<p><span class="math display">\[
+G_{ij} = g_j(x_i) 
+\]</span></p>
+<p>where <span class="math inline">\(i = 1,..,n\)</span> , <span class="math inline">\(j = 1,..,m+k+1\)</span></p>
+<p>Then,</p>
+<p><span class="math display">\[
+\sum_{i=1}^{n} (y_i - \sum_{j=1}^{m} \beta_j g_j (x_i))^2 = ||y - G \beta||_2^2
+\]</span></p>
+<p>and the regression spline estimate at x is</p>
+<p><span class="math display">\[
+\hat{r} (x) = g(x)^T \hat{\beta}= g(x)^T(G^TG)^{-1}G^Ty
+\]</span></p>
+</div>
+<div id="natural-splines" class="section level2" number="10.2">
+<h2><span class="header-section-number">10.2</span> Natural splines</h2>
+<p>A natural spline of order k, with knots at <span class="math inline">\(t_1 &lt;...&lt; t_m\)</span>, is a piecewise polynomial function f such that</p>
+<ul>
+<li>f is polynomial of degree k on each of <span class="math inline">\([t_1,t_2],...,[t_{m-1},t_m]\)</span></li>
+<li>f is a polynomial of degree <span class="math inline">\((k-1)/2\)</span> on <span class="math inline">\((-\infty,t_1]\)</span> and <span class="math inline">\([t_m,\infty)\)</span></li>
+<li>f is continuous and has continuous derivatives of orders 1,.,,, k -1 at its knots <span class="math inline">\(t_1,..,t_m\)</span></li>
+</ul>
+<p><strong>Note</strong></p>
+<p>natural splines are only defined for odd orders k.</p>
+</div>
+<div id="smoothing-splines" class="section level2" number="10.3">
+<h2><span class="header-section-number">10.3</span> Smoothing splines</h2>
+<p>We are interested in a function <span class="math inline">\(g(x)\)</span> and try to minimize <span class="math inline">\(RSS = \sum_{i=1}^n (y_i -g(x_i))^2\)</span></p>
+<p>But we wouldn’t want to overfit (because <span class="math inline">\(g(x)\)</span> that minimizes this RSS will try to interpolate all of the <span class="math inline">\(y_i\)</span>), then we want to a smooth <span class="math inline">\(g(x)\)</span> that minimizes RSS:</p>
+<p><span class="math display">\[
+\sum_{i=1}^n (y_i - g(x_i))^2 + \lambda g&#39;&#39;(x)^2 dx
+\]</span></p>
+<p>where</p>
+<ul>
+<li><p><span class="math inline">\(\lambda\)</span> is a non-negative smoothness</p></li>
+<li><p><span class="math inline">\(g(.)\)</span> is a <strong>smoothing spline</strong></p></li>
+</ul>
+<p>Notes:</p>
+<ul>
+<li><p>RSS here is a <em>loss function</em></p></li>
+<li><p>second term is a <em>smoothness penalty term</em></p>
+<ul>
+<li><p>Second derivative controls the smoothness of the function (smaller in absolute value means smoother)</p></li>
+<li><p>Parameter <span class="math inline">\(\lambda\)</span> controls the tradeoff between the smoothness and fit</p></li>
+</ul></li>
+<li><p>When <span class="math inline">\(\lambda =0\)</span>, the function is just like linear function (not smooth at all)</p></li>
+<li><p>When <span class="math inline">\(\lambda \to \infty\)</span>, then <span class="math inline">\(g\)</span> approaches a straight line that passes through the training data</p></li>
+<li><p>The smoothing spline function corresponds to a cubic polynomial basis with knots at the unique values of <span class="math inline">\(x_1, \dots, x_n\)</span> with continuous first and second derivatives at each knot</p>
+<ol style="list-style-type: decimal">
+<li><p><span class="math inline">\(g(x)\)</span> that minimizes the smoothing spline constraint is just a natural cubic spline with knots at the unique <span class="math inline">\(x\)</span> observations</p></li>
+<li><p><span class="math inline">\(\lambda\)</span> controls the level of shrinkage for smoothing splines, but there is none in regression spline</p></li>
+<li><p>At first glance, we might think that smoothing splines might have too many degrees of freedom since we have knots at every data points (i.e., <span class="math inline">\(K = n\)</span>). But <span class="math inline">\(\lambda\)</span> controls roughness and make the <strong>effective degrees of freedom</strong> much smaller (as <span class="math inline">\(\lambda\)</span> increases from <span class="math inline">\(0 \to \infty\)</span>, <span class="math inline">\(df_\lambda\)</span> decreases from <span class="math inline">\(n \to 2\)</span>)</p></li>
+</ol></li>
+</ul>
+<p>Let <span class="math inline">\(\hat{\mathbf{y}}_\lambda\)</span> be the n-vector containing the fitted values for the smoothing spline function for a given <span class="math inline">\(\lambda\)</span>,</p>
+<p><span class="math display">\[
+\hat{\mathbf{y}}_\lambda = \mathbf{S}_\lambda \mathbf{y}
+\]</span></p>
+<p><span class="math inline">\(\mathbf{S}_\lambda = \mathbf{N}(\mathbf{N}^T\mathbf{N}+ \lambda \mathbf{\Omega}_N)^{-1} \mathbf{N}^T\)</span> where <span class="math inline">\(\{N\}_{ij} = b_j (x_i);\)</span></p>
+<p><span class="math display">\[
+df_\lambda = \sum_{i=1}^n \{\mathbf{S}_\lambda\}_{ii}
+\]</span></p>
+<p><span class="math display">\[
+\begin{aligned}
+RSS_{CV}(\lambda)&amp;= \sum_{i=1}^n(y_i - \hat{y}_\lambda^{(-i)}(x_i))^2 \\
+&amp;= \sum_{i=1}^n[\frac{y_i - \hat{y}_\lambda(x_i)}{1-\{\mathbf{S}_\lambda\}_{ii}}]^2
+\end{aligned}
+\]</span></p>
+<p><span class="math display">\[
+g_{jk}(X) = b_{1j}(X_1)b_{2k}(X_2)
+\]</span></p>
+<p>where <span class="math inline">\(j = 1, \dots, K_1, k = 1, \dots, K_2\)</span></p>
+<p>which can be used as</p>
+<p><span class="math display">\[
+f(X) = \sum_{j=1}^{K_1} \sum_{k=1}^{K_2}\beta_{jk}g_{jk}(X)
+\]</span></p>
+<p><span class="math display">\[
+\sum_{i=1}^n (y_i - f(x_i))^2 + \lambda J[f]
+\]</span></p>
+<p>where <span class="math inline">\(J\)</span> is the penalty function for the dimension of the problem</p>
+<p><span class="math display">\[
+J[f] = \int\int[(\frac{\partial^2f(x)}{\partial x_1^2})^2 + 2(\frac{\partial^2 f(x)}{\partial x_1 \partial x_2})^2 + (\frac{\partial^2f(x)}{\partial x^2_2})^2]dx_1 dx_2
+\]</span></p>
+<p><span class="math display">\[
+f(x) = \beta_0 + \beta^T x + \sum_{j=1}^n \alpha_j b_j(x)
+\]</span></p>
+<p>where <span class="math inline">\(b_j(x) = ||x - x_j||^2\log ||x-x_j||\)</span></p>
+<p><br></p>
+<p>Another representation</p>
+<p>These estimators use a regularized regression over the natural spline basis: placing knots at all points <span class="math inline">\(x_1,...x_n\)</span></p>
+<p>For the case of cubic splines, the coefficients are the minimization of</p>
+<p><span class="math display">\[
+||y - G\beta||^2_2 + \lambda \beta^T \Omega \beta
+\]</span></p>
+<p>where <span class="math inline">\(\Omega \in R^{n \times n}\)</span> is the penalty matrix</p>
+<p><span class="math display">\[
+\Omega_{ij} = \int g&#39;&#39;_i(t) g&#39;&#39;_j(t) dt,
+\]</span></p>
+<p>and i,j = 1,..,n</p>
+<p>and <span class="math inline">\(\lambda \beta^T \Omega \beta\)</span> is the <strong>regularization term</strong> used to shrink the components of <span class="math inline">\(\hat{\beta}\)</span> towards 0. <span class="math inline">\(\lambda &gt; 0\)</span> is the tuning parameter (or smoothing parameter). Higher value of <span class="math inline">\(\lambda\)</span>, faster shrinkage (shrinking away basis functions)</p>
+<p><strong>Note</strong><br />
+smoothing splines have similar fits as kernel regression.</p>
+<table>
+<thead>
+<tr class="header">
+<th></th>
+<th>Smoothing splines</th>
+<th>kernel regression</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>tuning parameter</td>
+<td>smoothing parameter <span class="math inline">\(\lambda\)</span></td>
+<td>bandwidth h</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="application" class="section level2" number="10.4">
+<h2><span class="header-section-number">10.4</span> Application</h2>
+<div class="sourceCode" id="cb49"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb49-1"><a href="spline-regression.html#cb49-1" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(tidyverse)</span>
+<span id="cb49-2"><a href="spline-regression.html#cb49-2" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(caret)</span></code></pre></div>
+<pre><code>## Loading required package: lattice</code></pre>
+<pre><code>## Warning: package &#39;lattice&#39; was built under R version 4.0.5</code></pre>
+<pre><code>## 
+## Attaching package: &#39;lattice&#39;</code></pre>
+<pre><code>## The following object is masked from &#39;package:boot&#39;:
+## 
+##     melanoma</code></pre>
+<pre><code>## 
+## Attaching package: &#39;caret&#39;</code></pre>
+<pre><code>## The following object is masked from &#39;package:purrr&#39;:
+## 
+##     lift</code></pre>
+<div class="sourceCode" id="cb56"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb56-1"><a href="spline-regression.html#cb56-1" aria-hidden="true" tabindex="-1"></a><span class="fu">theme_set</span>(<span class="fu">theme_classic</span>())</span>
+<span id="cb56-2"><a href="spline-regression.html#cb56-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb56-3"><a href="spline-regression.html#cb56-3" aria-hidden="true" tabindex="-1"></a><span class="co"># Load the data</span></span>
+<span id="cb56-4"><a href="spline-regression.html#cb56-4" aria-hidden="true" tabindex="-1"></a><span class="fu">data</span>(<span class="st">&quot;Boston&quot;</span>, <span class="at">package =</span> <span class="st">&quot;MASS&quot;</span>)</span>
+<span id="cb56-5"><a href="spline-regression.html#cb56-5" aria-hidden="true" tabindex="-1"></a><span class="co"># Split the data into training and test set</span></span>
+<span id="cb56-6"><a href="spline-regression.html#cb56-6" aria-hidden="true" tabindex="-1"></a><span class="fu">set.seed</span>(<span class="dv">123</span>)</span>
+<span id="cb56-7"><a href="spline-regression.html#cb56-7" aria-hidden="true" tabindex="-1"></a>training.samples <span class="ot">&lt;-</span> Boston<span class="sc">$</span>medv <span class="sc">%&gt;%</span></span>
+<span id="cb56-8"><a href="spline-regression.html#cb56-8" aria-hidden="true" tabindex="-1"></a>  <span class="fu">createDataPartition</span>(<span class="at">p =</span> <span class="fl">0.8</span>, <span class="at">list =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb56-9"><a href="spline-regression.html#cb56-9" aria-hidden="true" tabindex="-1"></a>train.data  <span class="ot">&lt;-</span> Boston[training.samples, ]</span>
+<span id="cb56-10"><a href="spline-regression.html#cb56-10" aria-hidden="true" tabindex="-1"></a>test.data <span class="ot">&lt;-</span> Boston[<span class="sc">-</span>training.samples, ]</span>
+<span id="cb56-11"><a href="spline-regression.html#cb56-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb56-12"><a href="spline-regression.html#cb56-12" aria-hidden="true" tabindex="-1"></a>knots <span class="ot">&lt;-</span> <span class="fu">quantile</span>(train.data<span class="sc">$</span>lstat, <span class="at">p =</span> <span class="fu">c</span>(<span class="fl">0.25</span>, <span class="fl">0.5</span>, <span class="fl">0.75</span>)) <span class="co"># we use 3 knots at 25,50,and 75 quantile.</span></span>
+<span id="cb56-13"><a href="spline-regression.html#cb56-13" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb56-14"><a href="spline-regression.html#cb56-14" aria-hidden="true" tabindex="-1"></a><span class="fu">library</span>(splines)</span>
+<span id="cb56-15"><a href="spline-regression.html#cb56-15" aria-hidden="true" tabindex="-1"></a><span class="co"># Build the model</span></span>
+<span id="cb56-16"><a href="spline-regression.html#cb56-16" aria-hidden="true" tabindex="-1"></a>knots <span class="ot">&lt;-</span> <span class="fu">quantile</span>(train.data<span class="sc">$</span>lstat, <span class="at">p =</span> <span class="fu">c</span>(<span class="fl">0.25</span>, <span class="fl">0.5</span>, <span class="fl">0.75</span>))</span>
+<span id="cb56-17"><a href="spline-regression.html#cb56-17" aria-hidden="true" tabindex="-1"></a>model <span class="ot">&lt;-</span> <span class="fu">lm</span> (medv <span class="sc">~</span> <span class="fu">bs</span>(lstat, <span class="at">knots =</span> knots), <span class="at">data =</span> train.data)</span>
+<span id="cb56-18"><a href="spline-regression.html#cb56-18" aria-hidden="true" tabindex="-1"></a><span class="co"># Make predictions</span></span>
+<span id="cb56-19"><a href="spline-regression.html#cb56-19" aria-hidden="true" tabindex="-1"></a>predictions <span class="ot">&lt;-</span> model <span class="sc">%&gt;%</span> <span class="fu">predict</span>(test.data)</span>
+<span id="cb56-20"><a href="spline-regression.html#cb56-20" aria-hidden="true" tabindex="-1"></a><span class="co"># Model performance</span></span>
+<span id="cb56-21"><a href="spline-regression.html#cb56-21" aria-hidden="true" tabindex="-1"></a><span class="fu">data.frame</span>(</span>
+<span id="cb56-22"><a href="spline-regression.html#cb56-22" aria-hidden="true" tabindex="-1"></a>  <span class="at">RMSE =</span> <span class="fu">RMSE</span>(predictions, test.data<span class="sc">$</span>medv),</span>
+<span id="cb56-23"><a href="spline-regression.html#cb56-23" aria-hidden="true" tabindex="-1"></a>  <span class="at">R2 =</span> <span class="fu">R2</span>(predictions, test.data<span class="sc">$</span>medv)</span>
+<span id="cb56-24"><a href="spline-regression.html#cb56-24" aria-hidden="true" tabindex="-1"></a>)</span></code></pre></div>
+<pre><code>##       RMSE        R2
+## 1 5.317372 0.6786367</code></pre>
+<div class="sourceCode" id="cb58"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb58-1"><a href="spline-regression.html#cb58-1" aria-hidden="true" tabindex="-1"></a><span class="fu">ggplot</span>(train.data, <span class="fu">aes</span>(lstat, medv) ) <span class="sc">+</span></span>
+<span id="cb58-2"><a href="spline-regression.html#cb58-2" aria-hidden="true" tabindex="-1"></a>  <span class="fu">geom_point</span>() <span class="sc">+</span></span>
+<span id="cb58-3"><a href="spline-regression.html#cb58-3" aria-hidden="true" tabindex="-1"></a>  <span class="fu">stat_smooth</span>(<span class="at">method =</span> lm, <span class="at">formula =</span> y <span class="sc">~</span> splines<span class="sc">::</span><span class="fu">bs</span>(x, <span class="at">df =</span> <span class="dv">3</span>))</span></code></pre></div>
+<p><img src="advanced-data-analysis_files/figure-html/unnamed-chunk-11-1.png" width="672" /></p>
+<div class="sourceCode" id="cb59"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb59-1"><a href="spline-regression.html#cb59-1" aria-hidden="true" tabindex="-1"></a><span class="fu">attach</span>(train.data)</span>
+<span id="cb59-2"><a href="spline-regression.html#cb59-2" aria-hidden="true" tabindex="-1"></a><span class="co">#fitting smoothing splines using smooth.spline(X,Y,df=...)</span></span>
+<span id="cb59-3"><a href="spline-regression.html#cb59-3" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb59-4"><a href="spline-regression.html#cb59-4" aria-hidden="true" tabindex="-1"></a>fit1<span class="ot">&lt;-</span><span class="fu">smooth.spline</span>(train.data<span class="sc">$</span>lstat,train.data<span class="sc">$</span>medv,<span class="at">df=</span><span class="dv">3</span> ) <span class="co"># 3 degrees of freedom</span></span>
+<span id="cb59-5"><a href="spline-regression.html#cb59-5" aria-hidden="true" tabindex="-1"></a><span class="co">#Plotting both cubic and Smoothing Splines </span></span>
+<span id="cb59-6"><a href="spline-regression.html#cb59-6" aria-hidden="true" tabindex="-1"></a><span class="fu">plot</span>(train.data<span class="sc">$</span>lstat,train.data<span class="sc">$</span>medv,<span class="at">col=</span><span class="st">&quot;grey&quot;</span>)</span>
+<span id="cb59-7"><a href="spline-regression.html#cb59-7" aria-hidden="true" tabindex="-1"></a>lstat.grid <span class="ot">=</span> <span class="fu">seq</span>(<span class="at">from =</span> <span class="fu">range</span>(lstat)[<span class="dv">1</span>], <span class="at">to =</span> <span class="fu">range</span>(lstat)[<span class="dv">2</span>])</span>
+<span id="cb59-8"><a href="spline-regression.html#cb59-8" aria-hidden="true" tabindex="-1"></a><span class="fu">points</span>(lstat.grid,<span class="fu">predict</span>(model,<span class="at">newdata =</span> <span class="fu">list</span>(<span class="at">lstat=</span>lstat.grid)),<span class="at">col=</span><span class="st">&quot;darkgreen&quot;</span>,<span class="at">lwd=</span><span class="dv">2</span>,<span class="at">type=</span><span class="st">&quot;l&quot;</span>)</span>
+<span id="cb59-9"><a href="spline-regression.html#cb59-9" aria-hidden="true" tabindex="-1"></a><span class="co">#adding cutpoints</span></span>
+<span id="cb59-10"><a href="spline-regression.html#cb59-10" aria-hidden="true" tabindex="-1"></a><span class="fu">abline</span>(<span class="at">v=</span><span class="fu">c</span>(<span class="dv">10</span>,<span class="dv">20</span>,<span class="dv">30</span>),<span class="at">lty=</span><span class="dv">2</span>,<span class="at">col=</span><span class="st">&quot;darkgreen&quot;</span>)</span>
+<span id="cb59-11"><a href="spline-regression.html#cb59-11" aria-hidden="true" tabindex="-1"></a><span class="fu">lines</span>(fit1,<span class="at">col=</span><span class="st">&quot;red&quot;</span>,<span class="at">lwd=</span><span class="dv">2</span>)</span>
+<span id="cb59-12"><a href="spline-regression.html#cb59-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb59-13"><a href="spline-regression.html#cb59-13" aria-hidden="true" tabindex="-1"></a><span class="fu">legend</span>(<span class="st">&quot;topright&quot;</span>,<span class="fu">c</span>(<span class="st">&quot;Smoothing Spline with 3 df&quot;</span>,<span class="st">&quot;Cubic Spline&quot;</span>),<span class="at">col=</span><span class="fu">c</span>(<span class="st">&quot;red&quot;</span>,<span class="st">&quot;darkgreen&quot;</span>),<span class="at">lwd=</span><span class="dv">2</span>)</span></code></pre></div>
+<p><img src="advanced-data-analysis_files/figure-html/unnamed-chunk-11-2.png" width="672" /></p>
+</div>
+</div>
+            </section>
+
+          </div>
+        </div>
+      </div>
+<a href="minimum-distance.html" class="navigation navigation-prev " aria-label="Previous page"><i class="fa fa-angle-left"></i></a>
+<a href="generalized-additive-models.html" class="navigation navigation-next " aria-label="Next page"><i class="fa fa-angle-right"></i></a>
+    </div>
+  </div>
+<script src="libs/gitbook-2.6.7/js/app.min.js"></script>
+<script src="libs/gitbook-2.6.7/js/clipboard.min.js"></script>
+<script src="libs/gitbook-2.6.7/js/plugin-search.js"></script>
+<script src="libs/gitbook-2.6.7/js/plugin-sharing.js"></script>
+<script src="libs/gitbook-2.6.7/js/plugin-fontsettings.js"></script>
+<script src="libs/gitbook-2.6.7/js/plugin-bookdown.js"></script>
+<script src="libs/gitbook-2.6.7/js/jquery.highlight.js"></script>
+<script src="libs/gitbook-2.6.7/js/plugin-clipboard.js"></script>
+<script>
+gitbook.require(["gitbook"], function(gitbook) {
+gitbook.start({
+"sharing": {
+"github": false,
+"facebook": true,
+"twitter": true,
+"linkedin": false,
+"weibo": false,
+"instapaper": false,
+"vk": false,
+"whatsapp": false,
+"all": ["facebook", "twitter", "linkedin", "weibo", "instapaper"]
+},
+"fontsettings": {
+"theme": "white",
+"family": "sans",
+"size": 2
+},
+"edit": {
+"link": null,
+"text": null
+},
+"history": {
+"link": null,
+"text": null
+},
+"view": {
+"link": null,
+"text": null
+},
+"download": ["advanced data analysis.pdf", "advanced data analysis.epub"],
+"search": {
+"engine": "fuse",
+"options": null
+},
+"toc": {
+"collapse": "subsection"
+}
+});
+});
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    var src = "true";
+    if (src === "" || src === "true") src = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-MML-AM_CHTML";
+    if (location.protocol !== "file:")
+      if (/^https?:/.test(src))
+        src = src.replace(/^https?:/, '');
+    script.src = src;
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+</body>
+
+</html>

@@ -6,7 +6,7 @@
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <title>Chapter 3 Supervised Learning | Advanced Data Analysis</title>
   <meta name="description" content="Advanced guide on data analysis. This is a second part of Data Analysis" />
-  <meta name="generator" content="bookdown 0.21 and GitBook 2.6.7" />
+  <meta name="generator" content="bookdown 0.24 and GitBook 2.6.7" />
 
   <meta property="og:title" content="Chapter 3 Supervised Learning | Advanced Data Analysis" />
   <meta property="og:type" content="book" />
@@ -24,7 +24,7 @@
 <meta name="author" content="Mike Nguyen" />
 
 
-<meta name="date" content="2021-01-18" />
+<meta name="date" content="2021-09-20" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -33,7 +33,9 @@
   
 <link rel="prev" href="intro.html"/>
 <link rel="next" href="unsupervised-learning.html"/>
-<script src="libs/jquery-2.2.3/jquery.min.js"></script>
+<script src="libs/header-attrs-2.11/header-attrs.js"></script>
+<script src="libs/jquery-3.6.0/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fuse.js@6.4.6/dist/fuse.min.js"></script>
 <link href="libs/gitbook-2.6.7/css/style.css" rel="stylesheet" />
 <link href="libs/gitbook-2.6.7/css/plugin-table.css" rel="stylesheet" />
 <link href="libs/gitbook-2.6.7/css/plugin-bookdown.css" rel="stylesheet" />
@@ -49,25 +51,22 @@
 
 
 
-
-<script src="libs/accessible-code-block-0.0.1/empty-anchor.js"></script>
-<link href="libs/anchor-sections-1.0/anchor-sections.css" rel="stylesheet" />
-<script src="libs/anchor-sections-1.0/anchor-sections.js"></script>
+<link href="libs/anchor-sections-1.0.1/anchor-sections.css" rel="stylesheet" />
+<script src="libs/anchor-sections-1.0.1/anchor-sections.js"></script>
 
 
 <style type="text/css">
-code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
 code.sourceCode > span { color: inherit; text-decoration: inherit; }
-code.sourceCode > span:empty { height: 1.2em; }
-.sourceCode { overflow: visible; }
-code.sourceCode { white-space: pre; position: relative; }
 pre.sourceCode { margin: 0; }
 @media screen {
 div.sourceCode { overflow: auto; }
 }
 @media print {
-code.sourceCode { white-space: pre-wrap; }
-code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
 }
 pre.numberSource code
   { counter-reset: source-line 0; }
@@ -87,7 +86,7 @@ pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-le
 div.sourceCode
   {   }
 @media screen {
-code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
 }
 code span.al { color: #ff0000; font-weight: bold; } /* Alert */
 code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
@@ -120,6 +119,29 @@ code span.vs { color: #4070a0; } /* VerbatimString */
 code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
 </style>
 
+<style type="text/css">
+/* Used with Pandoc 2.11+ new --citeproc when CSL is used */
+div.csl-bib-body { }
+div.csl-entry {
+  clear: both;
+}
+.hanging div.csl-entry {
+  margin-left:2em;
+  text-indent:-2em;
+}
+div.csl-left-margin {
+  min-width:2em;
+  float:left;
+}
+div.csl-right-inline {
+  margin-left:2em;
+  padding-left:1em;
+}
+div.csl-indent {
+  margin-left: 2em;
+}
+</style>
+
 <link rel="stylesheet" href="style.css" type="text/css" />
 </head>
 
@@ -138,59 +160,115 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <li class="divider"></li>
 <li class="chapter" data-level="1" data-path="index.html"><a href="index.html"><i class="fa fa-check"></i><b>1</b> Prerequisites</a></li>
 <li class="part"><span><b>I MACHINE LEARNING</b></span></li>
-<li class="chapter" data-level="2" data-path="intro.html"><a href="intro.html"><i class="fa fa-check"></i><b>2</b> Introduction</a></li>
-<li class="chapter" data-level="3" data-path="supervised-learning.html"><a href="supervised-learning.html"><i class="fa fa-check"></i><b>3</b> Supervised Learning</a><ul>
-<li class="chapter" data-level="3.1" data-path="supervised-learning.html"><a href="supervised-learning.html#decision-tree"><i class="fa fa-check"></i><b>3.1</b> Decision Tree</a><ul>
+<li class="chapter" data-level="2" data-path="intro.html"><a href="intro.html"><i class="fa fa-check"></i><b>2</b> Introduction</a>
+<ul>
+<li class="chapter" data-level="2.1" data-path="intro.html"><a href="intro.html#general-framework"><i class="fa fa-check"></i><b>2.1</b> General Framework</a></li>
+<li class="chapter" data-level="2.2" data-path="intro.html"><a href="intro.html#assessing-model-accuracy---model-fit"><i class="fa fa-check"></i><b>2.2</b> Assessing Model Accuracy - Model fit</a>
+<ul>
+<li class="chapter" data-level="2.2.1" data-path="intro.html"><a href="intro.html#continuous-output-mean-squared-error-mse"><i class="fa fa-check"></i><b>2.2.1</b> Continuous output: Mean squared error (MSE)</a></li>
+<li class="chapter" data-level="2.2.2" data-path="intro.html"><a href="intro.html#categorical-output-training-error-rate"><i class="fa fa-check"></i><b>2.2.2</b> Categorical output: training error rate</a></li>
+<li class="chapter" data-level="2.2.3" data-path="intro.html"><a href="intro.html#curse-of-dimensionality"><i class="fa fa-check"></i><b>2.2.3</b> Curse of dimensionality</a></li>
+<li class="chapter" data-level="2.2.4" data-path="intro.html"><a href="intro.html#reminder"><i class="fa fa-check"></i><b>2.2.4</b> Reminder</a></li>
+<li class="chapter" data-level="2.2.5" data-path="intro.html"><a href="intro.html#model-assessment"><i class="fa fa-check"></i><b>2.2.5</b> Model Assessment</a></li>
+</ul></li>
+<li class="chapter" data-level="2.3" data-path="intro.html"><a href="intro.html#improving-prediction-accuracy-and-interpretability"><i class="fa fa-check"></i><b>2.3</b> Improving Prediction Accuracy and Interpretability</a>
+<ul>
+<li class="chapter" data-level="2.3.1" data-path="intro.html"><a href="intro.html#subset-selection"><i class="fa fa-check"></i><b>2.3.1</b> Subset Selection</a></li>
+<li class="chapter" data-level="2.3.2" data-path="intro.html"><a href="intro.html#shrinkage-methods"><i class="fa fa-check"></i><b>2.3.2</b> Shrinkage Methods</a></li>
+<li class="chapter" data-level="2.3.3" data-path="intro.html"><a href="intro.html#dimension-reduction"><i class="fa fa-check"></i><b>2.3.3</b> Dimension Reduction</a></li>
+</ul></li>
+</ul></li>
+<li class="chapter" data-level="3" data-path="supervised-learning.html"><a href="supervised-learning.html"><i class="fa fa-check"></i><b>3</b> Supervised Learning</a>
+<ul>
+<li class="chapter" data-level="3.1" data-path="supervised-learning.html"><a href="supervised-learning.html#decision-tree"><i class="fa fa-check"></i><b>3.1</b> Decision Tree</a>
+<ul>
 <li class="chapter" data-level="3.1.1" data-path="supervised-learning.html"><a href="supervised-learning.html#find-best-split"><i class="fa fa-check"></i><b>3.1.1</b> Find best split</a></li>
 <li class="chapter" data-level="3.1.2" data-path="supervised-learning.html"><a href="supervised-learning.html#stopping-criteria"><i class="fa fa-check"></i><b>3.1.2</b> Stopping Criteria</a></li>
 <li class="chapter" data-level="3.1.3" data-path="supervised-learning.html"><a href="supervised-learning.html#find-prediction"><i class="fa fa-check"></i><b>3.1.3</b> Find Prediction</a></li>
 </ul></li>
 <li class="chapter" data-level="3.2" data-path="supervised-learning.html"><a href="supervised-learning.html#random-forest"><i class="fa fa-check"></i><b>3.2</b> Random Forest</a></li>
 </ul></li>
-<li class="chapter" data-level="4" data-path="unsupervised-learning.html"><a href="unsupervised-learning.html"><i class="fa fa-check"></i><b>4</b> Unsupervised Learning</a><ul>
-<li class="chapter" data-level="4.1" data-path="unsupervised-learning.html"><a href="unsupervised-learning.html#clustering"><i class="fa fa-check"></i><b>4.1</b> Clustering</a><ul>
+<li class="chapter" data-level="4" data-path="unsupervised-learning.html"><a href="unsupervised-learning.html"><i class="fa fa-check"></i><b>4</b> Unsupervised Learning</a>
+<ul>
+<li class="chapter" data-level="4.1" data-path="unsupervised-learning.html"><a href="unsupervised-learning.html#clustering"><i class="fa fa-check"></i><b>4.1</b> Clustering</a>
+<ul>
 <li class="chapter" data-level="4.1.1" data-path="unsupervised-learning.html"><a href="unsupervised-learning.html#similarity-measures"><i class="fa fa-check"></i><b>4.1.1</b> Similarity Measures</a></li>
 <li class="chapter" data-level="4.1.2" data-path="unsupervised-learning.html"><a href="unsupervised-learning.html#k-mean-algorithm"><i class="fa fa-check"></i><b>4.1.2</b> K-mean Algorithm</a></li>
 </ul></li>
 </ul></li>
 <li class="chapter" data-level="5" data-path="semi-superivsed-learning.html"><a href="semi-superivsed-learning.html"><i class="fa fa-check"></i><b>5</b> Semi-superivsed learning</a></li>
 <li class="chapter" data-level="6" data-path="reinforcement-learning.html"><a href="reinforcement-learning.html"><i class="fa fa-check"></i><b>6</b> Reinforcement learning</a></li>
-<li class="chapter" data-level="7" data-path="interpretable-machine-learning.html"><a href="interpretable-machine-learning.html"><i class="fa fa-check"></i><b>7</b> Interpretable Machine Learning</a><ul>
+<li class="chapter" data-level="7" data-path="interpretable-machine-learning.html"><a href="interpretable-machine-learning.html"><i class="fa fa-check"></i><b>7</b> Interpretable Machine Learning</a>
+<ul>
 <li class="chapter" data-level="7.1" data-path="interpretable-machine-learning.html"><a href="interpretable-machine-learning.html#shap"><i class="fa fa-check"></i><b>7.1</b> SHAP</a></li>
 <li class="chapter" data-level="7.2" data-path="interpretable-machine-learning.html"><a href="interpretable-machine-learning.html#video-classification"><i class="fa fa-check"></i><b>7.2</b> Video Classification</a></li>
 <li class="chapter" data-level="7.3" data-path="interpretable-machine-learning.html"><a href="interpretable-machine-learning.html#image-memorability"><i class="fa fa-check"></i><b>7.3</b> Image Memorability</a></li>
 </ul></li>
+<li class="chapter" data-level="8" data-path="generalized-method-of-moments.html"><a href="generalized-method-of-moments.html"><i class="fa fa-check"></i><b>8</b> Generalized Method of Moments</a></li>
+<li class="chapter" data-level="9" data-path="minimum-distance.html"><a href="minimum-distance.html"><i class="fa fa-check"></i><b>9</b> Minimum Distance</a></li>
+<li class="chapter" data-level="10" data-path="spline-regression.html"><a href="spline-regression.html"><i class="fa fa-check"></i><b>10</b> Spline Regression</a>
+<ul>
+<li class="chapter" data-level="10.1" data-path="spline-regression.html"><a href="spline-regression.html#regression-splines"><i class="fa fa-check"></i><b>10.1</b> Regression Splines</a></li>
+<li class="chapter" data-level="10.2" data-path="spline-regression.html"><a href="spline-regression.html#natural-splines"><i class="fa fa-check"></i><b>10.2</b> Natural splines</a></li>
+<li class="chapter" data-level="10.3" data-path="spline-regression.html"><a href="spline-regression.html#smoothing-splines"><i class="fa fa-check"></i><b>10.3</b> Smoothing splines</a></li>
+<li class="chapter" data-level="10.4" data-path="spline-regression.html"><a href="spline-regression.html#application"><i class="fa fa-check"></i><b>10.4</b> Application</a></li>
+</ul></li>
+<li class="chapter" data-level="11" data-path="generalized-additive-models.html"><a href="generalized-additive-models.html"><i class="fa fa-check"></i><b>11</b> Generalized Additive Models</a></li>
+<li class="chapter" data-level="12" data-path="quantile-regression.html"><a href="quantile-regression.html"><i class="fa fa-check"></i><b>12</b> Quantile Regression</a>
+<ul>
+<li class="chapter" data-level="12.1" data-path="quantile-regression.html"><a href="quantile-regression.html#application-1"><i class="fa fa-check"></i><b>12.1</b> Application</a></li>
+</ul></li>
 <li class="part"><span><b>II DEEP LEARNING</b></span></li>
-<li class="chapter" data-level="8" data-path="introduction.html"><a href="introduction.html"><i class="fa fa-check"></i><b>8</b> Introduction</a></li>
-<li class="chapter" data-level="9" data-path="neural-network.html"><a href="neural-network.html"><i class="fa fa-check"></i><b>9</b> Neural Network</a><ul>
-<li class="chapter" data-level="9.1" data-path="neural-network.html"><a href="neural-network.html#step-1-a-set-of-function"><i class="fa fa-check"></i><b>9.1</b> Step 1: A set of function</a></li>
-<li class="chapter" data-level="9.2" data-path="neural-network.html"><a href="neural-network.html#step-2-goodness-of-function"><i class="fa fa-check"></i><b>9.2</b> Step 2: Goodness of function</a></li>
-<li class="chapter" data-level="9.3" data-path="neural-network.html"><a href="neural-network.html#step-3-pick-the-best-function"><i class="fa fa-check"></i><b>9.3</b> Step 3: Pick the best function</a></li>
-<li class="chapter" data-level="9.4" data-path="neural-network.html"><a href="neural-network.html#recipe-of-deep-learning"><i class="fa fa-check"></i><b>9.4</b> Recipe of Deep learning</a><ul>
-<li class="chapter" data-level="9.4.1" data-path="neural-network.html"><a href="neural-network.html#choosing-proper-loss"><i class="fa fa-check"></i><b>9.4.1</b> Choosing proper loss</a></li>
-<li class="chapter" data-level="9.4.2" data-path="neural-network.html"><a href="neural-network.html#mini-batch"><i class="fa fa-check"></i><b>9.4.2</b> Mini-batch</a></li>
-<li class="chapter" data-level="9.4.3" data-path="neural-network.html"><a href="neural-network.html#new-activation-function"><i class="fa fa-check"></i><b>9.4.3</b> New activation function</a></li>
-<li class="chapter" data-level="9.4.4" data-path="neural-network.html"><a href="neural-network.html#adaptive-learning-rate"><i class="fa fa-check"></i><b>9.4.4</b> Adaptive Learning Rate</a></li>
-<li class="chapter" data-level="9.4.5" data-path="neural-network.html"><a href="neural-network.html#momentum"><i class="fa fa-check"></i><b>9.4.5</b> Momentum</a></li>
-<li class="chapter" data-level="9.4.6" data-path="neural-network.html"><a href="neural-network.html#early-stopping"><i class="fa fa-check"></i><b>9.4.6</b> Early Stopping</a></li>
-<li class="chapter" data-level="9.4.7" data-path="neural-network.html"><a href="neural-network.html#regularization"><i class="fa fa-check"></i><b>9.4.7</b> Regularization</a></li>
-<li class="chapter" data-level="9.4.8" data-path="neural-network.html"><a href="neural-network.html#dropout"><i class="fa fa-check"></i><b>9.4.8</b> Dropout</a></li>
-<li class="chapter" data-level="9.4.9" data-path="neural-network.html"><a href="neural-network.html#network-structure"><i class="fa fa-check"></i><b>9.4.9</b> Network Structure</a></li>
+<li class="chapter" data-level="13" data-path="introduction.html"><a href="introduction.html"><i class="fa fa-check"></i><b>13</b> Introduction</a></li>
+<li class="chapter" data-level="14" data-path="neural-network.html"><a href="neural-network.html"><i class="fa fa-check"></i><b>14</b> Neural Network</a>
+<ul>
+<li class="chapter" data-level="14.1" data-path="neural-network.html"><a href="neural-network.html#step-1-a-set-of-function"><i class="fa fa-check"></i><b>14.1</b> Step 1: A set of function</a></li>
+<li class="chapter" data-level="14.2" data-path="neural-network.html"><a href="neural-network.html#step-2-goodness-of-function"><i class="fa fa-check"></i><b>14.2</b> Step 2: Goodness of function</a></li>
+<li class="chapter" data-level="14.3" data-path="neural-network.html"><a href="neural-network.html#step-3-pick-the-best-function"><i class="fa fa-check"></i><b>14.3</b> Step 3: Pick the best function</a></li>
+<li class="chapter" data-level="14.4" data-path="neural-network.html"><a href="neural-network.html#recipe-of-deep-learning"><i class="fa fa-check"></i><b>14.4</b> Recipe of Deep learning</a>
+<ul>
+<li class="chapter" data-level="14.4.1" data-path="neural-network.html"><a href="neural-network.html#choosing-proper-loss"><i class="fa fa-check"></i><b>14.4.1</b> Choosing proper loss</a></li>
+<li class="chapter" data-level="14.4.2" data-path="neural-network.html"><a href="neural-network.html#mini-batch"><i class="fa fa-check"></i><b>14.4.2</b> Mini-batch</a></li>
+<li class="chapter" data-level="14.4.3" data-path="neural-network.html"><a href="neural-network.html#new-activation-function"><i class="fa fa-check"></i><b>14.4.3</b> New activation function</a></li>
+<li class="chapter" data-level="14.4.4" data-path="neural-network.html"><a href="neural-network.html#adaptive-learning-rate"><i class="fa fa-check"></i><b>14.4.4</b> Adaptive Learning Rate</a></li>
+<li class="chapter" data-level="14.4.5" data-path="neural-network.html"><a href="neural-network.html#momentum"><i class="fa fa-check"></i><b>14.4.5</b> Momentum</a></li>
+<li class="chapter" data-level="14.4.6" data-path="neural-network.html"><a href="neural-network.html#early-stopping"><i class="fa fa-check"></i><b>14.4.6</b> Early Stopping</a></li>
+<li class="chapter" data-level="14.4.7" data-path="neural-network.html"><a href="neural-network.html#regularization"><i class="fa fa-check"></i><b>14.4.7</b> Regularization</a></li>
+<li class="chapter" data-level="14.4.8" data-path="neural-network.html"><a href="neural-network.html#dropout"><i class="fa fa-check"></i><b>14.4.8</b> Dropout</a></li>
+<li class="chapter" data-level="14.4.9" data-path="neural-network.html"><a href="neural-network.html#network-structure"><i class="fa fa-check"></i><b>14.4.9</b> Network Structure</a></li>
 </ul></li>
 </ul></li>
-<li class="chapter" data-level="10" data-path="overview.html"><a href="overview.html"><i class="fa fa-check"></i><b>10</b> Overview</a></li>
-<li class="chapter" data-level="11" data-path="tensor-flow-and-r.html"><a href="tensor-flow-and-r.html"><i class="fa fa-check"></i><b>11</b> Tensor Flow and R</a><ul>
-<li class="chapter" data-level="11.1" data-path="tensor-flow-and-r.html"><a href="tensor-flow-and-r.html#r-packages"><i class="fa fa-check"></i><b>11.1</b> R packages</a></li>
-<li class="chapter" data-level="11.2" data-path="tensor-flow-and-r.html"><a href="tensor-flow-and-r.html#keras-layers"><i class="fa fa-check"></i><b>11.2</b> Keras layers</a></li>
+<li class="chapter" data-level="15" data-path="overview.html"><a href="overview.html"><i class="fa fa-check"></i><b>15</b> Overview</a></li>
+<li class="chapter" data-level="16" data-path="tensor-flow-and-r.html"><a href="tensor-flow-and-r.html"><i class="fa fa-check"></i><b>16</b> Tensor Flow and R</a>
+<ul>
+<li class="chapter" data-level="16.1" data-path="tensor-flow-and-r.html"><a href="tensor-flow-and-r.html#r-packages"><i class="fa fa-check"></i><b>16.1</b> R packages</a></li>
+<li class="chapter" data-level="16.2" data-path="tensor-flow-and-r.html"><a href="tensor-flow-and-r.html#keras-layers"><i class="fa fa-check"></i><b>16.2</b> Keras layers</a></li>
 </ul></li>
-<li class="chapter" data-level="12" data-path="compiling-models.html"><a href="compiling-models.html"><i class="fa fa-check"></i><b>12</b> Compiling models</a></li>
-<li class="chapter" data-level="13" data-path="losses-optimizers-and-metrics.html"><a href="losses-optimizers-and-metrics.html"><i class="fa fa-check"></i><b>13</b> Losses, Optimizers, and Metrics</a></li>
-<li class="chapter" data-level="14" data-path="nyu.html"><a href="nyu.html"><i class="fa fa-check"></i><b>14</b> NYU</a></li>
-<li class="chapter" data-level="15" data-path="applications.html"><a href="applications.html"><i class="fa fa-check"></i><b>15</b> Applications</a></li>
-<li class="chapter" data-level="16" data-path="research-methods.html"><a href="research-methods.html"><i class="fa fa-check"></i><b>16</b> Research Methods</a><ul>
-<li class="chapter" data-level="16.1" data-path="research-methods.html"><a href="research-methods.html#but-for-world"><i class="fa fa-check"></i><b>16.1</b> But-for World</a></li>
+<li class="chapter" data-level="17" data-path="compiling-models.html"><a href="compiling-models.html"><i class="fa fa-check"></i><b>17</b> Compiling models</a></li>
+<li class="chapter" data-level="18" data-path="losses-optimizers-and-metrics.html"><a href="losses-optimizers-and-metrics.html"><i class="fa fa-check"></i><b>18</b> Losses, Optimizers, and Metrics</a></li>
+<li class="chapter" data-level="19" data-path="nyu.html"><a href="nyu.html"><i class="fa fa-check"></i><b>19</b> NYU</a></li>
+<li class="chapter" data-level="20" data-path="applications.html"><a href="applications.html"><i class="fa fa-check"></i><b>20</b> Applications</a></li>
+<li class="chapter" data-level="21" data-path="research-methods.html"><a href="research-methods.html"><i class="fa fa-check"></i><b>21</b> Research Methods</a>
+<ul>
+<li class="chapter" data-level="21.1" data-path="research-methods.html"><a href="research-methods.html#but-for-world"><i class="fa fa-check"></i><b>21.1</b> But-for World</a></li>
 </ul></li>
+<li class="chapter" data-level="22" data-path="model-card.html"><a href="model-card.html"><i class="fa fa-check"></i><b>22</b> Model Card</a></li>
 <li class="chapter" data-level="" data-path="references.html"><a href="references.html"><i class="fa fa-check"></i>References</a></li>
+<li class="chapter" data-level="23" data-path="model-tuning.html"><a href="model-tuning.html"><i class="fa fa-check"></i><b>23</b> Model Tuning</a></li>
+<li class="chapter" data-level="24" data-path="model-stacking.html"><a href="model-stacking.html"><i class="fa fa-check"></i><b>24</b> Model Stacking</a></li>
+<li class="chapter" data-level="25" data-path="data-storage.html"><a href="data-storage.html"><i class="fa fa-check"></i><b>25</b> Data Storage</a>
+<ul>
+<li class="chapter" data-level="25.1" data-path="data-storage.html"><a href="data-storage.html#structured-databases"><i class="fa fa-check"></i><b>25.1</b> Structured Databases</a></li>
+<li class="chapter" data-level="25.2" data-path="data-storage.html"><a href="data-storage.html#unstructured-databases"><i class="fa fa-check"></i><b>25.2</b> Unstructured Databases</a>
+<ul>
+<li class="chapter" data-level="25.2.1" data-path="data-storage.html"><a href="data-storage.html#mongodb"><i class="fa fa-check"></i><b>25.2.1</b> MongoDB</a></li>
+</ul></li>
+</ul></li>
+<li class="chapter" data-level="26" data-path="api.html"><a href="api.html"><i class="fa fa-check"></i><b>26</b> API</a>
+<ul>
+<li class="chapter" data-level="26.1" data-path="api.html"><a href="api.html#r"><i class="fa fa-check"></i><b>26.1</b> R</a></li>
+</ul></li>
+<li class="chapter" data-level="27" data-path="bert.html"><a href="bert.html"><i class="fa fa-check"></i><b>27</b> BERT</a></li>
 <li class="divider"></li>
 <li><a href="https://github.com/rstudio/bookdown" target="blank">Published with bookdown</a></li>
 
@@ -211,143 +289,111 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
           <div class="page-inner">
 
             <section class="normal" id="section-">
-<div id="supervised-learning" class="section level1">
+<div id="supervised-learning" class="section level1" number="3">
 <h1><span class="header-section-number">Chapter 3</span> Supervised Learning</h1>
 <p>From the data, find a function f of the inputs that best approximates the outputs.</p>
 <p><span class="math display">\[
 \hat{Y} = f(X_1,..,X_n)
 \]</span></p>
 <ul>
-<li>Predictive: Make predictions for a new object described by its attributes<br />
-</li>
+<li>Predictive: Make predictions for a new object described by its attributes</li>
 <li>Informative: help understand the relationship between inputs and outputs</li>
 </ul>
 <p>Divide data into</p>
 <ul>
-<li>Training set: train model<br />
-</li>
-<li>validation set: tune hyper parameters<br />
-</li>
+<li>Training set: train model</li>
+<li>Validation set: tune hyper parameters</li>
 <li>Test set: evaluation of the model for generalization error.</li>
 </ul>
 <p>Learning algorithm</p>
 <ul>
-<li>defined by
+<li><p>defined by</p>
 <ul>
-<li>a family of candidate models (= <strong>hypothesis space H</strong>)<br />
-</li>
-<li>a quality measure for a model<br />
-</li>
-<li>an optimization strategy<br />
-</li>
+<li>a family of candidate models (= <strong>hypothesis space H</strong>)</li>
+<li>a quality measure for a model</li>
+<li>an optimization strategy</li>
 </ul></li>
-<li>takes as input a leaning sample and outputs a function h in H of maximum quality</li>
+<li><p>takes as input a leaning sample and outputs a function h in H of maximum quality</p></li>
 </ul>
 <p>Model selection</p>
 <ul>
-<li>Why not choose the model that minimizes the error rate on the learning sample? (<strong>re-substitution error</strong>)<br />
-</li>
-<li>How well are you going to predict future data drawn from the same distribution? (<strong>generalization error</strong>)</li>
-<li>Evaluation on test set
+<li><p>Why not choose the model that minimizes the error rate on the learning sample? (<strong>re-substitution error</strong>)</p></li>
+<li><p>How well are you going to predict future data drawn from the same distribution? (<strong>generalization error</strong>)</p></li>
+<li><p>Evaluation on test set</p>
 <ol style="list-style-type: decimal">
-<li>Randomly choose a percentage (e.g., 30%) of the data to be in a test set<br />
-</li>
-<li>The remainder is training set<br />
-</li>
-<li>Learn the model from the training set<br />
-</li>
-<li>Estimate its future performance on the test set.<br />
-</li>
+<li>Randomly choose a percentage (e.g., 30%) of the data to be in a test set</li>
+<li>The remainder is training set</li>
+<li>Learn the model from the training set</li>
+<li>Estimate its future performance on the test set.</li>
 </ol></li>
-<li>Problems:
+<li><p>Problems:</p>
 <ul>
-<li>overfits: occurs when the learning algorithm starts fitting noise.<br />
-</li>
-<li>unfits<br />
-</li>
+<li>overfits: occurs when the learning algorithm starts fitting noise.</li>
+<li>underfits</li>
 </ul></li>
-<li>Evaluation on test set:
+<li><p>Evaluation on test set:</p>
 <ul>
-<li>Good:
+<li><p>Good:</p>
 <ul>
-<li>Very simple<br />
-</li>
-<li>Computationally efficient<br />
-</li>
+<li>Very simple</li>
+<li>Computationally efficient</li>
 </ul></li>
-<li>Bad:
+<li><p>Bad:</p>
 <ul>
-<li>Waste data<br />
-</li>
-<li>very unstable when database is small<br />
-</li>
+<li>Waste data</li>
+<li>very unstable when database is small</li>
 </ul></li>
 </ul></li>
-<li>Another evaluation: <strong>Leave-one-out cross validation</strong>
+<li><p>Another evaluation: <strong>Leave-one-out cross validation</strong></p>
 <ul>
-<li>For k = 1 to N
+<li><p>For k = 1 to N</p>
 <ul>
-<li>remove the k-th object from the learning sample<br />
-</li>
-<li>learn the model on the remaining objects<br />
-</li>
-<li>apply the model to get a prediction for the k-th object<br />
-</li>
+<li>remove the k-th object from the learning sample</li>
+<li>learn the model on the remaining objects</li>
+<li>apply the model to get a prediction for the k-th object</li>
 </ul></li>
-<li>report the proportion of mis-classified objects<br />
-</li>
+<li><p>report the proportion of mis-classified objects<br />
+</p></li>
 </ul></li>
-<li>Good:
+<li><p>Good:</p>
 <ul>
-<li>Do not waste the data (you get an estimate of the best method to apply to N-1 data)<br />
-</li>
+<li>Do not waste the data (you get an estimate of the best method to apply to N-1 data)</li>
 </ul></li>
-<li>Bad:
+<li><p>Bad:</p>
 <ul>
-<li>Computationally intensive (train N models)<br />
-</li>
-<li>high variance.<br />
-</li>
+<li>Computationally intensive (train N models)</li>
+<li>high variance.</li>
 </ul></li>
-<li>Another evaluation: <strong>K-fold cross validation</strong>:
+<li><p>Another evaluation: <strong>K-fold cross validation</strong>:</p>
 <ul>
-<li>Break up data into k folds<br />
-</li>
-<li>For each fold
+<li><p>Break up data into k folds</p></li>
+<li><p>For each fold</p>
 <ul>
-<li>Choose the fold as a temporary test set<br />
-</li>
-<li>Train on k-1 folds, compute performance on the test fold.<br />
-</li>
+<li>Choose the fold as a temporary test set</li>
+<li>Train on k-1 folds, compute performance on the test fold.</li>
 </ul></li>
-<li>Report average performance of the 10 runs.<br />
-</li>
-<li>randomly partition the dataset into k subsets (e.g., 10)<br />
-</li>
-<li>For each subset:
+<li><p>Report average performance of the 10 runs.</p></li>
+<li><p>randomly partition the dataset into k subsets (e.g., 10)</p></li>
+<li><p>For each subset:</p>
 <ul>
-<li>learn the model on the objects that are not in the subset<br />
-</li>
-<li>compute the error rate on the points in the subset. Report the mean error rate over the k subsets.<br />
-</li>
+<li>learn the model on the objects that are not in the subset</li>
+<li>compute the error rate on the points in the subset. Report the mean error rate over the k subsets.</li>
 </ul></li>
-<li>When k = the number of objects -&gt; leave-one-out-cross validation.</li>
+<li><p>When k = the number of objects -&gt; leave-one-out-cross validation.</p></li>
 </ul></li>
 </ul>
 <p>Rule-of-thumb for evaluation</p>
 <ul>
-<li>Lots of data (&gt;1000) test set validation<br />
-</li>
-<li>small data (100-1000): 10-fold CV<br />
-</li>
+<li>Lots of data (&gt;1000) test set validation</li>
+<li>small data (100-1000): 10-fold CV</li>
 <li>very small data (&lt;100) leave one out CV.</li>
 </ul>
+<pre><code>## Warning: package &#39;jpeg&#39; was built under R version 4.0.5</code></pre>
 <p><img src="images/Overfitting%20affect%20prediction.jpg" width="364" style="display: block; margin: auto;" /></p>
 <p>Use the testing set to estimate the performance of the final model</p>
 <p>Performance measures</p>
 <ul>
-<li>The error rate is no the only way to assess a predictive model.<br />
-</li>
+<li>The error rate is no the only way to assess a predictive model.</li>
 <li>In binary classification, results can be summarized in a contingency table (i.e., confusion matrix)</li>
 </ul>
 <p><img src="images/confusionMatrxiUpdated.jpg" width="377" style="display: block; margin: auto;" /></p>
@@ -367,7 +413,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <p>You want large area under the curve</p>
 <p>Compassion of learning models</p>
 <ul>
-<li>Three main criteria:
+<li><p>Three main criteria:</p>
 <ul>
 <li>Accuracy: Measures by the generalization error (estimated by CV)<br />
 </li>
@@ -376,125 +422,98 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <li>Interpretability: Comprehension brought by the model about the input-output relationship.<br />
 </li>
 </ul></li>
-<li>Depends on the application, you have to make trade-off.</li>
+<li><p>Depends on the application, you have to make trade-off.</p></li>
 </ul>
 <p>Learning Techniques</p>
 <ul>
-<li>Supervised learning categories and techniques
+<li><p>Supervised learning categories and techniques</p>
 <ul>
-<li>Linear classifier (numerical functions):
+<li><p>Linear classifier (numerical functions):</p>
 <ul>
-<li>Perceptron<br />
-</li>
-<li>Logistic regression<br />
-</li>
-<li>Support vector machine (SVM): linear to nonlinear: feature transofrm and kernel function<br />
-</li>
-<li>Ada-line<br />
-</li>
+<li>Perceptron</li>
+<li>Logistic regression</li>
+<li>Support vector machine (SVM): linear to nonlinear: feature transform and kernel function</li>
+<li>Ada-line</li>
 <li>Multi-layer perceptron (MLP)</li>
 </ul></li>
-<li>Parametric (Probabilistic functions)
+<li><p>Parametric (Probabilistic functions)</p>
 <ul>
-<li>Naive Bayes, Gaussian discriminant analysis (GDA), Hidden Markov models (HMM), probabilistic graphical models<br />
-</li>
+<li>Naive Bayes, Gaussian discriminant analysis (GDA), Hidden Markov models (HMM), probabilistic graphical model</li>
 </ul></li>
-<li>Non-parametric (Instance-based functions)
+<li><p>Non-parametric (Instance-based functions)</p>
 <ul>
-<li>K-nearest neighbors, Kernel regression, Kernel density estimation, local regression.<br />
-</li>
+<li>K-nearest neighbors, Kernel regression, Kernel density estimation, local regression.</li>
 </ul></li>
-<li>Non-metric (symbolic functions)
+<li><p>Non-metric (symbolic functions)</p>
 <ul>
-<li>Classification and regression tree (CART), decision tree<br />
-</li>
+<li>Classification and regression tree (CART), decision tree</li>
 </ul></li>
-<li>Aggregation
+<li><p>Aggregation</p>
 <ul>
-<li>Bagging (bootstrap + aggregation), Adaboost, Random forest.<br />
-</li>
+<li>Bagging (bootstrap + aggregation), Adaboost, Random forest.</li>
 </ul></li>
 </ul></li>
-<li>Unsupervised learning categories and techniques:
+<li><p>Unsupervised learning categories and techniques:</p>
 <ul>
-<li>Clustering
+<li><p>Clustering</p>
 <ul>
-<li>K-means clustering<br />
-</li>
-<li>Spectral clustering<br />
-</li>
+<li>K-means clustering</li>
+<li>Spectral clustering</li>
 </ul></li>
-<li>Density Estimation
+<li><p>Density Estimation</p>
 <ul>
-<li>Gaussian mixture model (GMM)<br />
-</li>
-<li>Graphical models<br />
-</li>
+<li>Gaussian mixture model (GMM)</li>
+<li>Graphical models</li>
 </ul></li>
-<li>Dimensionality reduction
+<li><p>Dimensionality reduction</p>
 <ul>
-<li>Principal component analysis (PCA)<br />
-</li>
-<li>Factor analysis<br />
-</li>
+<li>Principal component analysis (PCA)</li>
+<li>Factor analysis</li>
 </ul></li>
 </ul></li>
-<li>Semi-supervised learning
+<li><p>Semi-supervised learning</p>
 <ul>
-<li>goal: exploit both labeled and unlabeled data to build better models than using each one alone<br />
-</li>
-<li>Self-training:
+<li><p>goal: exploit both labeled and unlabeled data to build better models than using each one alone</p></li>
+<li><p>Self-training:</p>
 <ul>
-<li>Iteratively label some unlabeled examples with a model learned from the previously labeled examples<br />
-</li>
-<li>Active learning.<br />
-</li>
+<li>Iteratively label some unlabeled examples with a model learned from the previously labeled examples</li>
+<li>Active learning.</li>
 </ul></li>
 </ul></li>
-<li>Reinforcement learning
+<li><p>Reinforcement learning</p>
 <ul>
-<li>Learning from interactions<br />
-</li>
+<li>Learning from interactions</li>
 <li>Goal: learn to choose sequence of actions (=policy) that maximizes <span class="math inline">\(r_0 + \gamma r_1 + \gamma^2r_2 + ...\)</span> where <span class="math inline">\(0 \le \gamma &lt;1\)</span></li>
 </ul></li>
 </ul>
-<div id="decision-tree" class="section level2">
+<div id="decision-tree" class="section level2" number="3.1">
 <h2><span class="header-section-number">3.1</span> Decision Tree</h2>
 <ul>
-<li>Is a tree-structured plan of a set of attributes to test to predict the output.<br />
-</li>
-<li>Give one attribute, try to predict the value of new people’s attribute by means of some other available attribute<br />
-</li>
-<li>Input attributes:
+<li><p>Is a tree-structured plan of a set of attributes to test to predict the output.</p></li>
+<li><p>Give one attribute, try to predict the value of new people’s attribute by means of some other available attribute</p></li>
+<li><p>Input attributes:</p>
 <ul>
-<li><strong>d</strong> features/ attributes <span class="math inline">\(x^{(1)},x^{(2)},...,x^{(d)}\)</span><br />
-</li>
-<li>Each <span class="math inline">\(x^{(j)}\)</span> has domain <span class="math inline">\(O_j\)</span>
+<li><p><strong>d</strong> features/ attributes <span class="math inline">\(x^{(1)},x^{(2)},...,x^{(d)}\)</span></p></li>
+<li><p>Each <span class="math inline">\(x^{(j)}\)</span> has domain <span class="math inline">\(O_j\)</span></p>
 <ul>
-<li>Categorical <span class="math inline">\(O_j=(read,blue)\)</span><br />
-</li>
-<li>Numerical: <span class="math inline">\(H_j = (0,10)\)</span><br />
-</li>
+<li>Categorical <span class="math inline">\(O_j=(read,blue)\)</span></li>
+<li>Numerical: <span class="math inline">\(H_j = (0,10)\)</span></li>
 </ul></li>
-<li>Y is output variable with domain <span class="math inline">\(O_Y\)</span>:
+<li><p>Y is output variable with domain <span class="math inline">\(O_Y\)</span>:</p>
 <ul>
-<li>Categorical: Classification<br />
-</li>
-<li>Numerical: regression<br />
-</li>
+<li>Categorical: Classification</li>
+<li>Numerical: regression</li>
 </ul></li>
 </ul></li>
-<li>Data D:
+<li><p>Data D:</p>
 <ul>
-<li>n examples <span class="math inline">\((x_i, y_i)\)</span> where
+<li><p>n examples <span class="math inline">\((x_i, y_i)\)</span> where</p>
 <ul>
-<li><span class="math inline">\(x_i\)</span> is a d-dim feature vector<br />
-</li>
-<li><span class="math inline">\(y_i\in O_Y\)</span><br />
-</li>
+<li><span class="math inline">\(x_i\)</span> is a d-dim feature vector</li>
+<li><span class="math inline">\(y_i\in O_Y\)</span></li>
 </ul></li>
 </ul></li>
-<li>Decision trees:
+<li><p>Decision trees:</p>
 <ul>
 <li>Split the data at each internal node</li>
 <li>Each leaf node makes a prediction</li>
@@ -508,31 +527,30 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 </li>
 <li><a href="supervised-learning.html#find-prediction">Find Prediction</a></li>
 </ul>
-<div id="find-best-split" class="section level3">
+<div id="find-best-split" class="section level3" number="3.1.1">
 <h3><span class="header-section-number">3.1.1</span> Find best split</h3>
 <p>Pick an attribute and value that optimizes some criterion<br />
-+ Regression: Purity
-+ Classification: Information Gain: Measures how much a given attribute X tells us about the class Y.</p>
++ Regression: Purity + Classification: Information Gain: Measures how much a given attribute X tells us about the class Y.</p>
 <p>Information Gain? Entropy</p>
 <p>The entropy of X: <span class="math inline">\(H(X) = -\sum_{j=1}^{m} p_j log p_j\)</span></p>
 <ul>
-<li>“High entropy”: X is from a uniform distribution
+<li><p>“High entropy”: X is from a uniform distribution</p>
 <ul>
 <li>A histogram of the frequency distribution of values of X is flat<br />
 </li>
 </ul></li>
-<li>“Low Entropy”: X is from varied distribution
+<li><p>“Low Entropy”: X is from varied distribution</p>
 <ul>
 <li>A histogram of the frequency distribution of values of X would have many lows and one or two highs.<br />
 </li>
 </ul></li>
-<li>Def: Information Gain:
+<li><p>Def: Information Gain:</p>
 <ul>
 <li><span class="math inline">\(IG(Y|X) = H(Y) - H(Y|X)\)</span> I must transmit Y. How many bits on average would it save me if both ends of the line knew X?</li>
 </ul></li>
 </ul>
 </div>
-<div id="stopping-criteria" class="section level3">
+<div id="stopping-criteria" class="section level3" number="3.1.2">
 <h3><span class="header-section-number">3.1.2</span> Stopping Criteria</h3>
 <ul>
 <li>When the leaf is “pure”: the target variable does not vary too much: Var(Y) &lt; threshold.<br />
@@ -542,7 +560,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <li>Could also use information as as a stopping criteria.</li>
 </ul>
 </div>
-<div id="find-prediction" class="section level3">
+<div id="find-prediction" class="section level3" number="3.1.3">
 <h3><span class="header-section-number">3.1.3</span> Find Prediction</h3>
 <ul>
 <li>Regression: Predict average y of the examples<br />
@@ -551,7 +569,7 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 </ul>
 </div>
 </div>
-<div id="random-forest" class="section level2">
+<div id="random-forest" class="section level2" number="3.2">
 <h2><span class="header-section-number">3.2</span> Random Forest</h2>
 <p>Ensemble methods</p>
 <ul>
@@ -563,48 +581,38 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 </ul>
 <p>Bagging</p>
 <ul>
-<li>If we split the data in random different ways, decision trees give different results, high variance.<br />
-</li>
-<li>Bagging: Bootstrap aggregating is a method that result in low variance.<br />
-</li>
-<li>If we had multiple realizations of the data (or multiple samples) we could calculate the prediction multiple times and take the average of the fact that averaging multiple onerous estimations produce less uncertain results<br />
-</li>
-<li>say for each sample b, we calculate <span class="math inline">\(f^b(x)\)</span>, then <span class="math inline">\(\hat{f}_{avg} (x) = \frac{1}{B} \sum_{b=1}^{B} \hat{f}^b (x)\)</span></li>
-<li>Bootstrap: Construct B (hundreds) of trees. Learn a classifier for each bootstrap sample and average them. Very effective.<br />
-</li>
-<li>Reduces overfitting (variance)<br />
-</li>
-<li>Could use one classifier, or multiple classifiers.</li>
-<li>easy to parallelize<br />
-</li>
-<li>Variable Importance Measures
+<li><p>If we split the data in random different ways, decision trees give different results, high variance.<br />
+</p></li>
+<li><p>Bagging: Bootstrap aggregating is a method that result in low variance.<br />
+</p></li>
+<li><p>If we had multiple realizations of the data (or multiple samples) we could calculate the prediction multiple times and take the average of the fact that averaging multiple onerous estimations produce less uncertain results<br />
+</p></li>
+<li><p>say for each sample b, we calculate <span class="math inline">\(f^b(x)\)</span>, then <span class="math inline">\(\hat{f}_{avg} (x) = \frac{1}{B} \sum_{b=1}^{B} \hat{f}^b (x)\)</span></p></li>
+<li><p>Bootstrap: Construct B (hundreds) of trees. Learn a classifier for each bootstrap sample and average them. Very effective.</p></li>
+<li><p>Reduces overfitting (variance)</p></li>
+<li><p>Could use one classifier, or multiple classifiers.</p></li>
+<li><p>Easy to parallelize</p></li>
+<li><p>Variable Importance Measures</p>
 <ul>
-<li>Bagging results in improved accuracy over prediction using a single tree<br />
-</li>
-<li>Unfortunately, difficult to interpret the resulting model. Bagging improves prediction accuracy at the expense of interpretability.<br />
-</li>
+<li>Bagging results in improved accuracy over prediction using a single tree</li>
+<li>Unfortunately, difficult to interpret the resulting model. Bagging improves prediction accuracy at the expense of interpretability.</li>
 </ul></li>
-<li>Issues:
+<li><p>Issues:</p>
 <ul>
-<li>Each tree is identically distributed (i.d)
+<li><p>Each tree is identically distributed (i.d)</p>
 <ul>
-<li>The expectation of the average of B such trees<br />
-</li>
+<li>The expectation of the average of B such trees</li>
 <li>The bias of bagged trees is the same as that of individual trees</li>
 </ul></li>
-<li>An average of B i.i.d random variables, each with variance <span class="math inline">\(\sigma^2\)</span>, has variance <span class="math inline">\(\sigma^2/B\)</span>. If i.d. (identical but not independent) and pair correlation <span class="math inline">\(\rho\)</span> is present, then the variance is : <span class="math inline">\(\rho \sigma^2 + \frac{1-\rho}{B} \sigma^2\)</span> . As B increases, the second term disappears but the first term remains.<br />
-</li>
+<li><p>An average of B i.i.d random variables, each with variance <span class="math inline">\(\sigma^2\)</span>, has variance <span class="math inline">\(\sigma^2/B\)</span>. If i.d. (identical but not independent) and pair correlation <span class="math inline">\(\rho\)</span> is present, then the variance is : <span class="math inline">\(\rho \sigma^2 + \frac{1-\rho}{B} \sigma^2\)</span> . As B increases, the second term disappears but the first term remains.</p></li>
 </ul></li>
-<li>Suppose that there is one very strong predictor in the data set, along with a number of other moderately strong predictors. Then all bagged trees will select the strong predictor at the top tree and therefore all trees will look similar.
+<li><p>Suppose that there is one very strong predictor in the data set, along with a number of other moderately strong predictors. Then all bagged trees will select the strong predictor at the top tree and therefore all trees will look similar.</p>
 <ul>
-<li>We can penalize the splitting with a penalty term that depends on the number of times a predictor is selected at a given length.<br />
-</li>
-<li>restrict how many items a predictor can be used.<br />
-</li>
-<li>allow a certain number of predictors.<br />
-</li>
+<li>We can penalize the splitting with a penalty term that depends on the number of times a predictor is selected at a given length.</li>
+<li>restrict how many items a predictor can be used.</li>
+<li>allow a certain number of predictors.</li>
 </ul></li>
-<li>Since we want i.i.d so that the bias to be the same and variance to be less.
+<li><p>Since we want i.i.d so that the bias to be the same and variance to be less.</p>
 <ul>
 <li>in bagging, we build a number of decision trees on bootstrapped training samples each time a split in a tree is considered, a random sample of m predictors is chosen as split candidates from the full set of p predictors (if m = p, then this is bagging).</li>
 </ul></li>
@@ -614,9 +622,9 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <p>Random Forests Algorithm</p>
 <p>For b = 1 to B:</p>
 <ol style="list-style-type: lower-alpha">
-<li>draw a bootstrap sample Z * of size N from the training data.<br />
-</li>
-<li>Grow a random-forest tree to the bootstrapped data, by recursively repeating the following steps for each terminal node of the tree, until the minimum node size <span class="math inline">\(n_{min}\)</span> is reached.
+<li><p>draw a bootstrap sample Z * of size N from the training data.<br />
+</p></li>
+<li><p>Grow a random-forest tree to the bootstrapped data, by recursively repeating the following steps for each terminal node of the tree, until the minimum node size <span class="math inline">\(n_{min}\)</span> is reached.</p>
 <ul>
 <li>Select m variables at random from the p variables.<br />
 </li>
@@ -628,9 +636,9 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
 <p>Output the ensemble trees.</p>
 <table>
 <colgroup>
-<col width="33%" />
-<col width="33%" />
-<col width="33%" />
+<col width="22%" />
+<col width="36%" />
+<col width="40%" />
 </colgroup>
 <thead>
 <tr class="header">
@@ -673,7 +681,6 @@ code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warni
     </div>
   </div>
 <script src="libs/gitbook-2.6.7/js/app.min.js"></script>
-<script src="libs/gitbook-2.6.7/js/lunr.js"></script>
 <script src="libs/gitbook-2.6.7/js/clipboard.min.js"></script>
 <script src="libs/gitbook-2.6.7/js/plugin-search.js"></script>
 <script src="libs/gitbook-2.6.7/js/plugin-sharing.js"></script>
@@ -692,6 +699,7 @@ gitbook.start({
 "weibo": false,
 "instapaper": false,
 "vk": false,
+"whatsapp": false,
 "all": ["facebook", "twitter", "linkedin", "weibo", "instapaper"]
 },
 "fontsettings": {
@@ -712,6 +720,10 @@ gitbook.start({
 "text": null
 },
 "download": ["advanced data analysis.pdf", "advanced data analysis.epub"],
+"search": {
+"engine": "fuse",
+"options": null
+},
 "toc": {
 "collapse": "subsection"
 }

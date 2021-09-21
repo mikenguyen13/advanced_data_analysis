@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="" xml:lang="">
+<head>
+
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <title>Chapter 25 Data Storage | Advanced Data Analysis</title>
+  <meta name="description" content="Advanced guide on data analysis. This is a second part of Data Analysis" />
+  <meta name="generator" content="bookdown 0.24 and GitBook 2.6.7" />
+
+  <meta property="og:title" content="Chapter 25 Data Storage | Advanced Data Analysis" />
+  <meta property="og:type" content="book" />
+  
+  
+  <meta property="og:description" content="Advanced guide on data analysis. This is a second part of Data Analysis" />
+  
+
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Chapter 25 Data Storage | Advanced Data Analysis" />
+  
+  <meta name="twitter:description" content="Advanced guide on data analysis. This is a second part of Data Analysis" />
+  
+
+<meta name="author" content="Mike Nguyen" />
+
+
+<meta name="date" content="2021-09-20" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black" />
+  
+  
+<link rel="prev" href="model-stacking.html"/>
+<link rel="next" href="api.html"/>
+<script src="libs/header-attrs-2.11/header-attrs.js"></script>
+<script src="libs/jquery-3.6.0/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fuse.js@6.4.6/dist/fuse.min.js"></script>
+<link href="libs/gitbook-2.6.7/css/style.css" rel="stylesheet" />
+<link href="libs/gitbook-2.6.7/css/plugin-table.css" rel="stylesheet" />
+<link href="libs/gitbook-2.6.7/css/plugin-bookdown.css" rel="stylesheet" />
+<link href="libs/gitbook-2.6.7/css/plugin-highlight.css" rel="stylesheet" />
+<link href="libs/gitbook-2.6.7/css/plugin-search.css" rel="stylesheet" />
+<link href="libs/gitbook-2.6.7/css/plugin-fontsettings.css" rel="stylesheet" />
+<link href="libs/gitbook-2.6.7/css/plugin-clipboard.css" rel="stylesheet" />
+
+
+
+
+
+
+
+
+<link href="libs/anchor-sections-1.0.1/anchor-sections.css" rel="stylesheet" />
+<script src="libs/anchor-sections-1.0.1/anchor-sections.js"></script>
+
+
+<style type="text/css">
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+  { counter-reset: source-line 0; }
+pre.numberSource code > span
+  { position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+  { content: counter(source-line);
+    position: relative; left: -1em; text-align: right; vertical-align: baseline;
+    border: none; display: inline-block;
+    -webkit-touch-callout: none; -webkit-user-select: none;
+    -khtml-user-select: none; -moz-user-select: none;
+    -ms-user-select: none; user-select: none;
+    padding: 0 4px; width: 4em;
+    color: #aaaaaa;
+  }
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa;  padding-left: 4px; }
+div.sourceCode
+  {   }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } /* Alert */
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } /* Annotation */
+code span.at { color: #7d9029; } /* Attribute */
+code span.bn { color: #40a070; } /* BaseN */
+code span.bu { } /* BuiltIn */
+code span.cf { color: #007020; font-weight: bold; } /* ControlFlow */
+code span.ch { color: #4070a0; } /* Char */
+code span.cn { color: #880000; } /* Constant */
+code span.co { color: #60a0b0; font-style: italic; } /* Comment */
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } /* CommentVar */
+code span.do { color: #ba2121; font-style: italic; } /* Documentation */
+code span.dt { color: #902000; } /* DataType */
+code span.dv { color: #40a070; } /* DecVal */
+code span.er { color: #ff0000; font-weight: bold; } /* Error */
+code span.ex { } /* Extension */
+code span.fl { color: #40a070; } /* Float */
+code span.fu { color: #06287e; } /* Function */
+code span.im { } /* Import */
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } /* Information */
+code span.kw { color: #007020; font-weight: bold; } /* Keyword */
+code span.op { color: #666666; } /* Operator */
+code span.ot { color: #007020; } /* Other */
+code span.pp { color: #bc7a00; } /* Preprocessor */
+code span.sc { color: #4070a0; } /* SpecialChar */
+code span.ss { color: #bb6688; } /* SpecialString */
+code span.st { color: #4070a0; } /* String */
+code span.va { color: #19177c; } /* Variable */
+code span.vs { color: #4070a0; } /* VerbatimString */
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } /* Warning */
+</style>
+
+<style type="text/css">
+/* Used with Pandoc 2.11+ new --citeproc when CSL is used */
+div.csl-bib-body { }
+div.csl-entry {
+  clear: both;
+}
+.hanging div.csl-entry {
+  margin-left:2em;
+  text-indent:-2em;
+}
+div.csl-left-margin {
+  min-width:2em;
+  float:left;
+}
+div.csl-right-inline {
+  margin-left:2em;
+  padding-left:1em;
+}
+div.csl-indent {
+  margin-left: 2em;
+}
+</style>
+
+<link rel="stylesheet" href="style.css" type="text/css" />
+</head>
+
+<body>
+
+
+
+  <div class="book without-animation with-summary font-size-2 font-family-1" data-basepath=".">
+
+    <div class="book-summary">
+      <nav role="navigation">
+
+<ul class="summary">
+<li><a href="./">Advanced Data Analysis</a></li>
+
+<li class="divider"></li>
+<li class="chapter" data-level="1" data-path="index.html"><a href="index.html"><i class="fa fa-check"></i><b>1</b> Prerequisites</a></li>
+<li class="part"><span><b>I MACHINE LEARNING</b></span></li>
+<li class="chapter" data-level="2" data-path="intro.html"><a href="intro.html"><i class="fa fa-check"></i><b>2</b> Introduction</a>
+<ul>
+<li class="chapter" data-level="2.1" data-path="intro.html"><a href="intro.html#general-framework"><i class="fa fa-check"></i><b>2.1</b> General Framework</a></li>
+<li class="chapter" data-level="2.2" data-path="intro.html"><a href="intro.html#assessing-model-accuracy---model-fit"><i class="fa fa-check"></i><b>2.2</b> Assessing Model Accuracy - Model fit</a>
+<ul>
+<li class="chapter" data-level="2.2.1" data-path="intro.html"><a href="intro.html#continuous-output-mean-squared-error-mse"><i class="fa fa-check"></i><b>2.2.1</b> Continuous output: Mean squared error (MSE)</a></li>
+<li class="chapter" data-level="2.2.2" data-path="intro.html"><a href="intro.html#categorical-output-training-error-rate"><i class="fa fa-check"></i><b>2.2.2</b> Categorical output: training error rate</a></li>
+<li class="chapter" data-level="2.2.3" data-path="intro.html"><a href="intro.html#curse-of-dimensionality"><i class="fa fa-check"></i><b>2.2.3</b> Curse of dimensionality</a></li>
+<li class="chapter" data-level="2.2.4" data-path="intro.html"><a href="intro.html#reminder"><i class="fa fa-check"></i><b>2.2.4</b> Reminder</a></li>
+<li class="chapter" data-level="2.2.5" data-path="intro.html"><a href="intro.html#model-assessment"><i class="fa fa-check"></i><b>2.2.5</b> Model Assessment</a></li>
+</ul></li>
+<li class="chapter" data-level="2.3" data-path="intro.html"><a href="intro.html#improving-prediction-accuracy-and-interpretability"><i class="fa fa-check"></i><b>2.3</b> Improving Prediction Accuracy and Interpretability</a>
+<ul>
+<li class="chapter" data-level="2.3.1" data-path="intro.html"><a href="intro.html#subset-selection"><i class="fa fa-check"></i><b>2.3.1</b> Subset Selection</a></li>
+<li class="chapter" data-level="2.3.2" data-path="intro.html"><a href="intro.html#shrinkage-methods"><i class="fa fa-check"></i><b>2.3.2</b> Shrinkage Methods</a></li>
+<li class="chapter" data-level="2.3.3" data-path="intro.html"><a href="intro.html#dimension-reduction"><i class="fa fa-check"></i><b>2.3.3</b> Dimension Reduction</a></li>
+</ul></li>
+</ul></li>
+<li class="chapter" data-level="3" data-path="supervised-learning.html"><a href="supervised-learning.html"><i class="fa fa-check"></i><b>3</b> Supervised Learning</a>
+<ul>
+<li class="chapter" data-level="3.1" data-path="supervised-learning.html"><a href="supervised-learning.html#decision-tree"><i class="fa fa-check"></i><b>3.1</b> Decision Tree</a>
+<ul>
+<li class="chapter" data-level="3.1.1" data-path="supervised-learning.html"><a href="supervised-learning.html#find-best-split"><i class="fa fa-check"></i><b>3.1.1</b> Find best split</a></li>
+<li class="chapter" data-level="3.1.2" data-path="supervised-learning.html"><a href="supervised-learning.html#stopping-criteria"><i class="fa fa-check"></i><b>3.1.2</b> Stopping Criteria</a></li>
+<li class="chapter" data-level="3.1.3" data-path="supervised-learning.html"><a href="supervised-learning.html#find-prediction"><i class="fa fa-check"></i><b>3.1.3</b> Find Prediction</a></li>
+</ul></li>
+<li class="chapter" data-level="3.2" data-path="supervised-learning.html"><a href="supervised-learning.html#random-forest"><i class="fa fa-check"></i><b>3.2</b> Random Forest</a></li>
+</ul></li>
+<li class="chapter" data-level="4" data-path="unsupervised-learning.html"><a href="unsupervised-learning.html"><i class="fa fa-check"></i><b>4</b> Unsupervised Learning</a>
+<ul>
+<li class="chapter" data-level="4.1" data-path="unsupervised-learning.html"><a href="unsupervised-learning.html#clustering"><i class="fa fa-check"></i><b>4.1</b> Clustering</a>
+<ul>
+<li class="chapter" data-level="4.1.1" data-path="unsupervised-learning.html"><a href="unsupervised-learning.html#similarity-measures"><i class="fa fa-check"></i><b>4.1.1</b> Similarity Measures</a></li>
+<li class="chapter" data-level="4.1.2" data-path="unsupervised-learning.html"><a href="unsupervised-learning.html#k-mean-algorithm"><i class="fa fa-check"></i><b>4.1.2</b> K-mean Algorithm</a></li>
+</ul></li>
+</ul></li>
+<li class="chapter" data-level="5" data-path="semi-superivsed-learning.html"><a href="semi-superivsed-learning.html"><i class="fa fa-check"></i><b>5</b> Semi-superivsed learning</a></li>
+<li class="chapter" data-level="6" data-path="reinforcement-learning.html"><a href="reinforcement-learning.html"><i class="fa fa-check"></i><b>6</b> Reinforcement learning</a></li>
+<li class="chapter" data-level="7" data-path="interpretable-machine-learning.html"><a href="interpretable-machine-learning.html"><i class="fa fa-check"></i><b>7</b> Interpretable Machine Learning</a>
+<ul>
+<li class="chapter" data-level="7.1" data-path="interpretable-machine-learning.html"><a href="interpretable-machine-learning.html#shap"><i class="fa fa-check"></i><b>7.1</b> SHAP</a></li>
+<li class="chapter" data-level="7.2" data-path="interpretable-machine-learning.html"><a href="interpretable-machine-learning.html#video-classification"><i class="fa fa-check"></i><b>7.2</b> Video Classification</a></li>
+<li class="chapter" data-level="7.3" data-path="interpretable-machine-learning.html"><a href="interpretable-machine-learning.html#image-memorability"><i class="fa fa-check"></i><b>7.3</b> Image Memorability</a></li>
+</ul></li>
+<li class="chapter" data-level="8" data-path="generalized-method-of-moments.html"><a href="generalized-method-of-moments.html"><i class="fa fa-check"></i><b>8</b> Generalized Method of Moments</a></li>
+<li class="chapter" data-level="9" data-path="minimum-distance.html"><a href="minimum-distance.html"><i class="fa fa-check"></i><b>9</b> Minimum Distance</a></li>
+<li class="chapter" data-level="10" data-path="spline-regression.html"><a href="spline-regression.html"><i class="fa fa-check"></i><b>10</b> Spline Regression</a>
+<ul>
+<li class="chapter" data-level="10.1" data-path="spline-regression.html"><a href="spline-regression.html#regression-splines"><i class="fa fa-check"></i><b>10.1</b> Regression Splines</a></li>
+<li class="chapter" data-level="10.2" data-path="spline-regression.html"><a href="spline-regression.html#natural-splines"><i class="fa fa-check"></i><b>10.2</b> Natural splines</a></li>
+<li class="chapter" data-level="10.3" data-path="spline-regression.html"><a href="spline-regression.html#smoothing-splines"><i class="fa fa-check"></i><b>10.3</b> Smoothing splines</a></li>
+<li class="chapter" data-level="10.4" data-path="spline-regression.html"><a href="spline-regression.html#application"><i class="fa fa-check"></i><b>10.4</b> Application</a></li>
+</ul></li>
+<li class="chapter" data-level="11" data-path="generalized-additive-models.html"><a href="generalized-additive-models.html"><i class="fa fa-check"></i><b>11</b> Generalized Additive Models</a></li>
+<li class="chapter" data-level="12" data-path="quantile-regression.html"><a href="quantile-regression.html"><i class="fa fa-check"></i><b>12</b> Quantile Regression</a>
+<ul>
+<li class="chapter" data-level="12.1" data-path="quantile-regression.html"><a href="quantile-regression.html#application-1"><i class="fa fa-check"></i><b>12.1</b> Application</a></li>
+</ul></li>
+<li class="part"><span><b>II DEEP LEARNING</b></span></li>
+<li class="chapter" data-level="13" data-path="introduction.html"><a href="introduction.html"><i class="fa fa-check"></i><b>13</b> Introduction</a></li>
+<li class="chapter" data-level="14" data-path="neural-network.html"><a href="neural-network.html"><i class="fa fa-check"></i><b>14</b> Neural Network</a>
+<ul>
+<li class="chapter" data-level="14.1" data-path="neural-network.html"><a href="neural-network.html#step-1-a-set-of-function"><i class="fa fa-check"></i><b>14.1</b> Step 1: A set of function</a></li>
+<li class="chapter" data-level="14.2" data-path="neural-network.html"><a href="neural-network.html#step-2-goodness-of-function"><i class="fa fa-check"></i><b>14.2</b> Step 2: Goodness of function</a></li>
+<li class="chapter" data-level="14.3" data-path="neural-network.html"><a href="neural-network.html#step-3-pick-the-best-function"><i class="fa fa-check"></i><b>14.3</b> Step 3: Pick the best function</a></li>
+<li class="chapter" data-level="14.4" data-path="neural-network.html"><a href="neural-network.html#recipe-of-deep-learning"><i class="fa fa-check"></i><b>14.4</b> Recipe of Deep learning</a>
+<ul>
+<li class="chapter" data-level="14.4.1" data-path="neural-network.html"><a href="neural-network.html#choosing-proper-loss"><i class="fa fa-check"></i><b>14.4.1</b> Choosing proper loss</a></li>
+<li class="chapter" data-level="14.4.2" data-path="neural-network.html"><a href="neural-network.html#mini-batch"><i class="fa fa-check"></i><b>14.4.2</b> Mini-batch</a></li>
+<li class="chapter" data-level="14.4.3" data-path="neural-network.html"><a href="neural-network.html#new-activation-function"><i class="fa fa-check"></i><b>14.4.3</b> New activation function</a></li>
+<li class="chapter" data-level="14.4.4" data-path="neural-network.html"><a href="neural-network.html#adaptive-learning-rate"><i class="fa fa-check"></i><b>14.4.4</b> Adaptive Learning Rate</a></li>
+<li class="chapter" data-level="14.4.5" data-path="neural-network.html"><a href="neural-network.html#momentum"><i class="fa fa-check"></i><b>14.4.5</b> Momentum</a></li>
+<li class="chapter" data-level="14.4.6" data-path="neural-network.html"><a href="neural-network.html#early-stopping"><i class="fa fa-check"></i><b>14.4.6</b> Early Stopping</a></li>
+<li class="chapter" data-level="14.4.7" data-path="neural-network.html"><a href="neural-network.html#regularization"><i class="fa fa-check"></i><b>14.4.7</b> Regularization</a></li>
+<li class="chapter" data-level="14.4.8" data-path="neural-network.html"><a href="neural-network.html#dropout"><i class="fa fa-check"></i><b>14.4.8</b> Dropout</a></li>
+<li class="chapter" data-level="14.4.9" data-path="neural-network.html"><a href="neural-network.html#network-structure"><i class="fa fa-check"></i><b>14.4.9</b> Network Structure</a></li>
+</ul></li>
+</ul></li>
+<li class="chapter" data-level="15" data-path="overview.html"><a href="overview.html"><i class="fa fa-check"></i><b>15</b> Overview</a></li>
+<li class="chapter" data-level="16" data-path="tensor-flow-and-r.html"><a href="tensor-flow-and-r.html"><i class="fa fa-check"></i><b>16</b> Tensor Flow and R</a>
+<ul>
+<li class="chapter" data-level="16.1" data-path="tensor-flow-and-r.html"><a href="tensor-flow-and-r.html#r-packages"><i class="fa fa-check"></i><b>16.1</b> R packages</a></li>
+<li class="chapter" data-level="16.2" data-path="tensor-flow-and-r.html"><a href="tensor-flow-and-r.html#keras-layers"><i class="fa fa-check"></i><b>16.2</b> Keras layers</a></li>
+</ul></li>
+<li class="chapter" data-level="17" data-path="compiling-models.html"><a href="compiling-models.html"><i class="fa fa-check"></i><b>17</b> Compiling models</a></li>
+<li class="chapter" data-level="18" data-path="losses-optimizers-and-metrics.html"><a href="losses-optimizers-and-metrics.html"><i class="fa fa-check"></i><b>18</b> Losses, Optimizers, and Metrics</a></li>
+<li class="chapter" data-level="19" data-path="nyu.html"><a href="nyu.html"><i class="fa fa-check"></i><b>19</b> NYU</a></li>
+<li class="chapter" data-level="20" data-path="applications.html"><a href="applications.html"><i class="fa fa-check"></i><b>20</b> Applications</a></li>
+<li class="chapter" data-level="21" data-path="research-methods.html"><a href="research-methods.html"><i class="fa fa-check"></i><b>21</b> Research Methods</a>
+<ul>
+<li class="chapter" data-level="21.1" data-path="research-methods.html"><a href="research-methods.html#but-for-world"><i class="fa fa-check"></i><b>21.1</b> But-for World</a></li>
+</ul></li>
+<li class="chapter" data-level="22" data-path="model-card.html"><a href="model-card.html"><i class="fa fa-check"></i><b>22</b> Model Card</a></li>
+<li class="chapter" data-level="" data-path="references.html"><a href="references.html"><i class="fa fa-check"></i>References</a></li>
+<li class="chapter" data-level="23" data-path="model-tuning.html"><a href="model-tuning.html"><i class="fa fa-check"></i><b>23</b> Model Tuning</a></li>
+<li class="chapter" data-level="24" data-path="model-stacking.html"><a href="model-stacking.html"><i class="fa fa-check"></i><b>24</b> Model Stacking</a></li>
+<li class="chapter" data-level="25" data-path="data-storage.html"><a href="data-storage.html"><i class="fa fa-check"></i><b>25</b> Data Storage</a>
+<ul>
+<li class="chapter" data-level="25.1" data-path="data-storage.html"><a href="data-storage.html#structured-databases"><i class="fa fa-check"></i><b>25.1</b> Structured Databases</a></li>
+<li class="chapter" data-level="25.2" data-path="data-storage.html"><a href="data-storage.html#unstructured-databases"><i class="fa fa-check"></i><b>25.2</b> Unstructured Databases</a>
+<ul>
+<li class="chapter" data-level="25.2.1" data-path="data-storage.html"><a href="data-storage.html#mongodb"><i class="fa fa-check"></i><b>25.2.1</b> MongoDB</a></li>
+</ul></li>
+</ul></li>
+<li class="chapter" data-level="26" data-path="api.html"><a href="api.html"><i class="fa fa-check"></i><b>26</b> API</a>
+<ul>
+<li class="chapter" data-level="26.1" data-path="api.html"><a href="api.html#r"><i class="fa fa-check"></i><b>26.1</b> R</a></li>
+</ul></li>
+<li class="chapter" data-level="27" data-path="bert.html"><a href="bert.html"><i class="fa fa-check"></i><b>27</b> BERT</a></li>
+<li class="divider"></li>
+<li><a href="https://github.com/rstudio/bookdown" target="blank">Published with bookdown</a></li>
+
+</ul>
+
+      </nav>
+    </div>
+
+    <div class="book-body">
+      <div class="body-inner">
+        <div class="book-header" role="navigation">
+          <h1>
+            <i class="fa fa-circle-o-notch fa-spin"></i><a href="./">Advanced Data Analysis</a>
+          </h1>
+        </div>
+
+        <div class="page-wrapper" tabindex="-1" role="main">
+          <div class="page-inner">
+
+            <section class="normal" id="section-">
+<div id="data-storage" class="section level1" number="25">
+<h1><span class="header-section-number">Chapter 25</span> Data Storage</h1>
+<table>
+<colgroup>
+<col width="11%" />
+<col width="40%" />
+<col width="48%" />
+</colgroup>
+<thead>
+<tr class="header">
+<th></th>
+<th><a href="data-storage.html#structured-databases">Structured Databases</a></th>
+<th><a href="data-storage.html#unstructured-databases">Unstructured Databases</a></th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td>Structure</td>
+<td>every element has the same number of attributes (i.e., column)</td>
+<td>Different elements can have different number of attributes (more efficient)</td>
+</tr>
+<tr class="even">
+<td>Latency</td>
+<td>Slower</td>
+<td>Faster</td>
+</tr>
+<tr class="odd">
+<td>Ease of learning</td>
+<td>Easy</td>
+<td>Harder, more steep</td>
+</tr>
+<tr class="even">
+<td>Storage Volume</td>
+<td>Not appropriate for strong Big Data</td>
+<td>handle Big Data well</td>
+</tr>
+<tr class="odd">
+<td>Data Types</td>
+<td>numerical, texture</td>
+<td>any (e.g., audio, video)</td>
+</tr>
+<tr class="even">
+<td>Examples</td>
+<td>MySQL, PostgreSQL</td>
+<td>MongoDB, Neo4j</td>
+</tr>
+</tbody>
+</table>
+<div id="structured-databases" class="section level2" number="25.1">
+<h2><span class="header-section-number">25.1</span> Structured Databases</h2>
+</div>
+<div id="unstructured-databases" class="section level2" number="25.2">
+<h2><span class="header-section-number">25.2</span> Unstructured Databases</h2>
+<div id="mongodb" class="section level3" number="25.2.1">
+<h3><span class="header-section-number">25.2.1</span> MongoDB</h3>
+<div class="sourceCode" id="cb181"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb181-1"><a href="data-storage.html#cb181-1" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pymongo</span>
+<span id="cb181-2"><a href="data-storage.html#cb181-2" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-3"><a href="data-storage.html#cb181-3" aria-hidden="true" tabindex="-1"></a><span class="co">#%% Create a Database</span></span>
+<span id="cb181-4"><a href="data-storage.html#cb181-4" aria-hidden="true" tabindex="-1"></a>myclient <span class="op">=</span> pymongo.MongoClient(<span class="st">&quot;mongodb://localhost:27017/&quot;</span>)</span>
+<span id="cb181-5"><a href="data-storage.html#cb181-5" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-6"><a href="data-storage.html#cb181-6" aria-hidden="true" tabindex="-1"></a>mydb <span class="op">=</span> myclient[<span class="st">&quot;mydatabase&quot;</span>]</span>
+<span id="cb181-7"><a href="data-storage.html#cb181-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-8"><a href="data-storage.html#cb181-8" aria-hidden="true" tabindex="-1"></a><span class="co">#%% Check if database exists</span></span>
+<span id="cb181-9"><a href="data-storage.html#cb181-9" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-10"><a href="data-storage.html#cb181-10" aria-hidden="true" tabindex="-1"></a><span class="co">#check if a database exist by listing all databases in you system</span></span>
+<span id="cb181-11"><a href="data-storage.html#cb181-11" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(myclient.list_database_names())</span>
+<span id="cb181-12"><a href="data-storage.html#cb181-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-13"><a href="data-storage.html#cb181-13" aria-hidden="true" tabindex="-1"></a><span class="co">#check a specific database by name</span></span>
+<span id="cb181-14"><a href="data-storage.html#cb181-14" aria-hidden="true" tabindex="-1"></a>dblist <span class="op">=</span> myclient.list_database_names()</span>
+<span id="cb181-15"><a href="data-storage.html#cb181-15" aria-hidden="true" tabindex="-1"></a><span class="cf">if</span> <span class="st">&quot;mydatabase&quot;</span> <span class="kw">in</span> dblist:</span>
+<span id="cb181-16"><a href="data-storage.html#cb181-16" aria-hidden="true" tabindex="-1"></a>  <span class="bu">print</span>(<span class="st">&quot;The database exists.&quot;</span>)</span>
+<span id="cb181-17"><a href="data-storage.html#cb181-17" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-18"><a href="data-storage.html#cb181-18" aria-hidden="true" tabindex="-1"></a><span class="co">#%% Insert Into Collection</span></span>
+<span id="cb181-19"><a href="data-storage.html#cb181-19" aria-hidden="true" tabindex="-1"></a><span class="co">#The first parameter of the insert_one() method is a dictionary containing the name(s) and value(s) of each field in the document you want to insert.</span></span>
+<span id="cb181-20"><a href="data-storage.html#cb181-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-21"><a href="data-storage.html#cb181-21" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-22"><a href="data-storage.html#cb181-22" aria-hidden="true" tabindex="-1"></a>myclient <span class="op">=</span> pymongo.MongoClient(<span class="st">&quot;mongodb://localhost:27017/&quot;</span>)</span>
+<span id="cb181-23"><a href="data-storage.html#cb181-23" aria-hidden="true" tabindex="-1"></a>mydb <span class="op">=</span> myclient[<span class="st">&quot;mydatabase&quot;</span>]</span>
+<span id="cb181-24"><a href="data-storage.html#cb181-24" aria-hidden="true" tabindex="-1"></a>mycol <span class="op">=</span> mydb[<span class="st">&quot;customers&quot;</span>]</span>
+<span id="cb181-25"><a href="data-storage.html#cb181-25" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-26"><a href="data-storage.html#cb181-26" aria-hidden="true" tabindex="-1"></a>mydict <span class="op">=</span> { <span class="st">&quot;name&quot;</span>: <span class="st">&quot;John&quot;</span>, <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Highway 37&quot;</span> }</span>
+<span id="cb181-27"><a href="data-storage.html#cb181-27" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-28"><a href="data-storage.html#cb181-28" aria-hidden="true" tabindex="-1"></a>x <span class="op">=</span> mycol.insert_one(mydict)</span>
+<span id="cb181-29"><a href="data-storage.html#cb181-29" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-30"><a href="data-storage.html#cb181-30" aria-hidden="true" tabindex="-1"></a><span class="co">#%% Return the _id field</span></span>
+<span id="cb181-31"><a href="data-storage.html#cb181-31" aria-hidden="true" tabindex="-1"></a>mydict <span class="op">=</span> { <span class="st">&quot;name&quot;</span>: <span class="st">&quot;Peter&quot;</span>, <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Lowstreet 27&quot;</span> }</span>
+<span id="cb181-32"><a href="data-storage.html#cb181-32" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-33"><a href="data-storage.html#cb181-33" aria-hidden="true" tabindex="-1"></a>x <span class="op">=</span> mycol.insert_one(mydict)</span>
+<span id="cb181-34"><a href="data-storage.html#cb181-34" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-35"><a href="data-storage.html#cb181-35" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(x.inserted_id)</span>
+<span id="cb181-36"><a href="data-storage.html#cb181-36" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-37"><a href="data-storage.html#cb181-37" aria-hidden="true" tabindex="-1"></a><span class="co">#%% Insert Multiple documents</span></span>
+<span id="cb181-38"><a href="data-storage.html#cb181-38" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pymongo</span>
+<span id="cb181-39"><a href="data-storage.html#cb181-39" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-40"><a href="data-storage.html#cb181-40" aria-hidden="true" tabindex="-1"></a>myclient <span class="op">=</span> pymongo.MongoClient(<span class="st">&quot;mongodb://localhost:27017/&quot;</span>)</span>
+<span id="cb181-41"><a href="data-storage.html#cb181-41" aria-hidden="true" tabindex="-1"></a>mydb <span class="op">=</span> myclient[<span class="st">&quot;mydatabase&quot;</span>]</span>
+<span id="cb181-42"><a href="data-storage.html#cb181-42" aria-hidden="true" tabindex="-1"></a>mycol <span class="op">=</span> mydb[<span class="st">&quot;customers&quot;</span>]</span>
+<span id="cb181-43"><a href="data-storage.html#cb181-43" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-44"><a href="data-storage.html#cb181-44" aria-hidden="true" tabindex="-1"></a>mylist <span class="op">=</span> [</span>
+<span id="cb181-45"><a href="data-storage.html#cb181-45" aria-hidden="true" tabindex="-1"></a>  { <span class="st">&quot;name&quot;</span>: <span class="st">&quot;Amy&quot;</span>, <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Apple st 652&quot;</span>},</span>
+<span id="cb181-46"><a href="data-storage.html#cb181-46" aria-hidden="true" tabindex="-1"></a>  { <span class="st">&quot;name&quot;</span>: <span class="st">&quot;Hannah&quot;</span>, <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Mountain 21&quot;</span>},</span>
+<span id="cb181-47"><a href="data-storage.html#cb181-47" aria-hidden="true" tabindex="-1"></a>  { <span class="st">&quot;name&quot;</span>: <span class="st">&quot;Michael&quot;</span>, <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Valley 345&quot;</span>},</span>
+<span id="cb181-48"><a href="data-storage.html#cb181-48" aria-hidden="true" tabindex="-1"></a>  { <span class="st">&quot;name&quot;</span>: <span class="st">&quot;Sandy&quot;</span>, <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Ocean blvd 2&quot;</span>},</span>
+<span id="cb181-49"><a href="data-storage.html#cb181-49" aria-hidden="true" tabindex="-1"></a>  { <span class="st">&quot;name&quot;</span>: <span class="st">&quot;Betty&quot;</span>, <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Green Grass 1&quot;</span>},</span>
+<span id="cb181-50"><a href="data-storage.html#cb181-50" aria-hidden="true" tabindex="-1"></a>  { <span class="st">&quot;name&quot;</span>: <span class="st">&quot;Richard&quot;</span>, <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Sky st 331&quot;</span>},</span>
+<span id="cb181-51"><a href="data-storage.html#cb181-51" aria-hidden="true" tabindex="-1"></a>  { <span class="st">&quot;name&quot;</span>: <span class="st">&quot;Susan&quot;</span>, <span class="st">&quot;address&quot;</span>: <span class="st">&quot;One way 98&quot;</span>},</span>
+<span id="cb181-52"><a href="data-storage.html#cb181-52" aria-hidden="true" tabindex="-1"></a>  { <span class="st">&quot;name&quot;</span>: <span class="st">&quot;Vicky&quot;</span>, <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Yellow Garden 2&quot;</span>},</span>
+<span id="cb181-53"><a href="data-storage.html#cb181-53" aria-hidden="true" tabindex="-1"></a>  { <span class="st">&quot;name&quot;</span>: <span class="st">&quot;Ben&quot;</span>, <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Park Lane 38&quot;</span>},</span>
+<span id="cb181-54"><a href="data-storage.html#cb181-54" aria-hidden="true" tabindex="-1"></a>  { <span class="st">&quot;name&quot;</span>: <span class="st">&quot;William&quot;</span>, <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Central st 954&quot;</span>},</span>
+<span id="cb181-55"><a href="data-storage.html#cb181-55" aria-hidden="true" tabindex="-1"></a>  { <span class="st">&quot;name&quot;</span>: <span class="st">&quot;Chuck&quot;</span>, <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Main Road 989&quot;</span>},</span>
+<span id="cb181-56"><a href="data-storage.html#cb181-56" aria-hidden="true" tabindex="-1"></a>  { <span class="st">&quot;name&quot;</span>: <span class="st">&quot;Viola&quot;</span>, <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Sideway 1633&quot;</span>}</span>
+<span id="cb181-57"><a href="data-storage.html#cb181-57" aria-hidden="true" tabindex="-1"></a>]</span>
+<span id="cb181-58"><a href="data-storage.html#cb181-58" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-59"><a href="data-storage.html#cb181-59" aria-hidden="true" tabindex="-1"></a>x <span class="op">=</span> mycol.insert_many(mylist)</span>
+<span id="cb181-60"><a href="data-storage.html#cb181-60" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-61"><a href="data-storage.html#cb181-61" aria-hidden="true" tabindex="-1"></a><span class="co">#print list of the _id values of the inserted documents:</span></span>
+<span id="cb181-62"><a href="data-storage.html#cb181-62" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(x.inserted_ids)</span>
+<span id="cb181-63"><a href="data-storage.html#cb181-63" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-64"><a href="data-storage.html#cb181-64" aria-hidden="true" tabindex="-1"></a><span class="co">#%% Insert Multiple Documents, with Specified IDs</span></span>
+<span id="cb181-65"><a href="data-storage.html#cb181-65" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pymongo</span>
+<span id="cb181-66"><a href="data-storage.html#cb181-66" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-67"><a href="data-storage.html#cb181-67" aria-hidden="true" tabindex="-1"></a>myclient <span class="op">=</span> pymongo.MongoClient(<span class="st">&quot;mongodb://localhost:27017/&quot;</span>)</span>
+<span id="cb181-68"><a href="data-storage.html#cb181-68" aria-hidden="true" tabindex="-1"></a>mydb <span class="op">=</span> myclient[<span class="st">&quot;mydatabase&quot;</span>]</span>
+<span id="cb181-69"><a href="data-storage.html#cb181-69" aria-hidden="true" tabindex="-1"></a>mycol <span class="op">=</span> mydb[<span class="st">&quot;customers&quot;</span>]</span>
+<span id="cb181-70"><a href="data-storage.html#cb181-70" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-71"><a href="data-storage.html#cb181-71" aria-hidden="true" tabindex="-1"></a>mylist <span class="op">=</span> [</span>
+<span id="cb181-72"><a href="data-storage.html#cb181-72" aria-hidden="true" tabindex="-1"></a>  { <span class="st">&quot;_id&quot;</span>: <span class="dv">1</span>, <span class="st">&quot;name&quot;</span>: <span class="st">&quot;John&quot;</span>, <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Highway 37&quot;</span>},</span>
+<span id="cb181-73"><a href="data-storage.html#cb181-73" aria-hidden="true" tabindex="-1"></a>  { <span class="st">&quot;_id&quot;</span>: <span class="dv">2</span>, <span class="st">&quot;name&quot;</span>: <span class="st">&quot;Peter&quot;</span>, <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Lowstreet 27&quot;</span>},</span>
+<span id="cb181-74"><a href="data-storage.html#cb181-74" aria-hidden="true" tabindex="-1"></a>  { <span class="st">&quot;_id&quot;</span>: <span class="dv">3</span>, <span class="st">&quot;name&quot;</span>: <span class="st">&quot;Amy&quot;</span>, <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Apple st 652&quot;</span>},</span>
+<span id="cb181-75"><a href="data-storage.html#cb181-75" aria-hidden="true" tabindex="-1"></a>  { <span class="st">&quot;_id&quot;</span>: <span class="dv">4</span>, <span class="st">&quot;name&quot;</span>: <span class="st">&quot;Hannah&quot;</span>, <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Mountain 21&quot;</span>},</span>
+<span id="cb181-76"><a href="data-storage.html#cb181-76" aria-hidden="true" tabindex="-1"></a>  { <span class="st">&quot;_id&quot;</span>: <span class="dv">5</span>, <span class="st">&quot;name&quot;</span>: <span class="st">&quot;Michael&quot;</span>, <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Valley 345&quot;</span>},</span>
+<span id="cb181-77"><a href="data-storage.html#cb181-77" aria-hidden="true" tabindex="-1"></a>  { <span class="st">&quot;_id&quot;</span>: <span class="dv">6</span>, <span class="st">&quot;name&quot;</span>: <span class="st">&quot;Sandy&quot;</span>, <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Ocean blvd 2&quot;</span>},</span>
+<span id="cb181-78"><a href="data-storage.html#cb181-78" aria-hidden="true" tabindex="-1"></a>  { <span class="st">&quot;_id&quot;</span>: <span class="dv">7</span>, <span class="st">&quot;name&quot;</span>: <span class="st">&quot;Betty&quot;</span>, <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Green Grass 1&quot;</span>},</span>
+<span id="cb181-79"><a href="data-storage.html#cb181-79" aria-hidden="true" tabindex="-1"></a>  { <span class="st">&quot;_id&quot;</span>: <span class="dv">8</span>, <span class="st">&quot;name&quot;</span>: <span class="st">&quot;Richard&quot;</span>, <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Sky st 331&quot;</span>},</span>
+<span id="cb181-80"><a href="data-storage.html#cb181-80" aria-hidden="true" tabindex="-1"></a>  { <span class="st">&quot;_id&quot;</span>: <span class="dv">9</span>, <span class="st">&quot;name&quot;</span>: <span class="st">&quot;Susan&quot;</span>, <span class="st">&quot;address&quot;</span>: <span class="st">&quot;One way 98&quot;</span>},</span>
+<span id="cb181-81"><a href="data-storage.html#cb181-81" aria-hidden="true" tabindex="-1"></a>  { <span class="st">&quot;_id&quot;</span>: <span class="dv">10</span>, <span class="st">&quot;name&quot;</span>: <span class="st">&quot;Vicky&quot;</span>, <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Yellow Garden 2&quot;</span>},</span>
+<span id="cb181-82"><a href="data-storage.html#cb181-82" aria-hidden="true" tabindex="-1"></a>  { <span class="st">&quot;_id&quot;</span>: <span class="dv">11</span>, <span class="st">&quot;name&quot;</span>: <span class="st">&quot;Ben&quot;</span>, <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Park Lane 38&quot;</span>},</span>
+<span id="cb181-83"><a href="data-storage.html#cb181-83" aria-hidden="true" tabindex="-1"></a>  { <span class="st">&quot;_id&quot;</span>: <span class="dv">12</span>, <span class="st">&quot;name&quot;</span>: <span class="st">&quot;William&quot;</span>, <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Central st 954&quot;</span>},</span>
+<span id="cb181-84"><a href="data-storage.html#cb181-84" aria-hidden="true" tabindex="-1"></a>  { <span class="st">&quot;_id&quot;</span>: <span class="dv">13</span>, <span class="st">&quot;name&quot;</span>: <span class="st">&quot;Chuck&quot;</span>, <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Main Road 989&quot;</span>},</span>
+<span id="cb181-85"><a href="data-storage.html#cb181-85" aria-hidden="true" tabindex="-1"></a>  { <span class="st">&quot;_id&quot;</span>: <span class="dv">14</span>, <span class="st">&quot;name&quot;</span>: <span class="st">&quot;Viola&quot;</span>, <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Sideway 1633&quot;</span>}</span>
+<span id="cb181-86"><a href="data-storage.html#cb181-86" aria-hidden="true" tabindex="-1"></a>]</span>
+<span id="cb181-87"><a href="data-storage.html#cb181-87" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-88"><a href="data-storage.html#cb181-88" aria-hidden="true" tabindex="-1"></a>x <span class="op">=</span> mycol.insert_many(mylist)</span>
+<span id="cb181-89"><a href="data-storage.html#cb181-89" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-90"><a href="data-storage.html#cb181-90" aria-hidden="true" tabindex="-1"></a><span class="co">#print list of the _id values of the inserted documents:</span></span>
+<span id="cb181-91"><a href="data-storage.html#cb181-91" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(x.inserted_ids)</span>
+<span id="cb181-92"><a href="data-storage.html#cb181-92" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-93"><a href="data-storage.html#cb181-93" aria-hidden="true" tabindex="-1"></a><span class="co">#%% Find One</span></span>
+<span id="cb181-94"><a href="data-storage.html#cb181-94" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-95"><a href="data-storage.html#cb181-95" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pymongo</span>
+<span id="cb181-96"><a href="data-storage.html#cb181-96" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-97"><a href="data-storage.html#cb181-97" aria-hidden="true" tabindex="-1"></a>myclient <span class="op">=</span> pymongo.MongoClient(<span class="st">&quot;mongodb://localhost:27017/&quot;</span>)</span>
+<span id="cb181-98"><a href="data-storage.html#cb181-98" aria-hidden="true" tabindex="-1"></a>mydb <span class="op">=</span> myclient[<span class="st">&quot;mydatabase&quot;</span>]</span>
+<span id="cb181-99"><a href="data-storage.html#cb181-99" aria-hidden="true" tabindex="-1"></a>mycol <span class="op">=</span> mydb[<span class="st">&quot;customers&quot;</span>]</span>
+<span id="cb181-100"><a href="data-storage.html#cb181-100" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-101"><a href="data-storage.html#cb181-101" aria-hidden="true" tabindex="-1"></a>x <span class="op">=</span> mycol.find_one()</span>
+<span id="cb181-102"><a href="data-storage.html#cb181-102" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-103"><a href="data-storage.html#cb181-103" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(x)</span>
+<span id="cb181-104"><a href="data-storage.html#cb181-104" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-105"><a href="data-storage.html#cb181-105" aria-hidden="true" tabindex="-1"></a><span class="co">#%% Find All</span></span>
+<span id="cb181-106"><a href="data-storage.html#cb181-106" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-107"><a href="data-storage.html#cb181-107" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-108"><a href="data-storage.html#cb181-108" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pymongo</span>
+<span id="cb181-109"><a href="data-storage.html#cb181-109" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-110"><a href="data-storage.html#cb181-110" aria-hidden="true" tabindex="-1"></a>myclient <span class="op">=</span> pymongo.MongoClient(<span class="st">&quot;mongodb://localhost:27017/&quot;</span>)</span>
+<span id="cb181-111"><a href="data-storage.html#cb181-111" aria-hidden="true" tabindex="-1"></a>mydb <span class="op">=</span> myclient[<span class="st">&quot;mydatabase&quot;</span>]</span>
+<span id="cb181-112"><a href="data-storage.html#cb181-112" aria-hidden="true" tabindex="-1"></a>mycol <span class="op">=</span> mydb[<span class="st">&quot;customers&quot;</span>]</span>
+<span id="cb181-113"><a href="data-storage.html#cb181-113" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-114"><a href="data-storage.html#cb181-114" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> x <span class="kw">in</span> mycol.find():</span>
+<span id="cb181-115"><a href="data-storage.html#cb181-115" aria-hidden="true" tabindex="-1"></a>  <span class="bu">print</span>(x)</span>
+<span id="cb181-116"><a href="data-storage.html#cb181-116" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb181-117"><a href="data-storage.html#cb181-117" aria-hidden="true" tabindex="-1"></a><span class="co">#%% Return Only Some Fields</span></span>
+<span id="cb181-118"><a href="data-storage.html#cb181-118" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-119"><a href="data-storage.html#cb181-119" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pymongo</span>
+<span id="cb181-120"><a href="data-storage.html#cb181-120" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-121"><a href="data-storage.html#cb181-121" aria-hidden="true" tabindex="-1"></a>myclient <span class="op">=</span> pymongo.MongoClient(<span class="st">&quot;mongodb://localhost:27017/&quot;</span>)</span>
+<span id="cb181-122"><a href="data-storage.html#cb181-122" aria-hidden="true" tabindex="-1"></a>mydb <span class="op">=</span> myclient[<span class="st">&quot;mydatabase&quot;</span>]</span>
+<span id="cb181-123"><a href="data-storage.html#cb181-123" aria-hidden="true" tabindex="-1"></a>mycol <span class="op">=</span> mydb[<span class="st">&quot;customers&quot;</span>]</span>
+<span id="cb181-124"><a href="data-storage.html#cb181-124" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-125"><a href="data-storage.html#cb181-125" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> x <span class="kw">in</span> mycol.find({},{ <span class="st">&quot;_id&quot;</span>: <span class="dv">0</span>, <span class="st">&quot;name&quot;</span>: <span class="dv">1</span>, <span class="st">&quot;address&quot;</span>: <span class="dv">1</span> }):</span>
+<span id="cb181-126"><a href="data-storage.html#cb181-126" aria-hidden="true" tabindex="-1"></a>  <span class="bu">print</span>(x)</span>
+<span id="cb181-127"><a href="data-storage.html#cb181-127" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-128"><a href="data-storage.html#cb181-128" aria-hidden="true" tabindex="-1"></a><span class="co">#%% Example exclude &quot;address&quot; </span></span>
+<span id="cb181-129"><a href="data-storage.html#cb181-129" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb181-130"><a href="data-storage.html#cb181-130" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pymongo</span>
+<span id="cb181-131"><a href="data-storage.html#cb181-131" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-132"><a href="data-storage.html#cb181-132" aria-hidden="true" tabindex="-1"></a>myclient <span class="op">=</span> pymongo.MongoClient(<span class="st">&quot;mongodb://localhost:27017/&quot;</span>)</span>
+<span id="cb181-133"><a href="data-storage.html#cb181-133" aria-hidden="true" tabindex="-1"></a>mydb <span class="op">=</span> myclient[<span class="st">&quot;mydatabase&quot;</span>]</span>
+<span id="cb181-134"><a href="data-storage.html#cb181-134" aria-hidden="true" tabindex="-1"></a>mycol <span class="op">=</span> mydb[<span class="st">&quot;customers&quot;</span>]</span>
+<span id="cb181-135"><a href="data-storage.html#cb181-135" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-136"><a href="data-storage.html#cb181-136" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> x <span class="kw">in</span> mycol.find({},{ <span class="st">&quot;address&quot;</span>: <span class="dv">0</span> }):</span>
+<span id="cb181-137"><a href="data-storage.html#cb181-137" aria-hidden="true" tabindex="-1"></a>  <span class="bu">print</span>(x)</span>
+<span id="cb181-138"><a href="data-storage.html#cb181-138" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-139"><a href="data-storage.html#cb181-139" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-140"><a href="data-storage.html#cb181-140" aria-hidden="true" tabindex="-1"></a><span class="co">#%% get error if you specify both</span></span>
+<span id="cb181-141"><a href="data-storage.html#cb181-141" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pymongo</span>
+<span id="cb181-142"><a href="data-storage.html#cb181-142" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-143"><a href="data-storage.html#cb181-143" aria-hidden="true" tabindex="-1"></a>myclient <span class="op">=</span> pymongo.MongoClient(<span class="st">&quot;mongodb://localhost:27017/&quot;</span>)</span>
+<span id="cb181-144"><a href="data-storage.html#cb181-144" aria-hidden="true" tabindex="-1"></a>mydb <span class="op">=</span> myclient[<span class="st">&quot;mydatabase&quot;</span>]</span>
+<span id="cb181-145"><a href="data-storage.html#cb181-145" aria-hidden="true" tabindex="-1"></a>mycol <span class="op">=</span> mydb[<span class="st">&quot;customers&quot;</span>]</span>
+<span id="cb181-146"><a href="data-storage.html#cb181-146" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-147"><a href="data-storage.html#cb181-147" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> x <span class="kw">in</span> mycol.find({},{ <span class="st">&quot;name&quot;</span>: <span class="dv">1</span>, <span class="st">&quot;address&quot;</span>: <span class="dv">0</span> }):</span>
+<span id="cb181-148"><a href="data-storage.html#cb181-148" aria-hidden="true" tabindex="-1"></a>  <span class="bu">print</span>(x)</span>
+<span id="cb181-149"><a href="data-storage.html#cb181-149" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-150"><a href="data-storage.html#cb181-150" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-151"><a href="data-storage.html#cb181-151" aria-hidden="true" tabindex="-1"></a><span class="co">#%%  Filter the Result</span></span>
+<span id="cb181-152"><a href="data-storage.html#cb181-152" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb181-153"><a href="data-storage.html#cb181-153" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pymongo</span>
+<span id="cb181-154"><a href="data-storage.html#cb181-154" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-155"><a href="data-storage.html#cb181-155" aria-hidden="true" tabindex="-1"></a>myclient <span class="op">=</span> pymongo.MongoClient(<span class="st">&quot;mongodb://localhost:27017/&quot;</span>)</span>
+<span id="cb181-156"><a href="data-storage.html#cb181-156" aria-hidden="true" tabindex="-1"></a>mydb <span class="op">=</span> myclient[<span class="st">&quot;mydatabase&quot;</span>]</span>
+<span id="cb181-157"><a href="data-storage.html#cb181-157" aria-hidden="true" tabindex="-1"></a>mycol <span class="op">=</span> mydb[<span class="st">&quot;customers&quot;</span>]</span>
+<span id="cb181-158"><a href="data-storage.html#cb181-158" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-159"><a href="data-storage.html#cb181-159" aria-hidden="true" tabindex="-1"></a>myquery <span class="op">=</span> { <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Park Lane 38&quot;</span> }</span>
+<span id="cb181-160"><a href="data-storage.html#cb181-160" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-161"><a href="data-storage.html#cb181-161" aria-hidden="true" tabindex="-1"></a>mydoc <span class="op">=</span> mycol.find(myquery)</span>
+<span id="cb181-162"><a href="data-storage.html#cb181-162" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-163"><a href="data-storage.html#cb181-163" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> x <span class="kw">in</span> mydoc:</span>
+<span id="cb181-164"><a href="data-storage.html#cb181-164" aria-hidden="true" tabindex="-1"></a>  <span class="bu">print</span>(x)</span>
+<span id="cb181-165"><a href="data-storage.html#cb181-165" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-166"><a href="data-storage.html#cb181-166" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-167"><a href="data-storage.html#cb181-167" aria-hidden="true" tabindex="-1"></a><span class="co">#%% Advanced Query</span></span>
+<span id="cb181-168"><a href="data-storage.html#cb181-168" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-169"><a href="data-storage.html#cb181-169" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pymongo</span>
+<span id="cb181-170"><a href="data-storage.html#cb181-170" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-171"><a href="data-storage.html#cb181-171" aria-hidden="true" tabindex="-1"></a>myclient <span class="op">=</span> pymongo.MongoClient(<span class="st">&quot;mongodb://localhost:27017/&quot;</span>)</span>
+<span id="cb181-172"><a href="data-storage.html#cb181-172" aria-hidden="true" tabindex="-1"></a>mydb <span class="op">=</span> myclient[<span class="st">&quot;mydatabase&quot;</span>]</span>
+<span id="cb181-173"><a href="data-storage.html#cb181-173" aria-hidden="true" tabindex="-1"></a>mycol <span class="op">=</span> mydb[<span class="st">&quot;customers&quot;</span>]</span>
+<span id="cb181-174"><a href="data-storage.html#cb181-174" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-175"><a href="data-storage.html#cb181-175" aria-hidden="true" tabindex="-1"></a>myquery <span class="op">=</span> { <span class="st">&quot;address&quot;</span>: { <span class="st">&quot;$gt&quot;</span>: <span class="st">&quot;S&quot;</span> } } <span class="co"># o find the documents where the &quot;address&quot; field starts with the letter &quot;S&quot; or higher (alphabetically), use the greater than modifier: {&quot;$gt&quot;: &quot;S&quot;}:</span></span>
+<span id="cb181-176"><a href="data-storage.html#cb181-176" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-177"><a href="data-storage.html#cb181-177" aria-hidden="true" tabindex="-1"></a>mydoc <span class="op">=</span> mycol.find(myquery)</span>
+<span id="cb181-178"><a href="data-storage.html#cb181-178" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-179"><a href="data-storage.html#cb181-179" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> x <span class="kw">in</span> mydoc:</span>
+<span id="cb181-180"><a href="data-storage.html#cb181-180" aria-hidden="true" tabindex="-1"></a>  <span class="bu">print</span>(x)</span>
+<span id="cb181-181"><a href="data-storage.html#cb181-181" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-182"><a href="data-storage.html#cb181-182" aria-hidden="true" tabindex="-1"></a><span class="co">#%% Filter With Regular Expressions</span></span>
+<span id="cb181-183"><a href="data-storage.html#cb181-183" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pymongo</span>
+<span id="cb181-184"><a href="data-storage.html#cb181-184" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-185"><a href="data-storage.html#cb181-185" aria-hidden="true" tabindex="-1"></a>myclient <span class="op">=</span> pymongo.MongoClient(<span class="st">&quot;mongodb://localhost:27017/&quot;</span>)</span>
+<span id="cb181-186"><a href="data-storage.html#cb181-186" aria-hidden="true" tabindex="-1"></a>mydb <span class="op">=</span> myclient[<span class="st">&quot;mydatabase&quot;</span>]</span>
+<span id="cb181-187"><a href="data-storage.html#cb181-187" aria-hidden="true" tabindex="-1"></a>mycol <span class="op">=</span> mydb[<span class="st">&quot;customers&quot;</span>]</span>
+<span id="cb181-188"><a href="data-storage.html#cb181-188" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-189"><a href="data-storage.html#cb181-189" aria-hidden="true" tabindex="-1"></a>myquery <span class="op">=</span> { <span class="st">&quot;address&quot;</span>: { <span class="st">&quot;$regex&quot;</span>: <span class="st">&quot;^S&quot;</span> } } <span class="co">#Find documents where the address starts with the letter &quot;S&quot;:</span></span>
+<span id="cb181-190"><a href="data-storage.html#cb181-190" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-191"><a href="data-storage.html#cb181-191" aria-hidden="true" tabindex="-1"></a>mydoc <span class="op">=</span> mycol.find(myquery)</span>
+<span id="cb181-192"><a href="data-storage.html#cb181-192" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-193"><a href="data-storage.html#cb181-193" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> x <span class="kw">in</span> mydoc:</span>
+<span id="cb181-194"><a href="data-storage.html#cb181-194" aria-hidden="true" tabindex="-1"></a>  <span class="bu">print</span>(x)</span>
+<span id="cb181-195"><a href="data-storage.html#cb181-195" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-196"><a href="data-storage.html#cb181-196" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-197"><a href="data-storage.html#cb181-197" aria-hidden="true" tabindex="-1"></a><span class="co">#%% Sort the Result</span></span>
+<span id="cb181-198"><a href="data-storage.html#cb181-198" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-199"><a href="data-storage.html#cb181-199" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pymongo</span>
+<span id="cb181-200"><a href="data-storage.html#cb181-200" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-201"><a href="data-storage.html#cb181-201" aria-hidden="true" tabindex="-1"></a>myclient <span class="op">=</span> pymongo.MongoClient(<span class="st">&quot;mongodb://localhost:27017/&quot;</span>)</span>
+<span id="cb181-202"><a href="data-storage.html#cb181-202" aria-hidden="true" tabindex="-1"></a>mydb <span class="op">=</span> myclient[<span class="st">&quot;mydatabase&quot;</span>]</span>
+<span id="cb181-203"><a href="data-storage.html#cb181-203" aria-hidden="true" tabindex="-1"></a>mycol <span class="op">=</span> mydb[<span class="st">&quot;customers&quot;</span>]</span>
+<span id="cb181-204"><a href="data-storage.html#cb181-204" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-205"><a href="data-storage.html#cb181-205" aria-hidden="true" tabindex="-1"></a>mydoc <span class="op">=</span> mycol.find().sort(<span class="st">&quot;name&quot;</span>) <span class="co">#method takes one parameter for &quot;fieldname&quot; and one parameter for &quot;direction&quot; (ascending is the default direction).</span></span>
+<span id="cb181-206"><a href="data-storage.html#cb181-206" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-207"><a href="data-storage.html#cb181-207" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> x <span class="kw">in</span> mydoc:</span>
+<span id="cb181-208"><a href="data-storage.html#cb181-208" aria-hidden="true" tabindex="-1"></a>  <span class="bu">print</span>(x)</span>
+<span id="cb181-209"><a href="data-storage.html#cb181-209" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-210"><a href="data-storage.html#cb181-210" aria-hidden="true" tabindex="-1"></a><span class="co">#%% Sort Descending</span></span>
+<span id="cb181-211"><a href="data-storage.html#cb181-211" aria-hidden="true" tabindex="-1"></a>  </span>
+<span id="cb181-212"><a href="data-storage.html#cb181-212" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pymongo</span>
+<span id="cb181-213"><a href="data-storage.html#cb181-213" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-214"><a href="data-storage.html#cb181-214" aria-hidden="true" tabindex="-1"></a>myclient <span class="op">=</span> pymongo.MongoClient(<span class="st">&quot;mongodb://localhost:27017/&quot;</span>)</span>
+<span id="cb181-215"><a href="data-storage.html#cb181-215" aria-hidden="true" tabindex="-1"></a>mydb <span class="op">=</span> myclient[<span class="st">&quot;mydatabase&quot;</span>]</span>
+<span id="cb181-216"><a href="data-storage.html#cb181-216" aria-hidden="true" tabindex="-1"></a>mycol <span class="op">=</span> mydb[<span class="st">&quot;customers&quot;</span>]</span>
+<span id="cb181-217"><a href="data-storage.html#cb181-217" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-218"><a href="data-storage.html#cb181-218" aria-hidden="true" tabindex="-1"></a>mydoc <span class="op">=</span> mycol.find().sort(<span class="st">&quot;name&quot;</span>, <span class="op">-</span><span class="dv">1</span>) <span class="co">#Sort the result reverse alphabetically by name:</span></span>
+<span id="cb181-219"><a href="data-storage.html#cb181-219" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-220"><a href="data-storage.html#cb181-220" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> x <span class="kw">in</span> mydoc:</span>
+<span id="cb181-221"><a href="data-storage.html#cb181-221" aria-hidden="true" tabindex="-1"></a>  <span class="bu">print</span>(x)</span>
+<span id="cb181-222"><a href="data-storage.html#cb181-222" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-223"><a href="data-storage.html#cb181-223" aria-hidden="true" tabindex="-1"></a><span class="co">#%% Delete Document</span></span>
+<span id="cb181-224"><a href="data-storage.html#cb181-224" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-225"><a href="data-storage.html#cb181-225" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pymongo</span>
+<span id="cb181-226"><a href="data-storage.html#cb181-226" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-227"><a href="data-storage.html#cb181-227" aria-hidden="true" tabindex="-1"></a>myclient <span class="op">=</span> pymongo.MongoClient(<span class="st">&quot;mongodb://localhost:27017/&quot;</span>)</span>
+<span id="cb181-228"><a href="data-storage.html#cb181-228" aria-hidden="true" tabindex="-1"></a>mydb <span class="op">=</span> myclient[<span class="st">&quot;mydatabase&quot;</span>]</span>
+<span id="cb181-229"><a href="data-storage.html#cb181-229" aria-hidden="true" tabindex="-1"></a>mycol <span class="op">=</span> mydb[<span class="st">&quot;customers&quot;</span>]</span>
+<span id="cb181-230"><a href="data-storage.html#cb181-230" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-231"><a href="data-storage.html#cb181-231" aria-hidden="true" tabindex="-1"></a>myquery <span class="op">=</span> { <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Mountain 21&quot;</span> } <span class="co">#delete document with address &quot;Mountain 21&quot;</span></span>
+<span id="cb181-232"><a href="data-storage.html#cb181-232" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-233"><a href="data-storage.html#cb181-233" aria-hidden="true" tabindex="-1"></a>mycol.delete_one(myquery)</span>
+<span id="cb181-234"><a href="data-storage.html#cb181-234" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-235"><a href="data-storage.html#cb181-235" aria-hidden="true" tabindex="-1"></a><span class="co">#%% Delete Many Documents</span></span>
+<span id="cb181-236"><a href="data-storage.html#cb181-236" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pymongo</span>
+<span id="cb181-237"><a href="data-storage.html#cb181-237" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-238"><a href="data-storage.html#cb181-238" aria-hidden="true" tabindex="-1"></a>myclient <span class="op">=</span> pymongo.MongoClient(<span class="st">&quot;mongodb://localhost:27017/&quot;</span>)</span>
+<span id="cb181-239"><a href="data-storage.html#cb181-239" aria-hidden="true" tabindex="-1"></a>mydb <span class="op">=</span> myclient[<span class="st">&quot;mydatabase&quot;</span>]</span>
+<span id="cb181-240"><a href="data-storage.html#cb181-240" aria-hidden="true" tabindex="-1"></a>mycol <span class="op">=</span> mydb[<span class="st">&quot;customers&quot;</span>]</span>
+<span id="cb181-241"><a href="data-storage.html#cb181-241" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-242"><a href="data-storage.html#cb181-242" aria-hidden="true" tabindex="-1"></a>myquery <span class="op">=</span> { <span class="st">&quot;address&quot;</span>: {<span class="st">&quot;$regex&quot;</span>: <span class="st">&quot;^S&quot;</span>} } <span class="co">#Delete all documents were the address starts with the letter S:</span></span>
+<span id="cb181-243"><a href="data-storage.html#cb181-243" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-244"><a href="data-storage.html#cb181-244" aria-hidden="true" tabindex="-1"></a>x <span class="op">=</span> mycol.delete_many(myquery)</span>
+<span id="cb181-245"><a href="data-storage.html#cb181-245" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-246"><a href="data-storage.html#cb181-246" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(x.deleted_count, <span class="st">&quot; documents deleted.&quot;</span>)</span>
+<span id="cb181-247"><a href="data-storage.html#cb181-247" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-248"><a href="data-storage.html#cb181-248" aria-hidden="true" tabindex="-1"></a><span class="co">#%% Delete All Documents in a Collection</span></span>
+<span id="cb181-249"><a href="data-storage.html#cb181-249" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pymongo</span>
+<span id="cb181-250"><a href="data-storage.html#cb181-250" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-251"><a href="data-storage.html#cb181-251" aria-hidden="true" tabindex="-1"></a>myclient <span class="op">=</span> pymongo.MongoClient(<span class="st">&quot;mongodb://localhost:27017/&quot;</span>)</span>
+<span id="cb181-252"><a href="data-storage.html#cb181-252" aria-hidden="true" tabindex="-1"></a>mydb <span class="op">=</span> myclient[<span class="st">&quot;mydatabase&quot;</span>]</span>
+<span id="cb181-253"><a href="data-storage.html#cb181-253" aria-hidden="true" tabindex="-1"></a>mycol <span class="op">=</span> mydb[<span class="st">&quot;customers&quot;</span>]</span>
+<span id="cb181-254"><a href="data-storage.html#cb181-254" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-255"><a href="data-storage.html#cb181-255" aria-hidden="true" tabindex="-1"></a>x <span class="op">=</span> mycol.delete_many({}) <span class="co"># Delete all documents in the &quot;customers&quot; collection:</span></span>
+<span id="cb181-256"><a href="data-storage.html#cb181-256" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-257"><a href="data-storage.html#cb181-257" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(x.deleted_count, <span class="st">&quot; documents deleted.&quot;</span>)</span>
+<span id="cb181-258"><a href="data-storage.html#cb181-258" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-259"><a href="data-storage.html#cb181-259" aria-hidden="true" tabindex="-1"></a><span class="co">#%% Delete Collection</span></span>
+<span id="cb181-260"><a href="data-storage.html#cb181-260" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-261"><a href="data-storage.html#cb181-261" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pymongo</span>
+<span id="cb181-262"><a href="data-storage.html#cb181-262" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-263"><a href="data-storage.html#cb181-263" aria-hidden="true" tabindex="-1"></a>myclient <span class="op">=</span> pymongo.MongoClient(<span class="st">&quot;mongodb://localhost:27017/&quot;</span>)</span>
+<span id="cb181-264"><a href="data-storage.html#cb181-264" aria-hidden="true" tabindex="-1"></a>mydb <span class="op">=</span> myclient[<span class="st">&quot;mydatabase&quot;</span>]</span>
+<span id="cb181-265"><a href="data-storage.html#cb181-265" aria-hidden="true" tabindex="-1"></a>mycol <span class="op">=</span> mydb[<span class="st">&quot;customers&quot;</span>] <span class="co">#Delete the &quot;customers&quot; collection:</span></span>
+<span id="cb181-266"><a href="data-storage.html#cb181-266" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-267"><a href="data-storage.html#cb181-267" aria-hidden="true" tabindex="-1"></a>mycol.drop()</span>
+<span id="cb181-268"><a href="data-storage.html#cb181-268" aria-hidden="true" tabindex="-1"></a><span class="co"># The drop() method returns true if the collection was dropped successfully, and false if the collection does not exist.</span></span>
+<span id="cb181-269"><a href="data-storage.html#cb181-269" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-270"><a href="data-storage.html#cb181-270" aria-hidden="true" tabindex="-1"></a><span class="co">#%% Update Collection</span></span>
+<span id="cb181-271"><a href="data-storage.html#cb181-271" aria-hidden="true" tabindex="-1"></a><span class="co"># If the query finds more than one record, only the first occurrence is updated.</span></span>
+<span id="cb181-272"><a href="data-storage.html#cb181-272" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pymongo</span>
+<span id="cb181-273"><a href="data-storage.html#cb181-273" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-274"><a href="data-storage.html#cb181-274" aria-hidden="true" tabindex="-1"></a>myclient <span class="op">=</span> pymongo.MongoClient(<span class="st">&quot;mongodb://localhost:27017/&quot;</span>)</span>
+<span id="cb181-275"><a href="data-storage.html#cb181-275" aria-hidden="true" tabindex="-1"></a>mydb <span class="op">=</span> myclient[<span class="st">&quot;mydatabase&quot;</span>]</span>
+<span id="cb181-276"><a href="data-storage.html#cb181-276" aria-hidden="true" tabindex="-1"></a>mycol <span class="op">=</span> mydb[<span class="st">&quot;customers&quot;</span>]</span>
+<span id="cb181-277"><a href="data-storage.html#cb181-277" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-278"><a href="data-storage.html#cb181-278" aria-hidden="true" tabindex="-1"></a>myquery <span class="op">=</span> { <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Valley 345&quot;</span> } <span class="co">#Change the address from &quot;Valley 345&quot; to &quot;Canyon 123&quot;:</span></span>
+<span id="cb181-279"><a href="data-storage.html#cb181-279" aria-hidden="true" tabindex="-1"></a>newvalues <span class="op">=</span> { <span class="st">&quot;$set&quot;</span>: { <span class="st">&quot;address&quot;</span>: <span class="st">&quot;Canyon 123&quot;</span> } }</span>
+<span id="cb181-280"><a href="data-storage.html#cb181-280" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-281"><a href="data-storage.html#cb181-281" aria-hidden="true" tabindex="-1"></a>mycol.update_one(myquery, newvalues)</span>
+<span id="cb181-282"><a href="data-storage.html#cb181-282" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-283"><a href="data-storage.html#cb181-283" aria-hidden="true" tabindex="-1"></a><span class="co">#print &quot;customers&quot; after the update:</span></span>
+<span id="cb181-284"><a href="data-storage.html#cb181-284" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> x <span class="kw">in</span> mycol.find():</span>
+<span id="cb181-285"><a href="data-storage.html#cb181-285" aria-hidden="true" tabindex="-1"></a>  <span class="bu">print</span>(x)</span>
+<span id="cb181-286"><a href="data-storage.html#cb181-286" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-287"><a href="data-storage.html#cb181-287" aria-hidden="true" tabindex="-1"></a><span class="co">#%% Update Many</span></span>
+<span id="cb181-288"><a href="data-storage.html#cb181-288" aria-hidden="true" tabindex="-1"></a>  <span class="co">#o update all documents that meets the criteria of the query, use the update_many() method.</span></span>
+<span id="cb181-289"><a href="data-storage.html#cb181-289" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-290"><a href="data-storage.html#cb181-290" aria-hidden="true" tabindex="-1"></a>myclient <span class="op">=</span> pymongo.MongoClient(<span class="st">&quot;mongodb://localhost:27017/&quot;</span>)</span>
+<span id="cb181-291"><a href="data-storage.html#cb181-291" aria-hidden="true" tabindex="-1"></a>mydb <span class="op">=</span> myclient[<span class="st">&quot;mydatabase&quot;</span>]</span>
+<span id="cb181-292"><a href="data-storage.html#cb181-292" aria-hidden="true" tabindex="-1"></a>mycol <span class="op">=</span> mydb[<span class="st">&quot;customers&quot;</span>]</span>
+<span id="cb181-293"><a href="data-storage.html#cb181-293" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-294"><a href="data-storage.html#cb181-294" aria-hidden="true" tabindex="-1"></a>myquery <span class="op">=</span> { <span class="st">&quot;address&quot;</span>: { <span class="st">&quot;$regex&quot;</span>: <span class="st">&quot;^S&quot;</span> } } <span class="co">#Update all documents where the address starts with the letter &quot;S&quot;:</span></span>
+<span id="cb181-295"><a href="data-storage.html#cb181-295" aria-hidden="true" tabindex="-1"></a>newvalues <span class="op">=</span> { <span class="st">&quot;$set&quot;</span>: { <span class="st">&quot;name&quot;</span>: <span class="st">&quot;Minnie&quot;</span> } }</span>
+<span id="cb181-296"><a href="data-storage.html#cb181-296" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-297"><a href="data-storage.html#cb181-297" aria-hidden="true" tabindex="-1"></a>x <span class="op">=</span> mycol.update_many(myquery, newvalues)</span>
+<span id="cb181-298"><a href="data-storage.html#cb181-298" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-299"><a href="data-storage.html#cb181-299" aria-hidden="true" tabindex="-1"></a><span class="bu">print</span>(x.modified_count, <span class="st">&quot;documents updated.&quot;</span>)</span>
+<span id="cb181-300"><a href="data-storage.html#cb181-300" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-301"><a href="data-storage.html#cb181-301" aria-hidden="true" tabindex="-1"></a><span class="co">#%% Limit the Result</span></span>
+<span id="cb181-302"><a href="data-storage.html#cb181-302" aria-hidden="true" tabindex="-1"></a><span class="co"># Limit the result to only return 5 documents:</span></span>
+<span id="cb181-303"><a href="data-storage.html#cb181-303" aria-hidden="true" tabindex="-1"></a><span class="im">import</span> pymongo</span>
+<span id="cb181-304"><a href="data-storage.html#cb181-304" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-305"><a href="data-storage.html#cb181-305" aria-hidden="true" tabindex="-1"></a>myclient <span class="op">=</span> pymongo.MongoClient(<span class="st">&quot;mongodb://localhost:27017/&quot;</span>)</span>
+<span id="cb181-306"><a href="data-storage.html#cb181-306" aria-hidden="true" tabindex="-1"></a>mydb <span class="op">=</span> myclient[<span class="st">&quot;mydatabase&quot;</span>]</span>
+<span id="cb181-307"><a href="data-storage.html#cb181-307" aria-hidden="true" tabindex="-1"></a>mycol <span class="op">=</span> mydb[<span class="st">&quot;customers&quot;</span>]</span>
+<span id="cb181-308"><a href="data-storage.html#cb181-308" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-309"><a href="data-storage.html#cb181-309" aria-hidden="true" tabindex="-1"></a>myresult <span class="op">=</span> mycol.find().limit(<span class="dv">5</span>)</span>
+<span id="cb181-310"><a href="data-storage.html#cb181-310" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb181-311"><a href="data-storage.html#cb181-311" aria-hidden="true" tabindex="-1"></a><span class="co">#print the result:</span></span>
+<span id="cb181-312"><a href="data-storage.html#cb181-312" aria-hidden="true" tabindex="-1"></a><span class="cf">for</span> x <span class="kw">in</span> myresult:</span>
+<span id="cb181-313"><a href="data-storage.html#cb181-313" aria-hidden="true" tabindex="-1"></a>  <span class="bu">print</span>(x)</span></code></pre></div>
+
+</div>
+</div>
+</div>
+            </section>
+
+          </div>
+        </div>
+      </div>
+<a href="model-stacking.html" class="navigation navigation-prev " aria-label="Previous page"><i class="fa fa-angle-left"></i></a>
+<a href="api.html" class="navigation navigation-next " aria-label="Next page"><i class="fa fa-angle-right"></i></a>
+    </div>
+  </div>
+<script src="libs/gitbook-2.6.7/js/app.min.js"></script>
+<script src="libs/gitbook-2.6.7/js/clipboard.min.js"></script>
+<script src="libs/gitbook-2.6.7/js/plugin-search.js"></script>
+<script src="libs/gitbook-2.6.7/js/plugin-sharing.js"></script>
+<script src="libs/gitbook-2.6.7/js/plugin-fontsettings.js"></script>
+<script src="libs/gitbook-2.6.7/js/plugin-bookdown.js"></script>
+<script src="libs/gitbook-2.6.7/js/jquery.highlight.js"></script>
+<script src="libs/gitbook-2.6.7/js/plugin-clipboard.js"></script>
+<script>
+gitbook.require(["gitbook"], function(gitbook) {
+gitbook.start({
+"sharing": {
+"github": false,
+"facebook": true,
+"twitter": true,
+"linkedin": false,
+"weibo": false,
+"instapaper": false,
+"vk": false,
+"whatsapp": false,
+"all": ["facebook", "twitter", "linkedin", "weibo", "instapaper"]
+},
+"fontsettings": {
+"theme": "white",
+"family": "sans",
+"size": 2
+},
+"edit": {
+"link": null,
+"text": null
+},
+"history": {
+"link": null,
+"text": null
+},
+"view": {
+"link": null,
+"text": null
+},
+"download": ["advanced data analysis.pdf", "advanced data analysis.epub"],
+"search": {
+"engine": "fuse",
+"options": null
+},
+"toc": {
+"collapse": "subsection"
+}
+});
+});
+</script>
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    var src = "true";
+    if (src === "" || src === "true") src = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-MML-AM_CHTML";
+    if (location.protocol !== "file:")
+      if (/^https?:/.test(src))
+        src = src.replace(/^https?:/, '');
+    script.src = src;
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+</body>
+
+</html>

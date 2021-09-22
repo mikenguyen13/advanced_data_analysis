@@ -1,7 +1,3 @@
-# Generalized Method of Moments
-
-# Minimum Distance
-
 # Spline Regression
 
 Beyond Linearity (including transformation of variables), we have arbitrary basis expansion (where the basis functions are dependent on X)
@@ -172,11 +168,11 @@ $$
 \hat{r}(x) = \sum_{j=1}^{m+k+1} \hat{\beta}_j g_j (x)
 $$
 
-If we define the basis matrix $G \in R^{n \times (m+k+1)}$ by 
+If we define the basis matrix $G \in R^{n \times (m+k+1)}$ by
 
 $$
 G_{ij} = g_j(x_i) 
-$$ 
+$$
 
 where $i = 1,..,n$ , $j = 1,..,m+k+1$
 
@@ -242,17 +238,33 @@ Notes:
 
     3.  At first glance, we might think that smoothing splines might have too many degrees of freedom since we have knots at every data points (i.e., $K = n$). But $\lambda$ controls roughness and make the **effective degrees of freedom** much smaller (as $\lambda$ increases from $0 \to \infty$, $df_\lambda$ decreases from $n \to 2$)
 
-Let $\hat{\mathbf{y}}_\lambda$ be the n-vector containing the fitted values for the smoothing spline function for a given $\lambda$,
+Let $\hat{\mathbf{y}}_\lambda$ be the n-vector containing the fitted values for the smoothing spline function for a given $\lambda$, then
 
 $$
 \hat{\mathbf{y}}_\lambda = \mathbf{S}_\lambda \mathbf{y}
 $$
 
-$\mathbf{S}_\lambda = \mathbf{N}(\mathbf{N}^T\mathbf{N}+ \lambda \mathbf{\Omega}_N)^{-1} \mathbf{N}^T$ where $\{N\}_{ij} = b_j (x_i);$
+which means that it is linear in $\mathbf{y}$
+
+According to @hastie2001a (section 5.4) showed
+
+$\mathbf{S}_\lambda = \mathbf{N}(\mathbf{N}^T\mathbf{N}+ \lambda \mathbf{\Omega}_N)^{-1} \mathbf{N}^T$ where $\{N\}_{ij} = b_j (x_i)$ and
+
+$\{\mathbf{\Omega}\}_{jk} = \int b''_j (t) b''_k(t)dt$
+
+The effective degrees of freedom to be trace of $\mathbf{S}_\lambda$ (**smoother matrix** because it smooths the responses in $\mathbf{y}$) is
 
 $$
 df_\lambda = \sum_{i=1}^n \{\mathbf{S}_\lambda\}_{ii}
 $$
+
+$\mathbf{S}_\lambda$ is related to other types of smoothing in [Local Regression] and [Kernel Smoothing]
+
+<br>
+
+To choose $\lambda$, we can use cross-validation (could also leverage the relationship between $\lambda$ and effective degrees of freedom).
+
+If we can write a **linear predictor**, we can use a simplified LOOCV formula:
 
 $$
 \begin{aligned}
@@ -260,6 +272,20 @@ RSS_{CV}(\lambda)&= \sum_{i=1}^n(y_i - \hat{y}_\lambda^{(-i)}(x_i))^2 \\
 &= \sum_{i=1}^n[\frac{y_i - \hat{y}_\lambda(x_i)}{1-\{\mathbf{S}_\lambda\}_{ii}}]^2
 \end{aligned}
 $$
+
+where we only have to fit the model once for each $\lambda$
+
+## Multidimensional Splines
+
+We can extend the above one-dimensional spline models to higher dimensions using **tensor products** to form higher dimensional basis functions
+
+Consider $X \in R^2$ and
+
+-   basis functions $b_{1j}(X_1), j = 1, \dots, K_1$ for representing coordinate $X_1$
+
+-   $b_{2k}(X), k = 1, \dots, K_2$ for coordinate $X_2$
+
+then the *tensor product basis* is:
 
 $$
 g_{jk}(X) = b_{1j}(X_1)b_{2k}(X_2)
@@ -273,21 +299,45 @@ $$
 f(X) = \sum_{j=1}^{K_1} \sum_{k=1}^{K_2}\beta_{jk}g_{jk}(X)
 $$
 
+Then, we seek to minimize
+
 $$
 \sum_{i=1}^n (y_i - f(x_i))^2 + \lambda J[f]
 $$
 
 where $J$ is the penalty function for the dimension of the problem
 
+In our example ($X \in R^2$), then
+
 $$
 J[f] = \int\int[(\frac{\partial^2f(x)}{\partial x_1^2})^2 + 2(\frac{\partial^2 f(x)}{\partial x_1 \partial x_2})^2 + (\frac{\partial^2f(x)}{\partial x^2_2})^2]dx_1 dx_2
 $$
+
+Similar to the one-dimensional case
+
+-   $\lambda \to 0$ gives an interpolating function that goes through all points
+
+-   $\lambda \to \infty$ gives a solution approaching the least squares plane
+
+-   We seek a $\lambda$ that compromises between these extremes
+
+This splines method is known as **thin-plates splines**.
+
+<br>
+
+The solution to the thin-plate spline minimization gives
 
 $$
 f(x) = \beta_0 + \beta^T x + \sum_{j=1}^n \alpha_j b_j(x)
 $$
 
-where $b_j(x) = ||x - x_j||^2\log ||x-x_j||$
+where $b_j(x) = ||x - x_j||^2\log ||x-x_j||$ (known as **radial basis functions**)
+
+Additional splines basis functions could be
+
+-   B-spline
+
+[Local Regression] and [Kernel Smoothing] are related to the spline basis regression formulations.
 
 <br>
 
@@ -367,155 +417,4 @@ lines(fit1,col="red",lwd=2)
 
 legend("topright",c("Smoothing Spline with 3 df","Cubic Spline"),col=c("red","darkgreen"),lwd=2)
 
-```
-
-# Generalized Additive Models
-
-To overcome [Spline Regression]'s requirements for specifying the knots, we can use [Generalized Additive Models] or GAM.
-
-```{r}
-library(mgcv)
-# Build the model
-model <- gam(medv ~ s(lstat), data = train.data)
-plot(model)
-# Make predictions
-# predictions <- model %>% predict(test.data)
-# Model performance
-data.frame(
-  RMSE = RMSE(predictions, test.data$medv),
-  R2 = R2(predictions, test.data$medv)
-)
-
-ggplot(train.data, aes(lstat, medv) ) +
-  geom_point() +
-  stat_smooth(method = gam, formula = y ~ s(x))
-detach(train.data)
-```
-
-# Quantile Regression
-
-For academic review on quantile regression, check [@Yu_2003]
-
-Linear Regression is based on the conditional mean function $E(y|x)$
-
-In Quantile regression, we can view each points in the conditional distribution of y. Quantile regression estimates the conditional median or any other quantile of Y.
-
-In the case that we're interested in the 50th percentile, quantile regression is median regression, also known as least-absolute-deviations (LAD) regression, minimizes $\sum_{i}|e_i|$
-
-Properties of estimators $\beta$
-
--   Asymptotically normally distributed
-
-Advantages
-
--   More robust to outliers compared to OLS
--   In the case the dependent variable has a bimodal or multimodal (multiple humps with multiple modes) distribution, quantile regression can be extremely useful.
--   Avoids parametric distribution assumption of the error process. In another word, no assumptions regarding the distribution of the error term.
--   Better characterization of the data (not just its conditional mean)
--   is invariant to monotonic transformations (such as log) while OLS is not. In another word, $E(g(y))=g(E(y))$
-
-Disadvantages
-
--   The dependent variable needs to be continuous with no zeroes or too many repeated values.
-
-$$
-y_i = x_i'\beta_q + e_i
-$$
-
-Let $e(x) = y -\hat{y}(x)$, then $L(e(x)) = L(y -\hat{y}(x))$ is the loss function of the error term.
-
-If $L(e) = |e|$ (called absolute-error loss function) then $\hat{\beta}$ can be estimated by minimizing $\sum_{i}|y_i-x_i'\beta|$
-
-More specifically, the objective function is
-
-$$
-Q(\beta_q)=\sum_{i:y_i \ge x_i'\beta}^{N} q|y_i - x_i'\beta_q| + \sum_{i:y_i < x_i'\beta}^{N} (1-q)|y_i-x_i'\beta_q
-$$
-
-where $0<q<1$
-
-The sum penalizes $q|e_i|$ for under-prediction and $(1-q)|e_i|$ for over-prediction
-
-We use simplex method to minimize this function (cannot use analytical solution since it's non-differentiable). Standard errors can be estimated by bootstrap.
-
-The absolute-error loss function is symmetric.
-
-**Interpretation** For the jth regressor ($x_j$), the marginal effect is the coefficient for the qth quantile
-
-$$
-\frac{\partial Q_q(y|x)}{\partial x_j} = \beta_{qj}
-$$
-
-At the quantile q of the dependent variable y, $\beta_q$ represents a one unit change in the independent variable $x_j$ on the dependent variable y.
-
-In other words, at the qth percentile, a one unit change in x results in $\beta_q$ unit change in y.
-
-## Application
-
-```{r}
-# generate data with non-constant variance
-
-x <- seq(0,100,length.out = 100)        # independent variable
-sig <- 0.1 + 0.05*x                     # non-constant variance
-b_0 <- 3                                # true intercept
-b_1 <- 0.05                             # true slope
-set.seed(1)                             # reproducibility
-e <- rnorm(100,mean = 0, sd = sig)      # normal random error with non-constant variance
-y <- b_0 + b_1*x + e                    # dependent variable
-dat <- data.frame(x,y)
-hist(y)
-library(ggplot2)
-ggplot(dat, aes(x,y)) + geom_point()
-ggplot(dat, aes(x,y)) + geom_point() + geom_smooth(method="lm")
-```
-
-We follow [@Roger_1996] to estimate quantile regression
-
-```{r}
-library(quantreg)
-qr <- rq(y ~ x, data=dat, tau = 0.5) # tau: quantile of interest. Here we have it at 50th percentile.
-summary(qr)
-```
-
-adding the regression line
-
-```{r}
-ggplot(dat, aes(x,y)) + geom_point() + 
-  geom_abline(intercept=coef(qr)[1], slope=coef(qr)[2])
-```
-
-To have R estimate multiple quantile at once
-
-```{r}
-qs <- 1:9/10
-qr1 <- rq(y ~ x, data=dat, tau = qs)
-#check for its coefficients
-coef(qr1)
-
-# plot
-ggplot(dat, aes(x,y)) + geom_point() + geom_quantile(quantiles = qs)
-```
-
-To examine if the quantile regression is appropriate, we can see its plot compared to least squares regression
-
-```{r}
-plot(summary(qr1), parm="x")
-```
-
-where red line is the least squares estimates, and its confidence interval. x-axis is the quantile y-axis is the value of the quantile regression coefficients at different quantile
-
-If the error term is normally distributed, the quantile regression line will fall inside the coefficient interval of least squares regression.
-
-```{r}
-# generate data with constant variance
-
-x <- seq(0, 100, length.out = 100)    # independent variable
-b_0 <- 3                              # true intercept
-b_1 <- 0.05                           # true slope
-set.seed(1)                           # reproducibility
-e <- rnorm(100, mean = 0, sd = 1)     # normal random error with constant variance
-y <- b_0 + b_1 * x + e                # dependent variable
-dat2 <- data.frame(x, y)
-qr2 = rq(y ~ x, data = dat2, tau = qs)
-plot(summary(qr2), parm = "x")
 ```

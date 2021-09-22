@@ -1,0 +1,83 @@
+# Kernel Smoothing
+
+-   also known as kernel regression
+
+-   The idea is that we fit a separate, but simple, model at each selected point $x_0$ by using only those observation that are "close" to $x_0$ such that $\hat{f}(X)$ is smooth in $R^p$
+
+-   The "localization" is accomplished by a **weighting function** (or **kernel**) $K_\lambda(x_i, x_i)$ that assigns a weight to $x_i$ based on its distance from $x_0$
+
+    -   This kernel depends on a parameter $\lambda$ that defines the "width" or neighborhood" of the kernel
+
+-   This method requires less training than traditional regression models (typically, only $\lambda$ need be chosen), but are **memory-based methods** in that one needs all the training data any time we want to make a prediction at a location $x_0$
+
+## One-Dimensional Kernel Smoothers 
+
+Under k-nearest neighbor, we try to fit
+
+$$
+\hat{f}(x) = Ave (y_i |x_i \in N_k(x))
+$$
+
+where $N_k(x)$ refers to the set of k neighbors nearest the point x in squared distance.
+
+Alternatively, we can consider **"Nadaraya-Watson" kernel-weighted average** for our estimate
+
+$$
+\hat{f}(x_0)= \frac{\sum_{k=1}^n K_\lambda(x_0,x_i) y_i}{\sum_{i=1}^n K_\lambda(x_i, x_i)}
+$$
+
+where the kernel is given by
+
+$$
+K_\lambda(x_0,x) = D(\frac{|x-x_0|}{\lambda})
+$$
+
+The difference is that now we have a **continuous** function, as compared to **discrete** under the nearest neighbor fit (which can come in handy in some cases).
+
+<br>
+
+Examples of the kernel function
+
+1.  Epanechinikov quadratic kernel (has no continuous derivatives at the boundary of its support)
+
+$$
+D(t) = 
+\begin{cases}
+\frac{3}{4}(1-t^2) & \text{if } |t| \le \lambda \\
+0 & \text{otherwise}
+\end{cases}
+$$
+
+2.  Tri-Cube kernel (compact, has 2 continuous derivatives at the boundary of its support)
+
+$$
+D(t) = 
+\begin{cases}
+(1- |t|^3)^3 & \text{if } |t| \le \lambda \\
+0 & \text{otherwise}
+\end{cases}
+$$
+
+where $t = |x- x_0|$
+
+3.  Gaussian density function (continuously differentiable, but infinite support, could be more taxing on computation):
+
+$$
+D(t) = \frac{\exp(-\frac{t^2}{2\sigma^2})}{\sqrt{2 \pi}\sigma}
+$$
+
+where $\sigma$ is the "width"
+
+Alternatively, we can also use **adaptive neighborhoods** where the $\lambda$ parameter depends on the location $x_0$ For example,
+
+$$
+K_\lambda (x_0, x) = D(\frac{|x-x_0|}{h_\lambda(x_0)})
+$$
+
+Notes:
+
+-   Large $\lambda$ implies lower variance (we average over more observations, larger n), but higher bias (we are approximating $f(x_0)$ with observation further away from $x_0$
+
+-   An adaptive parameter $h_\lambda(x)$ can keep the bias **constant** but the variance is **inversely proportional** to the local density of observation.
+
+-   Biggest problem with kernel smoothers is estimation near the boundaries (primarily due to the asymmetry of the kernels near the boundary); hence, the fits are badly biased near the boundaries, which [Local Regression] can help.

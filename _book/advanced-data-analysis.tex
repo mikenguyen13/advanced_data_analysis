@@ -118,7 +118,7 @@
 
 \title{Advanced Data Analysis}
 \author{Mike Nguyen}
-\date{2021-09-20}
+\date{2021-09-21}
 
 \begin{document}
 \maketitle
@@ -846,7 +846,7 @@ If you have a large data set, you could randomly divide it into a training set (
 \end{Shaded}
 
 \begin{verbatim}
-## [1] 23.52911
+## [1] 25.04575
 \end{verbatim}
 
 \begin{Shaded}
@@ -858,7 +858,7 @@ If you have a large data set, you could randomly divide it into a training set (
 \end{Shaded}
 
 \begin{verbatim}
-## [1] 19.85131
+## [1] 20.93981
 \end{verbatim}
 
 \begin{Shaded}
@@ -870,7 +870,7 @@ If you have a large data set, you could randomly divide it into a training set (
 \end{Shaded}
 
 \begin{verbatim}
-## [1] 20.02277
+## [1] 20.94417
 \end{verbatim}
 
 \hypertarget{leave-one-out-cv-loocv}{%
@@ -991,8 +991,8 @@ Empirically, good choices for K are 5 or 10.
 \end{Shaded}
 
 \begin{verbatim}
-##  [1] 24.25534 19.14866 19.55732 19.44966 18.95243 19.08938 18.83776 18.86857
-##  [9] 18.89654 19.41675
+##  [1] 24.11620 19.31390 19.93722 19.39609 18.81610 19.55726 19.24892 19.11478
+##  [9] 19.63559 19.44449
 \end{verbatim}
 
 \hypertarget{generalized-cross-validation}{%
@@ -1123,7 +1123,7 @@ SE_B (\hat{\alpha}) = \sqrt{\frac{1}{B-1} \sum_{r=1}^B (\hat{\alpha}^{*r} - \fra
 \end{Shaded}
 
 \begin{verbatim}
-## [1] 0.5192834
+## [1] 0.5459501
 \end{verbatim}
 
 \begin{Shaded}
@@ -1143,8 +1143,8 @@ SE_B (\hat{\alpha}) = \sqrt{\frac{1}{B-1} \sum_{r=1}^B (\hat{\alpha}^{*r} - \fra
 ## 
 ## 
 ## Bootstrap Statistics :
-##      original     bias    std. error
-## t1* 0.5758321 0.01697836  0.09289736
+##      original       bias    std. error
+## t1* 0.5758321 -0.004948702  0.08942262
 \end{verbatim}
 
 Another example: SE estimate for linear model
@@ -1171,7 +1171,7 @@ Another example: SE estimate for linear model
 
 \begin{verbatim}
 ## (Intercept)  horsepower 
-##  40.1613888  -0.1613057
+##  41.5492093  -0.1759592
 \end{verbatim}
 
 \begin{Shaded}
@@ -1191,8 +1191,8 @@ Another example: SE estimate for linear model
 ## 
 ## Bootstrap Statistics :
 ##       original        bias    std. error
-## t1* 39.9358610  0.0206364619 0.900008625
-## t2* -0.1578447 -0.0003838949 0.007782374
+## t1* 39.9358610  0.0593768112  0.86131302
+## t2* -0.1578447 -0.0005699508  0.00745986
 \end{verbatim}
 
 \begin{Shaded}
@@ -3009,12 +3009,6 @@ What-If tools:
 \url{https://github.com/adikhosla/feature-extraction}
 \url{https://expertprogrammanagement.com/2019/12/elaboration-likelihood-model/}
 
-\hypertarget{generalized-method-of-moments}{%
-\chapter{Generalized Method of Moments}\label{generalized-method-of-moments}}
-
-\hypertarget{minimum-distance}{%
-\chapter{Minimum Distance}\label{minimum-distance}}
-
 \hypertarget{spline-regression}{%
 \chapter{Spline Regression}\label{spline-regression}}
 
@@ -3305,17 +3299,31 @@ Notes:
   \end{enumerate}
 \end{itemize}
 
-Let \(\hat{\mathbf{y}}_\lambda\) be the n-vector containing the fitted values for the smoothing spline function for a given \(\lambda\),
+Let \(\hat{\mathbf{y}}_\lambda\) be the n-vector containing the fitted values for the smoothing spline function for a given \(\lambda\), then
 
 \[
 \hat{\mathbf{y}}_\lambda = \mathbf{S}_\lambda \mathbf{y}
 \]
 
-\(\mathbf{S}_\lambda = \mathbf{N}(\mathbf{N}^T\mathbf{N}+ \lambda \mathbf{\Omega}_N)^{-1} \mathbf{N}^T\) where \(\{N\}_{ij} = b_j (x_i);\)
+which means that it is linear in \(\mathbf{y}\)
+
+According to \citet{hastie2001a} (section 5.4) showed
+
+\(\mathbf{S}_\lambda = \mathbf{N}(\mathbf{N}^T\mathbf{N}+ \lambda \mathbf{\Omega}_N)^{-1} \mathbf{N}^T\) where \(\{N\}_{ij} = b_j (x_i)\) and
+
+\(\{\mathbf{\Omega}\}_{jk} = \int b''_j (t) b''_k(t)dt\)
+
+The effective degrees of freedom to be trace of \(\mathbf{S}_\lambda\) (\textbf{smoother matrix} because it smooths the responses in \(\mathbf{y}\)) is
 
 \[
 df_\lambda = \sum_{i=1}^n \{\mathbf{S}_\lambda\}_{ii}
 \]
+
+\(\mathbf{S}_\lambda\) is related to other types of smoothing in \protect\hyperlink{local-regression}{Local Regression} and \protect\hyperlink{kernel-smoothing}{Kernel Smoothing}
+
+To choose \(\lambda\), we can use cross-validation (could also leverage the relationship between \(\lambda\) and effective degrees of freedom).
+
+If we can write a \textbf{linear predictor}, we can use a simplified LOOCV formula:
 
 \[
 \begin{aligned}
@@ -3323,6 +3331,24 @@ RSS_{CV}(\lambda)&= \sum_{i=1}^n(y_i - \hat{y}_\lambda^{(-i)}(x_i))^2 \\
 &= \sum_{i=1}^n[\frac{y_i - \hat{y}_\lambda(x_i)}{1-\{\mathbf{S}_\lambda\}_{ii}}]^2
 \end{aligned}
 \]
+
+where we only have to fit the model once for each \(\lambda\)
+
+\hypertarget{multidimensional-splines}{%
+\section{Multidimensional Splines}\label{multidimensional-splines}}
+
+We can extend the above one-dimensional spline models to higher dimensions using \textbf{tensor products} to form higher dimensional basis functions
+
+Consider \(X \in R^2\) and
+
+\begin{itemize}
+\item
+  basis functions \(b_{1j}(X_1), j = 1, \dots, K_1\) for representing coordinate \(X_1\)
+\item
+  \(b_{2k}(X), k = 1, \dots, K_2\) for coordinate \(X_2\)
+\end{itemize}
+
+then the \emph{tensor product basis} is:
 
 \[
 g_{jk}(X) = b_{1j}(X_1)b_{2k}(X_2)
@@ -3336,21 +3362,50 @@ which can be used as
 f(X) = \sum_{j=1}^{K_1} \sum_{k=1}^{K_2}\beta_{jk}g_{jk}(X)
 \]
 
+Then, we seek to minimize
+
 \[
 \sum_{i=1}^n (y_i - f(x_i))^2 + \lambda J[f]
 \]
 
 where \(J\) is the penalty function for the dimension of the problem
 
+In our example (\(X \in R^2\)), then
+
 \[
 J[f] = \int\int[(\frac{\partial^2f(x)}{\partial x_1^2})^2 + 2(\frac{\partial^2 f(x)}{\partial x_1 \partial x_2})^2 + (\frac{\partial^2f(x)}{\partial x^2_2})^2]dx_1 dx_2
 \]
+
+Similar to the one-dimensional case
+
+\begin{itemize}
+\item
+  \(\lambda \to 0\) gives an interpolating function that goes through all points
+\item
+  \(\lambda \to \infty\) gives a solution approaching the least squares plane
+\item
+  We seek a \(\lambda\) that compromises between these extremes
+\end{itemize}
+
+This splines method is known as \textbf{thin-plates splines}.
+
+The solution to the thin-plate spline minimization gives
 
 \[
 f(x) = \beta_0 + \beta^T x + \sum_{j=1}^n \alpha_j b_j(x)
 \]
 
-where \(b_j(x) = ||x - x_j||^2\log ||x-x_j||\)
+where \(b_j(x) = ||x - x_j||^2\log ||x-x_j||\) (known as \textbf{radial basis functions})
+
+Additional splines basis functions could be
+
+\begin{itemize}
+\tightlist
+\item
+  B-spline
+\end{itemize}
+
+\protect\hyperlink{local-regression}{Local Regression} and \protect\hyperlink{kernel-smoothing}{Kernel Smoothing} are related to the spline basis regression formulations.
 
 Another representation
 
@@ -3488,6 +3543,149 @@ tuning parameter & smoothing parameter \(\lambda\) & bandwidth h\tabularnewline
 
 \includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-11-2.pdf}
 
+\hypertarget{kernel-smoothing}{%
+\chapter{Kernel Smoothing}\label{kernel-smoothing}}
+
+\begin{itemize}
+\item
+  also known as kernel regression
+\item
+  The idea is that we fit a separate, but simple, model at each selected point \(x_0\) by using only those observation that are ``close'' to \(x_0\) such that \(\hat{f}(X)\) is smooth in \(R^p\)
+\item
+  The ``localization'' is accomplished by a \textbf{weighting function} (or \textbf{kernel}) \(K_\lambda(x_i, x_i)\) that assigns a weight to \(x_i\) based on its distance from \(x_0\)
+
+  \begin{itemize}
+  \tightlist
+  \item
+    This kernel depends on a parameter \(\lambda\) that defines the ``width'' or neighborhood" of the kernel
+  \end{itemize}
+\item
+  This method requires less training than traditional regression models (typically, only \(\lambda\) need be chosen), but are \textbf{memory-based methods} in that one needs all the training data any time we want to make a prediction at a location \(x_0\)
+\end{itemize}
+
+\hypertarget{one-dimensional-kernel-smoothers}{%
+\section{One-Dimensional Kernel Smoothers}\label{one-dimensional-kernel-smoothers}}
+
+Under k-nearest neighbor, we try to fit
+
+\[
+\hat{f}(x) = Ave (y_i |x_i \in N_k(x))
+\]
+
+where \(N_k(x)\) refers to the set of k neighbors nearest the point x in squared distance.
+
+Alternatively, we can consider \textbf{``Nadaraya-Watson'' kernel-weighted average} for our estimate
+
+\[
+\hat{f}(x_0)= \frac{\sum_{k=1}^n K_\lambda(x_0,x_i) y_i}{\sum_{i=1}^n K_\lambda(x_i, x_i)}
+\]
+
+where the kernel is given by
+
+\[
+K_\lambda(x_0,x) = D(\frac{|x-x_0|}{\lambda})
+\]
+
+The difference is that now we have a \textbf{continuous} function, as compared to \textbf{discrete} under the nearest neighbor fit (which can come in handy in some cases).
+
+Examples of the kernel function
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\tightlist
+\item
+  Epanechinikov quadratic kernel (has no continuous derivatives at the boundary of its support)
+\end{enumerate}
+
+\[
+D(t) = 
+\begin{cases}
+\frac{3}{4}(1-t^2) & \text{if } |t| \le \lambda \\
+0 & \text{otherwise}
+\end{cases}
+\]
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{1}
+\tightlist
+\item
+  Tri-Cube kernel (compact, has 2 continuous derivatives at the boundary of its support)
+\end{enumerate}
+
+\[
+D(t) = 
+\begin{cases}
+(1- |t|^3)^3 & \text{if } |t| \le \lambda \\
+0 & \text{otherwise}
+\end{cases}
+\]
+
+where \(t = |x- x_0|\)
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\setcounter{enumi}{2}
+\tightlist
+\item
+  Gaussian density function (continuously differentiable, but infinite support, could be more taxing on computation):
+\end{enumerate}
+
+\[
+D(t) = \frac{\exp(-\frac{t^2}{2\sigma^2})}{\sqrt{2 \pi}\sigma}
+\]
+
+where \(\sigma\) is the ``width''
+
+Alternatively, we can also use \textbf{adaptive neighborhoods} where the \(\lambda\) parameter depends on the location \(x_0\) For example,
+
+\[
+K_\lambda (x_0, x) = D(\frac{|x-x_0|}{h_\lambda(x_0)})
+\]
+
+Notes:
+
+\begin{itemize}
+\item
+  Large \(\lambda\) implies lower variance (we average over more observations, larger n), but higher bias (we are approximating \(f(x_0)\) with observation further away from \(x_0\)
+\item
+  An adaptive parameter \(h_\lambda(x)\) can keep the bias \textbf{constant} but the variance is \textbf{inversely proportional} to the local density of observation.
+\item
+  Biggest problem with kernel smoothers is estimation near the boundaries (primarily due to the asymmetry of the kernels near the boundary); hence, the fits are badly biased near the boundaries, which \protect\hyperlink{local-regression}{Local Regression} can help.
+\end{itemize}
+
+\hypertarget{local-regression}{%
+\chapter{Local Regression}\label{local-regression}}
+
+\begin{itemize}
+\item
+  This method improve bias from \protect\hyperlink{kernel-smoothing}{Kernel Smoothing} at the boundaries by fitting straight lines instead of constants.
+\item
+  Also known as the \textbf{locally weighted linear regression}
+\end{itemize}
+
+It seeks to
+
+\[
+\min_{\alpha(x_0), \beta(x_0)} \sum_{1}^n K_\lambda (x_0, x_i)[y_i - \alpha (x_0) - \beta(x_0)x_i]^2
+\]
+
+and gives the estimate \(\hat{f}(x_0) =\hat{\alpha}(x_0)+ \hat{\beta}(x_0)x_0\)
+
+To fit this, we let \(b(x)^T = (1,x)\) then define the \(n \times 2\) matrix \(\mathbf{B}\) to have i-th row given by \(b(x_i)^T\)
+
+Then, let \(\mathbf{W}(x_0)\) be the \(n \times n\) diagonal matrix with the i-th diagonal given by \(K_\lambda(x_0, x_i)\). Then
+
+\[
+\hat{f}(x_0)=b(x_0)^T (\mathbf{B}^T \mathbf{W}(x_0)\mathbf{B})^{-1}\mathbf{B}^T \mathbf{W}(x_0)\mathbf{y} = \sum_{i=1}^n l_i(x_0)y_i
+\]
+
+Thus, the fitted solution is linear in the \(y_i\) with the weights in the linear combination given by \(l_i(x_0)\), which are a combination of the kernel weights and least squares equations, which is called \textbf{equivalent kernel}
+
+An advantage of this method is that it corrects the boundary bias issues to first order (i.e., the bias is only a function of the second derivatives of \(f(x_0)\) and so is small on average).
+
+Thus, there is a small price f
+
 \hypertarget{generalized-additive-models}{%
 \chapter{Generalized Additive Models}\label{generalized-additive-models}}
 
@@ -3569,288 +3767,8 @@ To overcome \protect\hyperlink{spline-regression}{Spline Regression}'s requireme
 \end{Highlighting}
 \end{Shaded}
 
-\hypertarget{quantile-regression}{%
-\chapter{Quantile Regression}\label{quantile-regression}}
-
-For academic review on quantile regression, check \citep{Yu_2003}
-
-Linear Regression is based on the conditional mean function \(E(y|x)\)
-
-In Quantile regression, we can view each points in the conditional distribution of y. Quantile regression estimates the conditional median or any other quantile of Y.
-
-In the case that we're interested in the 50th percentile, quantile regression is median regression, also known as least-absolute-deviations (LAD) regression, minimizes \(\sum_{i}|e_i|\)
-
-Properties of estimators \(\beta\)
-
-\begin{itemize}
-\tightlist
-\item
-  Asymptotically normally distributed
-\end{itemize}
-
-Advantages
-
-\begin{itemize}
-\tightlist
-\item
-  More robust to outliers compared to OLS
-\item
-  In the case the dependent variable has a bimodal or multimodal (multiple humps with multiple modes) distribution, quantile regression can be extremely useful.
-\item
-  Avoids parametric distribution assumption of the error process. In another word, no assumptions regarding the distribution of the error term.
-\item
-  Better characterization of the data (not just its conditional mean)
-\item
-  is invariant to monotonic transformations (such as log) while OLS is not. In another word, \(E(g(y))=g(E(y))\)
-\end{itemize}
-
-Disadvantages
-
-\begin{itemize}
-\tightlist
-\item
-  The dependent variable needs to be continuous with no zeroes or too many repeated values.
-\end{itemize}
-
-\[
-y_i = x_i'\beta_q + e_i
-\]
-
-Let \(e(x) = y -\hat{y}(x)\), then \(L(e(x)) = L(y -\hat{y}(x))\) is the loss function of the error term.
-
-If \(L(e) = |e|\) (called absolute-error loss function) then \(\hat{\beta}\) can be estimated by minimizing \(\sum_{i}|y_i-x_i'\beta|\)
-
-More specifically, the objective function is
-
-\[
-Q(\beta_q)=\sum_{i:y_i \ge x_i'\beta}^{N} q|y_i - x_i'\beta_q| + \sum_{i:y_i < x_i'\beta}^{N} (1-q)|y_i-x_i'\beta_q
-\]
-
-where \(0<q<1\)
-
-The sum penalizes \(q|e_i|\) for under-prediction and \((1-q)|e_i|\) for over-prediction
-
-We use simplex method to minimize this function (cannot use analytical solution since it's non-differentiable). Standard errors can be estimated by bootstrap.
-
-The absolute-error loss function is symmetric.
-
-\textbf{Interpretation} For the jth regressor (\(x_j\)), the marginal effect is the coefficient for the qth quantile
-
-\[
-\frac{\partial Q_q(y|x)}{\partial x_j} = \beta_{qj}
-\]
-
-At the quantile q of the dependent variable y, \(\beta_q\) represents a one unit change in the independent variable \(x_j\) on the dependent variable y.
-
-In other words, at the qth percentile, a one unit change in x results in \(\beta_q\) unit change in y.
-
-\hypertarget{application-1}{%
-\section{Application}\label{application-1}}
-
-\begin{Shaded}
-\begin{Highlighting}[]
-\CommentTok{\# generate data with non{-}constant variance}
-
-\NormalTok{x }\OtherTok{\textless{}{-}} \FunctionTok{seq}\NormalTok{(}\DecValTok{0}\NormalTok{,}\DecValTok{100}\NormalTok{,}\AttributeTok{length.out =} \DecValTok{100}\NormalTok{)        }\CommentTok{\# independent variable}
-\NormalTok{sig }\OtherTok{\textless{}{-}} \FloatTok{0.1} \SpecialCharTok{+} \FloatTok{0.05}\SpecialCharTok{*}\NormalTok{x                     }\CommentTok{\# non{-}constant variance}
-\NormalTok{b\_0 }\OtherTok{\textless{}{-}} \DecValTok{3}                                \CommentTok{\# true intercept}
-\NormalTok{b\_1 }\OtherTok{\textless{}{-}} \FloatTok{0.05}                             \CommentTok{\# true slope}
-\FunctionTok{set.seed}\NormalTok{(}\DecValTok{1}\NormalTok{)                             }\CommentTok{\# reproducibility}
-\NormalTok{e }\OtherTok{\textless{}{-}} \FunctionTok{rnorm}\NormalTok{(}\DecValTok{100}\NormalTok{,}\AttributeTok{mean =} \DecValTok{0}\NormalTok{, }\AttributeTok{sd =}\NormalTok{ sig)      }\CommentTok{\# normal random error with non{-}constant variance}
-\NormalTok{y }\OtherTok{\textless{}{-}}\NormalTok{ b\_0 }\SpecialCharTok{+}\NormalTok{ b\_1}\SpecialCharTok{*}\NormalTok{x }\SpecialCharTok{+}\NormalTok{ e                    }\CommentTok{\# dependent variable}
-\NormalTok{dat }\OtherTok{\textless{}{-}} \FunctionTok{data.frame}\NormalTok{(x,y)}
-\FunctionTok{hist}\NormalTok{(y)}
-\end{Highlighting}
-\end{Shaded}
-
-\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-13-1.pdf}
-
-\begin{Shaded}
-\begin{Highlighting}[]
-\FunctionTok{library}\NormalTok{(ggplot2)}
-\FunctionTok{ggplot}\NormalTok{(dat, }\FunctionTok{aes}\NormalTok{(x,y)) }\SpecialCharTok{+} \FunctionTok{geom\_point}\NormalTok{()}
-\end{Highlighting}
-\end{Shaded}
-
-\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-13-2.pdf}
-
-\begin{Shaded}
-\begin{Highlighting}[]
-\FunctionTok{ggplot}\NormalTok{(dat, }\FunctionTok{aes}\NormalTok{(x,y)) }\SpecialCharTok{+} \FunctionTok{geom\_point}\NormalTok{() }\SpecialCharTok{+} \FunctionTok{geom\_smooth}\NormalTok{(}\AttributeTok{method=}\StringTok{"lm"}\NormalTok{)}
-\end{Highlighting}
-\end{Shaded}
-
-\begin{verbatim}
-## `geom_smooth()` using formula 'y ~ x'
-\end{verbatim}
-
-\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-13-3.pdf}
-
-We follow \citep{Roger_1996} to estimate quantile regression
-
-\begin{Shaded}
-\begin{Highlighting}[]
-\FunctionTok{library}\NormalTok{(quantreg)}
-\end{Highlighting}
-\end{Shaded}
-
-\begin{verbatim}
-## Warning: package 'quantreg' was built under R version 4.0.5
-\end{verbatim}
-
-\begin{verbatim}
-## Loading required package: SparseM
-\end{verbatim}
-
-\begin{verbatim}
-## 
-## Attaching package: 'SparseM'
-\end{verbatim}
-
-\begin{verbatim}
-## The following object is masked from 'package:base':
-## 
-##     backsolve
-\end{verbatim}
-
-\begin{Shaded}
-\begin{Highlighting}[]
-\NormalTok{qr }\OtherTok{\textless{}{-}} \FunctionTok{rq}\NormalTok{(y }\SpecialCharTok{\textasciitilde{}}\NormalTok{ x, }\AttributeTok{data=}\NormalTok{dat, }\AttributeTok{tau =} \FloatTok{0.5}\NormalTok{) }\CommentTok{\# tau: quantile of interest. Here we have it at 50th percentile.}
-\FunctionTok{summary}\NormalTok{(qr)}
-\end{Highlighting}
-\end{Shaded}
-
-\begin{verbatim}
-## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
-\end{verbatim}
-
-\begin{verbatim}
-## 
-## Call: rq(formula = y ~ x, tau = 0.5, data = dat)
-## 
-## tau: [1] 0.5
-## 
-## Coefficients:
-##             coefficients lower bd upper bd
-## (Intercept) 3.02410      2.80975  3.29408 
-## x           0.05351      0.03838  0.06690
-\end{verbatim}
-
-adding the regression line
-
-\begin{Shaded}
-\begin{Highlighting}[]
-\FunctionTok{ggplot}\NormalTok{(dat, }\FunctionTok{aes}\NormalTok{(x,y)) }\SpecialCharTok{+} \FunctionTok{geom\_point}\NormalTok{() }\SpecialCharTok{+} 
-  \FunctionTok{geom\_abline}\NormalTok{(}\AttributeTok{intercept=}\FunctionTok{coef}\NormalTok{(qr)[}\DecValTok{1}\NormalTok{], }\AttributeTok{slope=}\FunctionTok{coef}\NormalTok{(qr)[}\DecValTok{2}\NormalTok{])}
-\end{Highlighting}
-\end{Shaded}
-
-\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-15-1.pdf}
-
-To have R estimate multiple quantile at once
-
-\begin{Shaded}
-\begin{Highlighting}[]
-\NormalTok{qs }\OtherTok{\textless{}{-}} \DecValTok{1}\SpecialCharTok{:}\DecValTok{9}\SpecialCharTok{/}\DecValTok{10}
-\NormalTok{qr1 }\OtherTok{\textless{}{-}} \FunctionTok{rq}\NormalTok{(y }\SpecialCharTok{\textasciitilde{}}\NormalTok{ x, }\AttributeTok{data=}\NormalTok{dat, }\AttributeTok{tau =}\NormalTok{ qs)}
-\CommentTok{\#check for its coefficients}
-\FunctionTok{coef}\NormalTok{(qr1)}
-\end{Highlighting}
-\end{Shaded}
-
-\begin{verbatim}
-##                tau= 0.1   tau= 0.2   tau= 0.3   tau= 0.4   tau= 0.5   tau= 0.6
-## (Intercept)  2.95735740 2.93735462 3.19112214 3.08146314 3.02409828 3.16840820
-## x           -0.01203696 0.01942669 0.02394535 0.04208019 0.05350556 0.06507385
-##               tau= 0.7   tau= 0.8 tau= 0.9
-## (Intercept) 3.09507770 3.10539343 3.041681
-## x           0.07783556 0.08782548 0.111254
-\end{verbatim}
-
-\begin{Shaded}
-\begin{Highlighting}[]
-\CommentTok{\# plot}
-\FunctionTok{ggplot}\NormalTok{(dat, }\FunctionTok{aes}\NormalTok{(x,y)) }\SpecialCharTok{+} \FunctionTok{geom\_point}\NormalTok{() }\SpecialCharTok{+} \FunctionTok{geom\_quantile}\NormalTok{(}\AttributeTok{quantiles =}\NormalTok{ qs)}
-\end{Highlighting}
-\end{Shaded}
-
-\begin{verbatim}
-## Smoothing formula not specified. Using: y ~ x
-\end{verbatim}
-
-\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-16-1.pdf}
-
-To examine if the quantile regression is appropriate, we can see its plot compared to least squares regression
-
-\begin{Shaded}
-\begin{Highlighting}[]
-\FunctionTok{plot}\NormalTok{(}\FunctionTok{summary}\NormalTok{(qr1), }\AttributeTok{parm=}\StringTok{"x"}\NormalTok{)}
-\end{Highlighting}
-\end{Shaded}
-
-\begin{verbatim}
-## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
-
-## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
-
-## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
-
-## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
-
-## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
-
-## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
-
-## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
-
-## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
-
-## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
-\end{verbatim}
-
-\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-17-1.pdf}
-
-where red line is the least squares estimates, and its confidence interval. x-axis is the quantile y-axis is the value of the quantile regression coefficients at different quantile
-
-If the error term is normally distributed, the quantile regression line will fall inside the coefficient interval of least squares regression.
-
-\begin{Shaded}
-\begin{Highlighting}[]
-\CommentTok{\# generate data with constant variance}
-
-\NormalTok{x }\OtherTok{\textless{}{-}} \FunctionTok{seq}\NormalTok{(}\DecValTok{0}\NormalTok{, }\DecValTok{100}\NormalTok{, }\AttributeTok{length.out =} \DecValTok{100}\NormalTok{)    }\CommentTok{\# independent variable}
-\NormalTok{b\_0 }\OtherTok{\textless{}{-}} \DecValTok{3}                              \CommentTok{\# true intercept}
-\NormalTok{b\_1 }\OtherTok{\textless{}{-}} \FloatTok{0.05}                           \CommentTok{\# true slope}
-\FunctionTok{set.seed}\NormalTok{(}\DecValTok{1}\NormalTok{)                           }\CommentTok{\# reproducibility}
-\NormalTok{e }\OtherTok{\textless{}{-}} \FunctionTok{rnorm}\NormalTok{(}\DecValTok{100}\NormalTok{, }\AttributeTok{mean =} \DecValTok{0}\NormalTok{, }\AttributeTok{sd =} \DecValTok{1}\NormalTok{)     }\CommentTok{\# normal random error with constant variance}
-\NormalTok{y }\OtherTok{\textless{}{-}}\NormalTok{ b\_0 }\SpecialCharTok{+}\NormalTok{ b\_1 }\SpecialCharTok{*}\NormalTok{ x }\SpecialCharTok{+}\NormalTok{ e                }\CommentTok{\# dependent variable}
-\NormalTok{dat2 }\OtherTok{\textless{}{-}} \FunctionTok{data.frame}\NormalTok{(x, y)}
-\NormalTok{qr2 }\OtherTok{=} \FunctionTok{rq}\NormalTok{(y }\SpecialCharTok{\textasciitilde{}}\NormalTok{ x, }\AttributeTok{data =}\NormalTok{ dat2, }\AttributeTok{tau =}\NormalTok{ qs)}
-\FunctionTok{plot}\NormalTok{(}\FunctionTok{summary}\NormalTok{(qr2), }\AttributeTok{parm =} \StringTok{"x"}\NormalTok{)}
-\end{Highlighting}
-\end{Shaded}
-
-\begin{verbatim}
-## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
-
-## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
-
-## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
-
-## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
-
-## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
-
-## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
-
-## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
-
-## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
-
-## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
-\end{verbatim}
-
-\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-18-1.pdf}
+\hypertarget{gaussian-process-regression}{%
+\chapter{Gaussian Process Regression}\label{gaussian-process-regression}}
 
 \hypertarget{part-deep-learning}{%
 \part{DEEP LEARNING}\label{part-deep-learning}}
@@ -4812,7 +4730,7 @@ Steps in doing model staking:
 \end{Highlighting}
 \end{Shaded}
 
-\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-26-1.pdf}
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-20-1.pdf}
 
 \begin{Shaded}
 \begin{Highlighting}[]
@@ -4825,7 +4743,7 @@ Steps in doing model staking:
 \end{Highlighting}
 \end{Shaded}
 
-\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-26-2.pdf}
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-20-2.pdf}
 
 \begin{Shaded}
 \begin{Highlighting}[]
@@ -5122,7 +5040,7 @@ Check performance
 \end{Highlighting}
 \end{Shaded}
 
-\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-31-1.pdf}
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-25-1.pdf}
 
 \begin{Shaded}
 \begin{Highlighting}[]
@@ -5130,7 +5048,7 @@ Check performance
 \end{Highlighting}
 \end{Shaded}
 
-\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-31-2.pdf}
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-25-2.pdf}
 
 \begin{Shaded}
 \begin{Highlighting}[]
@@ -5138,7 +5056,7 @@ Check performance
 \end{Highlighting}
 \end{Shaded}
 
-\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-31-3.pdf}
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-25-3.pdf}
 
 See parameters
 
@@ -5652,6 +5570,295 @@ check Blair's \href{https://github.com/blairj09-talks/plumber-webinar-2020}{talk
 \url{https://jalammar.github.io/a-visual-guide-to-using-bert-for-the-first-time/}
 
 \url{https://towardsml.com/2019/09/17/bert-explained-a-complete-guide-with-theory-and-tutorial/}
+
+\hypertarget{generalized-method-of-moments}{%
+\chapter{Generalized Method of Moments}\label{generalized-method-of-moments}}
+
+\hypertarget{minimum-distance}{%
+\chapter{Minimum Distance}\label{minimum-distance}}
+
+\hypertarget{quantile-regression}{%
+\chapter{Quantile Regression}\label{quantile-regression}}
+
+For academic review on quantile regression, check \citep{Yu_2003}
+
+Linear Regression is based on the conditional mean function \(E(y|x)\)
+
+In Quantile regression, we can view each points in the conditional distribution of y. Quantile regression estimates the conditional median or any other quantile of Y.
+
+In the case that we're interested in the 50th percentile, quantile regression is median regression, also known as least-absolute-deviations (LAD) regression, minimizes \(\sum_{i}|e_i|\)
+
+Properties of estimators \(\beta\)
+
+\begin{itemize}
+\tightlist
+\item
+  Asymptotically normally distributed
+\end{itemize}
+
+Advantages
+
+\begin{itemize}
+\tightlist
+\item
+  More robust to outliers compared to OLS
+\item
+  In the case the dependent variable has a bimodal or multimodal (multiple humps with multiple modes) distribution, quantile regression can be extremely useful.
+\item
+  Avoids parametric distribution assumption of the error process. In another word, no assumptions regarding the distribution of the error term.
+\item
+  Better characterization of the data (not just its conditional mean)
+\item
+  is invariant to monotonic transformations (such as log) while OLS is not. In another word, \(E(g(y))=g(E(y))\)
+\end{itemize}
+
+Disadvantages
+
+\begin{itemize}
+\tightlist
+\item
+  The dependent variable needs to be continuous with no zeroes or too many repeated values.
+\end{itemize}
+
+\[
+y_i = x_i'\beta_q + e_i
+\]
+
+Let \(e(x) = y -\hat{y}(x)\), then \(L(e(x)) = L(y -\hat{y}(x))\) is the loss function of the error term.
+
+If \(L(e) = |e|\) (called absolute-error loss function) then \(\hat{\beta}\) can be estimated by minimizing \(\sum_{i}|y_i-x_i'\beta|\)
+
+More specifically, the objective function is
+
+\[
+Q(\beta_q)=\sum_{i:y_i \ge x_i'\beta}^{N} q|y_i - x_i'\beta_q| + \sum_{i:y_i < x_i'\beta}^{N} (1-q)|y_i-x_i'\beta_q
+\]
+
+where \(0<q<1\)
+
+The sum penalizes \(q|e_i|\) for under-prediction and \((1-q)|e_i|\) for over-prediction
+
+We use simplex method to minimize this function (cannot use analytical solution since it's non-differentiable). Standard errors can be estimated by bootstrap.
+
+The absolute-error loss function is symmetric.
+
+\textbf{Interpretation} For the jth regressor (\(x_j\)), the marginal effect is the coefficient for the qth quantile
+
+\[
+\frac{\partial Q_q(y|x)}{\partial x_j} = \beta_{qj}
+\]
+
+At the quantile q of the dependent variable y, \(\beta_q\) represents a one unit change in the independent variable \(x_j\) on the dependent variable y.
+
+In other words, at the qth percentile, a one unit change in x results in \(\beta_q\) unit change in y.
+
+\hypertarget{application-1}{%
+\section{Application}\label{application-1}}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# generate data with non{-}constant variance}
+
+\NormalTok{x }\OtherTok{\textless{}{-}} \FunctionTok{seq}\NormalTok{(}\DecValTok{0}\NormalTok{,}\DecValTok{100}\NormalTok{,}\AttributeTok{length.out =} \DecValTok{100}\NormalTok{)        }\CommentTok{\# independent variable}
+\NormalTok{sig }\OtherTok{\textless{}{-}} \FloatTok{0.1} \SpecialCharTok{+} \FloatTok{0.05}\SpecialCharTok{*}\NormalTok{x                     }\CommentTok{\# non{-}constant variance}
+\NormalTok{b\_0 }\OtherTok{\textless{}{-}} \DecValTok{3}                                \CommentTok{\# true intercept}
+\NormalTok{b\_1 }\OtherTok{\textless{}{-}} \FloatTok{0.05}                             \CommentTok{\# true slope}
+\FunctionTok{set.seed}\NormalTok{(}\DecValTok{1}\NormalTok{)                             }\CommentTok{\# reproducibility}
+\NormalTok{e }\OtherTok{\textless{}{-}} \FunctionTok{rnorm}\NormalTok{(}\DecValTok{100}\NormalTok{,}\AttributeTok{mean =} \DecValTok{0}\NormalTok{, }\AttributeTok{sd =}\NormalTok{ sig)      }\CommentTok{\# normal random error with non{-}constant variance}
+\NormalTok{y }\OtherTok{\textless{}{-}}\NormalTok{ b\_0 }\SpecialCharTok{+}\NormalTok{ b\_1}\SpecialCharTok{*}\NormalTok{x }\SpecialCharTok{+}\NormalTok{ e                    }\CommentTok{\# dependent variable}
+\NormalTok{dat }\OtherTok{\textless{}{-}} \FunctionTok{data.frame}\NormalTok{(x,y)}
+\FunctionTok{hist}\NormalTok{(y)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-33-1.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(ggplot2)}
+\FunctionTok{ggplot}\NormalTok{(dat, }\FunctionTok{aes}\NormalTok{(x,y)) }\SpecialCharTok{+} \FunctionTok{geom\_point}\NormalTok{()}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-33-2.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{ggplot}\NormalTok{(dat, }\FunctionTok{aes}\NormalTok{(x,y)) }\SpecialCharTok{+} \FunctionTok{geom\_point}\NormalTok{() }\SpecialCharTok{+} \FunctionTok{geom\_smooth}\NormalTok{(}\AttributeTok{method=}\StringTok{"lm"}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## `geom_smooth()` using formula 'y ~ x'
+\end{verbatim}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-33-3.pdf}
+
+We follow \citep{Roger_1996} to estimate quantile regression
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(quantreg)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning: package 'quantreg' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{verbatim}
+## Loading required package: SparseM
+\end{verbatim}
+
+\begin{verbatim}
+## 
+## Attaching package: 'SparseM'
+\end{verbatim}
+
+\begin{verbatim}
+## The following object is masked from 'package:base':
+## 
+##     backsolve
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{qr }\OtherTok{\textless{}{-}} \FunctionTok{rq}\NormalTok{(y }\SpecialCharTok{\textasciitilde{}}\NormalTok{ x, }\AttributeTok{data=}\NormalTok{dat, }\AttributeTok{tau =} \FloatTok{0.5}\NormalTok{) }\CommentTok{\# tau: quantile of interest. Here we have it at 50th percentile.}
+\FunctionTok{summary}\NormalTok{(qr)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+\end{verbatim}
+
+\begin{verbatim}
+## 
+## Call: rq(formula = y ~ x, tau = 0.5, data = dat)
+## 
+## tau: [1] 0.5
+## 
+## Coefficients:
+##             coefficients lower bd upper bd
+## (Intercept) 3.02410      2.80975  3.29408 
+## x           0.05351      0.03838  0.06690
+\end{verbatim}
+
+adding the regression line
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{ggplot}\NormalTok{(dat, }\FunctionTok{aes}\NormalTok{(x,y)) }\SpecialCharTok{+} \FunctionTok{geom\_point}\NormalTok{() }\SpecialCharTok{+} 
+  \FunctionTok{geom\_abline}\NormalTok{(}\AttributeTok{intercept=}\FunctionTok{coef}\NormalTok{(qr)[}\DecValTok{1}\NormalTok{], }\AttributeTok{slope=}\FunctionTok{coef}\NormalTok{(qr)[}\DecValTok{2}\NormalTok{])}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-35-1.pdf}
+
+To have R estimate multiple quantile at once
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{qs }\OtherTok{\textless{}{-}} \DecValTok{1}\SpecialCharTok{:}\DecValTok{9}\SpecialCharTok{/}\DecValTok{10}
+\NormalTok{qr1 }\OtherTok{\textless{}{-}} \FunctionTok{rq}\NormalTok{(y }\SpecialCharTok{\textasciitilde{}}\NormalTok{ x, }\AttributeTok{data=}\NormalTok{dat, }\AttributeTok{tau =}\NormalTok{ qs)}
+\CommentTok{\#check for its coefficients}
+\FunctionTok{coef}\NormalTok{(qr1)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+##                tau= 0.1   tau= 0.2   tau= 0.3   tau= 0.4   tau= 0.5   tau= 0.6
+## (Intercept)  2.95735740 2.93735462 3.19112214 3.08146314 3.02409828 3.16840820
+## x           -0.01203696 0.01942669 0.02394535 0.04208019 0.05350556 0.06507385
+##               tau= 0.7   tau= 0.8 tau= 0.9
+## (Intercept) 3.09507770 3.10539343 3.041681
+## x           0.07783556 0.08782548 0.111254
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# plot}
+\FunctionTok{ggplot}\NormalTok{(dat, }\FunctionTok{aes}\NormalTok{(x,y)) }\SpecialCharTok{+} \FunctionTok{geom\_point}\NormalTok{() }\SpecialCharTok{+} \FunctionTok{geom\_quantile}\NormalTok{(}\AttributeTok{quantiles =}\NormalTok{ qs)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Smoothing formula not specified. Using: y ~ x
+\end{verbatim}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-36-1.pdf}
+
+To examine if the quantile regression is appropriate, we can see its plot compared to least squares regression
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{plot}\NormalTok{(}\FunctionTok{summary}\NormalTok{(qr1), }\AttributeTok{parm=}\StringTok{"x"}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+\end{verbatim}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-37-1.pdf}
+
+where red line is the least squares estimates, and its confidence interval. x-axis is the quantile y-axis is the value of the quantile regression coefficients at different quantile
+
+If the error term is normally distributed, the quantile regression line will fall inside the coefficient interval of least squares regression.
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# generate data with constant variance}
+
+\NormalTok{x }\OtherTok{\textless{}{-}} \FunctionTok{seq}\NormalTok{(}\DecValTok{0}\NormalTok{, }\DecValTok{100}\NormalTok{, }\AttributeTok{length.out =} \DecValTok{100}\NormalTok{)    }\CommentTok{\# independent variable}
+\NormalTok{b\_0 }\OtherTok{\textless{}{-}} \DecValTok{3}                              \CommentTok{\# true intercept}
+\NormalTok{b\_1 }\OtherTok{\textless{}{-}} \FloatTok{0.05}                           \CommentTok{\# true slope}
+\FunctionTok{set.seed}\NormalTok{(}\DecValTok{1}\NormalTok{)                           }\CommentTok{\# reproducibility}
+\NormalTok{e }\OtherTok{\textless{}{-}} \FunctionTok{rnorm}\NormalTok{(}\DecValTok{100}\NormalTok{, }\AttributeTok{mean =} \DecValTok{0}\NormalTok{, }\AttributeTok{sd =} \DecValTok{1}\NormalTok{)     }\CommentTok{\# normal random error with constant variance}
+\NormalTok{y }\OtherTok{\textless{}{-}}\NormalTok{ b\_0 }\SpecialCharTok{+}\NormalTok{ b\_1 }\SpecialCharTok{*}\NormalTok{ x }\SpecialCharTok{+}\NormalTok{ e                }\CommentTok{\# dependent variable}
+\NormalTok{dat2 }\OtherTok{\textless{}{-}} \FunctionTok{data.frame}\NormalTok{(x, y)}
+\NormalTok{qr2 }\OtherTok{=} \FunctionTok{rq}\NormalTok{(y }\SpecialCharTok{\textasciitilde{}}\NormalTok{ x, }\AttributeTok{data =}\NormalTok{ dat2, }\AttributeTok{tau =}\NormalTok{ qs)}
+\FunctionTok{plot}\NormalTok{(}\FunctionTok{summary}\NormalTok{(qr2), }\AttributeTok{parm =} \StringTok{"x"}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+
+## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
+\end{verbatim}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-38-1.pdf}
 
   \bibliography{book.bib,packages.bib,references.bib}
 

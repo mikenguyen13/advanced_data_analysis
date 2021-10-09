@@ -1,0 +1,199 @@
+# Generalized Additive Models
+
+-   A more flexible method for nonlinear regression models
+
+$$
+E(Y|X_1,X_2,\dots,X_p)= \alpha + f_1(X_1) + f_2(X_2)+ \dots + f_p(X_p)
+$$
+
+where $f_j(.),j = 1,\dots, p$ are unspecified smooth (nonparametric) functions
+
+Notes:
+
+-   We call this model additive because we separate $f_j$ for each $X_j$
+
+-   Complicated functions for each features are allowed, and we can still retain the interpretability
+
+Equivalently, the model can be rewritten as
+
+$$
+y_i = \alpha + \sum_{j=1}^p f_j (x_{ij}) + \epsilon_i
+$$
+
+$\epsilon$ usually is chosen to follow Gaussian distribution
+
+-   If each of the function $f_j(.)$ were written as a basis expansion, then we are back at least squares
+
+-   A general approach to fit each function would be a "scatterplot smoother" (e.g., cubic [Smoothing splines] or [Kernel Smoothing]) using an algorithm that simultaneously estimates all p-functions
+
+-   Transformation of the mean response (e.g., link function) as in [Generalized linear models](https://bookdown.org/mike/data_analysis/generalized-linear-models.html) can also be applied.
+
+Example:
+
+Consider two-group classification via logistic regression. We relate the mean of the binary response
+
+$$
+\mu(X) = P(Y=1|X)
+$$
+
+to functions of the predictors via an additive regression model using a logit link function
+
+$$
+\log(\frac{\mu(X)}{1- \mu(X)}) = \alpha + f_1 (X_1) + \dots + f_p(X_p)
+$$
+
+where each $f_j$ is an unspecified smooth function
+
+In general, we relate the conditional mean response to the additive function of the predictors via a link function, $g$:
+
+$$
+g(\mu(X)) = \alpha + f_1(X_1) + \dots + f_p(X_p)
+$$
+
+Examples:
+
+-   $g(\mu) = \mu$ the identity link
+
+-   $g(\mu) = logit(\mu)$ or $g(\mu) = probit(\mu)$ as in the [glm](https://bookdown.org/mike/data_analysis/generalized-linear-models.html) case for binary and binomial data (probit function is the inverse Gaussian cumulative distribution function: $probit (\mu) = \Phi^{-1}(\mu)$
+
+-   $g(\mu) = \log(\mu)$: Poisson count data
+
+<br>
+
+Function $f_j$ can be nonlinear or linear or any other parametric forms. or a combination of them:
+
+-   $g(\mu) = X^T \beta + \alpha_k + f(Z)$: a semi-parametric model, where
+
+    -   $X$ is a vector of predictors to be modeled linearly
+
+    -   $\alpha_k$ the effect for the k-th level of a qualitative input V
+
+    -   the effect of the predictor $Z$ is modeled nonparametrically
+
+-   $g(\mu) = f(X) + g_k(Z)$ where
+
+    -   $k$ indexes the levels of a qualitative input V and thus creates an interaction term with Z, $g(V,Z) =g_k(Z)$
+
+-   $g(\mu)= f(X)+g(Z,W)$: where $g$ is a nonparametric function in two features, $Z$ and $W$
+
+## Fitting Additive Models
+
+We choose the function $f_j$ to be "smoothers." Then, we minimize a penalized sum of squares
+
+$$
+PRSS(\alpha, f_1,\dots, f_p) = \sum_{i=1}^n (y_i - \alpha- \sum_{j=1}^p f_j(x_{ij}))^2 + \sum_{j=1}^p \lambda_j \int f''_j (t_j)^2 dt_j
+$$
+
+where the $\lambda_j \ge 0$ are tuning parameters
+
+The minimizer is an additive cubic spline model with each of the functions $f_j$ a cubic spline in $X_j$ and with knots at each of the unique values of $x_{ij}, i = 1,. \dots, n$
+
+This solution is not unique because $\alpha$ is not identifiable without another constraint. Hence, we add $\sum_{i=1}^n f_j(x_{ij})=0 \forall j$ which implies $\hat{\alpha}= ave(y_i)$
+
+-   If $\mathbf{X} = \{x_{ij}\}$ is of full column rank, then the minimizer is unique
+
+-   If this isn't the case (i.e., $\mathbf{X'X}$ is singular) then the **linear portions** of the components $f_j$ c**annot be uniquely determined, but the nonlinear parts can**
+
+To fit the model, we have to use an iterative (backfitting) procedure
+
+Let $S_j$ be the cubic smoothing spline for the j-th function. We apply it to the target residuals $\{y_i - \hat{\alpha} - \sum_{k \neq j}\hat{f}(x_{ik}) \}^n_1$ as a function of $x_{ij}$ to obtain the new estimate $\hat{f}_j$
+
+The procedure is done for each predictor using the current estimates of the other functions $\hat{f}_k$ when computing the differences.
+
+The process continue until the estimates $\hat{f}_j$ stabilize
+
+<br>
+
+### The Backfitting Algorithm for Additive Models
+
+Step 1: Initialize
+
+$$
+\hat{\alpha} = \frac{1}{N}\sum_{1}^N y_i, \hat{f}_j \equiv 0, \forall i, j
+$$
+
+Step 2: $j = 1,2, \dots, p, \dots, 1, 2, \dots, p, \dots$
+
+$$
+\hat{f}_j \leftarrow S_j [\{ y_i - \hat{\alpha}- \sum_{k \neq j} \hat{f}_k (x_{ik})\}^N_1]
+$$
+
+$$
+\hat{f}_j \leftarrow \hat{f}_j - \frac{1}{N} \sum_{i=1}^N \hat{f}_j (x_{ij})
+$$
+
+until the functions $\hat{f}_j$ change less than a prespecified threshold
+
+<br>
+
+Notes:
+
+-   Any smoother can be used to take the place of $S_j$ such as
+
+    -   other univariate regression smoothers (e.g., local polynomial regression and [Kernel Smoothing])
+
+    -   linear regression operators yielding polynomial fits, piecewise constant fits, parametric spline fits, Fourier series fits
+
+    -   smoothers for second or higher-order interactions or periodic smoothers for seasonal effect.
+
+-   If we consider the smoother at the training points, it can be represented by the $n \times n$ smoother matrix $\mathbf{S}_j$ which can be used to estimate the df associated with the j-th term from $trace(\mathbf{S}_j) -1$
+
+## Fitting Generalized Additive Models
+
+-   The optimization criterion here is the penalized log-likelihood
+
+-   It maximizes by combining the backfitting procedure with a likelihood maximizer
+
+-   The weighted linear regression component is replaced by a weighed backfitting algorithm @hastie2001a (section 9.2)
+
+### Local Scoring Algorithm
+
+Step 1: Compute $\hat{\alpha} = \log [\frac{\bar{y}}{1- \bar{y}}]$ where $\bar{y} = ave(y_i)$, the sample proportion of ones, and set $\hat{f}_j\equiv 0 \forall j$
+
+Step 2: Define $\hat{\eta}_i = \hat{\alpha} + \sum_j \hat{f}_j(x_{ij})$ and $\hat{p}_i = \frac{1}{1 + \exp(-\hat{\eta}_i)}$
+
+Iterate:
+
+1.  Construct the working target variable: $z_i = \hat{\eta}_i + \frac{y_i - \hat{p}_i}{\hat{p}_i(1-\hat{p}_i)}$
+2.  Construct weights $w_i = \hat{p}_i (1-\hat{p}_i)$
+3.  FIt an additive model to the targets $z_i$ with weights $w_i$, using a weighted backfitting algorithm. This gives new estimates $\hat{\alpha}, \hat{f}_j, \forall j$
+
+Step 3: Continue step 2, until the change in the functions falls below a pre-specified threshold.
+
+<br>
+
+## Summary
+
+| Pros                                                                                                                                                     | Cons                                                                                                                                                                                                    |
+|----------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| we can fit a nonlinear $f_j$ to each $X_j$ and automatically model nonlinear relationships (which we can't do under standard linear regression)          | Model is restricted to be **additive**. Technically, we can include interactions, but we have to make them manually, and we can only do so with low-dimensional interaction terms as additive functions |
+| The nonlinear fits can make more accurate **predictions**                                                                                                | Difficult to fit in high dimensions (because all variables have to be fit)                                                                                                                              |
+| Since the model is additive, we can examine the effect of each $X_j$ on $Y$ individually while holding all of the other variables fixed (interprebility) |                                                                                                                                                                                                         |
+| The smoothness of the function $f_j$ for the variable $X_j$ can be summarized by df                                                                      |                                                                                                                                                                                                         |
+
+An extension of GAM is to include random effects, which is called **Generalized Additive Mixed Models** (GAMMs) (can refer to [this book](https://highstat.com/index.php/beginner-s-guide-to-generalized-additive-models-with-r))
+
+<br>
+
+## Application
+
+To overcome [Spline Regression]'s requirements for specifying the knots, we can use [Generalized Additive Models] or GAM.
+
+```{r}
+library(mgcv)
+# Build the model
+model <- gam(medv ~ s(lstat), data = train.data)
+plot(model)
+# Make predictions
+# predictions <- model %>% predict(test.data)
+# Model performance
+data.frame(
+  RMSE = RMSE(predictions, test.data$medv),
+  R2 = R2(predictions, test.data$medv)
+)
+
+ggplot(train.data, aes(lstat, medv) ) +
+  geom_point() +
+  stat_smooth(method = gam, formula = y ~ s(x))
+detach(train.data)
+```

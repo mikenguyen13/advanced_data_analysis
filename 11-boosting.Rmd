@@ -1,0 +1,166 @@
+# Boosting
+
+-   Similar to [Bagging] but more powerful, where we can improve the predictions from decision trees
+
+-   It was designed for classification problems (but now we can also apply to regression settings).
+
+-   In the machine learning world, this method combines the output of many "weak" learners to produce a power "committee"
+
+-   A classic boosting algorithm for classification is "AdaBoost.M1" [@freund1997b]
+
+-   It can be considered as one of the best off-the-shelf classifiers
+
+-   Under boosting, trees are *not grown independently*, but rather **sequentially**
+
+-   There are no bootstrap samples with boosting because we build trees on the residuals in a step-by-step manner
+
+-   In the literature, "fitting the data hard" means we fit a single large decision tree to the data, but we will **learn slowly** by fitting a decision tree to the residuals (not Y) from the model, which helps to improve the part of the tree that did not perform well in the existing tree structure.
+
+-   We add this new decision tree into the fitted function with a shrinkage parameter ($\lambda$) to slow the process down to add more trees to areas that don't fit well (also helps prevent overfitting). Hence, each tree after will depend strongly on the trees that have already been grown.
+
+## Regression Boosting
+
+Algorithm for boosting regression trees
+
+1.  Set $\hat{f}(x) = 0$ and $r_i = y_i \forall i$ (in the training set)
+
+2.  For $b = 1, \dots, B$ repeat
+
+    1.  Fit a tree $\hat{f}^b$ with $d$ splits ($d + 1$ terminal nodes) to the training data $(X,r)$
+
+    2.  Update $\hat{f}$ by adding in a shrunken version of the new tree $\hat{f}(x) \leftarrow \hat{f}(x) + \lambda \hat{f}^b (x)$
+
+    3.  Update the residuals $r_i \leftarrow r_i - \lambda \hat{f}^b (x_i)$
+
+3.  Final boosted model $\hat{f}(x) = \sum_{b=1}^B \lambda \hat{f}^b (x)$
+
+<br>
+
+Boosting has 3 tuning parameters:
+
+1.  $B$: the number of trees. boosting can overfit if $B$ is too large, we can use [Cross-validation Fitting] to select $B$
+2.  $\lambda$: the shrinkage parameter, which controls the rate at which boosting learns. Typical values are 0.01 or 0.001 (best choice depends on the data at hand). The smaller the $\lambda$, the larger $B$ must be to achieve good performance
+3.  $d$: the number of splits in each tree. $d = 1$ works well (surprisingly), which we call the tree a "stump." With $d =1$, the boosted ensemble is fitting an additive model since each term only involves one variable. More generally, $d$ is the interaction depth and controls the interaction order of the boosted model (since d splits can involve at most d variables).
+
+<br>
+
+## Classification Boosting
+
+For classification problem, consider a two-class classification code such that $Y \in \{ -1, 1\}$ and a vector of predictor variables, $X$.
+
+We have a classifier $G(X)$ that produces prediction that selects either -1 or 1. the error rate on the training sample is
+
+$$
+\bar{err} = \frac{1}{n} \sum_{i=1}^n I(y_i \neq G(x_i))
+$$
+
+A weak classifier is one whose error rate is only slightly better than random guessing. Now, boosting sequentially applies a weak classification algorithm to produce a sequence of weak classifiers, $G_m(x), m = 1, \dots, M$ ($M$ is above $B$)
+
+The predictions are then combined through a **weighted majority vote** to produce the final prediction
+
+$$
+G(x) = sign (\sum_{m=1}^M \alpha_m G_m (x))
+$$
+
+where the weights $\alpha_m, m = 1, \dots, M$ are computed by the boosting algorithm and give highest influence to the best classifiers
+
+At each boosting step, weights $w_1, \dots, w_n$ are applied to the training observations $(x_i, y_i), i = 1, \dots, n$.
+
+To start, weights are set equal, $w_i = \frac{1}{n}$ so there is no preference for the first classification.
+
+For each successive iteration, the observation weights at iteration $m$ are modified such that those observations that were misclassified by the classifier $G_{m-1}(x)$ have their weights increased, those that were correctly classified have their weights decreased
+
+As iterations continues, observations that are difficult to classify correctly receive ever-increasing influence. Each successive classifier is forced to concentrate on those training observations that are missed by the previous classifiers in the sequence
+
+<br>
+
+AdaBoost.M1
+
+1.  Initialize the observation weights $w_i = \frac{1}{N}, i = 1, \dots, N$
+
+2.  For $m = 1$ to M
+
+    1.  Fit a clisifer $G_m(x)$ to the training data with weights $w_i$
+
+    2.  Calculate $err_m = \frac{\sum_{i=1}^{N} w_i I(y_i \neq G_m(x_i))}{\sum_{i=1}^N w_i}$
+
+    3.  Calculate $\alpha_m = \log (\frac{1 - err_m}{err_m})$
+
+    4.  Set $w_i \leftarrow w_i \times \exp(\alpha_m \times I (y_i \neq G_m(x_i))), i = 1, \dots, N$
+
+3.  $G(x) = sign(\sum_{m=1}^M \alpha_m G_m(x))$
+
+<br>
+
+Why boosting works so well?
+
+From the perspective of a basis function expansion (\@ref(basis-function-representations):
+
+$$
+f(x) = \sum_{m=1}^M \beta_m b(x; \gamma_m)
+$$
+
+where
+
+-   $\beta_m$ are the expansion coefficients
+
+-   $b(x, \gamma)$ are simple functions of the multivariate inputs $x$ and parameters $\gamma$
+
+then, boosting is a way of fitting such an additive expansion where the basis functions are the individual classifiers $G_m(x) \in \{ -1, 1\}$
+
+To fit this model, we minimize some loss function averaged over the training data (e..g, squared error loss).
+
+$$
+\min_{\{\beta_m , \gamma_m \}^M_1} \sum_{i=1}^n L (y_i, \sum_{m=1}^M  \beta_m b(x_i; \gamma_m))
+$$
+
+For most loss functions $L(y, f(x))$ and basis functions $b(x; \gamma)$, the numerical optimization algorithms are usually computationally intensive.
+
+In some cases, a solution is to solve the subproblem of fitting just a single basis function
+
+$$
+\min_{\{\beta, \gamma\}} \sum_{i=1}^n L(y_i, \beta b (x_i; \gamma))
+$$
+
+Then, we approximate the more general minimization problem by sequentially adding new basis functions to the expansion without adjusting the parameters and coefficients that have already been added. This process is called **forward stagewise additive modeling** (i.e., at each iteration $m$, we solve for the optimal basis function $b(x, \gamma_m)$ and coefficient $\beta_m$ to add to the current expansion $f_{m-1}(x)$, which gives $f_m(x)$ and we repeat the process while previously added terms remain constant)
+
+Example: squared error loss
+
+$$
+L(y, f(x)) = (y - f(x))^2
+$$
+
+then
+
+$$
+\begin{aligned}
+L(y_i, f_{m-1}(x_i) + \beta_m b(x_i; \gamma_m) &= (y_i - f_{m-1}(x_i) - \beta_mb(x_i; \gamma_m))^2 \\
+&= (r_{im} - \beta_mb(x_i; \gamma_m))^2
+\end{aligned}
+$$
+
+where $r_{im} = y_i - f_{m-1}(x)$ is the residual of the current model on the i-th observation.
+
+The term $\beta_m b(x; \gamma_m)$ that best fits the current residuals is added to the expansion at each step
+
+<br>
+
+AdaBoost.M1 is equivalent to forward stagewise modeling using the loss function [@hastie2001a, 10.4]
+
+$$
+L(y, f(x)) = \exp(-y f(x))
+$$
+
+which is the "exponential loss" (closely related to the binomial negative log-likelihood (deviance), although they have different properties in finite data (real-world) settings )
+
+This loss function is attractive because it facilitates computation
+
+There are more loss functions. Typically we might choose a loss function because
+
+-   it's robust to certain properties (e.g., outliers)
+
+-   it facilitates computation
+
+When a loss function is differentiable, we can make use of the gradient of the loss function to improve the optimization, which is the basis of gradient boosting ("gradient boosting models (GBM)"; formerly, Multiple Additive Regression Trees (MART)).
+
+## Gradient Boosting 

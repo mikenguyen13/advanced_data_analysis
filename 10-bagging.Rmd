@@ -1,0 +1,41 @@
+# Bagging
+
+-   Bootstrapping can help tree methods (e.g., [CART][Classification and Regression Trees])
+
+-   Since [CART][Classification and Regression Trees] and [MARS][Multivariate Adaptive Regression Splines] suffer from high variance (because if we split the training data into 2 samples at random and fit both halves, the results can be quite different), we use **bootstrap aggregation** (i.e., **bagging**), which is a general-propose procedure to reduce variance
+
+-   If the procedure has low variance, it will yield similar results if applied repeatedly to distinct data sets (e.g., as in linear regression when $n$ is larger relative to $p$)
+
+-   The idea of bagging is that **averaging reduces variance** (somewhat like measurement error). To reduce variation, we take many training sets, and build a separate prediction model, and average them.
+
+To execute bagging, we calculate $\hat{f}^1(X),\hat{f}^2(X), \dots, \hat{f}^B(X)$ using $B$ separate training set, and average them
+
+$$
+\hat{f}_{bag} (X) = \frac{1}{B} \sum_{b=1}^B \hat{f}^b (x)
+$$
+
+However, in reality, we don't have access to multiple training sets, so we use bootstrap samples from our (single) training set (i.e., we generate $B$ bootstrap sample - **sampling randomly with replacement**). Hence, $\hat{f}_{bag}(x)$ is the result of averaging the fits from these $B$ bootstrap samples.
+
+In the case of regression trees with bagging, we construct $B$ regression trees and average the resulting predictions, but the trees are grown large with no pruning. Hence, each tree has high variance but low bias and averaging then reduces the variance. In practice, **100** samples is sufficient to reduce the variance significantly.
+
+Notes:
+
+-   Bagging can be used for classification, where we record the class predicted by each of the $B$ trees for a given test observation and then choose the category that occurs the most often.
+
+-   We can also estimate the error associated with a bagged model **without having to perform cross-validation**.
+
+    -   The observations not used in the bootstrap samples (for each sample) are the out-of-bag (OOB) observations.
+
+    -   We predict the response for the i-th observation using each of the trees in which the observation was OOB. Then, we average to get a single prediction, and get OOB MSE (or classification error)
+
+    -   OOB error is a valid estimate of the test error for the bagged model because the response for each observation is predicted using only the trees that were fit without using that observation.
+
+Disadvantages
+
+-   Although bagging can improve predictive power (relative to a single tree), it reduced interpretation (i.e., when we average over many different trees, the variable splits (or basis function included) can change dramatically, preventing interpretation). Thus, we can't know which variable is important
+
+    -   To deal with this problem, we can keep track of (to get measure of variable importance in the tree)
+
+        -   the total amount that the residual sum of squares is decreased due to splits over a given predictor averaged over all $B$ trees (in the case of regression), or
+
+        -   add up the total amount that the Gini index is decreased by splits over a given predictor, averaged over all $B$ trees (in case of classification).

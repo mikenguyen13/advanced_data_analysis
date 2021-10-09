@@ -1,0 +1,306 @@
+# Gaussian Process Regression
+
+Suggested reading:
+
+-   @rasmussen2005
+
+-   @wikle2019 (section 4.2)
+
+Under Gaussian Process (GP), we assume that $Y$ is a random (Gaussian) process that is controlled by a mean function and covariance function.
+
+Response model:
+
+$$
+z_i = Y_i + \epsilon_i, i = 1, \dots, n
+$$
+
+Assumptions:
+
+-   $Y$ = a latent process specified by a GP
+
+-   $\epsilon_i$ independent and identically distributed mean-zero observation errors that are independent of $Y$ and have variance $\sigma_\epsilon^2$
+
+-   the errors are assumed to have a normal (Gaussian) distribution $\epsilon_i \sim iid N (0, \sigma^2_\epsilon)$ these errors could be correlated
+
+<br>
+
+Consider a **linear predictor** of the form
+
+$$
+\hat{Y}(x_0) = k_0 + \sum_{i=1}^n w_i z_i
+$$
+
+where $w_i$ are weights and $k_0$ is some constant
+
+To pick these weights, we choose "optimal" weight based on mean squared error notion, which requires us to consider the random process that controls $Y$
+
+## Latent Process Model
+
+Assume that we have the latent process follows the model
+
+$$
+Y(x) = f(x)
+$$
+
+where $f(x) \sim GP (m(x), c(x,x'))$ is a random process (specifically a Gaussian Process) and
+
+-   $m(x)$ = mean function $E[f(x)]$
+
+-   $c(x,x')$ = covariance function $c(x,x)'= E[(f(x) - m(x)) (f(x') - m(x'))^T]$
+
+<br>
+
+The difference between **Gaussian distribution** and a **Gaussian process** is
+
+-   Gaussian Distribution: a distribution over vectors
+
+    -   Fully specified by a **mean vector** and **covariance matrix**: (e.g., $\mathbf{Y} \sim N(\mathbf{\mu}, \mathbf{\Sigma})$ which is a multivariate normal distribution)
+
+-   Gaussian Process: a distribution over functions
+
+    -   Fully specified by a mean function ($m$) and covariance function ($c$) (e.g., $Y \sim GP(m,c)$ , where we specify a mean function and covariance function to define a GP)
+
+## Gaussian Processes
+
+-   A GP is an infinite-dimensional object
+
+-   Allow us to make a prediction anywhere in our $x$ domain assuming that we know the mean and covariance functions (data generating process), we need the covariance between ANY two $x$ locations
+
+-   We actually need to consider finite-dimensional distributions because
+
+    -   We only have a finite set of data and also we are interested in a finite set of predictions
+
+    -   Any finite collection of GP random variables has a joint Gaussian distributions (i.e., a multivariate normal distribution).
+
+## Gaussian Distributions
+
+$$
+\left(
+\begin{array}
+{c}
+\mathbf{v} \\
+\mathbf{v}_*
+\end{array}
+\right)
+\sim 
+Gau 
+\left(
+\left(
+\begin{array}
+{c}
+\mathbf{\mu} \\
+\mathbf{\mu}_*
+\end{array}
+\right),
+\left(
+\begin{array}
+{cc}
+\mathbf{\Sigma} & \mathbf{\Sigma}_* \\
+\mathbf{\Sigma}^T & \mathbf{\Sigma}_{**}
+\end{array}
+\right)
+\right)
+$$
+
+where $E(\mathbf{v}) = \mathbf{\mu},E(\mathbf{v}_*) = \mathbf{\mu}_*, \mathbf{\Sigma}= cov(\mathbf{v}, \mathbf{v}), \mathbf{\Sigma}= cov(\mathbf{v}, \mathbf{v}_*),\mathbf{\Sigma}_{**} = cov(\mathbf{v}_*, \mathbf{v}_*)$
+
+Then, partition
+
+$$
+\mathbf{v}_* | \mathbf{v} \sim Gau (\mathbf{\mu}_*+ \mathbf{\Sigma}^T_* \mathbf{\Sigma}^{-1} (\mathbf{v} - \mathbf{\mu}), \mathbf{\Sigma}_{**} - \mathbf{\Sigma}^T_* \mathbf{\Sigma}^{-1} \mathbf{\Sigma}_*)
+$$
+
+<br>
+
+## Optimal Linear Prediction
+
+We are interested in predicting $Y(x_0)$ (i.e., at some arbitrary $x$) given the data $\mathbf{z} \equiv (z_1, \dots, z_n)^T$
+
+Assume that the mean function $\mu(x) \forall x$ (e.g., a constant)
+
+We seek linear predictors that minimize the mean squared prediction error of the form
+
+$$
+\begin{aligned}
+\hat{Y} (x_0) &=  k(x_0) + \sum_{i=1}^n w_i (x_0) z_i \\
+&= k(x_0) + \mathbf{w}^T_0 \mathbf{z}
+\end{aligned}
+$$
+
+The optimal linear predictor is also the conditional expectation $E(Y(x_0) |\mathbf{z})$.
+
+Hence, we seek the conditional distribution $Y(x_0) |\mathbf{z}$
+
+Rewriting the data model in vector form:
+
+$$
+\mathbf{z} = \mathbf{Y} + \epsilon, \epsilon \sim Gau(\mathbf{0}, \mathbf{C}_\epsilon)
+$$
+
+where $\mathbf{Y}$ and $\epsilon$ are ordered in the same way as the data vector $\mathbf{z}$
+
+$$
+cov(\mathbf{Y}, \mathbf{Y}) \equiv \mathbf{C}_y
+$$
+
+$$
+cov(\epsilon,\epsilon) \equiv \mathbf{C}_\epsilon
+$$
+
+$$
+cov(\mathbf{z}, \mathbf{z}) = \mathbf{C}_y + \mathbf{C}_\epsilon
+$$
+
+$$
+\mathbf{c}^T_0 \equiv cov( Y(x_0), \mathbf{z})
+$$
+
+$$
+c_{0,0} \equiv var(Y(x_0))
+$$
+
+$\mu_0$ is mean at $x_0$ and $\mathbf{\mu}$ is the mean corresponding to the observations.
+
+Then, the joint Gaussian distribution:
+
+$$
+\left(
+\begin{array}
+{c}
+Y (x_0) \\
+\mathbf{v}_*
+\end{array}
+\right)
+\sim 
+Gau 
+\left(
+\left(
+\begin{array}
+{c}
+\mathbf{\mu} \\
+\mathbf{\mu}
+\end{array}
+\right),
+\left(
+\begin{array}
+{cc}
+c_{0,0} & \mathbf{c}^T_0 \\
+\mathbf{c}_0 & \mathbf{C}_{z}
+\end{array}
+\right)
+\right)
+$$
+
+Using the joint/conditional [Gaussian Distributions] formula
+
+$$
+Y(x_0)|\mathbf{z} \sim Gau (\mu_0+ \mathbf{c}^T_0 \mathbf{C}_z^{-1}(\mathbf{z}- \mathbf{\mu}), c_{0,0}- \mathbf{c}^T_0 \mathbf{C}_z^{-1} \mathbf{c}_0)
+$$
+
+The predictor is given by the **mean** of this distribution
+
+$$
+\hat{Y}(x_0) = \mu_0 + \mathbf{c}_0^T \mathbf{C}^{-1}_z(\mathbf{z} - \mathbf{\mu})
+$$
+
+and the prediction **variance** is
+
+$$
+\sigma^2_{Y_0} = c_{0,0} - \mathbf{c}^T_0 \mathbf{C}_z^{-1} \mathbf{c}_0
+$$
+
+This predictor is the **optimal predictor** because it minimizes the **mean squared prediction error**:
+
+$$
+MSPE = E[(Y(x_0) - \hat{Y}(x_0))^2]
+$$
+
+Hence, the **weights** are given by
+
+$$
+\mathbf{w}_0 = \mathbf{c}'_0 \mathbf{C}_z^{-1}
+$$
+
+and
+
+$$
+k(x_0) = \mu_0 - \mathbf{c}'_0 \mathbf{C}^{-1}_z \mathbf{\mu}
+$$
+
+which is an effective kernel (just like [Spline Regression] and [Local Regression]
+
+These formulas can be extended to multiple locations (each location has its own vector of weights). However, if there are a lot of sample locations, there could be computational problem regarding calculating the matrix inverse $\mathbf{C}_z^{-1}$
+
+In cases where you have no measurement errors (i.e., $z_i = y_i$) (equivalently, replacing $\mathbf{C}_z$ with $\mathbf{C}_y$)
+
+## Covariance Functions
+
+To predict at new $x$ locations, we must specify:
+
+1.  a mean function (doable)
+2.  a covariance function between ANY two locations (hard)
+
+In the real world, we hardly ever know the variances and covariances that make up $\mathbf{C}_y, \mathbf{C}_\epsilon, \mathbf{c}_0, c_{0,0}$
+
+<br>
+
+A seemingly simple solution is to specify covariance functions in terms of parameters $\mathbf{\theta}$ that can give a covariance between any pairs of coordinates and then estimate the parameters, which is the same thing that we did in [Linear Mixed Models](https://bookdown.org/mike/data_analysis/linear-mixed-models.html) (e.g., AR models, exponential models)
+
+-   **Covariance functions must be positive semi-definite** to ensure that prediction variances are non-negative
+
+-   Covariance functions should be realistic (i.e., account for realistic dependencies), which can be difficult sometime. Typically, the assumption that "nearby" observations (similar in the case of [Kernel Smoothing]) are more dependent is sufficient.
+
+<br>
+
+In practice, we usually have to employ a **stationarity assumption**
+
+Example:
+
+If the random process is assumed to be second-order (weakly) stationary then it has constant expectation and a covariance function that can be expressed in terms of the distance between the $x$ locations ($h = x- x'$), we specify
+
+$$
+c(x,x') = c(h, \mathbf{\theta})
+$$
+
+In two or more dimensions, if this distance lag does not depend on direction (i.e., $h = ||\mathbf{h}||$), then we call the function **isotropic**
+
+The benefits of stationarity assumption:
+
+-   allows for more **parsimonious parameterization** of the covariance function
+
+-   provides **pseudo-replication** of dependencies at given lags, which facilitate estimation
+
+To construct covariance functions with this assumption, traditional machine learning would use **separable covariance functions** (e.g., for $x_1$ and $x_2$ - 2 dimension prediction)
+
+$$
+c(h_1;h_2) \equiv c(h_1) \times c_2(h_2)
+$$
+
+which is valid if both covariance functions are valid
+
+This separability property helps with computation in prediction locations (e.g., matrix inverses we mention above), but it can also be unrealistic in cases like spatio-temporal data
+
+Then to have valid spatial and temporal covariance functions, we can employ the following covariance functions:
+
+-   The Matern
+
+-   Power exponential: $c(\tau, \theta) = \sigma^2 \exp \{ - \frac{|\tau|}{\theta} \}$ where $\sigma^2$ is the variance parameter and $\theta$ is the dependence parameter
+
+-   Gaussian classes
+
+<br>
+
+To estimate the parameters in the covariance functions, and in the mean function we can either
+
+1.  Under the frequentist perspective, we can use REML, MLE (like [Linear Mixed Models](https://bookdown.org/mike/data_analysis/linear-mixed-models.html)) and BLUP for random process
+2.  Under the Bayesian perspective, we use GP for $f(x)$ as prior distribution, and update this with the observations, $\mathbf{z}$
+
+With a lot of data locations, REML, MLE, and Bayesian can be problematic because of the high-dimensional covariance matrix $\mathbf{C}_z, \mathbf{C}_y$ (which research are still being conducted to improve)
+
+Notes:
+
+-   If we model the mean function in terms of covariates ($\mu(x) = \mathbf{w}(x)'\mathbf{\beta}$m where $\mathbf{w}$ is a vector of covariates. Then, it's [Linear Mixed Models](https://bookdown.org/mike/data_analysis/linear-mixed-models.html) with difference that the covariates must be available for ANY $x$
+
+-   In cases where you don't measurement uncertainty in the observation, ($\epsilon$) then the prediction at an observation location will be exactly the same as the observation. And the other way around will filter the uncertainty with the observation
+
+-   we can also have non-Gaussian observations conditioned on the GP (like [GLMM](https://bookdown.org/mike/data_analysis/nonlinear-and-generalized-linear-mixed-models.html))

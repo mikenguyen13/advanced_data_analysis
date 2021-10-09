@@ -10,7 +10,7 @@
 
 -   This method requires less training than traditional regression models (typically, only $\lambda$ need be chosen), but are **memory-based methods** in that one needs all the training data any time we want to make a prediction at a location $x_0$
 
-## One-Dimensional Kernel Smoothers 
+## One-Dimensional Kernel Smoothers
 
 Under k-nearest neighbor, we try to fit
 
@@ -81,3 +81,53 @@ Notes:
 -   An adaptive parameter $h_\lambda(x)$ can keep the bias **constant** but the variance is **inversely proportional** to the local density of observation.
 
 -   Biggest problem with kernel smoothers is estimation near the boundaries (primarily due to the asymmetry of the kernels near the boundary); hence, the fits are badly biased near the boundaries, which [Local Regression] can help.
+
+## Selecting the Kernel Width
+
+$\lambda$ controls the "width" of kernel $K_\lambda$
+
+-   Epanechnikov/Tri-Cube: $\lambda$ is the radius of the support region
+
+-   Gaussian: $\lambda$ is the standard deviation
+
+-   Nearest Neighbor: $\lambda$ is the number of $k$ of nearest neighbors
+
+Notes:
+
+-   Smaller width means less averaging, hence higher variance and smaller bias
+
+-   Larger width means more averaging, hence less variance and higher bias
+
+To select $\lambda$, we typically use [Cross-validation]
+
+<br>
+
+## Kernel Density Estimation
+
+Another use of kernels is to estimate density (which was the original purpose of kernel before kernel regression).
+
+Kernel density estimation is
+
+Assume random sample $x_1, \dots, x_n$ from a probability density $f_X(x)$ and we want to estimate $f_X$ at a point $x_0$ (assuming one dimension $X \in R$)
+
+The **Parzen estimate** is
+
+$$
+\hat{f}_X(x_0) = \frac{1}{n \lambda}\sum_{i=1}^n K_\lambda (x_0, x_i)
+$$
+
+where a choice of kernels is the Gaussian kernel with standard deviation $\lambda$, which could be extended to higher dimensional density estimation by using multivariate (Gaussian) kernels.
+
+<br>
+
+Non parametric density estimates can be used under the Bayes' theorem
+
+Suppose $J$ classes and fit the nonparametric densities $\hat{f}_j (X), j = 1, \dots, J$ separately for each class
+
+Assume we have prior probability for each class $\hat{\pi}_j$ (which might be from the sample proportions or some previous knowledge), then
+
+$$
+\hat{P}(G=j | X=x_0) = \frac{\hat{\pi}_j \hat{f}_j (x_0)}{\sum_{k=1}^J \hat{\pi}_k \hat{f}_k (x_0)}
+$$
+
+For more details, see @hastie2001a (section 6.6)

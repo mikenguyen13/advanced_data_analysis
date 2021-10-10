@@ -118,7 +118,7 @@
 
 \title{Advanced Data Analysis}
 \author{Mike Nguyen}
-\date{2021-10-09}
+\date{2021-10-10}
 
 \begin{document}
 \maketitle
@@ -846,7 +846,7 @@ If you have a large data set, you could randomly divide it into a training set (
 \end{Shaded}
 
 \begin{verbatim}
-## [1] 26.5254
+## [1] 25.01135
 \end{verbatim}
 
 \begin{Shaded}
@@ -858,7 +858,7 @@ If you have a large data set, you could randomly divide it into a training set (
 \end{Shaded}
 
 \begin{verbatim}
-## [1] 20.88781
+## [1] 19.66797
 \end{verbatim}
 
 \begin{Shaded}
@@ -870,7 +870,7 @@ If you have a large data set, you could randomly divide it into a training set (
 \end{Shaded}
 
 \begin{verbatim}
-## [1] 20.92144
+## [1] 19.59708
 \end{verbatim}
 
 \hypertarget{leave-one-out-cv-loocv}{%
@@ -991,8 +991,8 @@ Empirically, good choices for K are 5 or 10.
 \end{Shaded}
 
 \begin{verbatim}
-##  [1] 24.15545 19.47923 19.61763 19.45716 19.00392 19.30588 19.09349 19.54975
-##  [9] 18.75923 18.96160
+##  [1] 24.17754 19.13796 19.28410 19.28312 19.16752 19.17492 18.77805 19.10428
+##  [9] 18.91706 20.96061
 \end{verbatim}
 
 \hypertarget{generalized-cross-validation}{%
@@ -1123,7 +1123,7 @@ SE_B (\hat{\alpha}) = \sqrt{\frac{1}{B-1} \sum_{r=1}^B (\hat{\alpha}^{*r} - \fra
 \end{Shaded}
 
 \begin{verbatim}
-## [1] 0.4746685
+## [1] 0.670153
 \end{verbatim}
 
 \begin{Shaded}
@@ -1143,8 +1143,8 @@ SE_B (\hat{\alpha}) = \sqrt{\frac{1}{B-1} \sum_{r=1}^B (\hat{\alpha}^{*r} - \fra
 ## 
 ## 
 ## Bootstrap Statistics :
-##      original       bias    std. error
-## t1* 0.5758321 -0.003300184  0.09376732
+##      original      bias    std. error
+## t1* 0.5758321 0.002346145  0.08695328
 \end{verbatim}
 
 Another example: SE estimate for linear model
@@ -1171,7 +1171,7 @@ Another example: SE estimate for linear model
 
 \begin{verbatim}
 ## (Intercept)  horsepower 
-##  40.2593224  -0.1588387
+##  39.8052681  -0.1543515
 \end{verbatim}
 
 \begin{Shaded}
@@ -1191,8 +1191,8 @@ Another example: SE estimate for linear model
 ## 
 ## Bootstrap Statistics :
 ##       original        bias    std. error
-## t1* 39.9358610  0.0388923935 0.853686410
-## t2* -0.1578447 -0.0005485667 0.007302794
+## t1* 39.9358610  0.0257676301 0.857362481
+## t2* -0.1578447 -0.0003493258 0.007359003
 \end{verbatim}
 
 \begin{Shaded}
@@ -1526,7 +1526,7 @@ Steps:
 \item
   Choose a ``grid'' of \(\lambda\) values
 \item
-  COmpute the cross-validation error for each vlaue of \(\lambda\)
+  Compute the cross-validation error for each vlaue of \(\lambda\)
 \item
   Select the \(\lambda\) for which the cross-validation error is smallest (one-standard error rule)
 \item
@@ -1798,7 +1798,7 @@ where a set of \(M\) with orthogonality constraints
 Beyond Linearity (including transformation of variables), we have arbitrary basis expansion (where the basis functions are dependent on X)
 
 \hypertarget{basis-function-representations}{%
-\section{\texorpdfstring{\textbf{Basis Function Representations}}{Basis Function Representations}}\label{basis-function-representations}}
+\section{Basis Function Representations}\label{basis-function-representations}}
 
 Let the k-th basis function of X be denoted by \(b_k(X), k = 1,\dots, K\) which is function that maps from the p-dimensional real numbers to the real line.
 
@@ -2226,6 +2226,154 @@ tuning parameter & smoothing parameter \(\lambda\) & bandwidth h\tabularnewline
 \hypertarget{application}{%
 \section{Application}\label{application}}
 
+\hypertarget{example-1}{%
+\subsection{Example 1}\label{example-1}}
+
+\citep[7.8]{james2013}
+
+\hypertarget{regression-spline-example}{%
+\subsubsection{Regression Spline Example}\label{regression-spline-example}}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(ISLR2)}
+\FunctionTok{attach}\NormalTok{(Wage)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## The following object is masked from Auto:
+## 
+##     year
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{ (splines)}
+
+\CommentTok{\# using basis functions for splines with the sepcifeid set of knots }
+\NormalTok{fit }\OtherTok{\textless{}{-}} \FunctionTok{lm}\NormalTok{(wage ∼ }\FunctionTok{bs}\NormalTok{(age , }\AttributeTok{knots =} \FunctionTok{c}\NormalTok{(}\DecValTok{25}\NormalTok{, }\DecValTok{40}\NormalTok{, }\DecValTok{60}\NormalTok{)), }\AttributeTok{data =}\NormalTok{ Wage) }\CommentTok{\# 3 knots mean 6 basis function, hence 7 df are used (including the intercept)}
+
+\CommentTok{\# we want to predict for a grid of values for age }
+\NormalTok{agelims }\OtherTok{\textless{}{-}} \FunctionTok{range}\NormalTok{ (age)}
+\NormalTok{age.grid }\OtherTok{\textless{}{-}} \FunctionTok{seq}\NormalTok{ (}\AttributeTok{from =}\NormalTok{ agelims[}\DecValTok{1}\NormalTok{], }\AttributeTok{to =}\NormalTok{ agelims [}\DecValTok{2}\NormalTok{])}
+
+
+\NormalTok{pred }\OtherTok{\textless{}{-}} \FunctionTok{predict}\NormalTok{ (fit , }\AttributeTok{newdata =} \FunctionTok{list}\NormalTok{ (}\AttributeTok{age =}\NormalTok{ age.grid), }\AttributeTok{se =}\NormalTok{ T)}
+\FunctionTok{plot}\NormalTok{(age , wage , }\AttributeTok{col =} \StringTok{" gray "}\NormalTok{)}
+\FunctionTok{lines}\NormalTok{(age.grid, pred}\SpecialCharTok{$}\NormalTok{fit , }\AttributeTok{lwd =} \DecValTok{2}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-10-1.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# lines(age.grid, pred$fit + 2 * pred$se, lty = " dashed")}
+\CommentTok{\# lines(age.grid, pred$fit {-} 2 * pred$se, lty = " dashed")}
+\end{Highlighting}
+\end{Shaded}
+
+Alternatively, we produce knots at uniform quantiles of the data
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{dim}\NormalTok{(}\FunctionTok{bs}\NormalTok{(age, }\AttributeTok{knots =} \FunctionTok{c}\NormalTok{(}\DecValTok{25}\NormalTok{, }\DecValTok{40}\NormalTok{, }\DecValTok{60}\NormalTok{)))}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## [1] 3000    6
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{dim}\NormalTok{(}\FunctionTok{bs}\NormalTok{(age, }\AttributeTok{df =} \DecValTok{6}\NormalTok{))}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## [1] 3000    6
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{attr}\NormalTok{(}\FunctionTok{bs}\NormalTok{(age, }\AttributeTok{df =} \DecValTok{6}\NormalTok{), }\StringTok{"knots"}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+##   25%   50%   75% 
+## 33.75 42.00 51.00
+\end{verbatim}
+
+\hypertarget{natural-spline-example}{%
+\subsubsection{Natural Spline Example}\label{natural-spline-example}}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{fit2 }\OtherTok{\textless{}{-}} \FunctionTok{lm}\NormalTok{(wage }\SpecialCharTok{\textasciitilde{}} \FunctionTok{ns}\NormalTok{(age, }\AttributeTok{df =} \DecValTok{4}\NormalTok{), }\AttributeTok{data =}\NormalTok{ Wage) }\CommentTok{\# 4 df}
+\NormalTok{pred2 }\OtherTok{\textless{}{-}} \FunctionTok{predict}\NormalTok{(fit2, }\AttributeTok{newdata =} \FunctionTok{list}\NormalTok{(}\AttributeTok{age =}\NormalTok{ age.grid), }\AttributeTok{se =}\NormalTok{ T)}
+\FunctionTok{plot}\NormalTok{ (age , wage , }\AttributeTok{col =} \StringTok{"gray"}\NormalTok{)}
+\FunctionTok{lines}\NormalTok{(age.grid, pred2}\SpecialCharTok{$}\NormalTok{fit, }\AttributeTok{col =} \StringTok{"red"}\NormalTok{, }\AttributeTok{lwd =} \DecValTok{2}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-12-1.pdf}
+
+Alternatively, we specify the knots using the \texttt{knots} options (similar to \protect\hyperlink{regression-spline-example}{Regression Spline Example})
+
+\hypertarget{smoothing-spline-example}{%
+\subsubsection{Smoothing Spline Example}\label{smoothing-spline-example}}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{plot}\NormalTok{(age,}
+\NormalTok{     wage,}
+     \AttributeTok{xlim =}\NormalTok{ agelims,}
+     \AttributeTok{cex =}\NormalTok{ .}\DecValTok{5}\NormalTok{,}
+     \AttributeTok{col =} \StringTok{"darkgrey"}\NormalTok{)}
+\FunctionTok{title}\NormalTok{(}\StringTok{"Smoothing Spline"}\NormalTok{)}
+\NormalTok{fit }\OtherTok{\textless{}{-}} \FunctionTok{smooth.spline}\NormalTok{(age, wage, }\AttributeTok{df =} \DecValTok{16}\NormalTok{) }\CommentTok{\# we specify 16 df then R will find lambda that leads to 16 df }
+\NormalTok{fit2 }\OtherTok{\textless{}{-}} \FunctionTok{smooth.spline}\NormalTok{(age, wage , }\AttributeTok{cv =}\NormalTok{ T) }\CommentTok{\# we select lambda (smoothness) based on cross validation}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning in smooth.spline(age, wage, cv = T): cross-validation with non-unique
+## 'x' values seems doubtful
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{fit2}\SpecialCharTok{$}\NormalTok{df }\CommentTok{\# wihch result in 6.8 df}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## [1] 6.794596
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{lines}\NormalTok{(fit, }\AttributeTok{col =} \StringTok{"red"}\NormalTok{, }\AttributeTok{lwd =} \DecValTok{2}\NormalTok{)}
+\FunctionTok{lines}\NormalTok{(fit2, }\AttributeTok{col =} \StringTok{"blue"}\NormalTok{, }\AttributeTok{lwd =} \DecValTok{2}\NormalTok{)}
+\FunctionTok{legend}\NormalTok{(}
+    \StringTok{"topright"}\NormalTok{,}
+    \AttributeTok{legend =} \FunctionTok{c}\NormalTok{(}\StringTok{"16 DF"}\NormalTok{, }\StringTok{"6.8 DF"}\NormalTok{),}
+    \AttributeTok{col =} \FunctionTok{c}\NormalTok{(}\StringTok{"red"}\NormalTok{, }\StringTok{"blue"}\NormalTok{),}
+    \AttributeTok{lty =} \DecValTok{1}\NormalTok{,}
+    \AttributeTok{lwd =} \DecValTok{2}\NormalTok{ ,}
+    \AttributeTok{cex =}\NormalTok{ .}\DecValTok{8}
+\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-13-1.pdf}
+
+\hypertarget{pltoexample-2}{%
+\subsection{plto(Example 2}\label{pltoexample-2}}
+
 \begin{Shaded}
 \begin{Highlighting}[]
 \FunctionTok{library}\NormalTok{(tidyverse)}
@@ -2305,11 +2453,22 @@ tuning parameter & smoothing parameter \(\lambda\) & bandwidth h\tabularnewline
 \end{Highlighting}
 \end{Shaded}
 
-\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-10-1.pdf}
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-14-1.pdf}
 
 \begin{Shaded}
 \begin{Highlighting}[]
 \FunctionTok{attach}\NormalTok{(train.data)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## The following object is masked from Wage:
+## 
+##     age
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
 \CommentTok{\#fitting smoothing splines using smooth.spline(X,Y,df=...)}
 
 \NormalTok{fit1}\OtherTok{\textless{}{-}}\FunctionTok{smooth.spline}\NormalTok{(train.data}\SpecialCharTok{$}\NormalTok{lstat,train.data}\SpecialCharTok{$}\NormalTok{medv,}\AttributeTok{df=}\DecValTok{3}\NormalTok{ ) }\CommentTok{\# 3 degrees of freedom}
@@ -2325,7 +2484,7 @@ tuning parameter & smoothing parameter \(\lambda\) & bandwidth h\tabularnewline
 \end{Highlighting}
 \end{Shaded}
 
-\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-10-2.pdf}
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-14-2.pdf}
 
 \hypertarget{kernel-smoothing}{%
 \chapter{Kernel Smoothing}\label{kernel-smoothing}}
@@ -2611,6 +2770,82 @@ Under Kernel weighted local regressions, then
 \min_{\alpha (z_0), \beta(z_0)} \sum_{i=1}^n K_\lambda (z_0,z_i)[y_i - \alpha(z_0)-x_{1i} \beta_1(z_0)- \dots - x_{qi} \beta_q (z_0)]^2
 \]
 
+\hypertarget{application-1}{%
+\section{Application}\label{application-1}}
+
+Alternative package \texttt{locfit}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(ISLR2)}
+\FunctionTok{attach}\NormalTok{(Wage)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## The following object is masked from train.data:
+## 
+##     age
+\end{verbatim}
+
+\begin{verbatim}
+## The following objects are masked from Wage (pos = 7):
+## 
+##     age, education, health, health_ins, jobclass, logwage, maritl,
+##     race, region, wage, year
+\end{verbatim}
+
+\begin{verbatim}
+## The following object is masked from Auto:
+## 
+##     year
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{ (splines)}
+
+\CommentTok{\# we want to predict for a grid of values for age}
+\NormalTok{agelims }\OtherTok{\textless{}{-}} \FunctionTok{range}\NormalTok{ (age)}
+\NormalTok{age.grid }\OtherTok{\textless{}{-}} \FunctionTok{seq}\NormalTok{ (}\AttributeTok{from =}\NormalTok{ agelims[}\DecValTok{1}\NormalTok{], }\AttributeTok{to =}\NormalTok{ agelims [}\DecValTok{2}\NormalTok{])}
+
+
+
+\FunctionTok{plot}\NormalTok{(age,}
+\NormalTok{     wage,}
+     \AttributeTok{xlim =}\NormalTok{ agelims,}
+     \AttributeTok{cex =}\NormalTok{ .}\DecValTok{5}\NormalTok{,}
+     \AttributeTok{col =} \StringTok{"darkgrey"}\NormalTok{)}
+\FunctionTok{title}\NormalTok{(}\StringTok{"Local Regression"}\NormalTok{)}
+
+\CommentTok{\# each neighborhood consists of (spans) percentage of the observations}
+\NormalTok{fit }\OtherTok{\textless{}{-}} \FunctionTok{loess}\NormalTok{(wage }\SpecialCharTok{\textasciitilde{}}\NormalTok{ age, }\AttributeTok{span =}\NormalTok{ .}\DecValTok{2}\NormalTok{, }\AttributeTok{data =}\NormalTok{ Wage) }\CommentTok{\# using spans of 0.2 (i.e., each neighborhood consists of 20\% of the observaitons)}
+\NormalTok{fit2 }\OtherTok{\textless{}{-}} \FunctionTok{loess}\NormalTok{(wage }\SpecialCharTok{\textasciitilde{}}\NormalTok{ age, }\AttributeTok{span =}\NormalTok{ .}\DecValTok{5}\NormalTok{, }\AttributeTok{data =}\NormalTok{ Wage) }\CommentTok{\# using spans of 0.5}
+
+\CommentTok{\# with larger span, we have smoother fit }
+
+
+\FunctionTok{lines}\NormalTok{(age.grid,}
+      \FunctionTok{predict}\NormalTok{(fit, }\FunctionTok{data.frame}\NormalTok{(}\AttributeTok{age =}\NormalTok{ age.grid)),}
+      \AttributeTok{col =} \StringTok{"red"}\NormalTok{,}
+      \AttributeTok{lwd =} \DecValTok{2}\NormalTok{)}
+\FunctionTok{lines}\NormalTok{(age.grid,}
+      \FunctionTok{predict}\NormalTok{(fit2, }\FunctionTok{data.frame}\NormalTok{(}\AttributeTok{age =}\NormalTok{ age.grid)),}
+      \AttributeTok{col =} \StringTok{"blue"}\NormalTok{,}
+      \AttributeTok{lwd =} \DecValTok{2}\NormalTok{)}
+\FunctionTok{legend}\NormalTok{(}
+    \StringTok{"topright"}\NormalTok{,}
+    \AttributeTok{legend =} \FunctionTok{c}\NormalTok{(}\StringTok{"span = 0.2"}\NormalTok{, }\StringTok{"Span = 0.5"}\NormalTok{),}
+    \AttributeTok{col =} \FunctionTok{c}\NormalTok{(}\StringTok{"red"}\NormalTok{, }\StringTok{"blue"}\NormalTok{),}
+    \AttributeTok{lty =} \DecValTok{1}\NormalTok{,}
+    \AttributeTok{lwd =} \DecValTok{2}\NormalTok{ ,}
+    \AttributeTok{cex =} \FloatTok{0.8}
+\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-15-1.pdf}
+
 \hypertarget{generalized-additive-models}{%
 \chapter{Generalized Additive Models}\label{generalized-additive-models}}
 
@@ -2851,8 +3086,231 @@ The smoothness of the function \(f_j\) for the variable \(X_j\) can be summarize
 
 An extension of GAM is to include random effects, which is called \textbf{Generalized Additive Mixed Models} (GAMMs) (can refer to \href{https://highstat.com/index.php/beginner-s-guide-to-generalized-additive-models-with-r}{this book})
 
-\hypertarget{application-1}{%
-\section{Application}\label{application-1}}
+\hypertarget{application-2}{%
+\section{Application}\label{application-2}}
+
+\hypertarget{example-1-1}{%
+\subsection{Example 1}\label{example-1-1}}
+
+\citep[7.8]{james2013}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(ISLR2)}
+\FunctionTok{attach}\NormalTok{(Wage)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## The following objects are masked from Wage (pos = 3):
+## 
+##     age, education, health, health_ins, jobclass, logwage, maritl,
+##     race, region, wage, year
+\end{verbatim}
+
+\begin{verbatim}
+## The following object is masked from train.data:
+## 
+##     age
+\end{verbatim}
+
+\begin{verbatim}
+## The following objects are masked from Wage (pos = 8):
+## 
+##     age, education, health, health_ins, jobclass, logwage, maritl,
+##     race, region, wage, year
+\end{verbatim}
+
+\begin{verbatim}
+## The following object is masked from Auto:
+## 
+##     year
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{ (splines)}
+
+\CommentTok{\# we want to predict for a grid of values for age }
+\NormalTok{agelims }\OtherTok{\textless{}{-}} \FunctionTok{range}\NormalTok{ (age)}
+\NormalTok{age.grid }\OtherTok{\textless{}{-}} \FunctionTok{seq}\NormalTok{ (}\AttributeTok{from =}\NormalTok{ agelims[}\DecValTok{1}\NormalTok{], }\AttributeTok{to =}\NormalTok{ agelims [}\DecValTok{2}\NormalTok{])}
+
+\CommentTok{\# since gam is just linear regresion with transformation of inputs, we can also use lm in R}
+\NormalTok{gam1 }\OtherTok{\textless{}{-}} \FunctionTok{lm}\NormalTok{(wage }\SpecialCharTok{\textasciitilde{}} \FunctionTok{ns}\NormalTok{(year, }\DecValTok{4}\NormalTok{) }\SpecialCharTok{+} \FunctionTok{ns}\NormalTok{(age, }\DecValTok{5}\NormalTok{) }\SpecialCharTok{+}\NormalTok{ education, }\AttributeTok{data =}\NormalTok{ Wage) }\CommentTok{\# using natural splines}
+
+\FunctionTok{library}\NormalTok{(gam)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Loading required package: foreach
+\end{verbatim}
+
+\begin{verbatim}
+## 
+## Attaching package: 'foreach'
+\end{verbatim}
+
+\begin{verbatim}
+## The following objects are masked from 'package:purrr':
+## 
+##     accumulate, when
+\end{verbatim}
+
+\begin{verbatim}
+## Loaded gam 1.20
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{gam.m3 }\OtherTok{\textless{}{-}}
+    \FunctionTok{gam}\NormalTok{(wage }\SpecialCharTok{\textasciitilde{}} \FunctionTok{s}\NormalTok{(year, }\DecValTok{4}\NormalTok{) }\SpecialCharTok{+} \FunctionTok{s}\NormalTok{(age, }\DecValTok{5}\NormalTok{) }\SpecialCharTok{+}\NormalTok{ education, }\AttributeTok{data =}\NormalTok{ Wage) }\CommentTok{\# using smoothing splines}
+
+\FunctionTok{par}\NormalTok{(}\AttributeTok{mfrow =} \FunctionTok{c}\NormalTok{(}\DecValTok{1}\NormalTok{, }\DecValTok{3}\NormalTok{))}
+\FunctionTok{plot}\NormalTok{(gam.m3, }\AttributeTok{se =}\NormalTok{ T, }\AttributeTok{col =} \StringTok{"blue"}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-16-1.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{plot.Gam}\NormalTok{(gam1, }\AttributeTok{se =}\NormalTok{ T, }\AttributeTok{col =} \StringTok{"red"}\NormalTok{) }\CommentTok{\# the function of year is rather linear}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-16-2.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{gam.m1 }\OtherTok{\textless{}{-}} \FunctionTok{gam}\NormalTok{ (wage ∼ }\FunctionTok{s}\NormalTok{(age , }\DecValTok{5}\NormalTok{) }\SpecialCharTok{+}\NormalTok{ education , }\AttributeTok{data =}\NormalTok{ Wage)}
+\NormalTok{gam.m2 }\OtherTok{\textless{}{-}} \FunctionTok{gam}\NormalTok{(wage }\SpecialCharTok{\textasciitilde{}}\NormalTok{ year }\SpecialCharTok{+} \FunctionTok{s}\NormalTok{(age, }\DecValTok{5}\NormalTok{) }\SpecialCharTok{+}\NormalTok{ education, }\AttributeTok{data =}\NormalTok{ Wage)}
+\FunctionTok{anova}\NormalTok{(gam.m1, gam.m2, gam.m3, }\AttributeTok{test =} \StringTok{"F"}\NormalTok{) }\CommentTok{\# model 2 is the best one}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Analysis of Deviance Table
+## 
+## Model 1: wage ~ s(age, 5) + education
+## Model 2: wage ~ year + s(age, 5) + education
+## Model 3: wage ~ s(year, 4) + s(age, 5) + education
+##   Resid. Df Resid. Dev Df Deviance       F    Pr(>F)    
+## 1      2990    3711731                                  
+## 2      2989    3693842  1  17889.2 14.4771 0.0001447 ***
+## 3      2986    3689770  3   4071.1  1.0982 0.3485661    
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{summary}\NormalTok{(gam.m3)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## 
+## Call: gam(formula = wage ~ s(year, 4) + s(age, 5) + education, data = Wage)
+## Deviance Residuals:
+##     Min      1Q  Median      3Q     Max 
+## -119.43  -19.70   -3.33   14.17  213.48 
+## 
+## (Dispersion Parameter for gaussian family taken to be 1235.69)
+## 
+##     Null Deviance: 5222086 on 2999 degrees of freedom
+## Residual Deviance: 3689770 on 2986 degrees of freedom
+## AIC: 29887.75 
+## 
+## Number of Local Scoring Iterations: NA 
+## 
+## Anova for Parametric Effects
+##              Df  Sum Sq Mean Sq F value    Pr(>F)    
+## s(year, 4)    1   27162   27162  21.981 2.877e-06 ***
+## s(age, 5)     1  195338  195338 158.081 < 2.2e-16 ***
+## education     4 1069726  267432 216.423 < 2.2e-16 ***
+## Residuals  2986 3689770    1236                      
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+## 
+## Anova for Nonparametric Effects
+##             Npar Df Npar F  Pr(F)    
+## (Intercept)                          
+## s(year, 4)        3  1.086 0.3537    
+## s(age, 5)         4 32.380 <2e-16 ***
+## education                            
+## ---
+## Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{preds }\OtherTok{\textless{}{-}} \FunctionTok{predict}\NormalTok{(gam.m2, }\AttributeTok{newdata =}\NormalTok{ Wage)}
+\NormalTok{gam.lo }\OtherTok{\textless{}{-}} \FunctionTok{gam}\NormalTok{(wage }\SpecialCharTok{\textasciitilde{}} \FunctionTok{s}\NormalTok{(year, }\AttributeTok{df =} \DecValTok{4}\NormalTok{) }\SpecialCharTok{+} \FunctionTok{lo}\NormalTok{(age, }\AttributeTok{span =} \FloatTok{0.7}\NormalTok{) }\SpecialCharTok{+}\NormalTok{ education, }\AttributeTok{data =}\NormalTok{ Wage)}
+\FunctionTok{plot.Gam}\NormalTok{(gam.lo , }\AttributeTok{se =}\NormalTok{ T, }\AttributeTok{col =} \StringTok{"green"}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-16-3.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# using local regression as building blocks for GAM}
+\NormalTok{gam.lo.i }\OtherTok{\textless{}{-}}
+    \FunctionTok{gam}\NormalTok{(wage }\SpecialCharTok{\textasciitilde{}} \FunctionTok{lo}\NormalTok{(year, age, }\AttributeTok{span =}\NormalTok{ .}\DecValTok{05}\NormalTok{) }\SpecialCharTok{+}\NormalTok{ education, }\AttributeTok{data =}\NormalTok{ Wage)}
+
+\FunctionTok{library}\NormalTok{(akima)}
+\FunctionTok{plot}\NormalTok{(gam.lo.i)}
+
+\NormalTok{gam.lr }\OtherTok{\textless{}{-}} \FunctionTok{gam}\NormalTok{(}\FunctionTok{I}\NormalTok{(wage }\SpecialCharTok{\textgreater{}} \DecValTok{250}\NormalTok{) }\SpecialCharTok{\textasciitilde{}}\NormalTok{ year }\SpecialCharTok{+} \FunctionTok{s}\NormalTok{(age, }\AttributeTok{df =} \DecValTok{5}\NormalTok{) }\SpecialCharTok{+}\NormalTok{ education,}
+              \AttributeTok{family =}\NormalTok{ binomial,}
+              \AttributeTok{data =}\NormalTok{ Wage)}
+\FunctionTok{par}\NormalTok{(}\AttributeTok{mfrow =} \FunctionTok{c}\NormalTok{(}\DecValTok{1}\NormalTok{, }\DecValTok{3}\NormalTok{))}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-16-4.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{plot}\NormalTok{(gam.lr, }\AttributeTok{se =}\NormalTok{ T, }\AttributeTok{col =} \StringTok{"green"}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-16-5.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{table}\NormalTok{(education, }\FunctionTok{I}\NormalTok{(wage }\SpecialCharTok{\textgreater{}} \DecValTok{25}\NormalTok{))}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+##                     
+## education            FALSE TRUE
+##   1. < HS Grad           1  267
+##   2. HS Grad             2  969
+##   3. Some College        3  647
+##   4. College Grad        0  685
+##   5. Advanced Degree     0  426
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{gam.lr.s }\OtherTok{\textless{}{-}} \FunctionTok{gam}\NormalTok{(}
+    \FunctionTok{I}\NormalTok{(wage }\SpecialCharTok{\textgreater{}} \DecValTok{25}\NormalTok{) }\SpecialCharTok{\textasciitilde{}}\NormalTok{ year }\SpecialCharTok{+} \FunctionTok{s}\NormalTok{(age, }\AttributeTok{df =} \DecValTok{5}\NormalTok{) }\SpecialCharTok{+}\NormalTok{ education,}
+    \AttributeTok{family =}\NormalTok{ binomial,}
+    \AttributeTok{data =}\NormalTok{ Wage,}
+    \AttributeTok{subset =}\NormalTok{ (education }\SpecialCharTok{!=} \StringTok{"1. \textless{} HS Grad"}\NormalTok{)}
+\NormalTok{)}
+\FunctionTok{plot}\NormalTok{(gam.lr.s, }\AttributeTok{se =}\NormalTok{ T, }\AttributeTok{col =} \StringTok{"green"}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-16-6.pdf}
+
+\hypertarget{example-2}{%
+\subsection{Example 2}\label{example-2}}
 
 To overcome \protect\hyperlink{spline-regression}{Spline Regression}'s requirements for specifying the knots, we can use \protect\hyperlink{generalized-additive-models}{Generalized Additive Models} or GAM.
 
@@ -2889,6 +3347,17 @@ To overcome \protect\hyperlink{spline-regression}{Spline Regression}'s requireme
 ## This is mgcv 1.8-36. For overview type 'help("mgcv-package")'.
 \end{verbatim}
 
+\begin{verbatim}
+## 
+## Attaching package: 'mgcv'
+\end{verbatim}
+
+\begin{verbatim}
+## The following objects are masked from 'package:gam':
+## 
+##     gam, gam.control, gam.fit, s
+\end{verbatim}
+
 \begin{Shaded}
 \begin{Highlighting}[]
 \CommentTok{\# Build the model}
@@ -2897,7 +3366,7 @@ To overcome \protect\hyperlink{spline-regression}{Spline Regression}'s requireme
 \end{Highlighting}
 \end{Shaded}
 
-\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-11-1.pdf}
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-17-1.pdf}
 
 \begin{Shaded}
 \begin{Highlighting}[]
@@ -2924,7 +3393,7 @@ To overcome \protect\hyperlink{spline-regression}{Spline Regression}'s requireme
 \end{Highlighting}
 \end{Shaded}
 
-\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-11-2.pdf}
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-17-2.pdf}
 
 \begin{Shaded}
 \begin{Highlighting}[]
@@ -3283,6 +3752,101 @@ Notes:
   we can also have non-Gaussian observations conditioned on the GP (like \href{https://bookdown.org/mike/data_analysis/nonlinear-and-generalized-linear-mixed-models.html}{GLMM})
 \end{itemize}
 
+\hypertarget{application-3}{%
+\section{Application}\label{application-3}}
+
+Other packages: \texttt{mlegp}
+
+\citet{macdonald2015}
+
+Simulation:
+
+\[
+y(x) = \log(x + .1) + sin(5 \pi x)
+\]
+
+A Latin Hypercube design is a space-filling design, used in the design of computer experiments.
+
+The Maximin version does space-filling design by maximizing the minimum distance between design points.
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(GPfit)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning: package 'GPfit' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(lhs)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## Warning: package 'lhs' was built under R version 4.0.5
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{set.seed}\NormalTok{(}\DecValTok{1}\NormalTok{)}
+\NormalTok{n }\OtherTok{=} \DecValTok{7}
+\NormalTok{x }\OtherTok{=} \FunctionTok{maximinLHS}\NormalTok{(n ,}\DecValTok{1}\NormalTok{) }\CommentTok{\# draw a Maximin Latin Hypercube Sample}
+\NormalTok{y }\OtherTok{=} \FunctionTok{matrix}\NormalTok{(}\DecValTok{0}\NormalTok{, n, }\DecValTok{1}\NormalTok{)}
+\ControlFlowTok{for}\NormalTok{ (i }\ControlFlowTok{in} \DecValTok{1}\SpecialCharTok{:}\NormalTok{n)\{}
+\NormalTok{    y[i] }\OtherTok{=} \FunctionTok{log}\NormalTok{(x[i] }\SpecialCharTok{+}\NormalTok{ .}\DecValTok{1}\NormalTok{ ) }\SpecialCharTok{+} \FunctionTok{sin}\NormalTok{(}\DecValTok{5}\SpecialCharTok{*}\NormalTok{pi }\SpecialCharTok{*}\NormalTok{ x[i])}
+\NormalTok{\}}
+
+\NormalTok{GPmodel }\OtherTok{=} \FunctionTok{GP\_fit}\NormalTok{(x,y)}
+\FunctionTok{print}\NormalTok{(GPmodel)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## 
+## Number Of Observations: n = 7
+## Input Dimensions: d = 1
+## 
+## Correlation: Exponential (power = 1.95)
+## Correlation Parameters: 
+##     beta_hat
+## [1]  1.69817
+## 
+## sigma^2_hat: [1] 0.858342
+## 
+## delta_lb(beta_hat): [1] 0
+## 
+## nugget threshold parameter: 20
+\end{verbatim}
+
+Predict at a grid of new x values
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{xvec }\OtherTok{\textless{}{-}} \FunctionTok{seq}\NormalTok{(}\AttributeTok{from =} \DecValTok{0}\NormalTok{, }\AttributeTok{to =} \DecValTok{1}\NormalTok{, }\AttributeTok{length.out =} \DecValTok{100}\NormalTok{)}
+\NormalTok{yvec }\OtherTok{\textless{}{-}} \FunctionTok{matrix}\NormalTok{(}\DecValTok{0}\NormalTok{,}\DecValTok{100}\NormalTok{,}\DecValTok{1}\NormalTok{)}
+\ControlFlowTok{for}\NormalTok{ (i }\ControlFlowTok{in} \DecValTok{1}\SpecialCharTok{:}\DecValTok{100}\NormalTok{)\{}
+\NormalTok{    yvec[i] }\OtherTok{=} \FunctionTok{log}\NormalTok{(xvec[i] }\SpecialCharTok{+}\NormalTok{ .}\DecValTok{1}\NormalTok{) }\SpecialCharTok{+} \FunctionTok{sin}\NormalTok{(}\DecValTok{5}\SpecialCharTok{*}\NormalTok{pi}\SpecialCharTok{*}\NormalTok{xvec[i])}
+\NormalTok{\}}
+\NormalTok{GPpred }\OtherTok{\textless{}{-}} \FunctionTok{predict}\NormalTok{(GPmodel,xvec)}
+
+\CommentTok{\# data points are circles}
+\CommentTok{\# prediction is in the bllue }
+\CommentTok{\# 95\% CIs (yhat + 2*s) are in red}
+\FunctionTok{plot}\NormalTok{(GPmodel, }\AttributeTok{range=} \FunctionTok{c}\NormalTok{(}\DecValTok{0}\NormalTok{,}\DecValTok{1}\NormalTok{), }\AttributeTok{resolution =} \DecValTok{100}\NormalTok{, }\AttributeTok{colors =} \FunctionTok{c}\NormalTok{(}\StringTok{"black"}\NormalTok{,}\StringTok{"blue"}\NormalTok{,}\StringTok{"red"}\NormalTok{), }\AttributeTok{line\_type =} \FunctionTok{c}\NormalTok{(}\DecValTok{1}\NormalTok{,}\DecValTok{2}\NormalTok{),}\AttributeTok{pch =} \DecValTok{1}\NormalTok{)}
+
+\CommentTok{\# add the true function as a dotted black line}
+\FunctionTok{lines}\NormalTok{(xvec, yvec, }\AttributeTok{col =} \StringTok{"black"}\NormalTok{, }\AttributeTok{lty =} \DecValTok{3}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-19-1.pdf}
+
+\hypertarget{part-tree-based}{%
+\part{TREE BASED}\label{part-tree-based}}
+
 \hypertarget{classification-and-regression-trees}{%
 \chapter{Classification and Regression Trees}\label{classification-and-regression-trees}}
 
@@ -3447,6 +4011,96 @@ The parameter \(\alpha\) controls a tradoff between the subtree's complexity and
   Use \protect\hyperlink{k-fold-cross-validation}{K-Fold Cross-Validation} to choose \(\alpha\)
 \end{enumerate}
 
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(ISLR2)}
+\FunctionTok{library}\NormalTok{(tree)}
+
+\FunctionTok{set.seed}\NormalTok{(}\DecValTok{1}\NormalTok{)}
+\FunctionTok{attach}\NormalTok{(Boston)}
+
+\NormalTok{train }\OtherTok{\textless{}{-}} \FunctionTok{sample}\NormalTok{(}\DecValTok{1}\SpecialCharTok{:}\FunctionTok{nrow}\NormalTok{(Boston), }\FunctionTok{nrow}\NormalTok{(Boston)}\SpecialCharTok{/}\DecValTok{2}\NormalTok{)}
+\NormalTok{tree.boston }\OtherTok{\textless{}{-}} \FunctionTok{tree}\NormalTok{(medv }\SpecialCharTok{\textasciitilde{}}\NormalTok{ ., Boston, }\AttributeTok{subset =}\NormalTok{ train)}
+
+\CommentTok{\# to fit a bigger tree}
+\CommentTok{\# tree.boston \textless{}{-}}
+\CommentTok{\#     tree(medv \textasciitilde{} .,}
+\CommentTok{\#          Boston,}
+\CommentTok{\#          subset = train,}
+\CommentTok{\#          control = tree.control(nobs = length(train), mindev = 0)) }
+
+\FunctionTok{summary}\NormalTok{(tree.boston) }\CommentTok{\# only 4 vars have been used (rm, lstat, crim, age)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## 
+## Regression tree:
+## tree(formula = medv ~ ., data = Boston, subset = train)
+## Variables actually used in tree construction:
+## [1] "rm"    "lstat" "crim"  "age"  
+## Number of terminal nodes:  7 
+## Residual mean deviance:  10.38 = 2555 / 246 
+## Distribution of residuals:
+##     Min.  1st Qu.   Median     Mean  3rd Qu.     Max. 
+## -10.1800  -1.7770  -0.1775   0.0000   1.9230  16.5800
+\end{verbatim}
+
+\texttt{deviance} = sum of squared errors for the tree
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{plot}\NormalTok{(tree.boston)}
+\FunctionTok{text}\NormalTok{(tree.boston, }\AttributeTok{pretty =} \DecValTok{0}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-21-1.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{cv.boston }\OtherTok{\textless{}{-}} \FunctionTok{cv.tree}\NormalTok{(tree.boston) }\CommentTok{\# tree complexity selected by cross{-}validation}
+\FunctionTok{plot}\NormalTok{(cv.boston}\SpecialCharTok{$}\NormalTok{size, cv.boston}\SpecialCharTok{$}\NormalTok{dev, }\AttributeTok{type =} \StringTok{"b"}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-22-1.pdf}
+
+If we want to prune complex tree
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{prune.boston }\OtherTok{\textless{}{-}} \FunctionTok{prune.tree}\NormalTok{(tree.boston, }\AttributeTok{best =} \DecValTok{5}\NormalTok{)}
+\FunctionTok{plot}\NormalTok{(prune.boston)}
+\FunctionTok{text}\NormalTok{(prune.boston, }\AttributeTok{pretty =} \DecValTok{0}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-23-1.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{yhat }\OtherTok{\textless{}{-}} \FunctionTok{predict}\NormalTok{(tree.boston, }\AttributeTok{newdata =}\NormalTok{ Boston[}\SpecialCharTok{{-}}\NormalTok{train, ])}
+\NormalTok{boston.test }\OtherTok{\textless{}{-}}\NormalTok{ Boston[}\SpecialCharTok{{-}}\NormalTok{train, }\StringTok{"medv"}\NormalTok{]}
+\FunctionTok{plot}\NormalTok{(yhat, boston.test)}
+\FunctionTok{abline}\NormalTok{(}\DecValTok{0}\NormalTok{, }\DecValTok{1}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-24-1.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{mean}\NormalTok{((yhat }\SpecialCharTok{{-}}\NormalTok{ boston.test) }\SpecialCharTok{\^{}} \DecValTok{2}\NormalTok{) }\CommentTok{\# Mean squared error }
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## [1] 35.28688
+\end{verbatim}
+
+The square root of the MSE is 5.9, meaning on average we predict within \$5.9k of the true median home value.
+
 \hypertarget{classification-trees}{%
 \section{Classification Trees}\label{classification-trees}}
 
@@ -3498,6 +4152,198 @@ The Gini index and Cross-Entory both take small values when all \(\hat{p}_{jk}\)
 
 Rule of thumb: use Gini and Cross-Entropy to build and prune a tree and use classification error rate for pruning if prediction accuracy of the pruned tree is the goal
 
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(tree)}
+\FunctionTok{library}\NormalTok{(ISLR2)}
+\FunctionTok{attach}\NormalTok{(Carseats)}
+\NormalTok{High }\OtherTok{\textless{}{-}} \FunctionTok{factor}\NormalTok{(}\FunctionTok{ifelse}\NormalTok{(Sales }\SpecialCharTok{\textless{}=} \DecValTok{8}\NormalTok{, }\StringTok{"No"}\NormalTok{, }\StringTok{"Yes"}\NormalTok{)) }\CommentTok{\# transform Sales (conitnuous) to binary variable}
+
+\NormalTok{Carseats }\OtherTok{\textless{}{-}} \FunctionTok{data.frame}\NormalTok{(Carseats, High)}
+
+\NormalTok{tree.carseats }\OtherTok{\textless{}{-}} \FunctionTok{tree}\NormalTok{(High }\SpecialCharTok{\textasciitilde{}}\NormalTok{ . }\SpecialCharTok{{-}}\NormalTok{ Sales, Carseats) }\CommentTok{\# using all variables but Sales}
+
+\FunctionTok{summary}\NormalTok{(tree.carseats) }\CommentTok{\# training error rate of 9\%}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## 
+## Classification tree:
+## tree(formula = High ~ . - Sales, data = Carseats)
+## Variables actually used in tree construction:
+## [1] "ShelveLoc"   "Price"       "Income"      "CompPrice"   "Population" 
+## [6] "Advertising" "Age"         "US"         
+## Number of terminal nodes:  27 
+## Residual mean deviance:  0.4575 = 170.7 / 373 
+## Misclassification error rate: 0.09 = 36 / 400
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# tree.carseats}
+\end{Highlighting}
+\end{Shaded}
+
+Deviance formula:
+
+\[
+-2 \sum_m \sum_k n_{mk} \log \hat{p}_{mk}
+\]
+
+where
+
+\begin{itemize}
+\tightlist
+\item
+  \(n_{mk}\) = number of observations in the m-th terminal node in the k-th class
+\end{itemize}
+
+Smaller deviance is preferable (good fit to the training data).
+
+Residual mean deviance formula
+
+\[
+\frac{-2 \sum_m \sum_k n_{mk} \log \hat{p}_{mk}}{n - |T_0|}
+\]
+
+where \(|T_0|\) = number of terminal nodes
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{plot}\NormalTok{(tree.carseats)}
+\FunctionTok{text}\NormalTok{(tree.carseats, }\AttributeTok{pretty =} \DecValTok{0}\NormalTok{) }\CommentTok{\# shelving location is the most important indicator }
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-26-1.pdf}
+
+Evaluation on both training and test data
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{set.seed}\NormalTok{(}\DecValTok{1}\NormalTok{)}
+\NormalTok{train }\OtherTok{\textless{}{-}} \FunctionTok{sample}\NormalTok{(}\DecValTok{1}\SpecialCharTok{:}\FunctionTok{nrow}\NormalTok{(Carseats), }\DecValTok{200}\NormalTok{) }\CommentTok{\# index 200 training datapoints}
+
+\CommentTok{\# get the test data}
+\NormalTok{Carseats.test }\OtherTok{\textless{}{-}}\NormalTok{ Carseats[}\SpecialCharTok{{-}}\NormalTok{train,]}
+
+\CommentTok{\# get actual prediction}
+\NormalTok{High.test }\OtherTok{\textless{}{-}}\NormalTok{ High[}\SpecialCharTok{{-}}\NormalTok{train]}
+\NormalTok{tree.carseats }\OtherTok{\textless{}{-}} \FunctionTok{tree}\NormalTok{(High }\SpecialCharTok{\textasciitilde{}}\NormalTok{ . }\SpecialCharTok{{-}}\NormalTok{ Sales, Carseats, }\AttributeTok{subset =}\NormalTok{ train)}
+
+\NormalTok{tree.pred }\OtherTok{\textless{}{-}} \FunctionTok{predict}\NormalTok{(tree.carseats, Carseats.test, }\AttributeTok{type =} \StringTok{"class"}\NormalTok{) }\CommentTok{\# return actual class predidction}
+
+\FunctionTok{table}\NormalTok{(tree.pred, High.test)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+##          High.test
+## tree.pred No Yes
+##       No  84  37
+##       Yes 35  44
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\CommentTok{\# correct prediction rate }
+\NormalTok{(}\FunctionTok{table}\NormalTok{(tree.pred, High.test)[}\DecValTok{1}\NormalTok{, }\DecValTok{1}\NormalTok{] }\SpecialCharTok{+} \FunctionTok{table}\NormalTok{(tree.pred, High.test)[}\DecValTok{2}\NormalTok{, }\DecValTok{2}\NormalTok{])}\SpecialCharTok{/}\FunctionTok{nrow}\NormalTok{(Carseats.test) }\CommentTok{\# 64\% correct predictions}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## [1] 0.64
+\end{verbatim}
+
+Tree with pruning
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{set.seed}\NormalTok{(}\DecValTok{7}\NormalTok{)}
+\NormalTok{cv.carseats }\OtherTok{\textless{}{-}} \FunctionTok{cv.tree}\NormalTok{(tree.carseats, }\AttributeTok{FUN =}\NormalTok{ prune.misclass) }\CommentTok{\# cross{-}validation to get the optimal level of tree complexity (depth); }
+\CommentTok{\# prune.misclass = classification error rate guides the cross{-}validation and pruning process}
+\CommentTok{\# default = deviance guides the cross{-}validation and pruning process}
+
+\NormalTok{cv.carseats}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## $size
+## [1] 20 18 10  8  6  4  2  1
+## 
+## $dev
+## [1] 61 62 60 54 52 51 83 83
+## 
+## $k
+## [1] -Inf  0.0  0.5  1.5  2.0  4.0 12.0 19.0
+## 
+## $method
+## [1] "misclass"
+## 
+## attr(,"class")
+## [1] "prune"         "tree.sequence"
+\end{verbatim}
+
+\texttt{size} = number of terminal nodes of each tree
+
+\texttt{k} = \(\alpha\) = cost--complexity parameter.
+
+\texttt{dev} = number of cross-validation errors
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{par}\NormalTok{(}\AttributeTok{mfrow =} \FunctionTok{c}\NormalTok{(}\DecValTok{1}\NormalTok{, }\DecValTok{2}\NormalTok{))}
+\FunctionTok{plot}\NormalTok{(cv.carseats}\SpecialCharTok{$}\NormalTok{size, cv.carseats}\SpecialCharTok{$}\NormalTok{dev, }\AttributeTok{type =} \StringTok{"b"}\NormalTok{)}
+\FunctionTok{plot}\NormalTok{(cv.carseats}\SpecialCharTok{$}\NormalTok{k, cv.carseats}\SpecialCharTok{$}\NormalTok{dev, }\AttributeTok{type =} \StringTok{"b"}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-29-1.pdf}
+
+It seems like 9 tree nodes have the lowest number of cv errors (\texttt{dev} in this case). Hence, we will pick this tree
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{set.seed}\NormalTok{(}\DecValTok{7}\NormalTok{)}
+\NormalTok{prune.carseats }\OtherTok{\textless{}{-}} \FunctionTok{prune.misclass}\NormalTok{(tree.carseats, }\AttributeTok{best =} \DecValTok{9}\NormalTok{)}
+\FunctionTok{plot}\NormalTok{(prune.carseats)}
+\FunctionTok{text}\NormalTok{(prune.carseats, }\AttributeTok{pretty =} \DecValTok{0}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-30-1.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{tree.pred }\OtherTok{\textless{}{-}} \FunctionTok{predict}\NormalTok{(prune.carseats, Carseats.test, }\AttributeTok{type =} \StringTok{"class"}\NormalTok{)}
+\FunctionTok{table}\NormalTok{(tree.pred, High.test)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+##          High.test
+## tree.pred No Yes
+##       No  89  25
+##       Yes 30  56
+\end{verbatim}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{(}\FunctionTok{table}\NormalTok{(tree.pred, High.test)[}\DecValTok{1}\NormalTok{, }\DecValTok{1}\NormalTok{] }\SpecialCharTok{+} \FunctionTok{table}\NormalTok{(tree.pred, High.test)[}\DecValTok{2}\NormalTok{, }\DecValTok{2}\NormalTok{]) }\SpecialCharTok{/}
+    \FunctionTok{nrow}\NormalTok{(Carseats.test)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## [1] 0.725
+\end{verbatim}
+
+We can see slight improvement of prediction rate from 64 to over 70 percent
+
+We can still increase the classification accuracy but with the price of tree complexity
+
 \hypertarget{multivariate-adaptive-regression-splines}{%
 \chapter{Multivariate Adaptive Regression Splines}\label{multivariate-adaptive-regression-splines}}
 
@@ -3509,7 +4355,7 @@ Rule of thumb: use Gini and Cross-Entropy to build and prune a tree and use clas
 \item
   Can also be viewed as a generalization of stepwise linear regression or a modification of the \protect\hyperlink{classification-and-regression-trees}{CART} procedure that improves its performance in the regression setting
 \item
-  uses expansions in the piecewise linear {[}basis function{]}{[}Basis Function Representations{]}
+  uses expansions in the piecewise linear \protect\hyperlink{basis-function-representations}{basis function}
 \item
   To mimic \protect\hyperlink{classification-and-regression-trees}{CART}, the MARS procedure makes the following changes:
 
@@ -3669,6 +4515,8 @@ Typically, we use \(M(\lambda) = r + cK\) where
 \item
   Bootstrapping can help tree methods (e.g., \protect\hyperlink{classification-and-regression-trees}{CART})
 \item
+  Bagging is a special of random forest with \(m = p\)
+\item
   Since \protect\hyperlink{classification-and-regression-trees}{CART} and \protect\hyperlink{multivariate-adaptive-regression-splines}{MARS} suffer from high variance (because if we split the training data into 2 samples at random and fit both halves, the results can be quite different), we use \textbf{bootstrap aggregation} (i.e., \textbf{bagging}), which is a general-propose procedure to reduce variance
 \item
   If the procedure has low variance, it will yield similar results if applied repeatedly to distinct data sets (e.g., as in linear regression when \(n\) is larger relative to \(p\))
@@ -3723,8 +4571,167 @@ Disadvantages
   \end{itemize}
 \end{itemize}
 
-\hypertarget{part-unsupervised-learning}{%
-\part{UNSUPERVISED LEARNING}\label{part-unsupervised-learning}}
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(randomForest)}
+\FunctionTok{library}\NormalTok{(ISLR2)}
+\FunctionTok{library}\NormalTok{(tree)}
+
+\FunctionTok{attach}\NormalTok{(Boston)}
+
+
+\FunctionTok{set.seed}\NormalTok{(}\DecValTok{1}\NormalTok{)}
+\NormalTok{train }\OtherTok{\textless{}{-}} \FunctionTok{sample}\NormalTok{(}\DecValTok{1}\SpecialCharTok{:}\FunctionTok{nrow}\NormalTok{(Boston), }\FunctionTok{nrow}\NormalTok{(Boston)}\SpecialCharTok{/}\DecValTok{2}\NormalTok{)}
+\NormalTok{boston.test }\OtherTok{\textless{}{-}}\NormalTok{ Boston[}\SpecialCharTok{{-}}\NormalTok{train, }\StringTok{"medv"}\NormalTok{]}
+
+\NormalTok{bag.boston }\OtherTok{\textless{}{-}}
+    \FunctionTok{randomForest}\NormalTok{(}
+\NormalTok{        medv }\SpecialCharTok{\textasciitilde{}}\NormalTok{ .,}
+        \AttributeTok{data =}\NormalTok{ Boston,}
+        \AttributeTok{subset =}\NormalTok{ train,}
+        \AttributeTok{mtry =} \DecValTok{12}\NormalTok{, }\CommentTok{\# all 12 predcitors should be used for each split of the tree }
+        \AttributeTok{importance =}\NormalTok{ T}
+\NormalTok{    ) }\CommentTok{\# we could use random forest because bagging is a special case of random forest with m = p}
+\NormalTok{bag.boston}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## 
+## Call:
+##  randomForest(formula = medv ~ ., data = Boston, mtry = 12, importance = T,      subset = train) 
+##                Type of random forest: regression
+##                      Number of trees: 500
+## No. of variables tried at each split: 12
+## 
+##           Mean of squared residuals: 10.99681
+##                     % Var explained: 85.69
+\end{verbatim}
+
+Bagging performance
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{yhat.bag }\OtherTok{\textless{}{-}} \FunctionTok{predict}\NormalTok{(bag.boston, }\AttributeTok{newdata =}\NormalTok{ Boston[}\SpecialCharTok{{-}}\NormalTok{train, ])}
+\FunctionTok{plot}\NormalTok{(yhat.bag, boston.test)}
+\FunctionTok{abline}\NormalTok{(}\DecValTok{0}\NormalTok{, }\DecValTok{1}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-33-1.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{mean}\NormalTok{((yhat.bag }\SpecialCharTok{{-}}\NormalTok{ boston.test) }\SpecialCharTok{\^{}} \DecValTok{2}\NormalTok{) }\CommentTok{\# test set MSE}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## [1] 23.04225
+\end{verbatim}
+
+To change the number of grown trees
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{bag.boston }\OtherTok{\textless{}{-}}
+    \FunctionTok{randomForest}\NormalTok{(}
+\NormalTok{        medv }\SpecialCharTok{\textasciitilde{}}\NormalTok{ . ,}
+        \AttributeTok{data =}\NormalTok{ Boston,}
+        \AttributeTok{subset =}\NormalTok{ train,}
+        \AttributeTok{mtry =} \DecValTok{12}\NormalTok{,}
+        \AttributeTok{ntree =} \DecValTok{25} \CommentTok{\# spceify number of grown tree}
+\NormalTok{    )}
+\NormalTok{yhat.bag }\OtherTok{\textless{}{-}} \FunctionTok{predict}\NormalTok{(bag.boston, }\AttributeTok{newdata =}\NormalTok{ Boston[}\SpecialCharTok{{-}}\NormalTok{train,])}
+\FunctionTok{mean}\NormalTok{((yhat.bag }\SpecialCharTok{{-}}\NormalTok{ boston.test) }\SpecialCharTok{\^{}} \DecValTok{2}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## [1] 23.63749
+\end{verbatim}
+
+\texttt{randomForest()} uses
+
+\begin{itemize}
+\item
+  \(\frac{p}{3}\) variables to build a random forest of \protect\hyperlink{regression-trees}{Regression Trees}
+\item
+  \(\sqrt{p}\) variables to build a random forest of \protect\hyperlink{classification-trees}{Classification Trees}
+\end{itemize}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{set.seed}\NormalTok{(}\DecValTok{1}\NormalTok{)}
+\NormalTok{rf.boston }\OtherTok{\textless{}{-}}
+    \FunctionTok{randomForest}\NormalTok{(}
+\NormalTok{        medv }\SpecialCharTok{\textasciitilde{}}\NormalTok{ . ,}
+        \AttributeTok{data =}\NormalTok{ Boston,}
+        \AttributeTok{subset =}\NormalTok{ train,}
+        \AttributeTok{mtry =} \DecValTok{6}\NormalTok{,}
+        \CommentTok{\# use 6 variables}
+        \AttributeTok{importance =}\NormalTok{ T}
+\NormalTok{    )}
+\NormalTok{yhat.rf }\OtherTok{\textless{}{-}} \FunctionTok{predict}\NormalTok{(rf.boston, }\AttributeTok{newdata =}\NormalTok{ Boston[}\SpecialCharTok{{-}}\NormalTok{train, ])}
+\FunctionTok{mean}\NormalTok{((yhat.rf }\SpecialCharTok{{-}}\NormalTok{ boston.test) }\SpecialCharTok{\^{}} \DecValTok{2}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## [1] 19.62021
+\end{verbatim}
+
+Random forest outperforms bagging (20 \textless{} 25)
+
+To o see varable importance
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{importance}\NormalTok{(rf.boston)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+##           %IncMSE IncNodePurity
+## crim    16.697017    1076.08786
+## zn       3.625784      88.35342
+## indus    4.968621     609.53356
+## chas     1.061432      52.21793
+## nox     13.518179     709.87339
+## rm      32.343305    7857.65451
+## age     13.272498     612.21424
+## dis      9.032477     714.94674
+## rad      2.878434      95.80598
+## tax      9.118801     364.92479
+## ptratio  8.467062     823.93341
+## black    7.579482     275.62272
+## lstat   27.129817    6027.63740
+\end{verbatim}
+
+2 columns:
+
+\begin{enumerate}
+\def\labelenumi{\arabic{enumi}.}
+\item
+  mean decrease of accuracy in predictions on OOB samples
+\item
+  the total decrease in node impurity after splitting and averaged over all trees
+
+  \begin{itemize}
+  \item
+    \protect\hyperlink{regression-trees}{Regression Trees} based on the training RSS
+  \item
+    \protect\hyperlink{classification-trees}{Classification Trees} based on the deviance
+  \end{itemize}
+\end{enumerate}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{varImpPlot}\NormalTok{(rf.boston) }\CommentTok{\#rm and lstate are most important}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-37-1.pdf}
 
 \hypertarget{boosting}{%
 \chapter{Boosting}\label{boosting}}
@@ -3918,6 +4925,173 @@ When a loss function is differentiable, we can make use of the gradient of the l
 
 \hypertarget{gradient-boosting}{%
 \section{Gradient Boosting}\label{gradient-boosting}}
+
+\begin{itemize}
+\item
+  The algorithm XGBoost has become one of the standard implementations of gradient boosting, which is present in both R and Python.
+
+  \begin{itemize}
+  \item
+    It sues Newton-Raphson for its optimization (i.e., a second order Taylor's approximation for the loss function to make the connection) instead of gradient descent
+  \item
+    It improves efficiency for more complicated settings than the original gradient boosting algorithms
+  \end{itemize}
+\item
+  Additional regularization and built-in cross-validation and handling of missing data are standard
+\end{itemize}
+
+\hypertarget{partial-dependence-plots}{%
+\section{Partial Dependence Plots}\label{partial-dependence-plots}}
+
+\begin{itemize}
+\tightlist
+\item
+  It can help interpret parameter effects from tree-based models (e..g, \protect\hyperlink{bagging}{Bagging} and \protect\hyperlink{boosting}{Boosting})
+\end{itemize}
+
+Consider a subvector \(X_S\) of \(l < p\) of the input predictor space \(X\), indexed by \(S \subset \{ 1, \dots, p \}\)
+
+Let \(C\) be the complement such that \(S \cup C = \{1, \dots, p \}\)
+
+We expect that \(f(X) = f(X_S, X_C)\) and define the partial dependence of \(f(X)\) on \(X_S\) to be
+
+\[
+f_S(X_S) = E_{X_C} f(X_S, X_C)
+\]
+
+which is the marginal average of \(f\)
+
+It can serve as a useful description of the effect of the chosen subset on \(f(X)\) when elements of \(X_S\) do not have strong interactions with elements of \(X_C\)
+
+We can estimate this expectation by
+
+\[
+\bar{f}_S(X_S) = \frac{1}{n} \sum_{i=1}^n f(X_S, x_{iC})
+\]
+
+where \(\{ x_{1C}, \dots, x_{nC}\}\) are the values of \(X_C\) occurring in the training data
+
+\begin{itemize}
+\tightlist
+\item
+  This can be computationally intensive to evaluate (but, for decision trees \(\bar{f}_S(X_S)\) can be computed efficiently from the tree itself).
+\end{itemize}
+
+\begin{itemize}
+\item
+  The interpretation of the partial dependence plots is that they represent the effect of \(X_S\) on \(f(X)\) after accounting for the average effects of the other variables \(X_C\) on \(f(X)\)
+\item
+  You can't assume that this present the effect of \(X_S\) \(f(X)\) \emph{ignoring} the effects of \(X_C\) (unless \(X_S \perp X_C\))
+\end{itemize}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{library}\NormalTok{(gbm)}
+\FunctionTok{library}\NormalTok{(ISLR2)}
+\FunctionTok{library}\NormalTok{(tree)}
+
+\FunctionTok{attach}\NormalTok{(Boston)}
+
+
+\FunctionTok{set.seed}\NormalTok{(}\DecValTok{1}\NormalTok{)}
+\NormalTok{train }\OtherTok{\textless{}{-}} \FunctionTok{sample}\NormalTok{(}\DecValTok{1}\SpecialCharTok{:}\FunctionTok{nrow}\NormalTok{(Boston), }\FunctionTok{nrow}\NormalTok{(Boston)}\SpecialCharTok{/}\DecValTok{2}\NormalTok{)}
+\NormalTok{boston.test }\OtherTok{\textless{}{-}}\NormalTok{ Boston[}\SpecialCharTok{{-}}\NormalTok{train, }\StringTok{"medv"}\NormalTok{]}
+
+\NormalTok{boost.boston }\OtherTok{\textless{}{-}}
+    \FunctionTok{gbm}\NormalTok{(}
+\NormalTok{        medv }\SpecialCharTok{\textasciitilde{}}\NormalTok{ .,}
+        \AttributeTok{data =}\NormalTok{ Boston[train, ],}
+        \AttributeTok{distribution =} \StringTok{"gaussian"}\NormalTok{, }\CommentTok{\# because this is regression setting}
+        \CommentTok{\# distribution = "bernoulli", \# use this for classification}
+        \AttributeTok{n.trees =} \DecValTok{5000}\NormalTok{, }\CommentTok{\# number of trees}
+        \AttributeTok{interaction.depth =} \DecValTok{4} \CommentTok{\# limits the depth of each tree }
+\NormalTok{    )}
+
+\FunctionTok{summary}\NormalTok{(boost.boston) }\CommentTok{\#rm and lstate are most important}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-38-1.pdf}
+
+\begin{verbatim}
+##             var     rel.inf
+## rm           rm 48.13967682
+## lstat     lstat 28.93851185
+## crim       crim  4.49413146
+## dis         dis  4.23182696
+## age         age  3.14221169
+## nox         nox  2.88094283
+## black     black  2.83238772
+## ptratio ptratio  1.93050932
+## tax         tax  1.80427054
+## rad         rad  0.77569461
+## indus     indus  0.73110525
+## zn           zn  0.07442923
+## chas       chas  0.02430170
+\end{verbatim}
+
+Partial dependence plots for the 2 most important variables, showing marginal effect of the variables on the response after integrating out the other variables (i.e., conditioned on other variables)
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{plot}\NormalTok{(boost.boston, }\AttributeTok{i =} \StringTok{"rm"}\NormalTok{) }\CommentTok{\# median house prices increase with rm}
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-39-1.pdf}
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\FunctionTok{plot}\NormalTok{(boost.boston, }\AttributeTok{i =} \StringTok{"lstat"}\NormalTok{) }\CommentTok{\# median house prices decrease with lstate }
+\end{Highlighting}
+\end{Shaded}
+
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-39-2.pdf}
+
+Examine test MSE
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{yhat.boost }\OtherTok{\textless{}{-}}
+    \FunctionTok{predict}\NormalTok{(boost.boston, }\AttributeTok{newdata =}\NormalTok{ Boston[}\SpecialCharTok{{-}}\NormalTok{train, ], }\AttributeTok{n.trees =} \DecValTok{5000}\NormalTok{)}
+\FunctionTok{mean}\NormalTok{((yhat.boost }\SpecialCharTok{{-}}\NormalTok{ boston.test) }\SpecialCharTok{\^{}} \DecValTok{2}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## [1] 19.37033
+\end{verbatim}
+
+The above analysis used \(\lambda\) = 0.001 (shrinkage parameter)
+
+But we can try other values
+
+\begin{Shaded}
+\begin{Highlighting}[]
+\NormalTok{boost.boston }\OtherTok{\textless{}{-}}
+    \FunctionTok{gbm}\NormalTok{(}
+\NormalTok{        medv }\SpecialCharTok{\textasciitilde{}}\NormalTok{ .,}
+        \AttributeTok{data =}\NormalTok{ Boston[train, ],}
+        \AttributeTok{distribution =} \StringTok{"gaussian"}\NormalTok{,}
+        \AttributeTok{n.trees =} \DecValTok{5000}\NormalTok{,}
+        \AttributeTok{interaction.depth =} \DecValTok{4}\NormalTok{,}
+        \AttributeTok{shrinkage =} \FloatTok{0.2}\NormalTok{,}
+        \AttributeTok{verbose =}\NormalTok{ F}
+\NormalTok{    )}
+\NormalTok{yhat.boost }\OtherTok{\textless{}{-}}
+    \FunctionTok{predict}\NormalTok{(boost.boston, }\AttributeTok{newdata =}\NormalTok{ Boston[}\SpecialCharTok{{-}}\NormalTok{train, ], }\AttributeTok{n.trees =} \DecValTok{5000}\NormalTok{)}
+\FunctionTok{mean}\NormalTok{((yhat.boost }\SpecialCharTok{{-}}\NormalTok{ boston.test) }\SpecialCharTok{\^{}} \DecValTok{2}\NormalTok{)}
+\end{Highlighting}
+\end{Shaded}
+
+\begin{verbatim}
+## [1] 18.68911
+\end{verbatim}
+
+Lower shrinkage parameter (faster learning) might lead to lower test MSE
+
+\hypertarget{part-unsupervised-learning}{%
+\part{UNSUPERVISED LEARNING}\label{part-unsupervised-learning}}
 
 \hypertarget{part-reinforcement-learning}{%
 \part{REINFORCEMENT LEARNING}\label{part-reinforcement-learning}}
@@ -4927,18 +6101,22 @@ Steps in doing model staking:
 
 \begin{verbatim}
 ## -- Conflicts ----------------------------------------- tidymodels_conflicts() --
+## x foreach::accumulate()    masks purrr::accumulate()
 ## x nlme::collapse()         masks dplyr::collapse()
+## x randomForest::combine()  masks dplyr::combine()
 ## x scales::discard()        masks purrr::discard()
 ## x dplyr::filter()          masks stats::filter()
 ## x recipes::fixed()         masks stringr::fixed()
 ## x dplyr::lag()             masks stats::lag()
 ## x caret::lift()            masks purrr::lift()
+## x randomForest::margin()   masks ggplot2::margin()
 ## x yardstick::precision()   masks caret::precision()
 ## x yardstick::recall()      masks caret::recall()
 ## x yardstick::sensitivity() masks caret::sensitivity()
 ## x yardstick::spec()        masks readr::spec()
 ## x yardstick::specificity() masks caret::specificity()
 ## x recipes::step()          masks stats::step()
+## x foreach::when()          masks purrr::when()
 ## * Use tidymodels_prefer() to resolve common conflicts.
 \end{verbatim}
 
@@ -4976,7 +6154,7 @@ Steps in doing model staking:
 \end{Highlighting}
 \end{Shaded}
 
-\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-19-1.pdf}
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-49-1.pdf}
 
 \begin{Shaded}
 \begin{Highlighting}[]
@@ -4989,7 +6167,7 @@ Steps in doing model staking:
 \end{Highlighting}
 \end{Shaded}
 
-\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-19-2.pdf}
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-49-2.pdf}
 
 \begin{Shaded}
 \begin{Highlighting}[]
@@ -5286,7 +6464,7 @@ Check performance
 \end{Highlighting}
 \end{Shaded}
 
-\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-24-1.pdf}
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-54-1.pdf}
 
 \begin{Shaded}
 \begin{Highlighting}[]
@@ -5294,7 +6472,7 @@ Check performance
 \end{Highlighting}
 \end{Shaded}
 
-\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-24-2.pdf}
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-54-2.pdf}
 
 \begin{Shaded}
 \begin{Highlighting}[]
@@ -5302,7 +6480,7 @@ Check performance
 \end{Highlighting}
 \end{Shaded}
 
-\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-24-3.pdf}
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-54-3.pdf}
 
 See parameters
 
@@ -7024,8 +8202,8 @@ At the quantile q of the dependent variable y, \(\beta_q\) represents a one unit
 
 In other words, at the qth percentile, a one unit change in x results in \(\beta_q\) unit change in y.
 
-\hypertarget{application-2}{%
-\section{Application}\label{application-2}}
+\hypertarget{application-4}{%
+\section{Application}\label{application-4}}
 
 \begin{Shaded}
 \begin{Highlighting}[]
@@ -7043,7 +8221,7 @@ In other words, at the qth percentile, a one unit change in x results in \(\beta
 \end{Highlighting}
 \end{Shaded}
 
-\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-34-1.pdf}
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-64-1.pdf}
 
 \begin{Shaded}
 \begin{Highlighting}[]
@@ -7052,7 +8230,7 @@ In other words, at the qth percentile, a one unit change in x results in \(\beta
 \end{Highlighting}
 \end{Shaded}
 
-\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-34-2.pdf}
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-64-2.pdf}
 
 \begin{Shaded}
 \begin{Highlighting}[]
@@ -7064,7 +8242,7 @@ In other words, at the qth percentile, a one unit change in x results in \(\beta
 ## `geom_smooth()` using formula 'y ~ x'
 \end{verbatim}
 
-\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-34-3.pdf}
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-64-3.pdf}
 
 We follow \citep{Roger_1996} to estimate quantile regression
 
@@ -7125,7 +8303,7 @@ adding the regression line
 \end{Highlighting}
 \end{Shaded}
 
-\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-36-1.pdf}
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-66-1.pdf}
 
 To have R estimate multiple quantile at once
 
@@ -7158,7 +8336,7 @@ To have R estimate multiple quantile at once
 ## Smoothing formula not specified. Using: y ~ x
 \end{verbatim}
 
-\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-37-1.pdf}
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-67-1.pdf}
 
 To examine if the quantile regression is appropriate, we can see its plot compared to least squares regression
 
@@ -7188,7 +8366,7 @@ To examine if the quantile regression is appropriate, we can see its plot compar
 ## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
 \end{verbatim}
 
-\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-38-1.pdf}
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-68-1.pdf}
 
 where red line is the least squares estimates, and its confidence interval. x-axis is the quantile y-axis is the value of the quantile regression coefficients at different quantile
 
@@ -7230,7 +8408,7 @@ If the error term is normally distributed, the quantile regression line will fal
 ## Warning in rq.fit.br(x, y, tau = tau, ci = TRUE, ...): Solution may be nonunique
 \end{verbatim}
 
-\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-39-1.pdf}
+\includegraphics{advanced-data-analysis_files/figure-latex/unnamed-chunk-69-1.pdf}
 
   \bibliography{book.bib,packages.bib,references.bib}
 

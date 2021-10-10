@@ -164,3 +164,112 @@ There are more loss functions. Typically we might choose a loss function because
 When a loss function is differentiable, we can make use of the gradient of the loss function to improve the optimization, which is the basis of gradient boosting ("gradient boosting models (GBM)"; formerly, Multiple Additive Regression Trees (MART)).
 
 ## Gradient Boosting 
+
+-   The algorithm XGBoost has become one of the standard implementations of gradient boosting, which is present in both R and Python.
+
+    -   It sues Newton-Raphson for its optimization (i.e., a second order Taylor's approximation for the loss function to make the connection) instead of gradient descent
+
+    -   It improves efficiency for more complicated settings than the original gradient boosting algorithms
+
+-   Additional regularization and built-in cross-validation and handling of missing data are standard
+
+<br>
+
+## Partial Dependence Plots 
+
+-   It can help interpret parameter effects from tree-based models (e..g, [Bagging] and [Boosting])
+
+Consider a subvector $X_S$ of $l < p$ of the input predictor space $X$, indexed by $S \subset \{ 1, \dots, p \}$
+
+Let $C$ be the complement such that $S \cup C = \{1, \dots, p \}$
+
+We expect that $f(X) = f(X_S, X_C)$ and define the partial dependence of $f(X)$ on $X_S$ to be
+
+$$
+f_S(X_S) = E_{X_C} f(X_S, X_C)
+$$
+
+which is the marginal average of $f$
+
+It can serve as a useful description of the effect of the chosen subset on $f(X)$ when elements of $X_S$ do not have strong interactions with elements of $X_C$
+
+We can estimate this expectation by
+
+$$
+\bar{f}_S(X_S) = \frac{1}{n} \sum_{i=1}^n f(X_S, x_{iC})
+$$
+
+where $\{ x_{1C}, \dots, x_{nC}\}$ are the values of $X_C$ occurring in the training data
+
+-   This can be computationally intensive to evaluate (but, for decision trees $\bar{f}_S(X_S)$ can be computed efficiently from the tree itself).
+
+```{=html}
+<!-- -->
+```
+-   The interpretation of the partial dependence plots is that they represent the effect of $X_S$ on $f(X)$ after accounting for the average effects of the other variables $X_C$ on $f(X)$
+
+-   You can't assume that this present the effect of $X_S$ $f(X)$ *ignoring* the effects of $X_C$ (unless $X_S \perp X_C$)
+
+<br>
+
+```{r, message=FALSE, warning=FALSE}
+library(gbm)
+library(ISLR2)
+library(tree)
+
+attach(Boston)
+
+
+set.seed(1)
+train <- sample(1:nrow(Boston), nrow(Boston)/2)
+boston.test <- Boston[-train, "medv"]
+
+boost.boston <-
+    gbm(
+        medv ~ .,
+        data = Boston[train, ],
+        distribution = "gaussian", # because this is regression setting
+        # distribution = "bernoulli", # use this for classification
+        n.trees = 5000, # number of trees
+        interaction.depth = 4 # limits the depth of each tree 
+    )
+
+summary(boost.boston) #rm and lstate are most important
+```
+
+Partial dependence plots for the 2 most important variables, showing marginal effect of the variables on the response after integrating out the other variables (i.e., conditioned on other variables)
+
+```{r}
+plot(boost.boston, i = "rm") # median house prices increase with rm
+plot(boost.boston, i = "lstat") # median house prices decrease with lstate 
+```
+
+Examine test MSE
+
+```{r}
+yhat.boost <-
+    predict(boost.boston, newdata = Boston[-train, ], n.trees = 5000)
+mean((yhat.boost - boston.test) ^ 2)
+```
+
+The above analysis used $\lambda$ = 0.001 (shrinkage parameter)
+
+But we can try other values
+
+```{r}
+boost.boston <-
+    gbm(
+        medv ~ .,
+        data = Boston[train, ],
+        distribution = "gaussian",
+        n.trees = 5000,
+        interaction.depth = 4,
+        shrinkage = 0.2,
+        verbose = F
+    )
+yhat.boost <-
+    predict(boost.boston, newdata = Boston[-train, ], n.trees = 5000)
+mean((yhat.boost - boston.test) ^ 2)
+```
+
+Lower shrinkage parameter (faster learning) might lead to lower test MSE

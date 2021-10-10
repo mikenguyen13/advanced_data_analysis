@@ -164,18 +164,85 @@ Step 3: Continue step 2, until the change in the functions falls below a pre-spe
 
 ## Summary
 
++----------------------------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
 | Pros                                                                                                                                                     | Cons                                                                                                                                                                                                    |
-|----------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
++==========================================================================================================================================================+=========================================================================================================================================================================================================+
 | we can fit a nonlinear $f_j$ to each $X_j$ and automatically model nonlinear relationships (which we can't do under standard linear regression)          | Model is restricted to be **additive**. Technically, we can include interactions, but we have to make them manually, and we can only do so with low-dimensional interaction terms as additive functions |
++----------------------------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
 | The nonlinear fits can make more accurate **predictions**                                                                                                | Difficult to fit in high dimensions (because all variables have to be fit)                                                                                                                              |
++----------------------------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
 | Since the model is additive, we can examine the effect of each $X_j$ on $Y$ individually while holding all of the other variables fixed (interprebility) |                                                                                                                                                                                                         |
++----------------------------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
 | The smoothness of the function $f_j$ for the variable $X_j$ can be summarized by df                                                                      |                                                                                                                                                                                                         |
++----------------------------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
 
 An extension of GAM is to include random effects, which is called **Generalized Additive Mixed Models** (GAMMs) (can refer to [this book](https://highstat.com/index.php/beginner-s-guide-to-generalized-additive-models-with-r))
 
 <br>
 
 ## Application
+
+### Example 1
+
+[@james2013, 7.8]
+
+```{r, warning=FALSE}
+library(ISLR2)
+attach(Wage)
+library (splines)
+
+# we want to predict for a grid of values for age 
+agelims <- range (age)
+age.grid <- seq (from = agelims[1], to = agelims [2])
+
+# since gam is just linear regresion with transformation of inputs, we can also use lm in R
+gam1 <- lm(wage ~ ns(year, 4) + ns(age, 5) + education, data = Wage) # using natural splines
+
+library(gam)
+gam.m3 <-
+    gam(wage ~ s(year, 4) + s(age, 5) + education, data = Wage) # using smoothing splines
+
+par(mfrow = c(1, 3))
+plot(gam.m3, se = T, col = "blue")
+
+plot.Gam(gam1, se = T, col = "red") # the function of year is rather linear
+
+gam.m1 <- gam (wage ∼ s(age , 5) + education , data = Wage)
+gam.m2 <- gam(wage ~ year + s(age, 5) + education, data = Wage)
+anova(gam.m1, gam.m2, gam.m3, test = "F") # model 2 is the best one
+
+summary(gam.m3)
+
+preds <- predict(gam.m2, newdata = Wage)
+gam.lo <- gam(wage ~ s(year, df = 4) + lo(age, span = 0.7) + education, data = Wage)
+plot.Gam(gam.lo , se = T, col = "green")
+
+
+
+# using local regression as building blocks for GAM
+gam.lo.i <-
+    gam(wage ~ lo(year, age, span = .05) + education, data = Wage)
+
+library(akima)
+plot(gam.lo.i)
+
+gam.lr <- gam(I(wage > 250) ~ year + s(age, df = 5) + education,
+              family = binomial,
+              data = Wage)
+par(mfrow = c(1, 3))
+
+plot(gam.lr, se = T, col = "green")
+table(education, I(wage > 25))
+gam.lr.s <- gam(
+    I(wage > 25) ~ year + s(age, df = 5) + education,
+    family = binomial,
+    data = Wage,
+    subset = (education != "1. < HS Grad")
+)
+plot(gam.lr.s, se = T, col = "green")
+```
+
+### Example 2
 
 To overcome [Spline Regression]'s requirements for specifying the knots, we can use [Generalized Additive Models] or GAM.
 

@@ -2,6 +2,8 @@
 
 -   Bootstrapping can help tree methods (e.g., [CART][Classification and Regression Trees])
 
+-   Bagging is a special of random forest with $m = p$
+
 -   Since [CART][Classification and Regression Trees] and [MARS][Multivariate Adaptive Regression Splines] suffer from high variance (because if we split the training data into 2 samples at random and fit both halves, the results can be quite different), we use **bootstrap aggregation** (i.e., **bagging**), which is a general-propose procedure to reduce variance
 
 -   If the procedure has low variance, it will yield similar results if applied repeatedly to distinct data sets (e.g., as in linear regression when $n$ is larger relative to $p$)
@@ -39,3 +41,94 @@ Disadvantages
         -   the total amount that the residual sum of squares is decreased due to splits over a given predictor averaged over all $B$ trees (in the case of regression), or
 
         -   add up the total amount that the Gini index is decreased by splits over a given predictor, averaged over all $B$ trees (in case of classification).
+
+```{r, message=FALSE, warning=FALSE}
+library(randomForest)
+library(ISLR2)
+library(tree)
+
+attach(Boston)
+
+
+set.seed(1)
+train <- sample(1:nrow(Boston), nrow(Boston)/2)
+boston.test <- Boston[-train, "medv"]
+
+bag.boston <-
+    randomForest(
+        medv ~ .,
+        data = Boston,
+        subset = train,
+        mtry = 12, # all 12 predcitors should be used for each split of the tree 
+        importance = T
+    ) # we could use random forest because bagging is a special case of random forest with m = p
+bag.boston
+```
+
+Bagging performance
+
+```{r}
+yhat.bag <- predict(bag.boston, newdata = Boston[-train, ])
+plot(yhat.bag, boston.test)
+abline(0, 1)
+mean((yhat.bag - boston.test) ^ 2) # test set MSE
+```
+
+To change the number of grown trees
+
+```{r}
+bag.boston <-
+    randomForest(
+        medv ~ . ,
+        data = Boston,
+        subset = train,
+        mtry = 12,
+        ntree = 25 # spceify number of grown tree
+    )
+yhat.bag <- predict(bag.boston, newdata = Boston[-train,])
+mean((yhat.bag - boston.test) ^ 2)
+
+```
+
+`randomForest()` uses
+
+-   $\frac{p}{3}$ variables to build a random forest of [Regression Trees]
+
+-   $\sqrt{p}$ variables to build a random forest of [Classification Trees]
+
+```{r}
+set.seed(1)
+rf.boston <-
+    randomForest(
+        medv ~ . ,
+        data = Boston,
+        subset = train,
+        mtry = 6,
+        # use 6 variables
+        importance = T
+    )
+yhat.rf <- predict(rf.boston, newdata = Boston[-train, ])
+mean((yhat.rf - boston.test) ^ 2)
+```
+
+Random forest outperforms bagging (20 \< 25)
+
+To o see varable importance
+
+```{r}
+importance(rf.boston)
+```
+
+2 columns:
+
+1.  mean decrease of accuracy in predictions on OOB samples
+
+2.  the total decrease in node impurity after splitting and averaged over all trees
+
+    -   [Regression Trees] based on the training RSS
+
+    -   [Classification Trees] based on the deviance
+
+```{r}
+varImpPlot(rf.boston) #rm and lstate are most important
+```

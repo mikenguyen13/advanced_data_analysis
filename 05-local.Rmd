@@ -111,3 +111,50 @@ Under Kernel weighted local regressions, then
 $$
 \min_{\alpha (z_0), \beta(z_0)} \sum_{i=1}^n K_\lambda (z_0,z_i)[y_i - \alpha(z_0)-x_{1i} \beta_1(z_0)- \dots - x_{qi} \beta_q (z_0)]^2
 $$
+
+## Application 
+
+Alternative package `locfit`
+
+```{r}
+library(ISLR2)
+attach(Wage)
+library (splines)
+
+# we want to predict for a grid of values for age
+agelims <- range (age)
+age.grid <- seq (from = agelims[1], to = agelims [2])
+
+
+
+plot(age,
+     wage,
+     xlim = agelims,
+     cex = .5,
+     col = "darkgrey")
+title("Local Regression")
+
+# each neighborhood consists of (spans) percentage of the observations
+fit <- loess(wage ~ age, span = .2, data = Wage) # using spans of 0.2 (i.e., each neighborhood consists of 20% of the observaitons)
+fit2 <- loess(wage ~ age, span = .5, data = Wage) # using spans of 0.5
+
+# with larger span, we have smoother fit 
+
+
+lines(age.grid,
+      predict(fit, data.frame(age = age.grid)),
+      col = "red",
+      lwd = 2)
+lines(age.grid,
+      predict(fit2, data.frame(age = age.grid)),
+      col = "blue",
+      lwd = 2)
+legend(
+    "topright",
+    legend = c("span = 0.2", "Span = 0.5"),
+    col = c("red", "blue"),
+    lty = 1,
+    lwd = 2 ,
+    cex = 0.8
+)
+```

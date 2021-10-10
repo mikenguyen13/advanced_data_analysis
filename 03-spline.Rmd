@@ -2,7 +2,7 @@
 
 Beyond Linearity (including transformation of variables), we have arbitrary basis expansion (where the basis functions are dependent on X)
 
-## **Basis Function Representations**
+## Basis Function Representations
 
 Let the k-th basis function of X be denoted by $b_k(X), k = 1,\dots, K$ which is function that maps from the p-dimensional real numbers to the real line.
 
@@ -369,6 +369,80 @@ smoothing splines have similar fits as kernel regression.
 | tuning parameter | smoothing parameter $\lambda$ | bandwidth h       |
 
 ## Application
+
+### Example 1
+
+[@james2013, 7.8]
+
+#### Regression Spline Example
+
+```{r}
+library(ISLR2)
+attach(Wage)
+library (splines)
+
+# using basis functions for splines with the sepcifeid set of knots 
+fit <- lm(wage ∼ bs(age , knots = c(25, 40, 60)), data = Wage) # 3 knots mean 6 basis function, hence 7 df are used (including the intercept)
+
+# we want to predict for a grid of values for age 
+agelims <- range (age)
+age.grid <- seq (from = agelims[1], to = agelims [2])
+
+
+pred <- predict (fit , newdata = list (age = age.grid), se = T)
+plot(age , wage , col = " gray ")
+lines(age.grid, pred$fit , lwd = 2)
+# lines(age.grid, pred$fit + 2 * pred$se, lty = " dashed")
+# lines(age.grid, pred$fit - 2 * pred$se, lty = " dashed")
+```
+
+Alternatively, we produce knots at uniform quantiles of the data
+
+```{r}
+dim(bs(age, knots = c(25, 40, 60)))
+dim(bs(age, df = 6))
+attr(bs(age, df = 6), "knots")
+    
+```
+
+#### Natural Spline Example
+
+```{r}
+fit2 <- lm(wage ~ ns(age, df = 4), data = Wage) # 4 df
+pred2 <- predict(fit2, newdata = list(age = age.grid), se = T)
+plot (age , wage , col = "gray")
+lines(age.grid, pred2$fit, col = "red", lwd = 2)
+```
+
+Alternatively, we specify the knots using the `knots` options (similar to [Regression Spline Example])
+
+#### Smoothing Spline Example
+
+```{r}
+plot(age,
+     wage,
+     xlim = agelims,
+     cex = .5,
+     col = "darkgrey")
+title("Smoothing Spline")
+fit <- smooth.spline(age, wage, df = 16) # we specify 16 df then R will find lambda that leads to 16 df 
+fit2 <- smooth.spline(age, wage , cv = T) # we select lambda (smoothness) based on cross validation
+
+fit2$df # wihch result in 6.8 df
+lines(fit, col = "red", lwd = 2)
+lines(fit2, col = "blue", lwd = 2)
+legend(
+    "topright",
+    legend = c("16 DF", "6.8 DF"),
+    col = c("red", "blue"),
+    lty = 1,
+    lwd = 2 ,
+    cex = .8
+)
+
+```
+
+### plto(Example 2
 
 ```{r}
 library(tidyverse)

@@ -304,3 +304,54 @@ Notes:
 -   In cases where you don't measurement uncertainty in the observation, ($\epsilon$) then the prediction at an observation location will be exactly the same as the observation. And the other way around will filter the uncertainty with the observation
 
 -   we can also have non-Gaussian observations conditioned on the GP (like [GLMM](https://bookdown.org/mike/data_analysis/nonlinear-and-generalized-linear-mixed-models.html))
+
+## Application
+
+Other packages: `mlegp`
+
+@macdonald2015
+
+Simulation:
+
+$$
+y(x) = \log(x + .1) + sin(5 \pi x)
+$$
+
+A Latin Hypercube design is a space-filling design, used in the design of computer experiments.
+
+The Maximin version does space-filling design by maximizing the minimum distance between design points.
+
+```{r}
+library(GPfit)
+library(lhs)
+    
+set.seed(1)
+n = 7
+x = maximinLHS(n ,1) # draw a Maximin Latin Hypercube Sample
+y = matrix(0, n, 1)
+for (i in 1:n){
+    y[i] = log(x[i] + .1 ) + sin(5*pi * x[i])
+}
+
+GPmodel = GP_fit(x,y)
+print(GPmodel)
+```
+
+Predict at a grid of new x values
+
+```{r}
+xvec <- seq(from = 0, to = 1, length.out = 100)
+yvec <- matrix(0,100,1)
+for (i in 1:100){
+    yvec[i] = log(xvec[i] + .1) + sin(5*pi*xvec[i])
+}
+GPpred <- predict(GPmodel,xvec)
+
+# data points are circles
+# prediction is in the bllue 
+# 95% CIs (yhat + 2*s) are in red
+plot(GPmodel, range= c(0,1), resolution = 100, colors = c("black","blue","red"), line_type = c(1,2),pch = 1)
+
+# add the true function as a dotted black line
+lines(xvec, yvec, col = "black", lty = 3)
+```

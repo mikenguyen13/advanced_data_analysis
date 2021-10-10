@@ -125,6 +125,61 @@ The parameter $\alpha$ controls a tradoff between the subtree's complexity and h
 2.  Use [Cost complexity pruning] to obtain a sequence of best subtrees as a function of $\alpha$
 3.  Use [K-Fold Cross-Validation] to choose $\alpha$
 
+```{r, warning=FALSE, message=FALSE}
+library(ISLR2)
+library(tree)
+
+set.seed(1)
+attach(Boston)
+
+train <- sample(1:nrow(Boston), nrow(Boston)/2)
+tree.boston <- tree(medv ~ ., Boston, subset = train)
+
+# to fit a bigger tree
+# tree.boston <-
+#     tree(medv ~ .,
+#          Boston,
+#          subset = train,
+#          control = tree.control(nobs = length(train), mindev = 0)) 
+
+summary(tree.boston) # only 4 vars have been used (rm, lstat, crim, age)
+
+
+```
+
+`deviance` = sum of squared errors for the tree
+
+```{r}
+plot(tree.boston)
+text(tree.boston, pretty = 0)
+
+```
+
+```{r}
+cv.boston <- cv.tree(tree.boston) # tree complexity selected by cross-validation
+plot(cv.boston$size, cv.boston$dev, type = "b")
+
+```
+
+If we want to prune complex tree
+
+```{r}
+prune.boston <- prune.tree(tree.boston, best = 5)
+plot(prune.boston)
+text(prune.boston, pretty = 0)
+
+```
+
+```{r}
+yhat <- predict(tree.boston, newdata = Boston[-train, ])
+boston.test <- Boston[-train, "medv"]
+plot(yhat, boston.test)
+abline(0, 1)
+mean((yhat - boston.test) ^ 2) # Mean squared error 
+```
+
+The square root of the MSE is 5.9, meaning on average we predict within \$5.9k of the true median home value.
+
 <br>
 
 ## Classification Trees
@@ -160,3 +215,110 @@ The three measures for growing tree:
 The Gini index and Cross-Entory both take small values when all $\hat{p}_{jk}$ are close to 1 or 0. Hence, we say they measure node purity, which are more sensitive to node probabilities than the classification error rate. Hence, we typically use the last two to grow the tree.
 
 Rule of thumb: use Gini and Cross-Entropy to build and prune a tree and use classification error rate for pruning if prediction accuracy of the pruned tree is the goal
+
+```{r}
+library(tree)
+library(ISLR2)
+attach(Carseats)
+High <- factor(ifelse(Sales <= 8, "No", "Yes")) # transform Sales (conitnuous) to binary variable
+
+Carseats <- data.frame(Carseats, High)
+
+tree.carseats <- tree(High ~ . - Sales, Carseats) # using all variables but Sales
+
+summary(tree.carseats) # training error rate of 9%
+# tree.carseats
+```
+
+Deviance formula:
+
+$$
+-2 \sum_m \sum_k n_{mk} \log \hat{p}_{mk}
+$$
+
+where
+
+-   $n_{mk}$ = number of observations in the m-th terminal node in the k-th class
+
+Smaller deviance is preferable (good fit to the training data).
+
+Residual mean deviance formula
+
+$$
+\frac{-2 \sum_m \sum_k n_{mk} \log \hat{p}_{mk}}{n - |T_0|}
+$$
+
+where $|T_0|$ = number of terminal nodes
+
+```{r}
+plot(tree.carseats)
+text(tree.carseats, pretty = 0) # shelving location is the most important indicator 
+```
+
+Evaluation on both training and test data
+
+```{r}
+set.seed(1)
+train <- sample(1:nrow(Carseats), 200) # index 200 training datapoints
+
+# get the test data
+Carseats.test <- Carseats[-train,]
+
+# get actual prediction
+High.test <- High[-train]
+tree.carseats <- tree(High ~ . - Sales, Carseats, subset = train)
+
+tree.pred <- predict(tree.carseats, Carseats.test, type = "class") # return actual class predidction
+
+table(tree.pred, High.test)
+
+# correct prediction rate 
+(table(tree.pred, High.test)[1, 1] + table(tree.pred, High.test)[2, 2])/nrow(Carseats.test) # 64% correct predictions
+
+```
+
+Tree with pruning
+
+```{r}
+set.seed(7)
+cv.carseats <- cv.tree(tree.carseats, FUN = prune.misclass) # cross-validation to get the optimal level of tree complexity (depth); 
+# prune.misclass = classification error rate guides the cross-validation and pruning process
+# default = deviance guides the cross-validation and pruning process
+
+cv.carseats
+
+```
+
+`size` = number of terminal nodes of each tree
+
+`k` = $\alpha$ = cost--complexity parameter.
+
+`dev` = number of cross-validation errors
+
+```{r}
+par(mfrow = c(1, 2))
+plot(cv.carseats$size, cv.carseats$dev, type = "b")
+plot(cv.carseats$k, cv.carseats$dev, type = "b")
+```
+
+It seems like 9 tree nodes have the lowest number of cv errors (`dev` in this case). Hence, we will pick this tree
+
+```{r}
+set.seed(7)
+prune.carseats <- prune.misclass(tree.carseats, best = 9)
+plot(prune.carseats)
+text(prune.carseats, pretty = 0)
+
+```
+
+```{r}
+tree.pred <- predict(prune.carseats, Carseats.test, type = "class")
+table(tree.pred, High.test)
+
+(table(tree.pred, High.test)[1, 1] + table(tree.pred, High.test)[2, 2]) /
+    nrow(Carseats.test)
+```
+
+We can see slight improvement of prediction rate from 64 to over 70 percent
+
+We can still increase the classification accuracy but with the price of tree complexity

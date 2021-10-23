@@ -1,0 +1,128 @@
+# Bayesian Additive Regression Trees
+
+-   also known as BART
+
+-   is related to [Bagging] and [Random Forests], and [Boosting] because
+
+    -   Each tree is constructed in a random manner (similar to [Bagging] and [Random Forests])
+
+    -   Each tree tries to capture signal not yet accounted for by the current model (similar to [Boosting])
+
+Let $K$ be the number of regression trees, $B$ the number of (MCMC) iterations for which the BART algorithm will be run
+
+Let $\hat{f}_k^b(x)$ represent the prediction at $x$ for the k-th regression tree used in the b-th iteration.
+
+Then, the $K$ trees from that iteration will be summed as
+
+$$
+\hat{f}^b(x) = \sum_{k=1}^K \hat{f}_k^b(x), b = 1, \dots, B
+$$
+
+In the first iteration, all trees are initialized to have a single root node with $\hat{f}_k^1(x) = (1/nK)\sum_{i=1}^n y_i$, which is the mean of the response values divided by the total number of trees.
+
+Thus,
+
+$$
+\hat{f}^1(x) = \sum_{k=1}^K \hat{f}_k^1 (x) = \frac{1}{n} \sum_{i=1}^n y_i \text{ (mean response)}
+$$
+
+In each later iteration, BART updates each of the $K$ trees, one at a time
+
+In the b-th iteration, to update the k-th tree, we subtract from each response value the predictions from all but the k-th tree to obtain **a partial residual**:
+
+$$
+r_i = y_i - \sum_{k'<k} \hat{f}_{k'}^b (x_i) - \sum_{k'>k} f_{k'}^{b-1}(x_i), i = 1, \dots, n
+$$
+
+Instead of fitting a new tree to this partial residual, BART randomly chooses a perturbation to the tree in the previous iteration ($\hat{f}_k^{b-1}$) from a set of possible perturbations (this is where MCMC comes in), favoring ones that improve the fit to the partial residual. There are 2 components to this perturbation:
+
+-   change the structure of the tree by adding or pruning branches
+
+-   change the prediction in each terminal node of the tree
+
+The output of BART is a collection of prediction models:
+
+$$
+\hat{f}^b(x) = \sum_{k =1}^K \hat{f}_k^b (x) , b = 1, \dots, B
+$$
+
+where we don't include the results from the iterations in the MCMC burn-in period (say $L$ burn-in samples):
+
+$$
+\hat{f}^b(x) = \frac{1}{B - L} \sum_{b = L +1}^B \hat{f}_k^b (x) 
+$$
+
+Since this method is under the Bayesian paradigm, we can use the posterior samples to get distributional estimates of the predictions
+
+<br>
+
+BART algorithm [@james2013] Alg 8.3
+
+1.  Let $\hat{f}_1^1(x) = f^1_2(x) = \dots = \hat{f}_K^1(x) = \frac{1}{nK} \sum_{i=1}^n y_i$
+
+2.  Compute $\hat{f}^1 (x) = \sum_{k=1}^K \hat{f}_k^1 (x) = \frac{1}{n}\sum_{i=1}^n y_i$
+
+3.  For $b = 2, \dots, B$
+
+    1.  For $k = 1, \dots, K$
+
+        1.  For $i = 1, \dots , n$, compute the current partial residual ($r_i$
+
+        2.  Fit a new tree $\hat{f}_k^b(x)$ to $r_i$ by randomly perturbing the k-th tree from the previous iteration, $\hat{f}_k^{b-1}(x)$ (favor perturbations that improve the fit)
+
+    2.  Compute $\hat{f}^b (x) = \sum_{k=1}^K \hat{f}^b_k (x)$
+
+4.  Compute the mean after $L$ burn-in samples $\hat{f}(x) = \frac{1}{B - L} \sum_{b = L +1}^B \hat{f}^b (x)$
+
+<br>
+
+Notes
+
+-   Step 3.1.2 prevents overfitting since it limits how "hard we fit the data in each iteration
+
+-   The individual trees are quite small. we limit the tree size to avoid overfitting the data (especially when we grew very large trees)
+
+-   Each time we randomly perturb a tree to fit the residuals, we are drawing a new tree form a posterior distribution
+
+-   When we use BART, we have to specify
+
+    -   the number trees $K$
+
+    -   the number of interactions $B$
+
+    -   the number of burn-in interactions $L$
+
+-   We typically choose large values for $B = 1000$ and $K =200$, and moderate value for $L=100$
+
+-   BART is a good out-of-box tool (i.e., minimal tuning)
+
+Example by [@james2013, Ch 8.3]
+
+```{r, message=FALSE, warning=FALSE}
+library(BART)
+library(ISLR2)
+library(tree)
+
+set.seed(1)
+attach(Boston)
+
+train <- sample(1:nrow(Boston), nrow(Boston)/2)
+# tree.boston <- tree(medv ~ ., Boston, subset = train)
+
+x <- Boston[,1:12]
+y <- Boston[,"medv"]
+xtrain <- x[train,]
+ytrain <- y[train]
+xtest <- x[-train,]
+ytest <- y[-train]
+
+bartfit <- gbart(xtrain, ytrain, x.test = xtest)
+
+# test error
+yhat.bart <- bartfit$yhat.test.mean
+mean((ytest - yhat.bart)^2)
+
+# how many times each variable appeared in the colelction of trees
+ord <- order(bartfit$varcount.mean, decreasing = T)
+bartfit$varcount.mean[ord]
+```

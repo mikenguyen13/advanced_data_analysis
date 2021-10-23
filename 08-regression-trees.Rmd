@@ -6,6 +6,8 @@
 
 -   The splitting rules can be thought of as "tree" (therefore, "decision trees")
 
+-   The root of the tree (i.e., the first splitting variable) is typically chosen based on the the smallest sum of squared residuals (SSRs), then the process begins again to choose another branch.
+
 -   Decision trees can be used for both classification and regression, ergo the name CART
 
     -   Under regression, the prediction is the average of the partitioned predictor space (i.e., segments)
@@ -103,13 +105,35 @@ Notes:
 
 -   The points along the tree where the predictor space is spit are **internal nodes**
 
--   Regression trees can usulaly lead ot over-fitting ont he test set, to reduce this problem, we can prune (i.e., remove leaves) to obtain a **subtree** using cross-validation.
+-   Regression trees can usually lead to over-fitting on the test set, to reduce this problem, we can prune (i.e., remove leaves) to obtain a **subtree** using cross-validation.
+
+<br>
 
 ### Cost complexity pruning
 
--   laso knwon as **weakest link pruning**
+-   also known as **weakest link pruning**
 
-Wefirst gorw a verg large tree $T_0$. Instread of considering eveyr psosible subtree, we consider a sequnece of trees indeed a non-negative tuning paratmers, $\alpha$ (i.e., for each value of $\alpha$ there is a subtree $T$ such that $T \in T_0$ that minimizes
+Intuitively,
+
+1.  Calculate the total Sum of Squared Residual for each tree
+
+2.  Calculate a Tree Score: $\text{Tree Score} = SSR + \alpha T$ where
+
+    1.  SSR = Sum of Squared Residuals for the tree or sub-tree
+
+    2.  T = number of leaves (or Terminal nodes) in the tree or sub-tree
+
+    3.  $\alpha$ = tuning parameter (based on cross-validation)
+
+3.  Pick tree with lowest tree score
+
+The Tree Complexity Penalty ($\alpha T$) compensates for the difference in the number of leaves
+
+<br>
+
+Mathematically,
+
+We first grow a very large tree $T_0$. Instead of considering every possible subtree, we consider a sequence of trees indeed a non-negative tuning parameters, $\alpha$ (i.e., for each value of $\alpha$ there is a subtree $T$ such that $T \in T_0$ that minimizes
 
 $$
 \sum_{j=1}^{|T|} \sum_{i:x_i \in R_j} (y_i - \hat{y}_{R_j})^2 + \alpha |T|
@@ -119,7 +143,7 @@ where $|T|$ is the number of terminal nodes
 
 The parameter $\alpha$ controls a tradoff between the subtree's complexity and how well it fits the training data ($\alpha = 0$ implies $T = T_0$). As $\alpha$ gets larger, the penalty for a larger tree is higher, so it penalizes similarly to the [Lasso regression]. Moreover, as $\alpha$ increases, the branches get pruned in a nested a predictable fashion. Hence, it's possible to get the whole sequence of subtrees as a function of $\alpha$ (based on cross-validation). After getting $\alpha$ using cross-validation, we can use that value with the full data set to obtain the fitted subtree
 
-### Algorithm for regression tree 
+### Algorithm for regression tree
 
 1.  [Recursive Binary Splitting] for growing a tree with your choice of stopping rule (e.g., observation-based)
 2.  Use [Cost complexity pruning] to obtain a sequence of best subtrees as a function of $\alpha$

@@ -1,6 +1,6 @@
 # Bayesian Additive Regression Trees
 
--   also known as BART
+-   also known as BART [@sparapani2021]
 
 -   is related to [Bagging] and [Random Forests], and [Boosting] because
 
@@ -126,3 +126,127 @@ mean((ytest - yhat.bart)^2)
 ord <- order(bartfit$varcount.mean, decreasing = T)
 bartfit$varcount.mean[ord]
 ```
+
+Example by the package's authors @sparapani2021
+
+y = mdev = the median value of owner-occupied homes
+
+x1 = rm = the average number of rooms
+
+x2 = lstat = the percent of the population that is lower status
+
+```{r}
+library(MASS)
+x <- Boston[,c(6,13)]
+y <- Boston$medv
+# head(cbind(x,y))
+par(mfrow = c(2,2))
+plot(x[, 1], y, xlab = "x1=rm", ylab = "y=mdev")
+plot(x[, 2], y, xlab = "x2=lstat", ylab = "y=mdev")
+plot(x[, 1], x[, 2], xlab = "x1=rm", ylab = "x2=lstat")
+par(mfrow = c(1, 1))
+
+
+```
+
+```{r}
+library("BART")
+set.seed(99)
+nd <- 200 # number of posterior draws
+burn <- 50
+# use wbart for continuous varaibles 
+post <- wbart(x, y, nskip = burn, ndpost = nd)
+```
+
+Convergence assessment
+
+```{r}
+plot(post$sigma, type = "l")
+abline(v = burn, lwd = 2, col = "red")
+# good convergence 
+```
+
+Prediction comparison with lm
+
+```{r}
+lmf <- lm(y~., data.frame(x, y))
+fitmat <- cbind(y, post$yhat.train.mean, lmf$fitted.values)
+colnames(fitmat) <- c("y", "BART", "Linear")
+cor(fitmat)
+pairs(fitmat)
+```
+
+Prediction
+
+```{r}
+i <- order(post$yhat.train.mean)
+boxplot(post$yhat.train[, i])
+
+n <- length(y)
+set.seed(14)
+i <- sample(1:n, floor(0.75 * n))
+x.train <- x[i, ]; y.train = y[i]
+x.test <- x[-i, ]; y.test = y[-i]
+cat("training sample size = ", length(y.train), "\n")
+cat("testing sample size = ", length(y.test), "\n")
+
+set.seed(99)
+post1 <- wbart(x.train, y.train, x.test)
+length(post1$yhat.test.mean)
+```
+
+Thinning (to speed things up)
+
+```{r}
+set.seed(4)
+post3 <-
+    wbart(
+        x.train,
+        y.train,
+        nskip = 1000,
+        ndpost = 10000,
+        nkeeptrain = 0,
+        nkeeptest = 0,
+        nkeeptestmean = 0,
+        nkeeptreedraws = 200
+    )
+yhatthin <- predict(post3, x.test)
+
+fmat <- cbind(y.test, post1$yhat.test.mean, apply(yhatthin, 2, mean))
+colnames(fmat) <- c("y", "yhat", "yhatThin")
+pairs(fmat)
+
+```
+
+Friedman's partial dependence function to see variable importance
+
+```{r}
+x.train <- as.matrix(Boston[i,-14])
+set.seed(12)
+post4 <- wbart(x.train, y.train)
+H <- length(y.train)
+L <- 41
+x <- seq(min(x.train[, 13]), max(x.train[, 13]), length.out = L)
+x.test <- cbind(x.train[,-13], x[1])
+for (j in 2:L)
+    x.test <- rbind(x.test, cbind(x.train[,-13], x[j]))
+pred <- predict(post4, x.test)
+partial <- matrix(nrow = 1000, ncol = L)
+for (j in 1:L) {
+    h <- (j - 1) * H + 1:H
+    partial[, j] <- apply(pred[, h], 1, mean)
+}
+plot(
+    x,
+    apply(partial, 2, mean),
+    type = "l",
+    ylim = c(10, 50),
+    xlab = "lstat",
+    ylab = "mdev"
+)
+
+lines(x, apply(partial, 2, quantile, probs = 0.025), lty = 2)
+lines(x, apply(partial, 2, quantile, probs = 0.975), lty = 2)
+```
+
+For examples on categorical variables, see [@sparapani2021]

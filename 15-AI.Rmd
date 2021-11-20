@@ -1,0 +1,319 @@
+# Artificial Intelligence
+
+## Explainable AI
+
+-   denoted as XAI
+
+-   Historical criticisms for deep learning
+
+    -   lack of uncertainty quantification
+
+    -   inability to do inference (i.e., unknown important inputs)
+
+-   XAI tries to solve these problems (and fairness and transparency)
+
+-   Review papers
+
+    -   @samek2021a
+
+    -   @abdar2021
+
+**Uncertainty Quantification**
+
+Four general topics:
+
+1.  Variational (Bayesian) inference
+2.  Monte Carlo Dropout: justifies dropout as a UQ procedure from a perspective of deep [Gaussian Processes][Gaussian Process Regression]
+3.  [Mixture Density Networks]: this model could predict a mixture density for the output of a NN (instead of the mean response) (Pattern Recognition Bishop 2006's book)
+4.  Ensemble techniques: UQ by generating multiple realization (ensembles) of a deep model
+
+<br>
+
+**Explainability**
+
+There are 4 primary approaches [@samek2021a]
+
+-   Interpretable Local Surrogates (e.g., LIME)
+
+-   Occlusion Analysis (e.g., Shapley values, SHAP, Kernel SHAP, meaningful perturbation)
+
+-   Integrated Gradients (e.g., SmoothGrad)
+
+-   Layerwise Relevance Propagation
+
+Additionally,
+
+-   Self-explainable model (e.g., attention mechanisms)
+
+-   Specialized models (e.g., graph neural networks)
+
+**Fail**: People can modify the ML such that we can have the same predictions, but it matches up better with stories that they like to tell. (so be careful!!!).
+
+### Mixture Density Networks
+
+It's theoretically possible/plausible to model any distributions as a mixture of Gaussians
+
+We can model any distribution as a mixture of Gaussian
+
+$$
+p(y|\mathbf{x}) = \sum_{k=1}^K \alpha_k (\mathbf{x}) \phi(\mu_k(\mathbf{x}), \sigma_k (\mathbf{x}))
+$$
+
+where $\alpha_k(\mathbf{x})$ are mixture coefficients associated with the Gaussian distribution defined by mean and standard deviation $\phi(\mu_k(\mathbf{x}), \sigma_k (\mathbf{x})$ and all of these parameters depend on the inputs $\mathbf{x}$
+
+Instead of training the neural network to estimate the conditional mean, we estimate all the mixture parameters $\{ \alpha_k(\mathbf{x}), \mu_k (\mathbf{x}), \sigma_k (\mathbf{x})\}$ (i.e., these parameters are the output of the NN)
+
+This method can use mixtures of other distributions as well
+
+<br>
+
+### Local Interpretable Model-Agnostic Explanations
+
+-   denoted as LIME [@ribeiro2016]
+
+    -   **Local**: explain individual predictions (local surrogate models - a model within model)
+
+    -   **Interpretable**: Understandable
+
+    -   **Model**-**agnostic**: explain prediction for any type of model
+
+-   It's hard to find the variable importance for predicting certain output.
+
+-   The attribution to a base feature (inputs, instead of parameters) can be interpreted as the importance of the feature to the prediction
+
+-   Treat all models as black boxes and understand why they make each individual prediction
+
+-   Undersigning why a model makes each individual prediction will help the user determine whether to trust the model
+
+-   **Local surrogate models**: approximate the predictions of black-box models locally
+
+-   Instead of training a global surrogate model, LIME trains many local surrogate models to explain individual prediction
+
+-   These local surrogate models must behave similarly to how the black-box model does in the neighborhood of each instance being explained (local faithfulness)
+
+Steps to train local surrogate models
+
+1.  Select a prediction from the black-box model that you want to explain
+2.  Perturb the dataset and get the black-box predictions for these new points
+3.  Weight the new samples based on their proximity to the point of interest (i.e., your chosen prediction)
+4.  train a weighted, interpretable model (e.g., regression) on the perturbed dataset, using the black-box predictions as the response
+5.  Explain the prediction by interpreting the local model
+
+<br>
+
+LIME produces an explanation for a given instance of $(\mathbf{y,x})$
+
+We want to know which of the $\mathbf{x}$ features are most responsible for a given prediction $\mathbf{\hat{y}}$
+
+$$
+\text{explanation}(\mathbf{x}) = \underset{g \in G}{\operatorname{argmax}} L (f, g, \pi_x) + \Omega(g)
+$$
+
+where
+
+-   $f$: the original black-box model
+
+-   $g$ the explanation model for the instance
+
+-   $G$ the family of possible explanation models (e.g., linear regression models)
+
+-   $\pi_x$ proximity measure that determines how large the neighborhood is around $\mathbf{x}$
+
+-   $\Omega(g)$: model complexity (want to be small - fewer features in explanation)
+
+To define these neighborhoods
+
+-   $\pi_x$ is an exponential smoothing kernel
+
+-   Small kernel width means that observation must be very close to influence the local model
+
+-   Large kernel width means that observations that are very different from the instance we are seeking to explain can have influence on the local model
+
+-   kernel widths are very subjective (have to experiment and see which ones result in meaningful explanations)
+
+Notes:
+
+-   LIME is easy to use in R (`lime` or `iml` package)
+
+-   The difficult part is evaluating how good the local surrogate model is at estimating the complex model locally, which can affect the interpretability
+
+-   Heat map can show how all the variables have an influence on the predictions
+
+\
+References for LIME
+
+-   <https://www.oreilly.com/content/introduction-to-local-interpretable-model-agnostic-explanations-lime/>
+
+-   <https://homes.cs.washington.edu/~marcotcr/blog/lime/>
+
+-   @ribeiro2016
+
+<br>
+
+### Shapley Values
+
+-   Shapley values are a game theoretic approach to explain the output of any machine learning model (migrated from econ to stat)
+
+-   These values can also combined with other approaches such as LIME.
+
+-   Similar to LIME, the problem is distributing the prediction score of a model for a specific input to its base features
+
+-   Game theory inspiration:
+
+    -   Introduced in 1951 by Lloyd Shapley as a method to value individual play contributions in a cooperative game (which won him a Nobel Prize in Econ)
+
+    -   Example
+
+        -   Determine value of players individually and in subsets
+
+        -   Determine marginal values fro players from all possible orderings
+
+        -   Find the Shapley value by taking average of marginal values
+
+Formally, for a game with $N$ players, the characteristics (value) function $\nu$ amps subsets $S \in \{0, 1,\dots, N\}$ to a real value $\nu(S)$, the value to be gained from player cooperation
+
+The marginal contribution for each play is
+
+$$
+\Delta_\nu (i,S) = \nu (S \cup i) - \nu(S)
+$$
+
+The Shapley value (contribution to the "grand coalition") for player $i$ is
+
+$$
+\phi_i (\nu) = \frac{1}{N} \sum_{S \subseteq N_{\{i\}}} 
+\left(
+\begin{array}
+{c}
+n-1 \\
+|S|
+\end{array}
+\right) ^{-1}
+\Delta_\nu (i,S)
+$$
+
+which means
+
+$$
+\varphi (\nu) = \frac{1}{\text{number of players}} \sum_{\text{coalitions excluding i}} \frac{\text{marginal contribution of i to coalition}}{\text{number of coalitions excluding i of this size}}
+$$
+
+where $x_S$ has missing values for the features not in set $S$
+
+Desirable properties of Shapley Values
+
+-   Unique
+
+-   Symmetry: if two players have equal marginal contribution, they will have equal Shapley values
+
+-   Dummy: if the marginal contribution is 0, the Shapley value will be 0
+
+-   Additivity: for a single player, $i$, with two value functions, $\nu$ and $w$,
+
+$$
+\phi_i(\nu) + \phi_i (w) = \phi_i (\nu + w)
+$$
+
+They are useful to ensure that the feature attribution correspondence to human understanding.
+
+Application to predictive modeling
+
+If the game is a single outcome, with players as features $x_1, \dots, x_p$ with a value function $\nu_f$ with respect to the model $f$, then the Shapley value for feature $i$ can be viewed as the influence of that feature on the outcome
+
+The key is then how one defines the value function, $\nu_f$
+
+Possible approaches:
+
+-   Conditional Expectation variants
+
+    -   Shapley regression values [@lipovetsky2001; @lipovetsky2001a]
+
+    -   Shapley sampling values [@trumbelj2013]
+
+    -   SHAP [@lundberg2017unified]
+
+-   Intervention variants
+
+    -   Quantitative input influence [@datta2016]
+
+    -   Formulate, Approximate, Explain framework [@merrick2020]
+
+**SH**apley **A**dditive ex**P**lanation (SHAP) values
+
+The value function is defined as
+
+$$
+\nu_{f,x}(S) = f(x_s) = E[f(x)|x_s] = E_{x_{\bar{S}}|x_S}[f(x)] \\
+\text{assume feature independence} \approx E_{x_{\bar{S}}}[f(x)] \\
+\text{assume model linearity} \approx f([x_s, E[x_{\bar{S}}]])
+$$
+
+where $x_S$ has missing values fro the features not in set , $S$
+
+Exact computation is challenging, but there are numerous model -agnostic approximation methods and model-type-specific approximation methods
+
+these have varying assumptions, such as feature independence and model linearity (as in the equation above)
+
+Approximation Methods
+
+-   Model-agnostic
+
+    -   If we assume feature independence, we can use sampling approximation methods from [@trumbelj2013] and [@datta2016]; reasonable to compute fro small number of inputs only
+
+    -   Kernel SHAP (LIME + Shapley): reformulate as a weighted linear regression problem to jointly esitamte all SHAP values
+
+-   Model-type-sepcific
+
+    -   LInear SHAP
+
+    -   Low-order SHAP
+
+    -   Max SHAP
+
+    -   Deep SHAP (DeepLift + Shapley)
+
+    -   Tree SHAP [@lundberg2018consistent]
+
+Implementation
+
+-   Python: `shap`: developed by Lundberg provides Kernel SHAP + model-type-specific SHAP algorithm; support for TensorFLow/Keras/PyTorch models
+
+-   R: `shapr` provides Kernel SHAP + @aas2021 method for accounting for feature dependence; support for `gam`, `lm`, `glm`, `xgb.Booster`, `ranger,`shapper: port for Python library `shap`
+
+-   Others: `fastshap`, `iml`, shap-value, `DALEX`, `shapleyR`
+
+Critiques
+
+-   Mathematical Issues
+
+    -   Indirect influence: a feature which may have no effect on the response but is predictive of other features may attribute influence
+
+    -   How should statistically-related features be handled? SHould they be considered a "single player"?
+
+    -   Intervention methods rely on out-of-distribution sampling and extrapolate outside of feature space
+
+-   Human Interpretability Issues
+
+    -   Shapley value answer question: "Why $f(x)$ instead of $E[f(x)]$?, while we may not actually observe data with the outcome $E[f(x)]$"
+
+    -   Does not provide guidance on changing outcomes
+
+    -   Prone to misinterpretation
+
+References for Shapley
+
+-   @datta2016
+
+-   @kumar2020problems
+
+-   @lipovetsky2001a
+
+-   @lundberg2018consistent
+
+-   @lundberg2017unified
+
+-   @merrick2020explanation
+
+-   @trumbelj2013
+
+-   @sundararajan2020many

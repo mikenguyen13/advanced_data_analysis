@@ -1,0 +1,462 @@
+# Support Vector
+
+## Maximal Margin Classifier
+
+We have n pairs of training data, $(x_1, y_1), \dots, (x_n, y_n)$, where $x_i \in R^p$ and $y_i \in \{-1, 1\}$, corresponding to two possible classes
+
+Hyperplane in p-dimensional space is a "flat" affine subspace of dimension $p-1$
+
+If $p = 2$, the hyperplane is a line
+
+If $p = 3$, the hyperplane is a plane
+
+In two dimensions, a hyperplane is defined by the equation
+
+$$
+\beta_0 + \beta_1 X_1 + \beta_2 X_2 = 0
+$$
+
+so that any point $X_1, X_2$ that satisfies this equation is on the hyperplane
+
+Then, in $p$-dimensions, the hyperplane is defined by
+
+$$
+\beta_0 + \beta_1 X_1 + \dots + \beta_p X_p = 0
+$$
+
+or equivalently
+
+$$
+\beta_0 + \mathbf{X}^T \beta = 0
+$$
+
+If the point $X = (X_1, \dots, X_p)^T$ does not lie on the hyperplane, it lies on one side or the other
+
+$$
+\beta_0 + X^T \beta >0 \\
+\beta_0 + X^T \beta <0
+$$
+
+Hence, the hyperplane divides the p-dimensional space in two sides to determine which side the point is on, we can find the sign of $\beta_0 + X^T \beta$ (i.e., $G(x) = sign [\beta_0 + X^T \beta]$
+
+<br>
+
+We want to classify, $x^* = (x_1^*, \dots, x^*_p)^T$ from the separating hyperplane
+
+We start by assuming that it's possible to construct a hyperplane that separates the observations perfectly
+
+Thus, our classification of $(x_1, y_i)$ is
+
+$$
+\begin{cases}
+\beta_0 + x_i^T \beta > 0 & \text{if } y_i = 1 \\
+\beta_0 + x_i^T \beta <0 & \text{if } y_i = -1
+\end{cases}
+$$
+
+This is equivalent to noting that the separating hyperplane has the property
+
+$$
+y_i (\beta_0 + x_i^T \beta) >0
+$$
+
+for all $i = 1, \dots, n$
+
+Thus, our classifier classifies $x^*$ into the first group if $f(x^*) = \beta_0 + \beta_1 x_1^* + \dots + \beta_p x_p^*$ is positive and
+
+into the second group if this is negative (i.e., this $G(x)$ defined above)
+
+The magnitude of $f(x^*)$ tells us how far $x^*$ is from the hyperplane
+
+Clearly, **the separating hyperplane is just a linear decision boundary**
+
+We can have an infinite number of such separating hyperplanes.
+
+We can define an **optimal separating hyperplane** as **the maximal margin hyperplane**, which is just the hyperplane that is farthest from the training observations, which can be done by considering the perpendicular distance between each observation and hyperplane;
+
+The smallest such distance is the minimal distance from the observations to the hyperplane, and is known as the **margin**
+
+The **maximal margin hyperplane** is then the separating hyperplane that has the largest margin (i.e., the one that has the farthest minimum distance to the training observations).
+
+The classifier built with this hyperplane is then known as **the maximal margin classifier**
+
+The maximal margin hyperplane presents the mid-line between the two classes with the widest "slab" that we can insert between the classes
+
+Points that are used to make the hyperplane are examples of **support vectors** (i.e., they are vectors in p-dimensional space that "support" the maximal margin hyperplane in that if they were located at different locations, the maximal margin hyperplane would move as well)
+
+All of the other points do not affect the maximal margin hyperplane (i.e., if they move, it doesn't change the location of the maximal margin hyperplane - so long as they don't move across the existing margin boundaries).
+
+This property of support vectors is important in the construction of support vector classifiers and supper vector machines
+
+We can find the maximal margin hyperplane by solving the following convex optimization problem
+
+$$
+\underset{\beta_0,\dots, \beta_p}{\operatorname{max}} M
+$$
+
+subject to
+
+$$
+\sum_{j = 1}^p \beta_j^2 = 1
+$$
+
+i.e., $||\beta|| = 1$
+
+and
+
+$$
+y_i (\beta_0 + x_i^T \beta) \ge M,\forall i = 1, \dots, n
+$$
+
+The last constraint guarantees that each observation will be on the correct side of the hyperplane, provided $M$ is positive, with a cushion $M$
+
+The first constraint identifies the parameters such that the perpendicular distance between the i-th observation and the hyperplane is given by $y_i (\beta_0 + x_i^T \beta)$. This ensures that each observation is at least a distance $M$ from the hyperplane - hence, $M$ is the margin
+
+<br>
+
+However, this method would not work fi no separating hyperplane exists (i.e., if no hyperplane can separate the two classes)
+
+Two cases where a separating hyperplane may not be desirable even if possible
+
+1.  If it has a very small margin
+2.  it very sensitive to one or two observations, it will most likely overfit
+
+<br>
+
+## Support Vector Classifiers
+
+Due to the previous two problems, we seek a classifier that is based on a hyperplane that does not perfectly separate the classes to give
+
+1.  greater robustness to individual observation
+2.  better classification of most of the training observation
+
+Such a **soft margin classifier** is the support vector classifier, which is constructed similarly to the maximal margin classifier but we allow some observations to be on the incorrect side of the margin or even the incorrect side of the hyperplane
+
+The procedure for implementing a support vector classifier is also an optimization problem with a modification of one of the constraints and the addition of another
+
+The support vector classifier is given by the solution to the following optimization problem
+
+$$
+\underset{\beta_0,\dots, \beta_p, \epsilon_1, \dots, \epsilon_n}{\operatorname{max}} M
+$$
+
+subject to
+
+$$
+\sum_{j=1}^p \beta_j^2 = 1
+$$
+
+(i.e., $||\beta|| = 1$) and
+
+$$
+y_i (\beta_0 + x_i^T \beta) \ge M(1 - \epsilon_i), \forall i = 1, \dots, n
+$$
+
+$$
+\epsilon_i \ge 0, \sum_{i=1}^n \epsilon_i \le C
+$$
+
+where $C$ is a non-negative tuning parameter
+
+$M$ is the margin
+
+we have $\epsilon_i, i = 1, \dots, n$, which are called **slack variables** that provide the flexibility to be on the wrong side of the margin or hyperplane
+
+Then, we classify a new observation $x^*$ via the sign of $f(x^*)$ as before
+
+The $\epsilon_i$ parameters give an indication of where the observation is located relative to the margin
+
+-   $\epsilon_i = 0$ means it's on the correct side of the margin
+
+-   $\epsilon_i >0$ means it's on the wrong side of the margin
+
+-   $\epsilon_i >1$ means it's on the wrong side of the hyperplane
+
+Since $C$ is the upper bound of the sum fo the $\epsilon_i$, it determines the number of severity of the violations to the margin (and hyperplane) that we can tolerate, which is like a budget for the amount that the margin can be violated by n observations [@james2013, p. 376]
+
+If $C = 0$, then there is no budget for violations and $\epsilon_i = 0, i = 1, \dots, n$ (which is just the [Maximal Marginal Classifier] if the classes are separable)
+
+If $C >0$, no more than $C$ observations can be on the wrong side of the hyperplane (recall, $\epsilon_i > 1$ if the observation is misclassified)
+
+As $C$ increases, we become more tolerant to violations of the margin, so the margin widens
+
+$C$ acts as a tuning parameter that controls the variance-bias trade-off and can be chosen by cross-validation
+
+-   $C$ small: narrow margins, few margin violations, low bias, high variance, fewer support vectors
+
+-   $C$ large: wide margins, more violations, more bias, but less variance, many support vectors
+
+Again, support vectors are those observations that are on or between the margins
+
+The fact that the support vector decision rule is based on a relative few observations (support vectors) means that it's relative **robust to the behavior of observations far away from the hyperplane**, which is different from the linear discrimination rules
+
+## Nonlinear Decision Boundaries
+
+Instead of fitting a support vector classifier using the $p$ features, $X_1, \dots, X_p$, we consider $2p$ features (linear and quadratic)
+
+$$
+X_1, X_1^2, \dots, X_p, X^2_p
+$$
+
+Then, the optimization problem become
+
+$$
+\underset{\beta_0,\dots, \beta_p, \epsilon_1, \dots, \epsilon_n}{\operatorname{max}}
+$$
+
+subject to
+
+$$
+y_i (\beta_0 + \sum_{j=1}^p \beta_{j1}x_{1j} + \sum_{j=1}^p \beta_{j2} x_{ij}^2) \ge M (1 - \epsilon_i), \forall i = 1, \dots, n
+$$
+
+$$
+\epsilon_i \ge 0 , \sum_{i=1}^n \epsilon_i \le C, \sum_{j = 1}^p \sum_{k = 1}^2 \beta_{jk}^2 = 1
+$$
+
+Although this is nonlinear (quadratic) in the original feature space, it's linear in the expanded (2p-dimensional) space
+
+Then, we could extend the feature space to be beyond quadratic terms, such as polynomials and interactions, or other functions of the predictors (e.g., basis)
+
+There are an infinite number of choices for such terms.\
+The support vector machine (svm) provides a principled way to enlarge the feature space used in a support vector classifier in a way that facilitates computation
+
+There are two things that make this tractable
+
+1.  Only the support vectors are relevant for determining the classification boundary
+2.  A kernel representation that is easily generalizable
+
+<br>
+
+## Support Vector Machines
+
+-   is an extension of the [Support Vector Classifiers] that results from enlarging the feature space to include transformations of the inputs using kernels
+
+Consider the collection of $m$ basis functions int terms of the features, $x$
+
+$$
+h(x_i) = (h_1(x_i), h_2(x_i), \dots, h_m (x_i))^T, i = 1, \dots, n
+$$
+
+Then,w e could use the [Support Vector Classifiers] to find the parameters $\hat{\beta}$ that minimize $f(x) = \beta_0 + h(x)^T \beta$
+
+Then, classification can be accomplished by $\hat{G}(x) = sign (\hat{f}(x))$
+
+Then, we can we choose the basis functions?
+
+We don't need to select basis function, but rather it's sufficient to choose a positive definite kernel function $K(x_i, x_{i'})$ which will imply a finite collection of basis functions
+
+**Reminder**
+
+Inner Products
+
+The inner product of two r-dimensional vectors a and b is defined as $<a,b> = \sum_{j=1}^r a_j b_j$
+
+Then, the inner product of two inputs $x_i$ and $x_i'$ is
+
+$$
+<x_i, x_i'> = \sum_{j= 1}^p x_{ij} x_{i'j}
+$$
+
+Importantly, we can represent a positive definite kernel in terms of the inner product of some set of basis functions:
+
+$$
+K(x_i, x_{i'}) = < h(x_i), h(x_{i'})>
+$$
+
+Example with a second-degree polynomial kernel
+
+$$
+K(x, \tilde{x}) = (1 + <x, \tilde{x}>)^2
+$$
+
+and $p = 2$; e.g., $x = (x_1, x_2), \tilde{x} = (\tilde{x}_1, \tilde{x}_2)$
+
+Then,
+
+$$
+\begin{aligned}
+K(x, \tilde{x}) &= (1 + < x, \tilde{x}>)^2 \\
+& = (1 + x_1 \tilde{x}_1 + x_2  \tilde{x}_2)^2 \\
+&= 1 + 2 x_1 \tilde{x}_1 + 2 x_2 \tilde{x}_2 + (x_1 \tilde{x}_1)^2 + (x_2 \tilde{x}_2)^2 + 2 x_1 \tilde{x}_1 x_2 \tilde{x}_2
+\end{aligned}
+$$
+
+If we write $K(x, \tilde{x}) = <h(x), h(\tilde{x})>$, we have $m = 6$ basis function with
+
+$$
+h_1(x) = 1 \\
+h_2(x) = \sqrt{2}x_1 \\
+h_3(x) = \sqrt{2}x_2 \\
+h_4 (x) = x_1^2 \\
+h_5 (x) = x_2^2 \\
+h_6(x) = \sqrt{2} x_1 x_2
+$$
+
+This is a powerful tool in regularized (penalized) modeling, known as **Reproducing Kernel Hilbert Spaces** (RKHS)
+
+### Regularization by RKHS
+
+[@hastie2001a, 5.8]
+
+In general, the regularization (penalized loss) problem is
+
+```{=tex}
+\begin{equation}
+(\#eq:reg1)
+\underset{f \in H}{\operatorname{min}} [ \sum_{i = 1}^n L(y_i, f(x_i)) + \lambda J(f)]
+\end{equation}
+```
+where
+
+-   $L(y_i, f(x_i))$ is the loss function
+
+-   $J(f)$ is a penalty function
+
+-   $H$ is a space of functions on which $J(f)$ is defined
+
+Consider a **positive define kernel** $K(x, \tilde{x})$ for $x, \tilde{x} \in R^p$, that has an eigen-expansion given by
+
+$$
+K(x, \tilde{x}) = \sum_{j=1}^\infty \delta_j \phi_j(x) \phi_j (\tilde{x})
+$$
+
+with eigenvalue $\delta_j >0, \sum_{j = 1}^\infty \delta^2_j < \infty$ and eigenfunctions $\{ \phi_j (.)\}$
+
+The idea is to use eigenfunctions as basis functions
+
+We seek functions $f(x)$ in terms of these eigenfunctions,
+
+$$
+f(x) = \sum_{j=1}^\infty c_j \phi_j (x)
+$$
+
+that satisfy the constraint that $J(f) = ||f||^2_{H_K} \equiv \sum_{j=1}^\infty c_j^2/\delta_j < \infty$
+
+This function space, $H_K$, is called a reproducing kernel Hilbert space because the inner product of K with itself gives $K$ (i.e., $<K(.,x_i), K(x,x_{i'})> = K(x_i, x_{i'})$ it reproduces itself)
+
+Then, we can rewrite the regularization problem as
+
+```{=tex}
+\begin{equation}
+(\#eq:reg2)
+\underset{\{c_j\}^\infty_1}{\operatorname{min}} [\sum_{i=1}^nL(y_i, \sum_{j = 1}^\infty c_j \phi_j (x_i)) + \lambda \sum_{j = 1}^\infty \frac{c_j^2}{\delta_j} ]
+\end{equation}
+```
+Even though we might think that we have **infinite** number of choices for $\phi_j$, the solution to the regularization problem here can be shown to be given by (**finite**)
+
+$$
+f(x) = \sum_{i=1}^n \alpha_i K(x, x_i)
+$$
+
+where (**finite**)
+
+$$
+J(f) = \sum_{i=1}^n \sum_{j=1}^n K(x_i, x_j) \alpha_i \alpha_j
+$$
+
+Critically, we note that **although the optimization function is infinite dimensional, this solution is finite-dimensional (this is the kernel trick in machine learning)**
+
+In fact, the infinite-dimensional optimization problem reduces to the following finite dimensional optimization problem
+
+```{=tex}
+\begin{equation}
+(\#eq:reg3)
+\underset{\alpha}{\operatorname{min}} [ L(\mathbf{y}, \mathbf{K\alpha})+ \lambda \mathbf{\alpha}^T \mathbf{K \alpha}]
+\end{equation}
+```
+where $\mathbf{K}$ is a matrix with $(i,j)$th entry given by $K(x_i, x_j)$
+
+This is powerful because it works for **any** (convex) loss function and **any** (positive definite) kernel function (from \@ref(eq:reg1) to \@ref(eq:reg2) to \@ref(eq:reg3) )
+
+This idea relates back to [Support Vector Machines] because all we need is the loss function associated with SVMs and to choose a positive definite kernel.
+
+It has been worked out that the loss function associated with the support vector classifier is given by $[1 - y_i f(x_i)]_+$ (where the "+" indicates the positive portion of the function in the brackets), which is called "hinge loss."
+
+Then the solution of the following constrained minimization problem gives the same estimates for $\beta$
+
+```{=tex}
+\begin{equation}
+(\#eq:reg4)
+\underset{\beta_0, \beta}{\operatorname{min}} [ \sum_{i=1}^n [1 - y_i f(x_i)]_+ + \frac{\lambda}{2}||\beta||^2]
+\end{equation}
+```
+where $\lambda$ is proportional to $C$ as before
+
+Suppose a basis set $\{ h_j(x) \}$ comes from the eigen-decomposition of $K(x, \tilde{x}) = \sum_{j = 1}^\infty \delta_j \phi_j (x) \phi_j (\tilde{x})$; hence $h_j(x) = \sqrt{\delta_j} \phi_j(x)$ Let $\delta_j \equiv \sqrt{\delta_j} \beta_j$, (recall that the desired function is an expansion in these basis functions), the minimization above can be written
+
+```{=tex}
+\begin{equation}
+(\#eq:reg5)
+\underset{\beta_0, \theta}{\operatorname{min}} [ \sum_{i=1}^n [1 - y_i (\beta_0 + \sum_{j=1}^\infty \theta_j \phi_j(x_i))]_+ + \frac{\lambda}{2} \sum_{j=1}^\infty \frac{\theta_j^2}{\delta_j}]
+\end{equation}
+```
+One of the strengths of the RKHS approach to the SVM problem is that the penalized loss approach suggests that it's fairly simple to consider any convex loss function. For example, using logistic regression as a classifier is similar to the SVM because the binomial deviance loss is similar to the hinge loss
+
+Then, the RKHS theory that we discussed gives a finite-dimensional solution ( \@ref(eq:reg3)) $f(x) = \beta_0 + \sum_{i=1}^n \alpha_i K(x, x_i)$, that equivalently minimizes
+
+```{=tex}
+\begin{equation}
+(\#eq:reg6)
+\underset{\beta_0, \alpha}{\operatorname{min}} [ [1 - y_i f(x_i)]_+ + \frac{\lambda}{2} \mathbf{\alpha}^T \mathbf{K \alpha}] 
+\end{equation}
+```
+For example, we chose a linear kernel, $K(x, x_i) = <x, x_i>$ (which is essentially the Pearson correlation), then we obtain the solution $f(x) = \beta_0 + \sum_{i=1}^n \alpha_i <x, x_i>$, which is just the [Support Vector Classifiers]
+
+For SVM analysis, we typically select a more complicated kernel to allow flexible classification boundaries. Common choices are:
+
+-   d-th degree polynomial kernel: $K(x, \tilde{x}) = (1 + <x, \tilde{x}>)^d$
+
+-   radial basis kernel (effectively is the Gaussian): $K(x, \tilde{x}) = \exp(-\gamma ||x - \tilde{x}||^2 )$
+
+-   neural network kernel: $K(x, \tilde{x}) = \tanh (\kappa_1 <x, \tilde{x}>+ \kappa_2)$
+
+The drawback is that you don't know which one to pick.
+
+An advantage of being able to use finite-dimensional kernel representation is that we only need to consider the $\binom{n}{2}$ distinct pairs of $x_i$ and $x_{i'}$ in the kernel matrix. Even though it can still be a large number of kernel, but it's certainly better than infinite.
+
+Moreover, $\alpha_i = 0$ if the observed feature vector $x_i$ is not a support vector, because the hinge loss function is 0 for observations for which $y_i f(x_i) \ge 1$, which are those on the correct side of the margin. This simplifies the calculation in the procedure and we write
+
+$$
+f(x) = \beta + \sum_{i \in S} \alpha_i K(x, x_i)
+$$
+
+where $S$ is the set of support vectors.
+
+It can be shown that for a given $\lambda$ that $\beta = (1/\lambda) \sum_{i \in S} \alpha_i y_i x_i$
+
+**Alternative Loss Functions**
+
+-   **Huberized loss**, which has some of the attractive features of the hinge loss (support points) and logistic regression (smooth loss function for which one can estimate probabilities probabilities) - good with outliers
+
+**Extensions to Multiple Classes**
+
+It isn't clear how we should extend the SVM machinery from the binary case to the multiple case The notion of a separating hyperplane is hard to generalize to more than two classes There are few possible approaches: (1) one-versus-one or (2) one-versus-all approaches
+
+The **one-versus-on approach** for $K > 2$ classes finds $\binom{K}{2}$ SVMs for each pair of classes. Then, given a new observation, each SVM classifier is used and one keeps track of the number of times the test observation was assigned to each class. The one that is assigned most frequently is chosen
+
+The **one-versus-all** (preferable) approach fits K different SVMs comparing each class to all of the others, thus getting K functions, $f_k(x), k = 1, \dots, K$. Given test observation $x^*$, one selects the class, k for which $f_k(x^*)$ is largest
+
+GIven that logistic regression gives similar results to SVMs for binary classes, a multinomial-logistic classifier (i.e., multinomial loss function) might be a better way to do classification for $K>2$
+
+### SVM Regression
+
+We can extend the SVm method to the case of continuous responses (regression), known as support vector machine regression Given the "loss plus penalty" paradigm, we can do this by looking for the $\beta$ coefficients in the function $f(x) = \beta_0 + x^T \beta$ relative to some loss function. To make it analogous to the SVM case, we need a loss function that accommodates something like the margin in the SVM case (i.e., we seek a loss function where only residuals larger in absolute value than some positive constant contribute to the loss):
+
+$$
+\underset{\beta_0, \beta}{\operatorname{min}} [ V_\epsilon (y_i - f(x_i)) + \frac{\lambda}{2}||\beta||^2]
+$$
+
+where
+
+$$
+V_\epsilon(r) \equiv
+\begin{cases}
+0, & \text{if } |r| < \epsilon \\
+|r|- \epsilon, & \text{otherwise}
+\end{cases}
+$$
+
+where errors $< \epsilon$ are ignored [@hastie2001a, 12.3.6]
+
+The SVM regression loss function is similar to other robust regression loss functions (e.g., the Huber loss)

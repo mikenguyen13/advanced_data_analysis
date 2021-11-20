@@ -2,13 +2,23 @@
 
 Readings:
 
--   [@james2013, Ch 10]
+-   [@james2013, Ch 10] with [(statlearning.com)](https://www.statlearning.com/) and [online course](https://www.dataschool.io/15-hours-of-expert-machine-learning-videos/)
 
 -   [@hastie2001a, Ch 11]
 
--   Deep Learning (Goodfellow, et al., 2016)
+-   [Deep Learning](https://www.deeplearningbook.org/) [@Goodfellow-et-al-2016]
 
--   Deep Learning with R (Chollet & Allaire, 2018)
+-   Deep Learning with R [@alma991043601650103276]
+
+-   @abdar2021
+
+-   @samek2021a
+
+<br>
+
+![](images/architecture.jpeg)
+
+[@jiao2020, p. 321]
 
 <br>
 
@@ -334,6 +344,48 @@ $$
 Q(.) = - \sum_l \sum_k \tilde{y}_{kl} \log(y_{kl})
 $$
 
+Example by [@james2013 Ch. 10]
+
+```{r}
+library(ISLR2)
+Gitters <- na.omit(Hitters)
+n <-nrow(Gitters)
+set.seed(13)
+ntest <- trunc(n/3)
+testid <- sample(1:n, ntest)
+
+```
+
+Get prediction error of the linear model
+
+```{r}
+lfit <- lm(Salary ~ ., data = Gitters[-testid,])
+lpred <- predict(lfit, Gitters[testid,])
+with(Gitters[testid,],mean(abs(lpred - Salary)))
+
+```
+
+```{r}
+x <- scale(model.matrix(Salary ~ . -1, data = Gitters)) 
+y <- Gitters$Salary
+
+```
+
+```{r}
+library(glmnet)
+cvfit <- cv.glmnet(x[-testid,], y[-testid],type.measure = "mae")
+cpred <- predict(cvfit, x[testid,], s = "lambda.min")
+mean(abs(y[testid] - cpred))
+```
+
+```{r}
+# library(keras)
+# modnn <- keras_model_sequential() %>% 
+#     layer_dense(units = 50, activation = "relu", input_shape = nocl(x)) %>% 
+#     layer_dropout(rate = 0.4) %>% 
+#     layer_dense(units = 1)
+```
+
 <br>
 
 ## Deep Neural Networks
@@ -542,3 +594,275 @@ For example, when applied to images (e..g, in a convolutional neural network), d
 -   Learning Rate: the actual learning rate is a function of both the "learning rate parameter" ($\epsilon$) and the minibatch size $M_b$. Hence, we adjust the ratio $\epsilon^* = \epsilon / M_b$ to find a good learning rate. In cases that you vary minibatch size, the learning rate is changed as well.
 
 -   Network Architecture: The number of layers and the number of hidden units at each layer are parameters as well. We need enough hidden units to capture features (these are really just feature extraction models), and we don't want "too many" (i.e., overfitting). Hence, this is where the "art" comes into deep models. In general, wide/shallow models are easier to overfit and narrow/deep models are easier to underfit. It's recommended that the lower levels have more hidden units.
+
+## Convolutional Neural Networks {#convolutional-neural-networks}
+
+-   A success story of multi-level neural networks
+
+-   The patterns they learn are translation invariant and they also learn spatial hierarchies of patterns (i.e., whereas densely connected network learn global patterns in their input space, convolution layers learn local patterns.
+
+### Convolution
+
+$$
+(f \times g) (t) = \int_{R^d} f(\tau) g(t - \tau) d \tau = \int_{R^d} f(t - \tau) g(\tau) d\tau
+$$
+
+Discrete convolution (e.g., $d = 2$)
+
+$$
+f[x, y ] \times g [x, y] = \sum_{i = - \infty}^\infty \sum_{j = - \infty}^\infty f[i,j] g[x-i, y - j]
+$$
+
+where $f[]$ is a "kernel" weight function that is applied to elements of the spatial image $g[]$ (similar to [Kernel Smoothing])
+
+The difference is that [Kernel Smoothing] integrates to 1 (or sum to 1 with discrete data), while [Convolution] we don't have to satisfy this constraint. Hence, sometimes people can refer to $f[]$ as "kernels" or "filters"
+
+**Notes**:
+
+-   Due to the edge effect (less data on edges), the convolved output is smaller. Hence, we can mitigate it by **padding** the original input space with 0 around edges (so that the convolution can be centered on every pixel value, thus giving a convolved feature map that is the same size as the original image).
+
+-   Ideally, we learn these kernels (filters) instead of specifying them (even though we have some standard specifications). Each of these filters convolved with the input space produces a new **feature map**. Typically, they are $3 \times 3$ or $5 \times 5$
+
+-   CNN reduces the parameter space by assuming there is **only one set of weights for each convolution**
+
+    -   Since weights are shared, we can benefit from dimension reduction in the parameter space
+
+    -   After learning the weights, we will use "pooling layer" (or "subsamplng" or "down sampling").
+
+-   **Tensors**: In practice, input (images) are often tensors. Hence, there is **a multivariate value** at each spatial location (pixel).
+
+    -   Example: in color images in RGB format, there are three values that define the pixel color. Then, CNNs consider a tensor convolution where the kernel averaging is over **location and the variables** (or, "channels" such as red, green, blue color value). Each layer of a CNN has "height, width, and depth" (i.e., 3-d). For black and white images, each pixel has one value, so the "depth" is 1.
+
+-   Hidden layers in the CNN will always have depth \>1 (in practice, this depth is way larger). The filter operates on a relatively small part of the image (in x and y), but across the entire depth; so the weights (in 3-d) form a tensor.
+
+-   **Stride**: When we skip pixels in convolution, it's called strides (less weights to understand and computation)
+
+-   Bach normalization: Since there are multiple filters for each layer, it is beneficial to normalize the convolved pixels across these multiple filters (for a given layer), or a subset of those filters, which should be applied immediately after the ReLU step. This can also help with gradient propagation and allow for deeper networks in general
+
+-   Data Augmentation: augmenting the samples by a number of random transformations that yield believable images
+
+-   Pretrained networks: using a saved network that was previously trained on a large dataset (e.g., ImageNet): the spatial hierarchy of features learned by the pretrained network can effectively act as a generic model of the visual world. To implement, you can either use it as
+
+    -   feature extraction: use the convolution base layer (which is "frozen") from the pre-trained model, and only train the flattened fully connected last layer(s)
+
+    -   fine-tuning: unfreezing the few top layers of the pre-trained model and jointly training both the newly added part of the model (the last fully connected layer) and the top layers. However, you can only fine-tune the top layers after the top level is already trained.
+
+Convolution calculation
+
+-   very expensive
+
+-   Traditional approach used the fast Fourier transform (FFT)
+
+Let $F(f), F(g)$ be the Fourier transforms of f and g. Then
+
+$$
+F(f \times g) = F(f)\cdot F(g) \\
+f \times g = F^{-1}(F(g) \cdot F(g))
+$$
+
+Thus, we do element-wise multiplication in Fourier space, which is way faster.
+
+### Pooling
+
+-   The pooling layer considers a small rectangular block from the convolutional step and subsamples it to produce a single output.
+
+-   Ways to do pooling
+
+    -   Block maximum ("max pooling") (favored): usually done with $2 \times 2$ windows and a stride of 2
+
+    -   BLock average (mean)
+
+    -   BLock weighted average
+
+    -   Downsampling (systemically subsampling one element per block)
+
+-   Pooling helps **make the network invariant to translations of the input**, especially when structure is more important than location
+
+-   **Rectification**: Convolved images typically go through a ReLU rectification ($ReLU(x) = max(0,x)$) before pooling
+
+### Structure and training
+
+-   Convolution step and the activations for the flattened layers requires training , while activation and pooling layers are typically specified (don't learn)
+
+-   The parameters for the convolutions for any given filter are the same for the entire feature map, which allows the presence of a shape in any part of the feature map to be processed the same way, regardless of its special location (i.e., translation invariant)
+
+-   Different from the convolution operator, the pooling operator applies to each feature map separately (i.e., don't pool across the depth dimension).
+
+-   Each feature in the final spatial layer is connected to each hidden state in the first fully connected layer, which works like the layers in the deep FNN. There can be multiple fully connected layers (but remember it can be expensive). Most of the parameters int the CNN correspond to these layers.
+
+-   In practice, the backpropagation algorithm can be implemented using matrix and vector multiplications.
+
+### Interpretation
+
+-   To visualize what CNNs learn (e.g., explainable AI), we can visualize
+
+    -   intermediate outputs (activations)
+
+    -   the intermediate filters
+
+    -   "heatmaps" of class activation on an image (related to "layer-wise relevance propagation", which operates by propagating the prediction backward in the neural network, using a set of purposely designed propagation rules),
+
+<br>
+
+## Recurrent Neural Networks
+
+-   Traditional neural networks ([CNNs](#convolutional-neural-networks)) don't account for the sequential dependence of inputs and outputs, such as
+
+    -   document and time series classification
+
+    -   time series comparisons
+
+    -   sequence-to-sequence learning (translation)
+
+    -   sentiment analysis in text
+
+    -   time series forecasting
+
+-   Statisticians considered sequential dependence long before in time-series and spatio-temporal modeling, but these model can still be limited when it comes to complex nonlinear or non-Markovian dependence
+
+-   RNNs were developed to handle feedback models for sequence data. Now, they become a successful deep learning method, particularly for language processing applications.
+
+-   RNNs are closely related to multivariate state-space models for dynamical systems (e.g., time series, econometric, or spatio-temporal statistics).
+
+Consider a classical dynamical system
+
+$$
+\mathbf{s}_t = f(\mathbf{s}_{t-1} ; \mathbf{\theta})
+$$
+
+where
+
+-   $\mathbf{s}_t$ represents the state of the system at time $t$
+
+-   This is called "recurrent" because the state at the time t is a function of the state at time $t-1$
+
+In "unfolded" form
+
+$$
+\begin{aligned}
+\mathbf{s}_t &= f(\mathbf{s}_{t-1}; \mathbf{\theta}) \\
+&= f(f(\mathbf{s}_{t-2}; \mathbf{\theta}); \mathbf{\theta}) \\
+&= f(f(f(\mathbf{s}_{t-3}; \mathbf{\theta}); \mathbf{\theta}); \mathbf{\theta}) \\
+&= \dots
+\end{aligned}
+$$
+
+Where parameters $\mathbf{\theta}$ are shared across all states
+
+Similar to traditional state space model, the states are considered "hidden" (denoted as $\mathbf{h}_t$) and add external inputs $\mathbf{x}_t$
+
+$$
+\mathbf{h}_t = f(\mathbf{h}_{t-1}, \mathbf{x}_t; \mathbf{\theta})
+$$
+
+Hence, sequences are processed by iterating through the sequence elements and maintaining a state (containing info relative to what it has seen so far via an internal feedback loop)
+
+![](images/unfold.png)
+
+(picture by @Goodfellow-et-al-2016 Ch. 10)
+
+Incorporating RNN with output
+
+![](images/unfold2.png)
+
+(picture by @Goodfellow-et-al-2016 Ch. 10)
+
+A basic RNN setup is
+
+$$
+\mathbf{y}_t = g_o (\mathbf{o}_t) \\
+\mathbf{o}_t = \mathbf{W}_{hy} \mathbf{h}_t \\
+\mathbf{h}_t = g_h (\mathbf{W}_{hh} \mathbf{h}_{t-1} + \mathbf{W}_{xh} \mathbf{x}_t)
+$$
+
+where
+
+-   $g_o(.), g_h(.)$ are activation functions
+
+-   $\mathbf{W}_{hy}, \mathbf{W}_{hh}, \mathbf{W}_{xh}$ are weight matrices (typically contain bias terms as well).
+
+To estimate these parameters, we still define loss function and optimize by backpropagation. However, with common parameters across time, they introduce some complications. To solve this,
+
+-   Traditionally, the **backpropagation through time** (BPTT) algorithm via stochastic gradient descent can handle. But it introduces the problem of **vanishing gradient/exploding gradient**: when the gradients get propagated over many times they tend to either (1) vanish (most of the time) or (2) explode
+
+    -   Even though there are ways to mitigate exploding gradient (to ensure stability), the series of dependencies through time can still lead to exponentially smaller weights
+
+-   Or we add "gates" that selectively allow info from the past to influence the present. These gates serve to save info for later, breaking the gradient
+
+### Long Short-Term Memory (LSTM) RNNs {#long-short-term-memory-lstm-rnns}
+
+-   This is the most common gated RNN.
+
+-   It creates time paths that have gradients that don't vanish or explode
+
+Setup
+
++------------------------+----------------------------------------------------------------------------------+
+| Name                   | Formula                                                                          |
++========================+==================================================================================+
+| Output                 | $\mathbf{y}_t = g_o(\mathbf{Vh}_t)$                                              |
++------------------------+----------------------------------------------------------------------------------+
+| Hidden State           | $\mathbf{h}_t = \tanh (\mathbf{c}_t) \odot \mathbf{o}$                           |
++------------------------+----------------------------------------------------------------------------------+
+| Internal Memory        | $\mathbf{c} = \mathbf{c}_{t-1} \odot \mathbf{f} + \mathbf{g} \odot \mathbf{i}$   |
+|                        |                                                                                  |
+|                        | (first part = forgetting, second part =new info)                                 |
++------------------------+----------------------------------------------------------------------------------+
+| Candidate Hidden State | $\mathbf{g} = \tanh (\mathbf{U}^g \mathbf{x}_t + \mathbf{W}^g \mathbf{h}_{t-1})$ |
++------------------------+----------------------------------------------------------------------------------+
+| Output Gate            | $\mathbf{o} = g(\mathbf{U}^o \mathbf{x}_t + \mathbf{W}^o \mathbf{h}_{t-1})$      |
++------------------------+----------------------------------------------------------------------------------+
+| Forget Gate            | $\mathbf{f} = g(\mathbf{U}^f \mathbf{x}_t + \mathbf{W}^f \mathbf{h}_{t-1})$      |
++------------------------+----------------------------------------------------------------------------------+
+| Input Gate             | $\mathbf{i} = g(\mathbf{U}^i \mathbf{x}_t + \mathbf{W}^i \mathbf{h}_{t-1})$      |
++------------------------+----------------------------------------------------------------------------------+
+
+where $g(.)$ is typically a sigmoid function and $\bigodot$ is Hadamard product (component-wise multiplication for matrices).
+
+-   The input gate selects hidden units that get input to time $t$
+
+-   The forget gate selects the hidden states at the previous time to reset to 0 at time $t$
+
+-   The output gate selects the states that will be related to the response
+
+-   The memory units indicate when to remember or forget previous hidden states, which will mitigate the vanishing/exploding gradient problem. And its assumption is also plausible because many processes that events in the distant past can influence presence irrespective of the intervening states.
+
+Application:
+
+-   Classification /Segmentation
+
+-   Object Detection/Localization
+
+-   Similarity learning
+
+-   Generative models
+
+-   Video analysis
+
+### Gated Recurrent Units
+
+| Name                   | Formula                                                                                             |
+|------------------------|-----------------------------------------------------------------------------------------------------|
+| Output                 | $\mathbf{y}_t = g_o (\mathbf{Vh}_t)$                                                                |
+| Hidden state           | $\mathbf{h}_t = (1- \mathbf{z}) \circ\mathbf{s}+\mathbf{z} \odot \mathbf{h}_{t-1}$                  |
+| Candidate Hidden State | $\mathbf{s} = \tanh (\mathbf{U}^s \mathbf{x}_t + \mathbf{W}^s (\mathbf{r} \odot \mathbf{h}_{t-1}))$ |
+| Reset Gate             | $\mathbf{r} = g(\mathbf{U}^r \mathbf{x}_t+ \mathbf{W}^r \mathbf{h}_{t-1})$                          |
+| Update Gate            | $\mathbf{z} = g(\mathbf{U}^z \mathbf{x}_t + \mathbf{W}^z \mathbf{h}_{t-1})$                         |
+
+If $\mathbf{r} = 1, \mathbf{z} = 0$, then it is the vanilla RNN
+
+Notes:
+
+-   [Long Short-Term Memory (LSTM) RNNs](#long-short-term-memory-lstm-rnns) and [Gated Recurrent Units] are computationally intensive to fit, and require parallelized implementation
+
+-   Similar to the standard [Deep Neural Networks] and [Convolutional Neural Networks](#convolutional-neural-networks) require a lot of data
+
+-   RNNs are more "black boxes" given their complexity, which has the benefit of making them modular and connectable, hence much deeper
+
+-   **Recurrent Dropout**: helps with overfitting. But it should not be applied before a recurrent layer as it measures information in the flow. Instead of allowing the dropout pattern to vary randomly with each time step, we use *the same pattern of dropout for every time step within the recurrent layer* (known as **recurrent dropout**). We can still use regular dropout for this input layers
+
+-   **Stacking Recurrent Layers**: Similar to [Deep Neural Networks] and [Convolutional Neural Networks](#convolutional-neural-networks), we can also improve learning and build more powerful RNNs by stacking the recurrent layers, but it can increase dramatically the cost of implementation.
+
+-   **Recurrent Attention**: [Recurrent Neural Networks] can't localize in certain regions of the sequence. Generally, a **neural attention mechanism** equips a neural network with the ability to focus on a subset of its inputs ([more detail](http://akosiorek.github.io/ml/2017/10/14/visual-attention.html)). [Recurrent Attention Unit](https://arxiv.org/abs/1810.12754) was described, which integrates an attention mechanisms into the interior of RNN by adding an attention gate. The attention gate enhances RNN's ability to remember long-term memory and help memory cells quickly discard unimportant content @zhong2020
+
+-   We can also use one-dimensional (1D) [CNNs](#convolutional-neural-networks) for sequence data. This method can be cheaper to implement, but not as good when **global order matters** (e.g., time series where the recent past has more info). However, it's not necessarily true for text data, 1D CNNs can outperform RNNs. People also combine 1D CNN layers and RNN layers (usually the CNN layer is first to reduce dimensionality) [@alma991043601650103276]

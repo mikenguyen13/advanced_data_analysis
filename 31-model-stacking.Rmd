@@ -2,6 +2,7 @@
 
 ```{r}
 library("finetune")
+knitr::opts_chunk$set(eval = FALSE)
 ```
 
 [@Kuhn_2014] for detail
@@ -30,15 +31,23 @@ library(stacks)
 library(dplyr)
 library(purrr)
 library(tune)
+library(ggplot2)
 ```
 
 ```{r}
 data("tree_frogs")
 # subset the data
+# drops <- c("clutch","hatched")
+# tree_frogs[ , !(names(tree_frogs) %in% drops)]
+
+
+
+# subset the data
 tree_frogs <- tree_frogs %>%
-    filter(!is.na(latency)) %>%
-    select(-c(clutch, hatched))
-library(ggplot2)
+  filter(!is.na(latency)) %>%
+  select(-c(clutch, hatched))
+    
+
 
 ggplot(tree_frogs) +
     aes(x = age, y = latency, color = treatment) +
@@ -187,7 +196,7 @@ Comparison between stacks and member model
 ```{r}
 member_preds <-
     tree_frogs_test %>%
-    select(latency) %>%
+    dplyr::select(latency) %>%
     bind_cols(predict(tree_frogs_model_st, tree_frogs_test, members = TRUE))
 ```
 

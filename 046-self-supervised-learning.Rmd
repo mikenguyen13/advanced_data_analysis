@@ -1,0 +1,390 @@
+# Self-Supervised and Contrastive Learning
+
+Self-supervised learning trains a model to predict some part of its input from another part, using the structure of unlabeled data as the supervision signal. There are no human labels. The labels are constructed automatically from the data itself, which is why the approach scales to the large unlabeled corpora that data teams already hold. The output of self-supervised training is not a classifier or a regressor. It is a learned representation: a function that maps raw inputs to vectors that make downstream tasks easier. Once a good representation exists, a small labeled dataset and a simple model (often a linear layer) are enough to solve the task you actually care about.
+
+This chapter covers the main families of self-supervised methods used in practice: pretext tasks, contrastive learning with the InfoNCE objective, the SimCLR and MoCo training recipes, the non-contrastive BYOL approach, and masked modeling as used by BERT and masked autoencoders. The recurring question is why a representation learned without labels transfers to tasks that have labels. We work through the InfoNCE loss in detail and give a runnable base-R demonstration that shows exactly how positive and negative pairs move the loss.
+
+> **Key idea:** Self-supervised learning does not solve your task directly. It learns a *representation*, a reusable map from raw input to a vector, and a small labeled step turns that representation into the model you need. Keep the two stages separate in your mind: learning the map, then using the map.
+
+> **Note:** "Self-supervised" and "unsupervised" are often used loosely, but they are not the same. Unsupervised learning (clustering, density estimation) has no target at all. Self-supervised learning invents a target from the input, so the machinery of supervised training (a loss, gradients, a prediction) still applies; only the labels are free.
+
+## Where This Fits in a Modern Workflow
+
+Most teams sit on far more unlabeled data than labeled data. Logs, images, documents, sensor traces, and user events accumulate continuously, while labeling is slow and expensive. Self-supervised learning turns the cheap, abundant resource into a pretrained representation, and reserves the scarce labels for a short fine-tuning step.
+
+A typical pipeline has three stages.
+
+1.  Pretrain. Train an encoder $f_\theta$ on unlabeled data with a self-supervised objective. This is the expensive step and it is done once, often by a separate team or downloaded as a public checkpoint.
+
+2.  Transfer. Freeze or lightly fine-tune $f_\theta$ and attach a small task head. With frozen features this is called *linear probing*: fit a linear model on top of $f_\theta(x)$. The quality of the representation is often reported as the accuracy of this linear probe.
+
+3.  Fine-tune. If labels are plentiful enough, unfreeze the encoder and train the whole stack at a low learning rate so the representation adapts to the task.
+
+> **Tip:** Most practitioners never run stage 1. The expensive pretraining is done once by a well-resourced lab and released as a public checkpoint, so your day-to-day work is stages 2 and 3 on top of someone else's encoder. Knowing how the encoder was trained still matters, because it tells you what the representation is invariant to and therefore what it will quietly ignore.
+
+This is the same shape as the transfer-learning workflow behind BERT for text and pretrained vision backbones for images. The difference from supervised pretraining is only the source of the training signal: the structure of the data instead of external labels.
+
+## Pretext Tasks
+
+The earliest self-supervised methods invent a *pretext task*: a supervised problem whose labels are free because they come from the data. Solving the pretext task well is not the goal. The goal is that the features the model builds while solving it are useful for real tasks.
+
+Examples that shaped the field:
+
+-   Context prediction. Given two image patches, predict their relative spatial arrangement. To answer, the model must recognize object parts and their layout.
+
+-   Rotation prediction. Rotate an image by $0, 90, 180,$ or $270$ degrees and predict the angle. Getting this right requires knowing the canonical orientation of objects.
+
+-   Colorization. Remove color and predict it back. The model has to associate textures and shapes with plausible colors.
+
+-   Jigsaw puzzles. Shuffle image tiles and predict the permutation.
+
+The weakness of hand-designed pretext tasks is that the model can exploit shortcuts.^[A *shortcut* is a low-level cue that solves the pretext task without requiring the semantic understanding you were hoping to induce. Chromatic aberration at image edges, for instance, can reveal a patch's original position and let a jigsaw solver cheat.] A rotation predictor might key on watermarks or sky-at-top cues rather than object structure. Contrastive and masked methods, covered next, are more robust because the supervision is harder to game.
+
+> **Intuition:** A pretext task is a teacher who sets a puzzle hoping the student learns something general while solving it. The risk is the same as in a classroom: the student may find a trick that aces the puzzle and teaches nothing. The methods that follow design puzzles where the only winning strategy is to actually understand the content.
+
+## Contrastive Learning and the InfoNCE Objective
+
+Contrastive learning replaces a single hand-built pretext task with a general principle: representations of two views of the same item should be close, and representations of different items should be far apart. "Close" and "far" are measured by a similarity in the representation space.
+
+### Views and the Similarity
+
+Start with an input $x$ and apply two random transformations to get two *views*, $\tilde x$ and $\tilde x^{+}$. For images the transformations are crops, color shifts, and blurs. For text they can be token masking or dropout. The pair $(\tilde x, \tilde x^{+})$ is a *positive pair*: two views of the same underlying item. Views of other items in the batch are *negatives*.
+
+An encoder $f_\theta$ maps a view to a vector, usually followed by a small projection head and an $\ell_2$ normalization so that every representation lies on the unit sphere.^[The *projection head* is a small network applied only during pretraining; the representation used downstream is taken from before it. Normalizing to the unit sphere means the dot product equals the cosine of the angle between two vectors, so similarity ranges from $-1$ to $1$ and does not depend on vector length.] Write the normalized representations as $z = f_\theta(\tilde x)$ and $z^{+} = f_\theta(\tilde x^{+})$ with $\lVert z \rVert = 1$. Similarity is the dot product (cosine similarity on the unit sphere),
+
+$$
+\operatorname{sim}(u, v) = u^\top v .
+$$
+
+### The Loss
+
+Consider a query $z$ with one positive $z^{+}$ and a set of negatives $\{z^{-}_1, \dots, z^{-}_K\}$. The InfoNCE loss, also called the normalized temperature-scaled cross-entropy loss, is
+
+$$
+\ell(z) = -\log \frac{\exp(z^\top z^{+} / \tau)}{\exp(z^\top z^{+} / \tau) + \sum_{k=1}^{K} \exp(z^\top z^{-}_k / \tau)} .
+$$
+
+The temperature $\tau > 0$ scales the similarities before the softmax. Read the fraction as a classification problem: among the $K+1$ candidates (one positive and $K$ negatives), which one is the true match for $z$? The loss is the cross-entropy of a softmax classifier that has to pick the positive. Minimizing it pushes $z^\top z^{+}$ up and pushes each $z^\top z^{-}_k$ down.
+
+> **Intuition:** Picture a lineup. The query $z$ is shown a row of candidates, exactly one of which is its partner view. InfoNCE rewards the encoder for confidently fingering the right partner. To win this game across many lineups, the encoder has no choice but to place each item's two views near each other and away from everyone else.
+
+The temperature controls how sharply the loss focuses on the hardest negatives. Small $\tau$ makes the softmax sharp, so negatives with high similarity to the query dominate the gradient. Large $\tau$ flattens the distribution and treats all negatives more equally. In practice $\tau$ is a sensitive hyperparameter, often near $0.1$.
+
+### Why It Learns a Useful Representation
+
+InfoNCE has an information-theoretic reading. Let $z$ and $z^{+}$ be representations of two views that share the same latent content. Minimizing the expected InfoNCE loss with $K$ negatives maximizes a lower bound on the mutual information between the two views,
+
+$$
+I(z; z^{+}) \; \ge \; \log(K+1) - \mathcal{L}_{\text{InfoNCE}} .
+$$
+
+The bound says the loss is a budget: pushing $\mathcal{L}_{\text{InfoNCE}}$ down raises the guaranteed floor on the shared information $I(z; z^{+})$, and more negatives ($K$ large) raise the ceiling $\log(K+1)$ that the floor can reach.^[Mutual information $I(z; z^{+})$ measures how much knowing one view tells you about the other, in bits or nats. The inequality is a *lower bound*: minimizing the loss cannot prove the information is high, but it does rule out it being low.] So driving the loss down forces the representation to keep whatever information is shared across views and discard what is not. The transformations are chosen so that the shared content is the semantic identity of the item (the object in an image, the meaning of a sentence) and the discarded part is nuisance variation (crop position, color jitter, exact wording). That is the mechanism behind transfer: the representation retains task-relevant structure because that structure is what survives across views, and it drops the nuisance factors that a downstream task would also want to ignore.
+
+A second, more geometric view comes from decomposing the loss. Writing it out, InfoNCE pushes for *alignment* (positives close) and *uniformity* (representations spread over the sphere so they stay distinguishable). The negatives supply the uniformity pressure. Without them, the encoder could map every input to the same point, drive all positive similarities to one, and make the loss small while learning nothing. This failure is called *representation collapse*, and avoiding it is the central design problem for the methods below.
+
+> **Warning:** Collapse is the recurring villain of self-supervised learning. Watch for it whenever a method has alignment pressure but weak or no uniformity pressure. The two terms are in tension: alignment alone wants to crush everything together, uniformity alone wants to scatter it, and a good representation is the balance between them.
+
+## SimCLR and MoCo: Two Ways to Get Negatives
+
+InfoNCE needs many negatives to give a strong uniformity signal and a tight mutual-information bound. The two influential recipes differ mainly in where the negatives come from.
+
+SimCLR uses the other items in the current minibatch as negatives. For a batch of $N$ items it makes two views of each, giving $2N$ views; for any view its positive is the other view of the same item and the remaining $2N-2$ views are negatives. This is simple and has no extra moving parts, but it needs large batches (thousands) to have enough negatives, which costs memory.
+
+MoCo (Momentum Contrast) decouples the number of negatives from the batch size. It keeps a queue of representations from recent batches to act as negatives, so the effective negative set is large even with a modest batch. The negatives are encoded by a second *momentum encoder* whose weights are an exponential moving average of the main encoder,
+
+$$
+\theta_{\text{key}} \leftarrow m \, \theta_{\text{key}} + (1 - m)\, \theta_{\text{query}}, \qquad m \in [0, 1) \text{ close to } 1 .
+$$
+
+The slow-moving key encoder keeps the queued representations consistent over time, which matters because they were computed by slightly older weights.
+
+> **When to use this:** Choose SimCLR when you can afford large batches and want the simplest pipeline. Choose MoCo when GPU memory caps your batch size but you still want many negatives; its queue lets a small batch see thousands of negatives accumulated over recent steps.
+
+## BYOL: Contrastive Without Negatives
+
+BYOL (Bootstrap Your Own Latent) removes negatives entirely and still avoids collapse. At first glance this should be impossible: with no negatives, what stops the encoder from mapping everything to one point? That puzzle is exactly what makes BYOL interesting. It uses two networks: an *online* network and a *target* network. The online network sees one view and is asked to predict the target network's representation of the other view. The target network is again an exponential moving average of the online network and is not trained by gradients.^[*Stop-gradient* means we treat the target's output as a fixed constant during backpropagation: gradients flow through the online branch only. The target's weights then change slowly through the moving average, not through the loss.]
+
+The objective is a regression toward the target representation, typically the squared error between $\ell_2$-normalized vectors,
+
+$$
+\mathcal{L}_{\text{BYOL}} = \big\lVert \, \overline{q(z)} - \overline{z^{+}_{\text{target}}} \, \big\rVert^2 ,
+$$
+
+where $q$ is a predictor on the online side and the bar denotes normalization. Two ingredients keep the trivial constant solution away: the extra predictor $q$ on only the online side breaks the symmetry between the two branches, and the stop-gradient on the target branch means the target does not chase the online network. The result is competitive with contrastive methods without ever forming a negative pair, which removes the large-batch and queue machinery. A related method, SimSiam, shows that even the moving-average target can be dropped if the stop-gradient and predictor are kept.
+
+## Masked Modeling
+
+Masked modeling is the dominant self-supervised approach for text and a strong one for images. The pretext task is to hide part of the input and reconstruct it from the rest.
+
+-   Masked language modeling, used by BERT, replaces a fraction of tokens with a `[MASK]` symbol and trains the model to predict the originals from the surrounding context. Because the model sees both left and right context, it learns bidirectional representations of meaning.
+
+-   Masked image modeling, used by the masked autoencoder (MAE), splits an image into patches, hides a large fraction (often 75 percent), and reconstructs the missing pixels from the visible patches. The high mask ratio forces the model to learn global structure rather than copy nearby pixels.
+
+> **Intuition:** Masked modeling is fill-in-the-blank. To guess the word hidden in "the cat sat on the ___," you need to understand the sentence, not just memorize letter frequencies. The reconstruction target is the original input itself, so there is nothing to collapse onto and no negatives to mine; the difficulty of the blanks does all the work.
+
+Masked modeling and contrastive learning sit at two ends of a spectrum. Contrastive methods compare whole-item representations and need carefully designed views and negatives. Masked methods predict missing parts and need a good masking scheme but no negatives and no paired augmentations. Both produce representations that transfer; which works better depends on the modality and the downstream task.
+
+## A Comparison of the Methods
+
+Table \@ref(tab:self-supervised-learning-method-comparison) summarizes how the families differ on the points that matter when you choose one.
+
+| Method | Pretext signal | Needs negatives | Collapse prevention | Main cost driver | Typical modality |
+|----|----|----|----|----|----|
+| Pretext task (rotation, jigsaw) | Predict a constructed label | No | Task is supervised | Shortcut features | Images |
+| SimCLR | InfoNCE on two views | Yes (in-batch) | Negatives give uniformity | Large batch size | Images |
+| MoCo | InfoNCE on two views | Yes (queue) | Negatives give uniformity | Queue and momentum encoder | Images |
+| BYOL / SimSiam | Predict target's view | No | Predictor plus stop-gradient | Tuning stability | Images |
+| BERT (masked LM) | Reconstruct masked tokens | No | Reconstruction target | Sequence length | Text |
+| MAE (masked image) | Reconstruct masked pixels | No | Reconstruction target | High mask ratio decode | Images |
+
+Table: (\#tab:self-supervised-learning-method-comparison) Comparison of self-supervised learning families across pretext signal, reliance on negatives, collapse prevention, main cost driver, and typical modality.
+
+## Demonstration: InfoNCE on Toy Vectors in Base R
+
+The demonstration builds the InfoNCE loss from scratch on small vectors so the mechanics are visible. We create a few items, make two noisy views of each, normalize, and compute the loss. We then show how the loss responds when the positive is made more similar and when a hard negative is introduced. Everything runs in base R.
+
+> **Note:** The point here is not to train a useful model on toy data; it is to watch the loss react to changes you control, so the abstract claims above become concrete numbers. Treat each chunk as a small experiment with a prediction attached.
+
+```{r infonce-setup}
+set.seed(1)
+
+# l2-normalize the rows of a matrix so each representation lies on the unit sphere
+l2_normalize <- function(M) {
+    norms <- sqrt(rowSums(M^2))
+    M / norms
+}
+
+# InfoNCE loss for a batch where row i of Z and row i of Zpos form a positive pair.
+# All other rows of Zpos act as negatives for query i (in-batch negatives, SimCLR style).
+info_nce <- function(Z, Zpos, tau = 0.1) {
+    Z <- l2_normalize(Z)
+    Zpos <- l2_normalize(Zpos)
+    # similarity matrix: S[i, j] = sim(query i, candidate j)
+    S <- (Z %*% t(Zpos)) / tau
+    n <- nrow(Z)
+    losses <- numeric(n)
+    for (i in seq_len(n)) {
+        logits <- S[i, ]               # candidate i is the positive for query i
+        m <- max(logits)               # log-sum-exp for numerical stability
+        log_denom <- m + log(sum(exp(logits - m)))
+        losses[i] <- -(logits[i] - log_denom)
+    }
+    mean(losses)
+}
+```
+
+```{r infonce-batch}
+# d-dimensional latent identity for each of n items
+n <- 6
+d <- 8
+items <- matrix(rnorm(n * d), nrow = n)
+
+# two views = item identity plus independent noise
+make_view <- function(items, noise_sd) {
+    items + matrix(rnorm(length(items), sd = noise_sd), nrow = nrow(items))
+}
+
+Z    <- make_view(items, noise_sd = 0.3)
+Zpos <- make_view(items, noise_sd = 0.3)
+
+loss_baseline <- info_nce(Z, Zpos, tau = 0.1)
+loss_baseline
+```
+
+The baseline loss is well above zero because the views are noisy and the negatives are other random items. Now hold the negatives fixed but make the positive view a cleaner copy of the item. The loss should drop, since the positive becomes easier to identify.
+
+```{r infonce-cleaner-positive}
+Zpos_clean <- make_view(items, noise_sd = 0.05)   # tighter positive
+loss_clean_pos <- info_nce(Z, Zpos_clean, tau = 0.1)
+
+c(noisy_positive = loss_baseline, clean_positive = loss_clean_pos)
+```
+
+Next, inject a *hard negative*: an item whose view is deliberately placed near query 1's representation. A hard negative competes with the true positive in the denominator and pushes the loss up.
+
+```{r infonce-hard-negative}
+Z2    <- Z
+Zpos2 <- Zpos
+# overwrite item 2's positive view to sit close to item 1's query
+Zpos2[2, ] <- Z[1, ] + rnorm(d, sd = 0.02)
+
+loss_hard_neg <- info_nce(Z2, Zpos2, tau = 0.1)
+c(baseline = loss_baseline, with_hard_negative = loss_hard_neg)
+```
+
+Finally, sweep the temperature to see its effect with the hard negative present. Small $\tau$ sharpens the softmax and lets the hard negative dominate, raising the loss; larger $\tau$ smooths it out.
+
+```{r infonce-temperature}
+taus <- c(0.05, 0.1, 0.2, 0.5, 1.0)
+loss_by_tau <- sapply(taus, function(t) info_nce(Z2, Zpos2, tau = t))
+data.frame(tau = taus, loss = round(loss_by_tau, 4))
+```
+
+### A Figure: Positive Similarity Versus Loss
+
+To see the alignment pressure directly, we vary how closely the positive view matches the query (by shrinking the positive's noise) and plot the resulting loss. As positives align better, the InfoNCE loss falls. Figure \@ref(fig:self-supervised-learning-positive-similarity) shows this relationship.
+
+```{r self-supervised-learning-positive-similarity, fig.cap="InfoNCE loss as positive views become cleaner copies of the item. Lower noise means tighter alignment of positive pairs and a smaller loss.", fig.width=6, fig.height=4}
+library(ggplot2)
+
+noise_grid <- seq(0.6, 0.02, length.out = 25)
+set.seed(7)
+loss_curve <- sapply(noise_grid, function(s) {
+    Zq <- make_view(items, noise_sd = 0.3)
+    Zp <- make_view(items, noise_sd = s)
+    info_nce(Zq, Zp, tau = 0.1)
+})
+
+df <- data.frame(positive_noise = noise_grid, loss = loss_curve)
+
+ggplot(df, aes(positive_noise, loss)) +
+    geom_line(color = "#2c7fb8", linewidth = 1) +
+    geom_point(color = "#2c7fb8", size = 1.5) +
+    scale_x_reverse() +
+    labs(
+        x = "positive view noise (smaller = better aligned)",
+        y = "InfoNCE loss",
+        title = "Tighter positive pairs lower the contrastive loss"
+    ) +
+    theme_minimal(base_size = 12)
+```
+
+The curve falls as the positive noise shrinks, which is the alignment term of the loss at work. The negatives, held at random positions, supply the floor: the loss does not go to zero because the query must still beat real competing items.
+
+## A Minimal Gradient Step on the Contrastive Objective
+
+The experiments above poked at a fixed loss. To show that the loss can actually *train* a representation, we run a few steps of gradient descent on a tiny linear encoder using a numerical gradient.^[We use a *finite-difference* gradient: nudge each weight by a tiny $\varepsilon$ and measure how the loss changes. Real systems use automatic differentiation, which is exact and far faster, but the finite-difference version keeps the code short and free of extra packages.] The encoder is a matrix $W$ that maps raw inputs to representations; we minimize InfoNCE over a batch and watch the loss decrease. This uses only base R.
+
+```{r infonce-train}
+set.seed(3)
+n <- 8; p <- 10; d <- 4
+raw_items <- matrix(rnorm(n * p), nrow = n)
+
+# build two raw views by adding noise in input space
+raw_view <- function(items, sd) items + matrix(rnorm(length(items), sd = sd), nrow = nrow(items))
+X1 <- raw_view(raw_items, 0.3)
+X2 <- raw_view(raw_items, 0.3)
+
+# encoder is a p x d matrix; representation = X %*% W
+loss_W <- function(W, tau = 0.1) {
+    Z    <- X1 %*% matrix(W, nrow = p)
+    Zpos <- X2 %*% matrix(W, nrow = p)
+    info_nce(Z, Zpos, tau = tau)
+}
+
+W <- rnorm(p * d, sd = 0.5)            # flattened weights
+lr <- 0.5
+eps <- 1e-4
+trace <- numeric(40)
+
+for (step in seq_len(40)) {
+    base <- loss_W(W)
+    trace[step] <- base
+    grad <- numeric(length(W))
+    for (j in seq_along(W)) {           # finite-difference gradient
+        Wj <- W; Wj[j] <- Wj[j] + eps
+        grad[j] <- (loss_W(Wj) - base) / eps
+    }
+    W <- W - lr * grad
+}
+
+c(loss_start = round(trace[1], 4), loss_end = round(loss_W(W), 4))
+```
+
+The loss drops over the steps, which means the encoder $W$ has learned a linear map under which the two views of each item land near each other and away from other items. That is a representation trained with no labels, only the positive-and-negative structure built from the data.
+
+## Practical Guidance and Pitfalls
+
+The methods differ in detail, but the failure modes and tuning levers are shared. The guidance below is organized from "should I use this at all" down to the knobs you turn once you have committed.
+
+When self-supervised learning pays off. Reach for it when unlabeled data is abundant and labels are scarce or expensive, when you need one representation to serve several downstream tasks, or when a public pretrained checkpoint already exists for your modality. If you have plenty of labels for a single fixed task, plain supervised learning is usually simpler and at least as good.
+
+Augmentations are the design surface for contrastive methods. The representation keeps what is invariant across views, so the choice of transformations decides what the representation ignores. Augmentations that are too weak make the positive task trivial and the features uninformative. Augmentations that destroy the content (for example, a crop that removes the object) create false positives and corrupt training. Tuning augmentations is often more important than tuning the network.
+
+Watch for collapse. If all representations drift to one point, contrastive loss falls but the features are useless. Symptoms include very low loss with near-zero variance across a batch and a linear probe that performs at chance. Monitor the standard deviation of representations and the rank of their covariance, not just the loss.
+
+> **Warning:** A falling loss is not proof of progress. The cheapest way for any of these methods to lower the loss is to collapse, and a collapsed encoder reports a beautiful loss curve right up until you measure the linear probe and find it at chance. Always track a representation-diversity metric alongside the loss.
+
+Negatives and batch size interact. SimCLR needs large batches for enough negatives; if you cannot afford that memory, use MoCo's queue or a non-contrastive method like BYOL or SimSiam. Beware of *false negatives*: two different items that are genuinely similar get pushed apart, which can hurt.
+
+Temperature matters. Small $\tau$ emphasizes hard negatives and can speed learning but is unstable; large $\tau$ is gentler but may underfit. Treat $\tau$ as a first-class hyperparameter and tune it.
+
+Evaluate with a frozen linear probe. The standard, comparable measure of representation quality is the accuracy of a linear model on frozen features. Report it before deciding to fine-tune, because a strong probe means the representation already carries the task signal.
+
+The pretext objective is not the metric you care about. A model can ace masked prediction or contrastive matching and still transfer poorly. Always validate on the actual downstream task.
+
+## A Larger Encoder With Keras (Not Run Here)
+
+The base-R demonstration uses a linear encoder and a finite-difference gradient so the idea is transparent. A real contrastive setup uses a deep encoder, a projection head, and automatic differentiation. The code below sketches a SimCLR-style training step in Keras. It is set `eval=FALSE` because it needs the Python backend, but it is the idiomatic shape of such a model.
+
+```{r simclr-keras, eval=FALSE}
+library(keras)
+library(tensorflow)
+
+input_dim <- 64L
+proj_dim  <- 32L
+tau       <- 0.1
+
+# encoder plus projection head
+make_encoder <- function() {
+    keras_model_sequential() |>
+        layer_dense(256, activation = "relu", input_shape = input_dim) |>
+        layer_dense(256, activation = "relu") |>
+        layer_dense(proj_dim)
+}
+encoder <- make_encoder()
+
+# NT-Xent / InfoNCE loss for a batch of 2N projected, l2-normalized views
+nt_xent <- function(z1, z2, tau) {
+    z1 <- tf$math$l2_normalize(z1, axis = 1L)
+    z2 <- tf$math$l2_normalize(z2, axis = 1L)
+    z  <- tf$concat(list(z1, z2), axis = 0L)            # shape (2N, proj_dim)
+    sim <- tf$matmul(z, z, transpose_b = TRUE) / tau    # (2N, 2N)
+    n2  <- tf$shape(z)[1]
+    # mask out self-similarity on the diagonal
+    mask <- tf$eye(n2) * -1e9
+    sim  <- sim + mask
+    N <- tf$shape(z1)[1]
+    # positive of row i is its partner view
+    targets <- tf$concat(list(tf$range(N) + N, tf$range(N)), axis = 0L)
+    loss <- tf$nn$sparse_softmax_cross_entropy_with_logits(labels = targets, logits = sim)
+    tf$reduce_mean(loss)
+}
+
+optimizer <- optimizer_adam(learning_rate = 1e-3)
+
+train_step <- function(view1, view2) {
+    with(tf$GradientTape() %as% tape, {
+        z1 <- encoder(view1)
+        z2 <- encoder(view2)
+        loss <- nt_xent(z1, z2, tau)
+    })
+    grads <- tape$gradient(loss, encoder$trainable_variables)
+    optimizer$apply_gradients(purrr::transpose(list(grads, encoder$trainable_variables)))
+    loss
+}
+
+# for (batch in dataset) train_step(batch$view1, batch$view2)
+```
+
+## Summary
+
+The thread tying this chapter together is that a learning signal can come from the structure of the data instead of from labels. Pretext tasks invent a puzzle and hope useful features fall out. Contrastive methods make that hope precise: pull views of the same item together, push different items apart, and (through the InfoNCE bound) keep the information shared across views. SimCLR and MoCo are two ways to supply the negatives that prevent collapse, BYOL and SimSiam show negatives are not strictly required if a predictor and stop-gradient break the symmetry, and masked modeling sidesteps the whole question by reconstructing hidden parts of the input. Across all of them the workflow is the same: pretrain once, then probe or fine-tune with the few labels you have. When you apply these methods, judge the representation by a frozen linear probe on the real task, not by the pretext loss, and keep an eye out for collapse the entire way.
+
+## Further Reading
+
+-   Oord, Li, and Vinyals (2018), "Representation Learning with Contrastive Predictive Coding," introduce the InfoNCE objective and the mutual-information lower bound.
+
+-   Chen, Kornblith, Norouzi, and Hinton (2020), "A Simple Framework for Contrastive Learning of Visual Representations" (SimCLR), study augmentations, the projection head, temperature, and batch size.
+
+-   He, Fan, Wu, Xie, and Girshick (2020), "Momentum Contrast for Unsupervised Visual Representation Learning" (MoCo), introduce the queue of negatives and the momentum encoder.
+
+-   Grill and colleagues (2020), "Bootstrap Your Own Latent" (BYOL), show that strong representations can be learned without negative pairs.
+
+-   Chen and He (2021), "Exploring Simple Siamese Representation Learning" (SimSiam), isolate the stop-gradient and predictor as the ingredients that prevent collapse.
+
+-   Devlin, Chang, Lee, and Toutanova (2019), "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding," establish masked language modeling for text.
+
+-   He, Chen, Xie, Li, Dollar, and Girshick (2022), "Masked Autoencoders Are Scalable Vision Learners" (MAE), show high-ratio masked reconstruction for images.
+
+-   Wang and Isola (2020), "Understanding Contrastive Representation Learning through Alignment and Uniformity on the Hypersphere," give the alignment-and-uniformity decomposition of the contrastive loss.

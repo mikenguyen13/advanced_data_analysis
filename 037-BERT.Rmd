@@ -1,0 +1,317 @@
+# BERT
+
+Most of the methods in this book expect their inputs as numbers: a row of
+predictors, a design matrix, a feature vector. Text does not arrive in that form.
+A product review, a clinical note, or a news headline is just a string of
+characters, and before any classifier or regressor can use it we need a way to
+turn that string into numbers that capture what it *means*. This chapter is about
+one of the most effective tools for doing exactly that.
+
+BERT (Bidirectional Encoder Representations from Transformers) is a family of
+pretrained language models that produce *contextual* representations of text.
+Introduced by Google in 2018, BERT became one of the foundational tools for
+modern natural language processing (NLP)^[Natural language processing is the
+branch of machine learning concerned with getting computers to work with human
+language: classifying it, extracting information from it, translating it, or
+generating it.] and remains a workhorse for prediction tasks where the input is
+text: document classification, sentiment analysis, named-entity recognition, and
+question answering.
+
+For a prediction-focused course, the key idea is this: BERT lets you turn raw
+text into high-quality numeric features (embeddings) that you can feed into a
+downstream classifier or regressor, *or* fine-tune the whole network end-to-end
+for your specific task. Either way, you inherit knowledge learned from a massive
+text corpus without having to train a language model yourself.
+
+> **Key idea:** BERT is a reusable "text-to-numbers" engine. Someone else paid
+> the enormous cost of teaching it language; you reuse the result, either as
+> off-the-shelf features or as a starting point you nudge toward your own task.
+
+By the end of this chapter you will understand what makes BERT's representations
+"contextual," the core mechanics of the Transformer encoder it is built from, how
+it is trained before you ever see it, and how to put it to work from both R and
+Python. We begin with the idea that motivated the whole approach: the difference
+between a fixed word vector and one that pays attention to context.
+
+## From Static to Contextual Embeddings
+
+Earlier word-embedding methods such as word2vec and GloVe map each word
+type to a single fixed vector. The word "bank" gets *one* vector regardless of
+whether the sentence is about a *river bank* or a *savings bank*. These are
+static embeddings: useful, but blind to context.
+
+BERT instead produces contextual embeddings. The vector it assigns to a token
+depends on the entire surrounding sentence, so "bank" in "river bank" and "bank"
+in "deposit money in the bank" receive different representations. This sensitivity
+to context is what makes BERT dramatically more powerful than static embeddings on
+tasks that hinge on meaning in context.
+
+The word *bidirectional* in the name is central. Earlier contextual models (e.g.,
+left-to-right language models) read text in one direction. BERT conditions each
+token's representation on words to both its left and its right
+simultaneously, giving a fuller picture of context.
+
+> **Intuition:** To guess the missing word in "I deposited my check at the
+> \_\_\_," reading only left-to-right ("I deposited my check at the") already
+> points strongly toward "bank." But for "the \_\_\_ overflowed after three days
+> of rain," you need the words *after* the blank to tell that this is a river,
+> not a vault. Seeing both sides at once is what lets BERT resolve meaning that a
+> one-directional reader would miss.
+
+Now that we know *what* BERT produces, let us look at the machinery that produces
+it.
+
+## The Transformer Encoder
+
+BERT is built entirely from the encoder half of the Transformer architecture.
+You do not need the full mathematical machinery to use BERT, but the following
+intuitions are worth carrying.
+
+### Self-Attention
+
+The core operation is self-attention. For each token, the model computes how
+much it should "attend to" every other token in the sequence, then forms a
+weighted combination of their representations. Concretely, each token is projected
+into a query ($Q$), a key ($K$), and a value ($V$) vector, and
+attention weights are computed as a scaled dot product:
+
+$$
+\text{Attention}(Q, K, V) = \text{softmax}\!\left(\frac{QK^\top}{\sqrt{d_k}}\right) V
+$$
+
+where $d_k$ is the dimension of the key vectors and the $\sqrt{d_k}$ term keeps the
+dot products from growing too large. The softmax turns the similarities between a
+query and all keys into a probability distribution; the output is the
+correspondingly weighted average of the values. The practical effect: a token can
+pull in information from any other token in the sentence, no matter how far away,
+in a single step.
+
+> **Intuition:** A useful mental model is a small lookup or search. Each token
+> issues a query ("which other words should I be paying attention to?"), every
+> token advertises a key ("here is what I am about"), and the dot product between
+> query and key measures how well they match. The softmax converts those match
+> scores into weights that sum to one, and the token then collects a weighted mix
+> of the values. The word "it" can thereby reach back and grab information from
+> the noun it refers to, even if that noun sat ten words earlier.
+
+### Multi-Head Attention and Positional Encodings
+
+A single round of attention is powerful but limited: it produces one pattern of
+"who attends to whom." Two refinements address that limitation and a structural
+blind spot of attention.
+
+- Multi-head attention. Rather than computing attention once, the model runs
+  several attention "heads" in parallel, each with its own learned projections.
+  Different heads can specialize, e.g., one tracking syntactic dependencies,
+  another tracking coreference. Their outputs are concatenated and recombined.
+- Positional encodings. Self-attention is permutation-invariant: on its own it
+  has no notion of word order. BERT adds (learned) positional embeddings to the
+  token embeddings so the model knows which token is first, second, and so on.
+
+Stacking many such attention-plus-feed-forward layers (12 layers in BERT-base, 24
+in BERT-large) yields a deep network whose hidden states are the contextual
+representations we use downstream.
+
+> **Note:** You do not have to memorize these mechanics to use BERT effectively.
+> What matters for practice is the consequence: every token's output vector is a
+> context-aware summary that has already had the chance to look at every other
+> token in the input.
+
+## Pretraining Objectives
+
+An architecture alone learns nothing; the network only becomes useful after it is
+trained. BERT is pretrained on a large unlabeled corpus (originally English
+Wikipedia and the BooksCorpus) using two self-supervised objectives.
+"Self-supervised" means the labels come from the text itself, so no manual
+annotation is required.
+
+> **Why this matters:** Labeled text is expensive, but raw text is essentially
+> free and almost unlimited. Self-supervision lets BERT learn from billions of
+> words without anyone hand-labeling a single one, which is precisely why the
+> pretrained model carries so much general linguistic knowledge.
+
+### Masked Language Modeling (MLM)
+
+A random subset (roughly 15%) of input tokens is replaced with a special `[MASK]`
+token, and the model is trained to predict the original tokens from context. Because
+it must use both left and right context to fill in the blanks, MLM is what gives
+BERT its deep bidirectional understanding. This is analogous to a cloze
+("fill-in-the-blank") test.
+
+### Next Sentence Prediction (NSP)
+
+BERT is also given pairs of sentences and trained to predict whether the second
+sentence actually followed the first in the original text or was a random
+distractor. NSP was intended to help with tasks that involve relationships between
+sentences (e.g., question answering, natural-language inference). Later work (notably
+RoBERTa) found NSP contributes little, and many successors drop it. It is still
+worth knowing as part of the original recipe.
+
+## Tokenization and Special Tokens
+
+BERT does not operate on whole words. It uses WordPiece tokenization, which
+splits text into subword units drawn from a fixed vocabulary. Rare or unseen words
+are broken into known pieces (e.g., "playing" $\rightarrow$ "play" + "##ing"). This
+keeps the vocabulary manageable while avoiding out-of-vocabulary tokens entirely.
+
+Beyond the ordinary subword tokens, two special tokens do bookkeeping that you
+will see referenced constantly in code and tutorials:
+
+- `[CLS]` is prepended to every input. Its final-layer hidden state is used as
+  an aggregate, sentence-level representation for classification tasks.
+- `[SEP]` separates segments (e.g., the two sentences in a pair, or a question
+  and a passage).
+
+> **Tip:** When you see code grab "index 0" of the hidden states (as in the
+> Python example below), that is the `[CLS]` vector being used as a single
+> fixed-length summary of the whole input. It is the most common way to reduce a
+> variable-length sentence to one feature vector.
+
+## Pretrain then Fine-Tune
+
+The defining paradigm is pretrain $\rightarrow$ fine-tune:
+
+1. Pretrain once, expensively, on a huge corpus (done by the model's authors;
+   you download the result).
+2. Fine-tune cheaply on your labeled task by adding a small task-specific head
+   (often a single linear layer on top of the `[CLS]` representation) and training
+   the whole network for a few epochs on your data.
+
+This transfer-learning recipe is why BERT is so practical: the heavy lifting of
+learning language is amortized across everyone who reuses the pretrained weights.
+Fine-tuning typically needs only modest amounts of labeled data and compute.^[The
+original pretraining ran for days on many specialized accelerators. Fine-tuning a
+task-specific head, by contrast, is often a matter of minutes to a few hours on a
+single GPU, and sometimes feasible on a CPU for small datasets.]
+
+> **When to use this:** Reach for the pretrain-then-fine-tune recipe when you
+> have a text-prediction task and only a modest labeled dataset (say, a few
+> hundred to a few tens of thousands of examples). If you have so little labeled
+> data that even fine-tuning overfits, fall back to using BERT purely as a frozen
+> feature extractor and train a simple model on top.
+
+## Downstream Tasks and Why BERT Transfers Well
+
+Once the network is fine-tuned, the same backbone supports several families of
+prediction tasks; the difference is mainly which hidden states the task head
+reads and what it predicts from them.
+
+- Sequence classification (sentiment, topic, spam): use the `[CLS]` vector with
+  a classification head.
+- Token classification / Named-Entity Recognition (NER): attach a classifier to
+  each token's representation to label spans (person, location, organization).
+- Question answering (e.g., SQuAD-style extractive QA): predict the start and end
+  positions of the answer span within a passage.
+
+BERT transfers well because pretraining forces it to encode broad, reusable
+linguistic structure (syntax, semantics, some world knowledge) into its hidden
+states. A downstream task then mostly needs to learn how to *read off* the relevant
+parts of that representation rather than learning language from scratch.
+
+## Practical Use in R and Python
+
+With the concepts in place, here is how you actually call BERT. In Python, the
+standard interface is Hugging Face
+[`transformers`](https://huggingface.co/docs/transformers), which provides
+pretrained weights and tokenizers for BERT and its many variants. In R, the
+[`text`](https://www.r-text.org/) package wraps Hugging Face models (via
+reticulate, which bridges R and Python) so you can obtain embeddings or
+predictions without leaving R.
+
+> **Warning:** The chunks below are shown with `eval = FALSE` because they
+> require a Python backend (transformers and PyTorch) and download large model
+> weights on first use. To run them yourself, install the backend once with
+> `text::textrpp_install()` in R, or `pip install transformers torch` for the
+> Python version, and expect the first call to fetch several hundred megabytes.
+
+A minimal R sketch using the `text` package to obtain contextual embeddings:
+
+```{r, eval = FALSE}
+# install.packages("text")
+library(text)
+
+# One-time setup: installs the Python backend (transformers, torch) in a
+# managed conda environment via reticulate.
+textrpp_install()
+textrpp_initialize()
+
+sentences <- c(
+  "The river bank was flooded after the storm.",
+  "She deposited her paycheck at the bank."
+)
+
+# Contextual embeddings from a pretrained BERT model.
+embeddings <- textEmbed(
+  texts = sentences,
+  model = "bert-base-uncased"
+)
+
+# `embeddings$texts` holds per-sentence numeric features you can feed
+# into any downstream model (e.g., glmnet, ranger, xgboost).
+str(embeddings$texts)
+```
+
+The equivalent in Python, for comparison:
+
+```{python, eval = FALSE}
+from transformers import AutoTokenizer, AutoModel
+import torch
+
+tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+model = AutoModel.from_pretrained("bert-base-uncased")
+
+inputs = tokenizer("She deposited her paycheck at the bank.",
+                   return_tensors="pt")
+with torch.no_grad():
+    outputs = model(**inputs)
+
+# Last hidden state: (batch, tokens, hidden_size).
+# The [CLS] vector (index 0) is a common sentence-level feature.
+cls_embedding = outputs.last_hidden_state[:, 0, :]
+```
+
+For an end-to-end classification task, you would instead load
+`AutoModelForSequenceClassification`, attach your labels, and fine-tune with the
+Hugging Face `Trainer` API or PyTorch directly.
+
+## Variants
+
+The original BERT was a starting point, not a final word. Researchers quickly
+found that the same architecture could be trained better, made smaller, or
+specialized to a domain, and the result is a large family of models you will
+encounter in practice. The most common ones are these.
+
+- RoBERTa removes NSP, trains longer on more data with larger batches, and
+  generally outperforms the original BERT.
+- DistilBERT is a smaller, faster model distilled from BERT, retaining most of
+  the accuracy at a fraction of the size, useful when latency or memory is tight.
+- Domain-specific BERTs retrain or continue pretraining on specialized corpora,
+  e.g., BioBERT (biomedical), SciBERT (scientific text), FinBERT
+  (finance), and ClinicalBERT (clinical notes).
+
+For most prediction problems, a sensible default is to start with a small
+pretrained model (e.g., DistilBERT) for fast iteration, then scale up to a larger
+or domain-specific model only if accuracy demands it.
+
+## Summary
+
+BERT turns text into context-aware numeric features by stacking Transformer
+encoder layers whose self-attention lets every token attend to every other token.
+It learns this skill once, through self-supervised pretraining (masked language
+modeling, and originally next-sentence prediction) on a large unlabeled corpus.
+You then reuse it in one of two ways: as a frozen feature extractor whose
+`[CLS]` vector or token embeddings feed an ordinary downstream model, or by
+fine-tuning the whole network with a small task head when you have labeled data.
+The payoff, and the reason BERT earned a place alongside the other predictive
+methods in this book, is transfer: the expensive part of understanding language
+is done for you, and your job is reduced to teaching the model how to read off the
+answer to your particular question.
+
+## Further Reading
+
+- Official implementation and weights: <https://github.com/google-research/bert>
+- A gentle tutorial: <https://www.freecodecamp.org/news/google-bert-nlp-machine-learning-tutorial/>
+- A visual guide to using BERT for the first time:
+  <https://jalammar.github.io/a-visual-guide-to-using-bert-for-the-first-time/>
+- BERT explained, theory and tutorial:
+  <https://towardsml.com/2019/09/17/bert-explained-a-complete-guide-with-theory-and-tutorial/>

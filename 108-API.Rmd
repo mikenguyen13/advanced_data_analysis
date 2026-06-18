@@ -1,0 +1,338 @@
+# API
+
+A predictive model is only useful once other systems can *call* it. Training a
+model in an R or Python session is one thing; making its predictions available to
+a web app, a dashboard, a mobile client, or another team's service is another. You
+can have the most accurate classifier in the world, but if it lives only inside your
+laptop's R session, nobody else can use it. The standard solution is to wrap the
+model behind an API (Application Programming Interface), most commonly an HTTP
+REST API that accepts input data over the network and returns predictions.
+
+This chapter is the bridge between *building* a model (everything in the earlier
+chapters) and *operating* one. The goal is not to make you a backend engineer, but
+to give you enough vocabulary and working examples that you can take a fitted model,
+expose it as a service, and reason about the production concerns that follow. We
+start with why serving through an API is the natural pattern, then walk through
+minimal working examples in both R (`plumber`) and Python (FastAPI), and close with
+the practical issues, validation, latency, scaling, security, and monitoring, that
+separate a weekend demo from a service you can rely on.
+
+> **Intuition:** Think of the API as a vending machine for predictions. The model is
+> the stock inside; the API is the slot you put a request into and the tray the
+> answer drops into. Callers never need to know what is inside or how it was built,
+> only how to insert a request and read the result.
+
+## Why Serve Models Through an API
+
+An API is not the only way to use a model, but it is the one that scales across
+teams, languages, and use cases. The reasons come down to four ideas that reinforce
+one another.
+
+The first is a clean separation of training and serving. Model training is
+heavy, infrequent, and usually done by data scientists; serving is lightweight,
+frequent, and consumed by applications. An API draws a clear boundary between the
+two: you train offline, save the fitted model to disk, and load it into a serving
+process whose only job is inference. The two halves can then evolve, scale, and fail
+independently.
+
+The second is language and platform independence. A model trained in R or Python
+can be consumed by a JavaScript front end, a Java backend, or a one-line `curl`
+command from a shell. The caller does not need R, Python, or any knowledge of how the
+model works. It only needs to speak HTTP and JSON, two technologies that nearly every
+language and platform already understands.^[HTTP (HyperText Transfer Protocol) is the
+protocol your browser uses to talk to web servers. JSON (JavaScript Object Notation)
+is a lightweight, human-readable text format for structured data, for example
+`{"sepal_length": 5.1, "sepal_width": 3.5}`. Together they form the lingua franca of
+web services.]
+
+The third is the distinction between real-time and batch prediction. Some use
+cases need real-time scoring: one request, one prediction, low latency, such as a
+fraud check that must return before a checkout button finishes its click. Others are
+batch: score millions of rows overnight and write the results to a table. APIs are
+built for the real-time case. Batch scoring is usually a scheduled job rather than a
+live service, though the same fitted model object can serve both.
+
+The fourth, and the mechanism underneath all of this, is the **request/response
+model. A client sends a request**, typically an HTTP `POST` whose body is a JSON
+object containing the features. The server runs the model and returns a response,
+JSON containing the prediction. Each request carries everything the server needs, so
+the server keeps no memory of past calls.
+
+> **Key idea:** Because each request is self-contained (the technical word is
+> *stateless*), any server instance can answer any request. That is what lets you
+> scale *horizontally*: when traffic grows, you add more identical server instances
+> behind a load balancer instead of buying one bigger machine.
+
+With the motivation in place, we now turn to how this looks in code, starting with R.
+
+## Serving Models in R
+
+The dominant tool in R is the [`plumber`](https://www.rplumber.io/) package, which
+turns annotated R functions into a REST API. The idea is deliberately low-ceremony:
+you write ordinary R functions and decorate them with special `#*` comments that
+declare the HTTP method and path. `plumber` reads those comments, parses incoming
+requests into function arguments, and serializes whatever the function returns back
+into JSON. You never write parsing or networking code yourself.
+
+> **When to use this:** Reach for `plumber` when your model is already in R and you
+> want to expose it without porting anything to another language. It is the path of
+> least resistance from a fitted R model to a live endpoint.
+
+### A Minimal `plumber` Example
+
+The typical workflow has two stages: train the model once and save it to disk, then
+run a separate, lightweight serving script that loads the saved model and answers
+requests. Suppose you trained a model and saved it with `saveRDS()`. The serving
+script, conventionally named `plumber.R`, might look like this:
+
+```{r, eval = FALSE}
+# plumber.R
+library(plumber)
+
+# Load the fitted model once, when the API starts (not per request).
+model <- readRDS("model.rds")
+
+#* Health check
+#* @get /health
+function() {
+  list(status = "ok")
+}
+
+#* Predict from input features
+#* @param sepal_length:numeric
+#* @param sepal_width:numeric
+#* @param petal_length:numeric
+#* @param petal_width:numeric
+#* @post /predict
+function(sepal_length, sepal_width, petal_length, petal_width) {
+  newdata <- data.frame(
+    Sepal.Length = as.numeric(sepal_length),
+    Sepal.Width  = as.numeric(sepal_width),
+    Petal.Length = as.numeric(petal_length),
+    Petal.Width  = as.numeric(petal_width)
+  )
+  prediction <- predict(model, newdata, type = "response")
+  list(prediction = unname(prediction))
+}
+```
+
+Two details in that script are worth pausing on. The model is read with `readRDS()`
+*outside* any function, so it loads a single time when the API process starts rather
+than on every request (loading a model can be slow, and doing it per call would
+cripple latency). And there are two endpoints: a trivial `/health` route that returns
+`{"status": "ok"}`, and the real `/predict` route. The health route looks pointless
+but earns its keep in production, where load balancers and monitoring systems
+repeatedly ping it to confirm the service is alive.
+
+> **Tip:** Always include a lightweight health-check endpoint. Orchestration tools
+> (load balancers, Kubernetes, Posit Connect) use it to decide whether an instance
+> is ready to receive traffic and when to restart one that has gone unhealthy.
+
+With the script written, you launch the API by building a router from the file and
+running it on a chosen port:
+
+```{r, eval = FALSE}
+library(plumber)
+pr("plumber.R") |> pr_run(port = 8000)
+```
+
+The server is now listening on port 8000. A client can call it from any language; the
+quickest way to test it is `curl` from a terminal, sending the features as a JSON
+body:
+
+```{bash, eval = FALSE}
+curl -X POST "http://localhost:8000/predict" \
+  -H "Content-Type: application/json" \
+  -d '{"sepal_length":5.1,"sepal_width":3.5,"petal_length":1.4,"petal_width":0.2}'
+```
+
+The `-X POST` flag chooses the HTTP method, the `-H` flag declares that the body is
+JSON, and `-d` carries the data. The server responds with JSON such as
+`{"prediction": ["setosa"]}`. As a convenience, `plumber` also auto-generates
+interactive API documentation (Swagger/OpenAPI), a web page where consumers can read
+each endpoint's parameters and try requests in the browser, which makes the service
+much easier to hand off to other developers.
+
+### Versioning and Hosting
+
+A single running endpoint is enough for a demo, but two production concerns deserve
+dedicated tooling once a model matters to a business.
+
+The first is model versioning. Models are not static: you retrain as new data
+arrives, and a fresh model occasionally performs *worse* than the one it replaces. So
+you need to track exactly which model is deployed and be able to roll back. The
+[`vetiver`](https://rstudio.github.io/vetiver-r/) package standardizes the packaging,
+versioning, and deployment of models. It stores model artifacts as versioned objects
+through [`pins`](https://pins.rstudio.com/) (to a local folder, a cloud storage
+bucket, or a Posit Connect server), and it can auto-generate both a `plumber` API and
+a Dockerfile directly from a fitted model, so the path from model object to deployable
+service is largely automated.
+
+The second is hosting. Someone has to run the server, keep it up, secure it, and
+scale it. Posit Connect (formerly RStudio Connect) is a managed platform that can
+host `plumber` APIs and `vetiver` models with authentication, scaling, and monitoring
+handled for you, so you *publish* a model rather than administer servers yourself.
+
+> **Note:** Versioning and hosting are not R-specific ideas. Every serious serving
+> setup, in any language, needs a way to track which model is live and a place to run
+> it. `vetiver`, `pins`, and Posit Connect are simply R-friendly answers to those
+> universal questions.
+
+## Serving Models in Python
+
+Much production model serving happens in Python, so it is worth seeing the same
+pattern there. The two most common frameworks are FastAPI (modern, asynchronous,
+with automatic input validation and OpenAPI documentation) and Flask (older and
+more minimal). Both can serve models from scikit-learn, Keras/TensorFlow, PyTorch,
+XGBoost, and other libraries. The example below uses FastAPI because its built-in
+validation removes an entire class of bugs with almost no extra code.
+
+A minimal FastAPI service for a scikit-learn (or Keras) model follows the same
+load-once, define-endpoints structure as the `plumber` script:
+
+```{python, eval = FALSE}
+# app.py
+from fastapi import FastAPI
+from pydantic import BaseModel
+import joblib
+
+app = FastAPI()
+
+# Load once at startup.
+model = joblib.load("model.joblib")  # or keras.models.load_model("model.keras")
+
+class Features(BaseModel):
+    sepal_length: float
+    sepal_width: float
+    petal_length: float
+    petal_width: float
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+@app.post("/predict")
+def predict(item: Features):
+    X = [[item.sepal_length, item.sepal_width,
+          item.petal_length, item.petal_width]]
+    pred = model.predict(X)
+    return {"prediction": pred.tolist()}
+```
+
+The structure mirrors the R version closely: the model loads once at startup, there is
+a `/health` endpoint and a `/predict` endpoint, and the prediction is returned as
+JSON. You run it with an ASGI server such as `uvicorn`, which is the process that
+actually listens for network traffic and hands requests to your app:
+
+```{bash, eval = FALSE}
+uvicorn app:app --host 0.0.0.0 --port 8000
+```
+
+The one piece worth dwelling on is the `Features` class. By declaring the expected
+fields and their types as a `pydantic` model, FastAPI gives you **input validation for
+free**: a request with a missing field or a string where a number belongs is rejected
+with a clear, automatic error before it ever reaches the model. Like `plumber`,
+FastAPI also auto-generates interactive Swagger documentation.
+
+> **Intuition:** The `pydantic` model is a bouncer at the door. It checks every
+> request against the expected schema and turns away anything malformed, so your model
+> code only ever sees clean, correctly typed inputs. We will see in a moment why that
+> guarantee matters so much.
+
+The R and Python examples differ in syntax but not in shape. That is the real lesson:
+serving a model is the same handful of steps everywhere. Load the model once, define a
+health check, define a prediction endpoint, validate inputs, and return JSON.
+
+## Practical Concerns
+
+Moving from a working demo to a reliable service raises several issues that apply
+equally in R and Python. None of them is exotic, but each one is a common reason that
+a model that "worked on my machine" misbehaves in production. We take them roughly in
+the order a request flows through the system: validate it, decode it, run it quickly,
+scale it, secure it, and watch it over time.
+
+Input validation comes first because you can never trust incoming data. Requests
+arrive from the open network, sometimes from buggy clients and occasionally from
+malicious ones. Check types, ranges, required fields, and the allowed levels of any
+categorical input, then reject anything malformed with an informative HTTP error code
+(such as `400 Bad Request`) rather than letting it crash the model or, worse, produce
+a confident but meaningless prediction.
+
+> **Warning:** A model fed garbage rarely errors out. It usually returns a number, a
+> wrong one, with no complaint. Silent garbage-in, garbage-out is far more dangerous
+> than a loud crash, because nobody notices until decisions have been made on bad
+> predictions. Validate aggressively.
+
+JSON serialization is the next subtlety, because every input and output crosses
+the wire as text. You have to be deliberate about how arrays, missing values
+(`NA` in R, `null` in JSON), dates, and factor levels are encoded and decoded, so that
+the model sees exactly the schema it was trained on. A factor level the model never
+saw during training, or a date parsed in the wrong format, produces errors or quiet
+nonsense that can be tedious to trace.
+
+Batching addresses throughput. Scoring one row at a time wastes the fixed overhead
+of each network round trip. If callers often need many predictions, design the
+endpoint to accept an array of inputs so a whole batch arrives in a single request.
+This amortizes the per-request cost and lets the model use its vectorized prediction
+path, which is typically far faster than a loop over single rows.
+
+Latency is what users actually feel, and the single biggest lever is the one the
+examples already showed: load the model once at startup, never per request. Beyond
+that, keep heavy preprocessing inside the serving process so it is not repeated
+elsewhere, prefer vectorized operations, and, most importantly, *measure* end-to-end
+response time under realistic load rather than guessing where the time goes.
+
+> **Tip:** Profile before you optimize. The slow step is often something unglamorous,
+> JSON parsing, a data-frame copy, a stray call that reloads the model, rather than the
+> model's arithmetic itself. Measurement, not intuition, tells you where to spend
+> effort.
+
+Scaling and containerization handle growth in traffic. Package the service in a
+Docker container so it runs identically on a laptop, a teammate's machine, and a
+production server, eliminating the "works here, not there" class of problems.^[A
+Docker container bundles your code together with its exact dependencies, the R or
+Python runtime, system libraries, and your model, into one portable image. Running the
+image anywhere reproduces the same environment, which is what makes deployments
+predictable.] You can then run multiple replicas of that container behind a load
+balancer, or on a platform such as Kubernetes, Posit Connect, or a cloud container
+service, to absorb concurrent traffic. This is the horizontal scaling that the
+stateless request/response model made possible at the start of the chapter.
+
+Authentication keeps the endpoint from being open to the world. Protect it with
+API keys, tokens (such as OAuth or JWT), or network-level controls so that only
+authorized clients can request predictions. An unprotected prediction endpoint can be
+abused, scraped, or simply overloaded by anyone who finds its address.
+
+Monitoring is what turns a deployment into something you can trust over time. Log
+requests, latencies, and errors, and, just as importantly, track the distribution of
+incoming features and outgoing predictions. Watching those distributions is how you
+detect data drift (the inputs gradually shifting away from the training
+distribution) and model decay (accuracy eroding as the world changes). A model is
+not a finished artifact; it ages as the data-generating process moves on.
+
+> **Key idea:** A deployed model is a living system, not a delivered product.
+> Monitoring is the feedback signal that tells you *when* to retrain and redeploy,
+> which closes the loop back to the training chapters and connects naturally to the
+> versioning tools (`vetiver`, `pins`) introduced earlier.
+
+Taken together, these six concerns are the difference between a model that demos well
+and one that survives contact with real traffic. You do not need to solve all of them
+on day one, but you should know they exist and address each before the corresponding
+failure finds you. With a fitted model, a serving framework, and these practices, you
+can take any model from the earlier chapters and make it available to the rest of the
+world.
+
+## Further Reading
+
+For going deeper, the following resources cover `plumber`, its surrounding ecosystem,
+and example deployments:
+
+- `plumber` documentation: <https://www.rplumber.io/>
+- `plumber` community discussion: <https://community.rstudio.com/tag/plumber>
+- Blair Drummond's plumber webinar:
+  <https://github.com/blairj09-talks/plumber-webinar-2020>
+- RStudio/Posit webinars: <https://github.com/rstudio/webinars>
+- `rapidoc` (alternative API docs UI): <https://github.com/meztez/rapidoc>
+- `plumberDeploy`: <https://github.com/meztez/plumberDeploy>
+- `plumber` source: <https://github.com/rstudio/plumber>
+- Curated plumber examples: <https://github.com/sol-eng/plumberExamples>

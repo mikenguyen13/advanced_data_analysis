@@ -1,0 +1,421 @@
+# Probabilistic Programming with Stan and brms
+
+Probabilistic programming is a way of writing statistical models as code. You declare how the data are generated from unknown parameters and what you believe about those parameters before seeing data, and the system handles the inference: turning the model plus the observed data into a posterior distribution over the parameters. Stan is one of the most widely used probabilistic programming systems, and `brms` and `rstanarm` are R packages that let you specify Stan models through the familiar R formula interface.
+
+This chapter explains the idea, the sampling machinery (Markov chain Monte Carlo, Hamiltonian Monte Carlo, and the No-U-Turn Sampler), how priors and posteriors fit together, how to check a fitted model with posterior predictive checks, and how the formula interface in `brms` and `rstanarm` maps to Stan code. Because Stan and `brms` are not installed in this environment, those code chunks are shown with `eval=FALSE` but are written so a reader can run them directly. The runnable demonstration is a small Metropolis-Hastings sampler written in base R, which exposes the core mechanics that Stan automates.
+
+> **Intuition:** A traditional model hands you a single best guess for each parameter. A probabilistic model hands you the full set of guesses that are still plausible after seeing the data, weighted by how plausible each one is. Everything in this chapter is machinery for producing and inspecting that weighted set of guesses, called the posterior.
+
+> **When to use this:** Reach for probabilistic programming when the deliverable is uncertainty itself, a credible interval, a calibrated forecast, or a probability statement a decision-maker can act on, rather than a single number. If all you need is the most accurate point prediction on a large dataset, a method from earlier chapters will usually be faster.
+
+## Where this fits in a modern ML and AI workflow
+
+Most supervised learning methods in this book return a point prediction or a point estimate of parameters. A probabilistic model returns a full distribution. For a regression coefficient you get not a single number but a posterior distribution that summarizes every value consistent with the data and the prior.^[The same shift in mindset shows up in Gaussian process regression and Bayesian additive regression trees (BART) elsewhere in this book: those methods also return distributions rather than points. Probabilistic programming generalizes the idea to any model you can write down.] For a prediction at a new input you get a predictive distribution, not just a mean.
+
+This matters in practice when:
+
+-   You need calibrated uncertainty, for example a credible interval on a treatment effect, a risk score that feeds a decision, or a forecast that downstream code must reason about probabilistically.
+-   You have hierarchical or grouped data (students within schools, measurements within patients, sales within stores), where partial pooling across groups improves estimates for small groups.
+-   You want to encode domain knowledge as priors, for example bounding a rate to be positive or shrinking coefficients toward zero in a principled way.
+-   The likelihood is custom or non-standard, so off-the-shelf estimators do not exist.
+
+In an ML or AI pipeline, probabilistic models often sit at the layer where decisions are made under uncertainty: A/B test analysis, demand forecasting, sensor fusion, and Bayesian optimization of hyperparameters. They are usually slower to fit than gradient-boosted trees or neural networks and are not the right tool for very large feature spaces with no structure, but they are hard to beat when uncertainty and interpretability are the deliverable.
+
+## The probabilistic programming idea
+
+A probabilistic program describes a joint distribution over parameters $\theta$ and data $y$:
+
+$$
+p(\theta, y) = p(y \mid \theta) \, p(\theta)
+$$
+
+where $p(\theta)$ is the prior and $p(y \mid \theta)$ is the likelihood. The goal of inference is the posterior, given by Bayes' rule:
+
+$$
+p(\theta \mid y) = \frac{p(y \mid \theta) \, p(\theta)}{p(y)}, \qquad
+p(y) = \int p(y \mid \theta) \, p(\theta) \, d\theta
+$$
+
+The denominator $p(y)$, called the marginal likelihood or evidence, is an integral over all of parameter space. For most models it has no closed form, and that integral is what makes Bayesian inference hard. The central trick of modern probabilistic programming is that we almost never need $p(y)$ to draw samples from the posterior. Because
+
+$$
+p(\theta \mid y) \propto p(y \mid \theta) \, p(\theta)
+$$
+
+an algorithm that only needs the posterior up to a constant can ignore $p(y)$ entirely. Markov chain Monte Carlo (MCMC) is exactly such an algorithm: it produces a sequence of parameter draws whose stationary distribution is the posterior, using only the unnormalized product $p(y \mid \theta) \, p(\theta)$.
+
+> **Key idea:** Because the posterior is proportional to likelihood times prior, and the only missing piece, $p(y)$, is a constant that does not depend on $\theta$, any sampler that works with ratios or gradients of the posterior can skip the hard integral entirely. This single observation is what makes Bayesian computation practical.
+
+A probabilistic programming language separates the model from the inference. You write the model (priors and likelihood), and the system compiles it and runs a general-purpose sampler. Stan compiles your model to C++ and runs an adaptive Hamiltonian Monte Carlo sampler. You do not derive update equations by hand.^[This separation is the same design principle that makes SQL useful: you declare what you want, and an engine figures out how to compute it. Here you declare the generative model, and the sampler figures out how to explore the posterior.]
+
+The rest of the chapter follows the natural order of a Bayesian analysis: first the samplers that explore the posterior, then how priors and likelihood combine into that posterior, then a worked example you can run, then how to check the fit, and finally the tools that let you write all of this with a one-line formula.
+
+## MCMC, HMC, and NUTS intuition
+
+Since we cannot compute the posterior in closed form, we draw samples from it instead. A histogram of enough samples is as good as the density itself for any practical summary: a mean, a quantile, a credible interval. The samplers below differ only in how cleverly they wander through parameter space to produce those samples. We build up from the simplest idea to the one Stan actually uses.
+
+### Metropolis-Hastings
+
+The simplest MCMC method is the Metropolis-Hastings (MH) algorithm. Let $\pi(\theta) \propto p(y \mid \theta) \, p(\theta)$ be the unnormalized posterior. Starting from a current point $\theta$, propose a candidate $\theta^*$ from a proposal distribution $q(\theta^* \mid \theta)$, then accept the candidate with probability
+
+$$
+\alpha = \min\left(1, \; \frac{\pi(\theta^*) \, q(\theta \mid \theta^*)}{\pi(\theta) \, q(\theta^* \mid \theta)}\right)
+$$
+
+If the proposal is symmetric, meaning $q(\theta^* \mid \theta) = q(\theta \mid \theta^*)$ (a Gaussian centered at the current point is the usual choice), the ratio simplifies to $\alpha = \min(1, \pi(\theta^*)/\pi(\theta))$. Notice that the normalizing constant $p(y)$ cancels in the ratio, so only the unnormalized posterior appears. After many steps and a burn-in period,^[Burn-in (also called warmup) is the initial stretch of draws produced before the chain settles into the posterior. Those early draws still reflect the arbitrary starting point, so we discard them.] the retained draws behave like samples from $p(\theta \mid y)$.
+
+> **Intuition:** Think of MH as exploring a hilly landscape in the dark, where height is posterior probability. From where you stand you take a random step. If it leads uphill you always take it; if it leads downhill you take it only sometimes, more often for a gentle slope than a cliff. Over time you spend the most time where the landscape is highest, which is exactly the posterior.
+
+MH is simple but can be slow. If the proposal steps are too small the chain explores slowly; if too large most proposals are rejected. In high dimensions a random-walk proposal wanders inefficiently, and the number of steps needed to get an effectively independent sample grows quickly.
+
+### Hamiltonian Monte Carlo
+
+Hamiltonian Monte Carlo (HMC) reduces random-walk behavior by using gradient information. It augments the parameters $\theta$ with auxiliary momentum variables $r$ of the same dimension, and defines a joint density
+
+$$
+p(\theta, r) \propto \exp\left(-U(\theta) - \tfrac{1}{2} r^\top M^{-1} r\right), \qquad U(\theta) = -\log\big(p(y \mid \theta)\, p(\theta)\big)
+$$
+
+Here $U(\theta)$ is the potential energy (the negative log posterior) and the quadratic term in $r$ is the kinetic energy with mass matrix $M$. HMC simulates the physics of a particle moving across the posterior surface by integrating Hamilton's equations, usually with the leapfrog integrator, for a number of steps, then proposes the endpoint. Because the trajectory follows the gradient of the log posterior, proposals can travel far across the distribution while still being accepted with high probability. This is why HMC needs the gradient $\nabla_\theta \log p(\theta \mid y)$, which Stan computes automatically by reverse-mode automatic differentiation.^[Automatic differentiation, the same technique that powers backpropagation in neural networks, computes exact gradients of the log posterior from the model code without you writing any derivatives by hand.]
+
+> **Intuition:** Instead of taking blind random steps, HMC gives the explorer a sense of the local slope and a push of momentum, so it skis along the contours of the landscape. One trajectory can cross to a far corner of the posterior in a single proposal, which is why HMC mixes so much faster than random-walk MH in high dimensions.
+
+### The No-U-Turn Sampler
+
+HMC has two tuning parameters: the leapfrog step size $\epsilon$ and the number of steps $L$. Choosing $L$ by hand is awkward: too few steps and the sampler behaves like a random walk, too many and it wastes computation by looping back on itself. The No-U-Turn Sampler (NUTS) automatically chooses the trajectory length by extending the path until it starts to double back (a "U-turn"), and Stan adapts $\epsilon$ during warmup. NUTS is the default sampler in Stan, `brms`, and `rstanarm`, which is why these tools usually work well with little manual tuning.
+
+> **Tip:** In day-to-day work you almost never tune the sampler by hand. The payoff of NUTS is that you can focus on the model (the priors and likelihood) and trust the defaults for inference, stepping in only when the diagnostics later in the chapter flag a problem.
+
+Table \@ref(tab:probabilistic-programming-sampler-comparison) contrasts the three samplers.
+
+| Property | Metropolis-Hastings | Hamiltonian Monte Carlo | NUTS |
+|---|---|---|---|
+| Uses gradient of log posterior | No | Yes | Yes |
+| Tuning required | Proposal scale | Step size and number of steps | Step size and number of steps adapted automatically |
+| Behavior in high dimensions | Random walk, slow mixing | Long informed moves | Long informed moves |
+| Handles correlated parameters | Poorly without tuning | Well with a tuned mass matrix | Well, mass matrix adapted in warmup |
+| Implementation effort | Low | Moderate | Built into Stan |
+| Typical use | Teaching, simple models | Foundation for modern samplers | Default in Stan, brms, rstanarm |
+
+Table: (\#tab:probabilistic-programming-sampler-comparison) Comparison of Metropolis-Hastings, Hamiltonian Monte Carlo, and the No-U-Turn Sampler across gradient use, tuning, scaling behavior, and typical use.
+
+## Priors and posteriors
+
+With the samplers in hand, we can step back to the two pieces you actually have to specify: the prior and the likelihood. The sampler is plumbing; the prior and likelihood are the model.
+
+The prior $p(\theta)$ encodes what you believe about parameters before seeing the data. Choices range across a spectrum, from priors that carry strong information to those that carry almost none:
+
+-   Informative priors carry real domain knowledge, for example a prior on a reaction rate that must be positive and is known to be near a literature value.
+-   Weakly informative priors rule out absurd values while staying broad, for example a $\text{Normal}(0, 2.5^2)$ prior on a standardized regression coefficient. These are the recommended default in `rstanarm` and a common choice in `brms`.
+-   Flat or improper priors carry almost no information and can cause poor sampling or improper posteriors, so they are usually avoided.
+
+The posterior combines prior and likelihood. With more data the likelihood dominates and the prior matters less; with little data the prior matters more. A useful identity for intuition is the conjugate Gaussian case. Suppose $y_1, \dots, y_n$ are independent $\text{Normal}(\mu, \sigma^2)$ with known $\sigma^2$, and the prior is $\mu \sim \text{Normal}(\mu_0, \tau^2)$. Then the posterior is Gaussian with
+
+$$
+\text{Var}(\mu \mid y) = \left(\frac{1}{\tau^2} + \frac{n}{\sigma^2}\right)^{-1}, \qquad
+\mathbb{E}(\mu \mid y) = \text{Var}(\mu \mid y) \left(\frac{\mu_0}{\tau^2} + \frac{n \bar{y}}{\sigma^2}\right)
+$$
+
+The posterior mean is a precision-weighted average of the prior mean $\mu_0$ and the data mean $\bar{y}$, where precision is the reciprocal of variance. As $n$ grows, the data term $n/\sigma^2$ dominates and the posterior concentrates near $\bar{y}$. This closed form is the exception; for general models we sample instead, which is the subject of the demo below.
+
+> **Note:** A 95 percent credible interval, the central 95 percent of the posterior, says there is a 95 percent probability the parameter lies in that range given the model and data. That is a direct probability statement about the parameter, which is not what a frequentist confidence interval claims. The distinction is worth keeping straight when you report results.
+
+## A runnable Metropolis-Hastings demo in base R
+
+Stan and `brms` automate everything we have discussed, which can make the machinery feel like a black box. To dispel that, the following demo implements the whole loop by hand in about a dozen lines: it fits a logistic regression with two parameters (intercept and slope) to simulated binary data, using a hand-written random-walk Metropolis-Hastings sampler. It uses only base R, so it runs here. The model is
+
+$$
+y_i \sim \text{Bernoulli}(p_i), \qquad
+\text{logit}(p_i) = \beta_0 + \beta_1 x_i, \qquad
+\beta_0, \beta_1 \sim \text{Normal}(0, 5^2)
+$$
+
+We work on the log scale for numerical stability.^[Probabilities of many data points multiply together into numbers so small they underflow to zero in floating-point arithmetic. Adding log-probabilities instead of multiplying probabilities keeps the computation in a safe numeric range, which is why nearly all probabilistic code works on the log scale.] The log posterior is the log likelihood plus the log prior, up to the constant $\log p(y)$ that MH does not need.
+
+```{r probabilistic-programming-mh-sampler, eval=TRUE, fig.width=8, fig.height=6, fig.cap="Metropolis-Hastings output for a two-parameter logistic regression: trace plots (top) and posterior histograms with true values marked (bottom)."}
+set.seed(1301)
+
+# Simulate data from a known logistic model
+n <- 400
+x <- rnorm(n)
+beta_true <- c(-0.5, 1.5)      # intercept, slope
+eta <- beta_true[1] + beta_true[2] * x
+p <- 1 / (1 + exp(-eta))
+y <- rbinom(n, size = 1, prob = p)
+
+# Unnormalized log posterior: log-likelihood + log-prior
+log_posterior <- function(beta, x, y, prior_sd = 5) {
+  eta <- beta[1] + beta[2] * x
+  # numerically stable Bernoulli log-likelihood
+  loglik <- sum(y * eta - log1p(exp(eta)))
+  logprior <- sum(dnorm(beta, mean = 0, sd = prior_sd, log = TRUE))
+  loglik + logprior
+}
+
+# Random-walk Metropolis-Hastings with a symmetric Gaussian proposal
+metropolis <- function(log_post, init, n_iter, proposal_sd, ...) {
+  p <- length(init)
+  draws <- matrix(NA_real_, nrow = n_iter, ncol = p)
+  current <- init
+  current_lp <- log_post(current, ...)
+  n_accept <- 0
+  for (t in seq_len(n_iter)) {
+    candidate <- current + rnorm(p, mean = 0, sd = proposal_sd)
+    cand_lp <- log_post(candidate, ...)
+    # symmetric proposal so the acceptance ratio is the posterior ratio
+    log_alpha <- cand_lp - current_lp
+    if (log(runif(1)) < log_alpha) {
+      current <- candidate
+      current_lp <- cand_lp
+      n_accept <- n_accept + 1
+    }
+    draws[t, ] <- current
+  }
+  list(draws = draws, accept_rate = n_accept / n_iter)
+}
+
+n_iter <- 20000
+fit <- metropolis(log_posterior, init = c(0, 0),
+                  n_iter = n_iter, proposal_sd = 0.12,
+                  x = x, y = y)
+
+# Discard a burn-in period, then summarize
+burnin <- 4000
+post <- fit$draws[(burnin + 1):n_iter, ]
+colnames(post) <- c("beta0", "beta1")
+
+cat(sprintf("Acceptance rate: %.2f\n", fit$accept_rate))
+post_summary <- t(apply(post, 2, function(z)
+  c(mean = mean(z),
+    sd = sd(z),
+    q2.5 = quantile(z, 0.025),
+    q97.5 = quantile(z, 0.975))))
+print(round(post_summary, 3))
+
+# Figure: trace plots and posterior histograms
+op <- par(mfrow = c(2, 2), mar = c(4, 4, 2, 1))
+plot(post[, "beta0"], type = "l", col = "grey40",
+     xlab = "iteration (post burn-in)", ylab = expression(beta[0]),
+     main = "Trace: intercept")
+abline(h = beta_true[1], col = "red", lwd = 2)
+plot(post[, "beta1"], type = "l", col = "grey40",
+     xlab = "iteration (post burn-in)", ylab = expression(beta[1]),
+     main = "Trace: slope")
+abline(h = beta_true[2], col = "red", lwd = 2)
+hist(post[, "beta0"], breaks = 40, col = "lightblue", border = "white",
+     xlab = expression(beta[0]), main = "Posterior: intercept", freq = FALSE)
+abline(v = beta_true[1], col = "red", lwd = 2)
+hist(post[, "beta1"], breaks = 40, col = "lightblue", border = "white",
+     xlab = expression(beta[1]), main = "Posterior: slope", freq = FALSE)
+abline(v = beta_true[2], col = "red", lwd = 2)
+par(op)
+```
+
+Reading the output in words: Figure \@ref(fig:probabilistic-programming-mh-sampler) shows the trace plots, which should look like stationary noise with no drift, a sign the chain has converged and is mixing. In the same figure the posterior histograms concentrate around the true coefficients (the red lines), and the 2.5 and 97.5 percent quantiles give a 95 percent credible interval for each parameter. A random-walk sampler typically mixes best with an acceptance rate somewhere between about 0.2 and 0.5; if the rate is very high the steps are too small and the chain crawls, and if very low most proposals are wasted, so in either case you would retune `proposal_sd`. Stan replaces this manual tuning with adaptive NUTS, but the underlying logic (propose, compare unnormalized posteriors, accept or reject) is the same.
+
+> **Warning:** This base R sampler is for teaching, not production. It uses a single chain, a fixed proposal scale, and no automatic warmup adaptation. For any real analysis use Stan through `brms` or `rstanarm`, which run multiple chains, adapt the sampler, and report the diagnostics covered later in this chapter.
+
+As a quick sanity check, the posterior means should sit close to the maximum likelihood fit, since the prior here is weak relative to 400 observations.
+
+```{r pp-mh-glm-check, eval=TRUE}
+glm_fit <- glm(y ~ x, family = binomial())
+round(coef(glm_fit), 3)        # compare with posterior means above
+```
+
+## Posterior predictive checks
+
+Fitting a model is not the same as trusting it. A posterior predictive check (PPC) asks whether data simulated from the fitted model look like the data you actually observed.
+
+> **Key idea:** A model that fits well should be able to regenerate data that resembles what you saw. If you simulate fake datasets from the fitted model and they look systematically different from the real one, the model is missing something, no matter how clean the parameter estimates look.
+
+The posterior predictive distribution is
+
+$$
+p(y^{\text{rep}} \mid y) = \int p(y^{\text{rep}} \mid \theta) \, p(\theta \mid y) \, d\theta
+$$
+
+In practice you draw $\theta^{(s)}$ from the posterior, then draw a replicated dataset $y^{\text{rep},(s)} \sim p(y^{\text{rep}} \mid \theta^{(s)})$ for each draw. You then compare summaries of $y^{\text{rep}}$ to the same summary of $y$. If the observed summary is far in the tail of the replicated summaries, the model is missing something.
+
+We can run a simple PPC with the base-R logistic fit from the demo. A reasonable test statistic for binary data is the proportion of ones in subgroups, or here the overall mean and its spread across replications. Figure \@ref(fig:probabilistic-programming-ppc) shows the result.
+
+```{r probabilistic-programming-ppc, eval=TRUE, fig.width=7, fig.height=4, fig.cap="Posterior predictive check: distribution of the replicated mean response across posterior draws, with the observed mean (red)."}
+set.seed(7)
+S <- 2000
+idx <- sample(nrow(post), S, replace = TRUE)   # posterior draws to use
+rep_means <- numeric(S)
+for (s in seq_len(S)) {
+  b <- post[idx[s], ]
+  eta_s <- b[1] + b[2] * x
+  p_s <- 1 / (1 + exp(-eta_s))
+  y_rep <- rbinom(length(x), size = 1, prob = p_s)
+  rep_means[s] <- mean(y_rep)
+}
+
+obs_mean <- mean(y)
+ppc_p <- mean(rep_means >= obs_mean)   # a Bayesian posterior predictive p-value
+
+hist(rep_means, breaks = 40, col = "lightgreen", border = "white",
+     xlab = "mean of replicated y", freq = FALSE,
+     main = "Posterior predictive check on the mean")
+abline(v = obs_mean, col = "red", lwd = 2)
+
+cat(sprintf("Observed mean: %.3f\n", obs_mean))
+cat(sprintf("Posterior predictive p-value: %.3f\n", ppc_p))
+```
+
+A posterior predictive p-value near 0.5 means the observed statistic sits in the middle of what the model predicts, which is what we want.^[This is not a frequentist p-value and there is no 0.05 threshold to pass. It simply locates the observed statistic within the distribution the model predicts; only values near 0 or 1 are a warning sign.] Values very close to 0 or 1 flag misfit. In real workflows you would check several statistics (means within subgroups, variance, the count of zeros, residual patterns), not just one.
+
+## The brms and rstanarm formula interface
+
+Now that you have seen the mechanics from the inside, here is how you would do all of this in practice without writing a sampler at all. Writing Stan by hand is flexible but verbose. `brms` and `rstanarm` let you specify common models with R formulas and generate the Stan code for you. They differ in approach: `rstanarm` ships precompiled Stan models for standard families (faster to start, fixed menu), while `brms` writes and compiles fresh Stan code for each model (slower first run, far more flexible, supports custom families, nonlinear terms, multivariate responses, and distributional regression).
+
+> **When to use this:** Start with `rstanarm` if your model fits its menu of standard families, because it skips compilation and runs immediately. Reach for `brms` when you need something beyond that menu: a custom likelihood, a nonlinear formula, several response variables at once, or a model of the variance itself.
+
+The next chunk shows the same logistic regression as the demo, fit with `brms`. It is `eval=FALSE` because `brms` and its Stan toolchain are not installed here, but the code is correct and current.
+
+```{r pp-brms-logit, eval=FALSE}
+library(brms)
+
+dat <- data.frame(y = y, x = x)
+
+fit_brms <- brm(
+  formula = y ~ x,
+  data    = dat,
+  family  = bernoulli(link = "logit"),
+  prior   = c(prior(normal(0, 5), class = "Intercept"),
+              prior(normal(0, 5), class = "b")),
+  chains  = 4, iter = 2000, warmup = 1000,
+  cores   = 4, seed = 1301,
+  backend = "cmdstanr"   # or the default "rstan"
+)
+
+summary(fit_brms)          # posterior means, SDs, 95% credible intervals, Rhat, ESS
+plot(fit_brms)             # trace plots and density plots per parameter
+pp_check(fit_brms)         # built-in posterior predictive check
+conditional_effects(fit_brms)  # fitted curve with credible band
+```
+
+The `rstanarm` equivalent uses a drop-in replacement for `glm`:
+
+```{r pp-rstanarm-logit, eval=FALSE}
+library(rstanarm)
+
+fit_arm <- stan_glm(
+  y ~ x,
+  data   = data.frame(y = y, x = x),
+  family = binomial(link = "logit"),
+  prior          = normal(0, 5),
+  prior_intercept = normal(0, 5),
+  chains = 4, iter = 2000, seed = 1301
+)
+
+print(fit_arm, digits = 3)
+posterior_interval(fit_arm, prob = 0.95)
+pp_check(fit_arm)
+```
+
+The formula interface really pays off for hierarchical (multilevel) models, where `brms` uses the same `(term | group)` syntax as `lme4`. The next example fits varying intercepts and slopes by group, which would be tedious to code by hand in raw Stan.
+
+```{r pp-brms-hierarchical, eval=FALSE}
+library(brms)
+
+# y_ij ~ Normal(mu_ij, sigma), mu_ij = (b0 + u0_j) + (b1 + u1_j) * x_ij
+# with group-level effects u0_j, u1_j drawn from a multivariate normal
+fit_h <- brm(
+  y ~ x + (1 + x | group),
+  data    = my_grouped_data,
+  family  = gaussian(),
+  prior   = c(prior(normal(0, 5), class = "b"),
+              prior(student_t(3, 0, 2.5), class = "sd"),    # group SDs
+              prior(lkj(2), class = "cor")),                 # correlation of u0, u1
+  chains  = 4, iter = 2000, cores = 4, seed = 1
+)
+
+# Inspect convergence and group-level estimates
+summary(fit_h)
+ranef(fit_h)              # estimated group deviations
+loo(fit_h)                # leave-one-out cross-validation for model comparison
+```
+
+For reference, the raw Stan program behind the simple logistic model looks like the block below. Reading it once makes clear what `brms` generates for you: a `data` block, a `parameters` block, a `model` block with priors and likelihood, and optionally a `generated quantities` block for predictions. This is Stan code, not R, so it is `eval=FALSE`.
+
+```{r pp-stan-code, eval=FALSE}
+stan_program <- "
+data {
+  int<lower=0> N;
+  vector[N] x;
+  array[N] int<lower=0, upper=1> y;
+}
+parameters {
+  real beta0;
+  real beta1;
+}
+model {
+  beta0 ~ normal(0, 5);
+  beta1 ~ normal(0, 5);
+  y ~ bernoulli_logit(beta0 + beta1 * x);   // vectorized likelihood
+}
+generated quantities {
+  array[N] int y_rep = bernoulli_logit_rng(beta0 + beta1 * x);
+}
+"
+# library(rstan); mod <- stan_model(model_code = stan_program)
+# fit <- sampling(mod, data = list(N = length(y), x = x, y = y))
+```
+
+## Diagnostics you should always check
+
+After sampling, never read the posterior summaries without first checking that the sampler worked. A beautiful-looking posterior mean from a chain that never converged is worse than useless, because it looks authoritative while being wrong. The standard diagnostics are summarized in Table \@ref(tab:probabilistic-programming-diagnostics).
+
+> **Warning:** Treat the diagnostics as a gate, not an afterthought. If $\hat{R}$ is high or there are divergent transitions, the numbers in your summary table are not estimates of the posterior, and no amount of careful interpretation will fix that. Diagnose and refit first.
+
+| Diagnostic | What it measures | Healthy value | What a bad value means |
+|---|---|---|---|
+| $\hat{R}$ (R-hat) | Agreement across chains for each parameter | $\le 1.01$ | Chains have not converged to the same distribution |
+| Effective sample size (ESS) | Number of effectively independent draws | At least a few hundred per parameter | High autocorrelation, summaries are noisy |
+| Divergent transitions | Leapfrog steps that fail in HMC/NUTS | Zero, or very few | The sampler cannot explore part of the posterior; estimates may be biased |
+| Trace plots | Visual mixing across iterations | "Fuzzy caterpillar", overlapping chains | Drift, stuck chains, or multimodality |
+| Energy diagnostic (BFMI) | Quality of momentum resampling in HMC | Above about 0.2 | Heavy-tailed posterior the sampler handles poorly |
+
+Table: (\#tab:probabilistic-programming-diagnostics) Standard MCMC diagnostics, what each one measures, a healthy target value, and what a bad value indicates.
+
+In `brms` and `rstanarm` these appear in `summary()` output (`Rhat`, `Bulk_ESS`, `Tail_ESS`) and through `bayesplot` functions such as `mcmc_trace()`, `mcmc_rank_overlay()`, and `mcmc_nuts_divergence()`. Divergent transitions often signal a posterior with sharp geometry, common in hierarchical models; the usual fixes are raising `adapt_delta` (for example to 0.95 or 0.99), reparameterizing (the non-centered parameterization for group effects), or tightening overly vague priors.
+
+## Practical guidance, pitfalls, and when to use it
+
+Having seen the idea, the samplers, a worked example, and the tooling, the remaining question is judgment: when is this approach the right one, and what trips people up. The following lists collect that practical advice. Start with the case for using probabilistic programming:
+
+-   You need honest uncertainty intervals, not just point predictions.
+-   You have hierarchical or grouped structure and want partial pooling.
+-   Sample sizes are small to moderate and priors can stabilize estimates.
+-   The likelihood is custom, or you want to combine several data sources in one coherent model.
+-   Interpretability and the ability to state probability claims about parameters matter to stakeholders.
+
+There are also clear cases where another method serves you better:
+
+-   Very large datasets with millions of rows and no special structure: MCMC can be too slow, and a regularized GLM, gradient-boosted trees, or a neural network is usually faster and just as accurate for point prediction. Variational inference (`brms` with `algorithm = "meanfield"` or `"fullrank"`) is an approximate, faster alternative when full MCMC is too expensive, at the cost of underestimated uncertainty.
+-   Pure point-prediction tasks with no need for calibrated uncertainty.
+-   Real-time, low-latency scoring, unless you precompute and cache the posterior.
+
+Finally, a handful of mistakes account for most of the trouble newcomers run into:
+
+-   Ignoring diagnostics. High $\hat{R}$ or divergent transitions mean the summaries are not trustworthy no matter how reasonable they look.
+-   Flat priors by default. They can produce improper posteriors and poor sampling. Prefer weakly informative priors and check sensitivity by refitting with a different prior.
+-   Unscaled predictors. Default priors assume predictors are on a roughly standardized scale; center and scale continuous predictors so default priors behave as intended.
+-   Too few iterations or chains. Run at least 4 chains and enough iterations that the effective sample size is comfortable, especially for tail quantiles.
+-   Reading credible intervals as confidence intervals. A 95 percent credible interval is a direct probability statement about the parameter given the model and data, which is a different (and usually more intuitive) object than a frequentist confidence interval.
+-   Overfitting model complexity. Use leave-one-out cross-validation (`loo`) or WAIC to compare models rather than chasing the lowest in-sample error.
+
+> **Tip:** A reasonable default recipe for a new analysis: standardize predictors, start from `rstanarm` or `brms` defaults with weakly informative priors, run 4 chains, check $\hat{R}$, ESS, and divergences, run `pp_check`, then refine priors and structure and compare with `loo`. Treat this loop, fit, check, refine, as the normal workflow rather than a one-shot fit.
+
+To sum up, probabilistic programming lets you write a generative model as code and get back a full posterior, with the hard inference handled by an adaptive sampler you rarely have to tune. The cost is computation and the discipline of checking diagnostics and predictive fit; the payoff is calibrated uncertainty and the ability to make direct probability statements about the quantities you care about.
+
+## Further reading
+
+-   Gelman, Carlin, Stern, Dunson, Vehtari, and Rubin (2013), *Bayesian Data Analysis*, third edition, for the foundations of Bayesian modeling and model checking.
+-   McElreath (2020), *Statistical Rethinking*, second edition, for an accessible, code-first introduction that pairs well with `brms`.
+-   Neal (2011), "MCMC using Hamiltonian dynamics", in the *Handbook of Markov Chain Monte Carlo*, for the canonical treatment of HMC.
+-   Hoffman and Gelman (2014), "The No-U-Turn Sampler", in the *Journal of Machine Learning Research*, for the NUTS algorithm.
+-   Carpenter, Gelman, Hoffman, Lee, Goodrich, Betancourt, Brubaker, Guo, Li, and Riddell (2017), "Stan: A Probabilistic Programming Language", in the *Journal of Statistical Software*, for the Stan system.
+-   Bürkner (2017), "brms: An R Package for Bayesian Multilevel Models Using Stan", in the *Journal of Statistical Software*, for the `brms` formula interface.
+-   Gabry, Simpson, Vehtari, Betancourt, and Gelman (2019), "Visualization in Bayesian workflow", in the *Journal of the Royal Statistical Society Series A*, for posterior predictive checks and diagnostics.

@@ -1,0 +1,410 @@
+# Adversarial Learning
+
+A well-trained classifier can reach high accuracy on a held-out test set and still
+be brittle in a way that ordinary evaluation never reveals. Take an image that the
+model labels "panda" with high confidence, add a perturbation so small that no human
+notices any change, and the same model now says "gibbon" with even higher confidence.
+The perturbation is not noise in the colloquial sense; it is a carefully chosen
+direction in input space that the model's own gradient points to. This phenomenon,
+documented by @szegedy2013intriguing and @goodfellow2014explaining, is the entry
+point to *adversarial learning*.
+
+The name covers two ideas that share a mathematical core but solve different problems.
+The first is *adversarial robustness*: how do we attack a model with tiny input
+perturbations, and how do we defend against such attacks? This matters most for
+security-critical systems, spam filters, malware detectors, fraud scoring, and any
+model whose inputs are supplied by a party who benefits from fooling it. The second
+is *adversarial training as a learning objective*, where two models compete in a game.
+The generator-versus-discriminator setup behind generative adversarial networks is the
+famous case, and the same minimax structure reappears in domain-adversarial training
+for domain adaptation.
+
+What ties the two together is a single optimization pattern: one player tries to
+minimize a loss while another tries to maximize it. In the robustness story the
+maximizing player is an attacker perturbing inputs; in the GAN story it is a
+discriminator trying to expose fakes. Once you see the minimax skeleton, attacks,
+defenses, and generative training all read as instances of the same game.
+
+> **Intuition:** A model that is accurate on average can still have a decision
+> boundary that passes very close to many test points. "Close" is measured in input
+> space, where a human's notion of similarity and the model's notion can diverge
+> sharply. Adversarial examples live in that gap.
+
+## Adversarial examples and the geometry of brittleness
+
+Fix a classifier $f_\theta$ with parameters $\theta$ that maps an input
+$x \in \mathbb{R}^d$ to class scores, and let $L(\theta, x, y)$ be the loss for the
+true label $y$ (for instance cross-entropy). An *adversarial example* is a perturbed
+input $x' = x + \delta$ that the model misclassifies, subject to a constraint that
+keeps the perturbation small:
+
+$$
+\max_{\delta}\; L(\theta, x + \delta, y)
+\quad\text{subject to}\quad \lVert \delta \rVert_p \le \epsilon .
+$$
+
+The norm $\lVert \cdot \rVert_p$ defines what "small" means. The $\ell_\infty$ norm,
+$\lVert \delta \rVert_\infty = \max_i |\delta_i|$, caps how much any single feature may
+move and is the most common choice for images. The $\ell_2$ norm caps the total
+Euclidean size of the perturbation. The budget $\epsilon$ is the radius of the allowed
+region around $x$.
+
+Why does such a $\delta$ exist at all, and why is it often tiny? The short answer from
+@goodfellow2014explaining is that high-dimensional models behave locally like linear
+functions. Suppose $f$ scores a class as $w^\top x + b$. Then perturbing $x$ by
+$\delta$ changes the score by $w^\top \delta$. To push the score as far as possible
+under an $\ell_\infty$ budget $\epsilon$, set each coordinate of $\delta$ to
+$\epsilon \cdot \operatorname{sign}(w_i)$, giving a change of
+$\epsilon \sum_i |w_i| = \epsilon \lVert w \rVert_1$. In $d$ dimensions this grows with
+$d$, so even a microscopic per-feature change $\epsilon$ accumulates into a large swing
+in the score. Brittleness is partly a consequence of dimensionality, not just of
+model pathology.
+
+> **Key idea:** Many tiny coordinated nudges, each below the threshold of notice,
+> sum to a large movement of the model's score. The attacker spends a small budget per
+> feature and is repaid in proportion to the dimension.
+
+### The fast gradient sign method
+
+The fast gradient sign method (FGSM) turns the linear argument into a one-step attack.
+Linearize the loss around $x$ using its gradient
+$g = \nabla_x L(\theta, x, y)$. To first order, $L(\theta, x + \delta, y) \approx
+L(\theta, x, y) + g^\top \delta$. Maximizing $g^\top \delta$ under
+$\lVert \delta \rVert_\infty \le \epsilon$ has the closed-form solution
+
+$$
+\delta^{\mathrm{FGSM}} = \epsilon \cdot \operatorname{sign}\!\big(\nabla_x L(\theta, x, y)\big),
+\qquad
+x' = x + \delta^{\mathrm{FGSM}} .
+$$
+
+The sign function appears because, coordinate by coordinate, the largest contribution
+to $g^\top \delta$ within $[-\epsilon, \epsilon]$ comes from moving each feature to the
+edge of its allowed range in the direction that increases the loss. FGSM is a single
+gradient evaluation, which is what makes it fast and a standard baseline.
+
+### Projected gradient descent attacks
+
+FGSM takes one big step along a linearized loss. When the loss is genuinely curved,
+one step overshoots or underexploits. Projected gradient descent (PGD), the attack
+studied by @madry2017towards, iterates small steps and projects back into the allowed
+region after each:
+
+$$
+x^{(t+1)} = \Pi_{\mathcal{B}_\epsilon(x)}\!\Big( x^{(t)} + \alpha \cdot
+\operatorname{sign}\!\big(\nabla_x L(\theta, x^{(t)}, y)\big) \Big),
+$$
+
+where $\alpha$ is the step size, $\mathcal{B}_\epsilon(x) = \{ x' : \lVert x' - x
+\rVert_\infty \le \epsilon \}$ is the $\ell_\infty$ ball of radius $\epsilon$ around the
+clean input, and $\Pi$ clips each coordinate back into that ball. Usually $x^{(0)}$ is
+a random point inside the ball, which helps escape flat regions. PGD with enough steps
+is treated as a strong first-order attack: if a defense survives PGD, it has cleared a
+meaningful bar, though not a proof of security.
+
+> **Warning:** A defense that lowers the gradient signal without changing the decision
+> boundary can defeat FGSM and PGD by *gradient masking*, giving a false sense of
+> safety. Such defenses fall to attacks that estimate gradients differently or transfer
+> examples from a substitute model (@athalye2018obfuscated). Always report the attack
+> used and its budget.
+
+## Adversarial training as a defense
+
+If the attacker solves an inner maximization, the natural defense is to train against
+the worst case. @madry2017towards frame robust learning as a saddle-point problem:
+
+$$
+\min_{\theta}\; \mathbb{E}_{(x,y)}\!\left[\; \max_{\lVert \delta \rVert_p \le \epsilon}
+L(\theta, x + \delta, y) \;\right].
+$$
+
+The inner $\max$ finds the strongest perturbation for the current model; the outer
+$\min$ updates parameters to be robust to it. In practice you approximate the inner
+problem with FGSM or PGD, generate adversarial inputs on each minibatch, and train on
+them (often mixed with clean inputs). This is *adversarial training*, and it remains
+one of the few defenses that holds up under careful evaluation.
+
+Robustness has a price. Pushing the decision boundary away from the data along every
+direction the attacker might exploit can lower clean accuracy, the *robustness-accuracy
+tradeoff* analyzed by @tsipras2019robustness. Robust models also tend to need more data
+and more capacity. The right operating point depends on the threat: a fraud model facing
+adaptive adversaries may accept a clean-accuracy hit that a benign recommender would not.
+
+> **When to use this:** Reach for adversarial training when inputs come from a party who
+> gains by fooling the model, or when a wrong prediction on a perturbed input is costly
+> (security, safety, finance). For ordinary i.i.d. deployment with no adversary, the
+> clean-accuracy cost is usually not worth paying.
+
+## A runnable demo: attacking and defending a linear classifier
+
+The geometry is easiest to see with a model whose gradient is exact rather than
+approximate. We use logistic regression, where the loss gradient with respect to the
+input has a clean closed form, so FGSM is not an approximation but the genuine
+worst-case linear perturbation. We simulate two Gaussian classes, fit the classifier,
+build FGSM perturbations, and measure how accuracy collapses. Then we retrain on
+adversarially perturbed data and measure recovery.
+
+For logistic regression the predicted probability is
+$\sigma(z) = 1 / (1 + e^{-z})$ with $z = \beta_0 + x^\top \beta$. The cross-entropy
+loss for a label $y \in \{0,1\}$ has input gradient
+
+$$
+\nabla_x L = \big(\sigma(z) - y\big)\, \beta ,
+$$
+
+so the FGSM perturbation is
+$\delta = \epsilon \cdot \operatorname{sign}\!\big((\sigma(z) - y)\,\beta\big)$. Because
+$\operatorname{sign}((\sigma(z)-y)\beta) = \operatorname{sign}(\sigma(z)-y)\cdot
+\operatorname{sign}(\beta)$, the attack simply moves every feature by $\pm\epsilon$
+toward the wrong class. The direction is the same for every point of a given class,
+which is exactly the linear picture from above.
+
+```{r adversarial-learning-setup, eval=TRUE}
+set.seed(1301)
+
+# Two Gaussian classes in 2-D with overlap so the boundary is non-trivial.
+n <- 400
+mu0 <- c(-1.0, -1.0)
+mu1 <- c( 1.0,  1.0)
+Sigma <- matrix(c(1, 0.3, 0.3, 1), 2, 2)
+
+rmvn <- function(n, mu, Sigma) {
+  L <- chol(Sigma)
+  matrix(rnorm(n * 2), n, 2) %*% L + matrix(mu, n, 2, byrow = TRUE)
+}
+
+X0 <- rmvn(n / 2, mu0, Sigma)
+X1 <- rmvn(n / 2, mu1, Sigma)
+X  <- rbind(X0, X1)
+y  <- c(rep(0, n / 2), rep(1, n / 2))
+
+# Train / test split.
+idx   <- sample(seq_len(n), size = floor(0.6 * n))
+Xtr   <- X[idx, ];  ytr <- y[idx]
+Xte   <- X[-idx, ]; yte <- y[-idx]
+
+sigmoid <- function(z) 1 / (1 + exp(-z))
+
+# Fit logistic regression (clean model).
+df_tr <- data.frame(x1 = Xtr[, 1], x2 = Xtr[, 2], y = ytr)
+clean_fit <- glm(y ~ x1 + x2, data = df_tr, family = binomial())
+beta  <- coef(clean_fit)[c("x1", "x2")]
+beta0 <- coef(clean_fit)[["(Intercept)"]]
+```
+
+The attack function below builds the FGSM perturbation for a batch of points. Each row
+of the input matrix is nudged by $\epsilon$ in the sign direction that raises its loss.
+
+```{r adversarial-learning-attack, eval=TRUE}
+# FGSM perturbation for logistic regression, exact input gradient.
+fgsm <- function(Xmat, yvec, beta, beta0, epsilon) {
+  z    <- as.numeric(beta0 + Xmat %*% beta)
+  p    <- sigmoid(z)
+  # grad_x L = (p - y) * beta, broadcast over rows.
+  grad <- outer(p - yvec, beta)              # n x 2
+  Xmat + epsilon * sign(grad)
+}
+
+predict_label <- function(Xmat, beta, beta0) {
+  as.integer(sigmoid(as.numeric(beta0 + Xmat %*% beta)) > 0.5)
+}
+
+epsilon <- 1.0
+
+# Clean and adversarial test accuracy for the clean model.
+acc <- function(pred, truth) mean(pred == truth)
+
+clean_acc_clean_model <- acc(predict_label(Xte, beta, beta0), yte)
+Xte_adv <- fgsm(Xte, yte, beta, beta0, epsilon)
+adv_acc_clean_model <- acc(predict_label(Xte_adv, beta, beta0), yte)
+```
+
+Now we apply the defense. We augment the training set with FGSM perturbations of the
+training points (generated from the clean model's parameters), refit, and re-evaluate
+against both clean and freshly attacked test data. The freshly attacked test set uses
+the *defended* model's own gradient, so the attacker adapts to the new model rather than
+reusing stale perturbations.
+
+```{r adversarial-learning-defense, eval=TRUE}
+# Adversarial training: augment with FGSM-perturbed training points.
+Xtr_adv <- fgsm(Xtr, ytr, beta, beta0, epsilon)
+df_aug  <- data.frame(
+  x1 = c(Xtr[, 1], Xtr_adv[, 1]),
+  x2 = c(Xtr[, 2], Xtr_adv[, 2]),
+  y  = c(ytr, ytr)
+)
+robust_fit <- glm(y ~ x1 + x2, data = df_aug, family = binomial())
+rbeta  <- coef(robust_fit)[c("x1", "x2")]
+rbeta0 <- coef(robust_fit)[["(Intercept)"]]
+
+clean_acc_robust_model <- acc(predict_label(Xte, rbeta, rbeta0), yte)
+# Attacker adapts to the defended model's gradient.
+Xte_adv_r <- fgsm(Xte, yte, rbeta, rbeta0, epsilon)
+adv_acc_robust_model <- acc(predict_label(Xte_adv_r, rbeta, rbeta0), yte)
+
+results <- data.frame(
+  Model = c("Standard (clean training)", "Adversarial training"),
+  `Clean accuracy` = round(c(clean_acc_clean_model, clean_acc_robust_model), 3),
+  `Adversarial accuracy` = round(c(adv_acc_clean_model, adv_acc_robust_model), 3),
+  check.names = FALSE
+)
+```
+
+Table \@ref(tab:adversarial-learning-acc) reports the four numbers. The standard model
+keeps high clean accuracy but its adversarial accuracy falls sharply: a per-feature
+nudge of $\epsilon = `r epsilon`$ flips a large share of test predictions. Adversarial
+training trades a little clean accuracy for a large gain in adversarial accuracy, the
+robustness-accuracy tradeoff in miniature.
+
+```{r adversarial-learning-acc, eval=TRUE}
+knitr::kable(
+  results,
+  caption = "Clean versus adversarial test accuracy for a standard logistic-regression classifier and the same classifier after adversarial training (FGSM augmentation, epsilon = 1.0). Adversarial accuracy is measured against perturbations adapted to each model."
+)
+```
+
+Figure \@ref(fig:adversarial-learning-boundary) shows the geometry. The left panel plots
+the clean test points with the standard model's decision boundary. The right panel shows
+the same points after the FGSM attack: every class-1 point slides down-left and every
+class-0 point slides up-right, both toward the boundary, and many cross it. The arrows in
+the right panel trace the perturbation applied to a sample of points.
+
+```{r adversarial-learning-boundary, eval=TRUE, fig.cap="Left: clean test points and the standard model's linear decision boundary. Right: the same points after the FGSM attack (epsilon = 1.0); arrows show the perturbation on a sample of points, which pushes each class uniformly toward and across the boundary.", fig.width=9, fig.height=4.5}
+op <- par(mfrow = c(1, 2), mar = c(4, 4, 2, 1))
+
+# Boundary: beta0 + b1*x1 + b2*x2 = 0  =>  x2 = -(beta0 + b1*x1)/b2
+abline_for <- function(b0, b) c(intercept = unname(-b0 / b[2]), slope = unname(-b[1] / b[2]))
+
+cols <- ifelse(yte == 1, "#1b9e77", "#d95f02")
+
+# Panel 1: clean
+plot(Xte[, 1], Xte[, 2], col = cols, pch = 19, cex = 0.7,
+     xlab = "x1", ylab = "x2", main = "Clean inputs")
+ln <- abline_for(beta0, beta)
+abline(a = ln["intercept"], b = ln["slope"], lwd = 2)
+
+# Panel 2: adversarial
+plot(Xte_adv[, 1], Xte_adv[, 2], col = cols, pch = 19, cex = 0.7,
+     xlab = "x1", ylab = "x2", main = "FGSM-perturbed inputs")
+abline(a = ln["intercept"], b = ln["slope"], lwd = 2)
+samp <- sample(seq_len(nrow(Xte)), 25)
+arrows(Xte[samp, 1], Xte[samp, 2],
+       Xte_adv[samp, 1], Xte_adv[samp, 2],
+       length = 0.05, col = "grey40")
+
+par(op)
+```
+
+The lesson generalizes past logistic regression. Any model with a usable input gradient
+admits FGSM and PGD attacks, and adversarial training is the corresponding defense. The
+linear case just lets us see the closed form and the uniform per-class shift that more
+complex models hide.
+
+## The adversarial game behind GANs
+
+The minimax pattern that defines robust training is the same one that drives generative
+adversarial networks (see the [Generative Models] chapter for the full treatment). A
+generator $G$ maps noise $z \sim p_z$ to samples $G(z)$, and a discriminator $D$ outputs
+the probability that an input is real rather than generated. They play
+
+$$
+\min_{G}\; \max_{D}\;
+\mathbb{E}_{x \sim p_{\mathrm{data}}}\!\big[\log D(x)\big]
++ \mathbb{E}_{z \sim p_z}\!\big[\log\big(1 - D(G(z))\big)\big].
+$$
+
+The discriminator maximizes its ability to separate real from fake; the generator
+minimizes that ability by producing samples the discriminator cannot flag. Compare this
+to the robustness saddle point: there the inner $\max$ is over input perturbations and
+the outer $\min$ is over model parameters; here the inner $\max$ is over the
+discriminator and the outer $\min$ is over the generator. Same skeleton, different
+players. @goodfellow2014gan show that at the global optimum the generator reproduces the
+data distribution and the discriminator is reduced to guessing, $D \equiv \tfrac{1}{2}$.
+
+> **Note:** The shared minimax form is more than an analogy. Both settings inherit the
+> same difficulties: the inner problem is rarely solved exactly, the outer updates chase
+> a moving target, and naive alternation can oscillate instead of converging. Techniques
+> that stabilize one game often inform the other.
+
+### Domain-adversarial training
+
+A third use of the same idea adapts a model trained on one data distribution (the
+source) to perform on a different but related one (the target), the problem of domain
+adaptation. @ganin2016domain attach a *domain classifier* that tries to tell source
+features from target features, and train the feature extractor to fool it through a
+gradient-reversal layer. If a feature representation makes source and target
+indistinguishable, a label predictor trained on the source should transfer to the target.
+The objective again has the competing-players form: the feature extractor minimizes label
+loss while maximizing domain-classification loss, and the domain classifier does the
+opposite.
+
+```{r adversarial-learning-dann, eval=FALSE}
+# Sketch of domain-adversarial training (requires a deep-learning backend, so eval=FALSE).
+# feature_extractor: x -> h
+# label_predictor:   h -> y_hat   (trained on labeled source only)
+# domain_classifier: h -> d_hat   (real source vs target)
+#
+# Total loss = label_loss(label_predictor(h), y)            # minimized by extractor + predictor
+#            - lambda * domain_loss(domain_classifier(h), d) # extractor MAXIMIZES this term
+#
+# The minus sign is implemented by a gradient-reversal layer: forward pass is identity,
+# backward pass multiplies the gradient by -lambda before it reaches the feature extractor.
+```
+
+## Practical guidance and pitfalls
+
+Several recurring mistakes undermine work on adversarial robustness, and a few habits
+keep evaluations honest.
+
+State the threat model before anything else. An attack is only meaningful relative to a
+norm, a budget $\epsilon$, and an assumption about what the attacker knows. White-box
+attacks see the model's gradients; black-box attacks do not and must transfer examples
+from a substitute or estimate gradients by queries. Reporting "robust accuracy" without
+the budget and access model is uninterpretable.
+
+Do not trust a defense that only beats FGSM. A single gradient step is the weakest
+standard attack. @athalye2018obfuscated showed that many published defenses worked by
+*obfuscating gradients*, making the loss surface locally uninformative without moving the
+boundary, and collapsed under PGD or transfer attacks. Evaluate against a strong
+iterative attack with multiple random restarts, and be suspicious when robust accuracy is
+high but the loss gradient is near zero.
+
+Budget the inner optimization realistically. PGD adversarial training multiplies training
+cost by the number of inner steps. Single-step adversarial training is cheaper but can
+suffer *catastrophic overfitting*, where robustness to multi-step attacks suddenly
+collapses mid-training. Monitor robust accuracy against a multi-step attack during
+training, not just the single-step proxy you train on.
+
+Expect to pay for robustness. The robustness-accuracy tradeoff (@tsipras2019robustness)
+is real: clean accuracy usually drops, and robust models often need more data and
+capacity. Decide up front how much clean accuracy you are willing to trade, and tie that
+decision to the cost of an adversarial failure in your application.
+
+Match the perturbation set to the real threat. The $\ell_\infty$ ball is a mathematical
+convenience, not a model of every attacker. Real adversaries rotate images, paste
+stickers, paraphrase text, or change the timing of network packets, none of which is a
+small $\ell_p$ perturbation. Robustness inside one ball does not imply robustness to
+transformations outside it.
+
+For GAN-style training, watch for non-convergence and *mode collapse*, where the generator
+maps many noise vectors to a few outputs that happen to fool the current discriminator.
+These are the generative counterparts of the optimization instabilities that also afflict
+adversarial robustness, and they trace back to the same fact: nobody is solving the inner
+problem exactly.
+
+## Further reading
+
+- Szegedy, Zaremba, Sutskever, Bruna, Erhan, Goodfellow, and Fergus (2013), the paper
+  that first reported adversarial examples for neural networks.
+- Goodfellow, Shlens, and Szegedy (2015), introducing the fast gradient sign method and
+  the linear explanation of adversarial examples.
+- Madry, Makelov, Schmidt, Tsipras, and Vladu (2018), the projected gradient descent
+  attack and the saddle-point view of robust training.
+- Tsipras, Santurkar, Engstrom, Turner, and Madry (2019), on the robustness-accuracy
+  tradeoff.
+- Athalye, Carlini, and Wagner (2018), on obfuscated gradients and how to evaluate
+  defenses honestly.
+- Goodfellow, Pouget-Abadie, Mirza, Xu, Warde-Farley, Ozair, Courville, and Bengio
+  (2014), the original generative adversarial networks paper.
+- Ganin, Ustinova, Ajakan, Germain, Larochelle, Laviolette, Marchand, and Lempitsky
+  (2016), on domain-adversarial training of neural networks.

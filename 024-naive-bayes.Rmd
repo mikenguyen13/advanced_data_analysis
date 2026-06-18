@@ -1,0 +1,294 @@
+# Naive Bayes
+
+Imagine sorting incoming email into "spam" and "not spam." You notice that the word "free" shows up far more often in spam, that so does "winner," and that a message from a known contact is almost never spam. A natural strategy is to combine these clues: each one nudges your belief toward one class or the other, and you go with whichever class the weight of evidence favors. Naive Bayes is exactly this strategy, made precise with probability. It asks, for a new example, "which class makes the features I observe most likely?" and answers by multiplying together the evidence from each feature.
+
+The word "naive" comes from one bold simplification: the method treats the features as if they gave independent clues once the class is known. That is rarely true ("free" and "winner" tend to appear together in spam), yet the method works remarkably well anyway. Naive Bayes is a family of probabilistic classifiers built on Bayes' rule together with this strong conditional-independence assumption. Despite the assumption being almost always false in practice, the resulting classifiers are fast to train, scale to high-dimensional inputs, and remain competitive on many tasks, especially text classification.
+
+> **When to use this:** Reach for Naive Bayes when you want a fast, low-maintenance baseline, when the feature dimension is large relative to the sample size (text being the classic case), or when you need something that trains in a single pass. It is often the first model worth trying before reaching for anything heavier.
+
+This chapter develops the model from the joint distribution, states the assumption precisely, derives the common likelihood variants, explains why the method works better than its assumption deserves, and runs a worked example. By the end you should understand where the model sits among generative classifiers, be able to choose the right variant for your feature type, and know how to read the output of a fitted model.
+
+## Bayes' Rule for Classification
+
+Before any formulas, here is the plan. We want $p(\text{class} \mid \text{features})$, the probability of each class given what we observe. Bayes' rule lets us flip this around into two pieces we can estimate from data: how common each class is, and how the features behave within each class. That is the whole engine; everything else is detail about how to estimate those two pieces.
+
+Let $y \in \{1, \dots, C\}$ denote the class label and $x = (x_1, \dots, x_p)^\top$ the feature vector.^[A *generative* classifier models how the data were generated, the full joint $p(x, y)$, and then derives the posterior from it. This contrasts with a *discriminative* classifier such as logistic regression, which models $p(y \mid x)$ directly and never bothers to describe how $x$ arises. We return to this distinction in Section \@ref(relationship-to-logistic-regression).] A generative classifier models the joint distribution $p(x, y)$ and uses it to compute the posterior over classes. By the definition of conditional probability,
+
+$$
+p(y = c \mid x) = \frac{p(x, y = c)}{p(x)} = \frac{p(y = c)\, p(x \mid y = c)}{p(x)}.
+$$
+
+This is Bayes' rule. The term $p(y = c)$ is the class prior (how common class $c$ is before we see any features), $p(x \mid y = c)$ is the class-conditional likelihood (how the features behave within class $c$), and $p(x) = \sum_{c'} p(y = c')\, p(x \mid y = c')$ is the evidence (a normalizing constant that does not depend on $c$).
+
+> **Key idea:** Because we only ever compare classes against each other for the *same* $x$, the denominator $p(x)$ is identical across classes and cannot change which class wins. We can ignore it while choosing the label and restore it later only if we want actual probabilities.
+
+Dropping the evidence gives the working form of the rule,
+
+$$
+p(y = c \mid x) \propto p(y = c)\, p(x \mid y = c).
+$$
+
+The difficulty is the term $p(x \mid y = c)$. With $p$ features this is a joint distribution over a $p$-dimensional space, and estimating it directly requires modeling all interactions among the features. If each $x_j$ took $K$ values, a full table would need on the order of $K^p$ parameters per class, which is infeasible for moderate $p$.
+
+> **Intuition:** Picture trying to estimate the probability of every possible combination of $p$ binary features. There are $2^p$ combinations, so with $p = 30$ features you already have over a billion cells to fill from a finite dataset. Most cells would be empty. The naive assumption, introduced next, sidesteps this by refusing to model combinations at all.
+
+### The Naive (Conditional Independence) Assumption
+
+Naive Bayes makes the joint likelihood tractable by assuming that, conditional on the class, the features are mutually independent:
+
+$$
+p(x \mid y = c) = p(x_1, \dots, x_p \mid y = c) = \prod_{j=1}^{p} p(x_j \mid y = c).
+$$
+
+This is the "naive" assumption. It does not claim the features are independent marginally; it claims they are independent once the class is known.
+
+> **Note:** The distinction between marginal and conditional independence matters. Height and vocabulary are correlated across all children (taller children tend to know more words), but the correlation largely vanishes once we condition on age: among five-year-olds, height tells you little about vocabulary. Naive Bayes only needs independence of this second, conditional kind, which is far more often a reasonable approximation than the marginal kind.
+
+Substituting into Bayes' rule gives the defining form of the model:
+
+$$
+p(y = c \mid x) \propto p(y = c) \prod_{j=1}^{p} p(x_j \mid y = c).
+$$
+
+The benefit is that each one-dimensional factor $p(x_j \mid y = c)$ can be estimated separately, so the number of parameters grows linearly in $p$ rather than exponentially. The cost is that genuine dependence among features, conditional on the class, is ignored.
+
+## The Decision Rule
+
+With the model in hand, classifying a new point is mechanical: compute the score for each class and pick the winner. The classifier assigns the label with the largest posterior probability, the maximum a posteriori (MAP) rule:^["Maximum a posteriori" means "the largest after seeing the data," that is, the class with the highest posterior. It is the Bayesian counterpart of maximum likelihood, differing only by the inclusion of the prior $p(y = c)$.]
+
+$$
+\hat{y}(x) = \arg\max_{c \in \{1, \dots, C\}} \; p(y = c) \prod_{j=1}^{p} p(x_j \mid y = c).
+$$
+
+A product of many probabilities, each less than one, underflows to zero in floating-point arithmetic when $p$ is large. (Multiply a thousand numbers each around $0.1$ and the result is far smaller than any value a computer can represent, so it silently becomes exactly zero.) Because $\log$ is monotonic, the $\arg\max$ is unchanged by taking logarithms, and the product becomes a sum:
+
+$$
+\hat{y}(x) = \arg\max_{c} \left[ \log p(y = c) + \sum_{j=1}^{p} \log p(x_j \mid y = c) \right].
+$$
+
+Working in log-space avoids underflow and replaces multiplications with additions. If calibrated posterior probabilities are needed (not just the predicted class), they can be recovered with the log-sum-exp trick: letting $s_c$ denote the bracketed score for class $c$,
+
+$$
+p(y = c \mid x) = \frac{\exp(s_c)}{\sum_{c'} \exp(s_{c'})} = \frac{\exp(s_c - m)}{\sum_{c'} \exp(s_{c'} - m)}, \qquad m = \max_{c'} s_{c'},
+$$
+
+where subtracting the maximum $m$ keeps the exponentials in a safe numerical range.^[Subtracting $m$ cancels in the ratio (it multiplies numerator and denominator by the same $e^{-m}$), so the probabilities are unchanged, but the largest exponent becomes $e^0 = 1$, which keeps everything well within floating-point limits.]
+
+> **Tip:** In practice you rarely implement this yourself, but it explains why mature libraries always work in log-space. If you ever write a Naive Bayes classifier by hand, summing logs and using the log-sum-exp trick is the difference between a working model and one that returns `NaN` on long documents.
+
+## Variants by Feature Type
+
+So far the derivation has left the per-feature factor $p(x_j \mid y = c)$ unspecified. That is deliberate: the same machinery applies whether features are continuous measurements, word counts, or yes/no flags. The three common variants of Naive Bayes differ *only* in the choice of this one-dimensional factor, so once you know your feature type the rest follows. We take them in turn.
+
+### Gaussian Naive Bayes
+
+When the features are continuous measurements (petal lengths, sensor readings, dollar amounts), the natural choice is a bell curve. For continuous features, model each conditional density as univariate Gaussian. For feature $j$ in class $c$, with mean $\mu_{jc}$ and variance $\sigma_{jc}^2$,
+
+$$
+p(x_j \mid y = c) = \frac{1}{\sqrt{2\pi \sigma_{jc}^2}} \exp\!\left( -\frac{(x_j - \mu_{jc})^2}{2 \sigma_{jc}^2} \right).
+$$
+
+The parameters are estimated by maximum likelihood within each class. Let $n_c$ be the number of training points in class $c$ and let the sum run over those points:
+
+$$
+\hat{\mu}_{jc} = \frac{1}{n_c} \sum_{i : y_i = c} x_{ij}, \qquad
+\hat{\sigma}_{jc}^2 = \frac{1}{n_c} \sum_{i : y_i = c} (x_{ij} - \hat{\mu}_{jc})^2.
+$$
+
+Taking logs, the per-feature contribution to the score is
+
+$$
+\log p(x_j \mid y = c) = -\frac{1}{2}\log(2\pi \sigma_{jc}^2) - \frac{(x_j - \mu_{jc})^2}{2 \sigma_{jc}^2}.
+$$
+
+In words, fit a separate mean and variance to each feature within each class, then score a test point by how many standard deviations it sits from each class mean.
+
+Gaussian Naive Bayes is closely related to quadratic discriminant analysis: both model each class with a Gaussian, but here the per-class covariance is forced to be diagonal (the off-diagonal terms vanish under conditional independence). A diagonal covariance is exactly the geometric statement of conditional independence: the contour ellipses of each class are axis-aligned, never tilted, because tilt would encode correlation between features.
+
+### Multinomial Naive Bayes
+
+When the features are counts (most often how many times each word appears in a document), a Gaussian makes little sense, since counts are non-negative integers and mostly zero. The right model imagines drawing tokens one at a time from a class-specific vocabulary distribution. For count features, such as word frequencies in a document, treat the vector $x = (x_1, \dots, x_p)$ as draws from a multinomial distribution with class-specific token probabilities $\theta_{jc}$, where $\sum_j \theta_{jc} = 1$. The likelihood of a document of length $\sum_j x_j$ is, up to the multinomial coefficient that is constant across classes,
+
+$$
+p(x \mid y = c) \propto \prod_{j=1}^{p} \theta_{jc}^{\,x_j}.
+$$
+
+The maximum-likelihood estimate of $\theta_{jc}$ is the fraction of all tokens in class-$c$ documents that equal token $j$:
+
+$$
+\hat{\theta}_{jc} = \frac{\sum_{i : y_i = c} x_{ij}}{\sum_{j'=1}^{p} \sum_{i : y_i = c} x_{ij'}}.
+$$
+
+That is, the estimated chance of token $j$ in class $c$ is simply its share of all tokens seen in class-$c$ documents. This variant is the standard baseline for bag-of-words text classification.
+
+### Bernoulli Naive Bayes
+
+Sometimes we care only *whether* a word appears, not how many times. When the features are binary flags, the Bernoulli model is the right fit. For binary features $x_j \in \{0, 1\}$, such as the presence or absence of a word, model each feature as Bernoulli with parameter $\theta_{jc} = p(x_j = 1 \mid y = c)$:
+
+$$
+p(x_j \mid y = c) = \theta_{jc}^{\,x_j} (1 - \theta_{jc})^{\,1 - x_j}.
+$$
+
+Unlike the multinomial model, the Bernoulli model explicitly penalizes the absence of a feature through the $(1 - \theta_{jc})$ term, which matters when documents are short.
+
+> **Note:** The two text variants disagree about non-occurring words. The multinomial model simply ignores a word that does not appear (its exponent $x_j = 0$ contributes a factor of $1$), whereas Bernoulli actively counts its absence as evidence via $(1 - \theta_{jc})$. For short texts like tweets or product titles, where absence is informative, Bernoulli often wins; for longer documents the multinomial model usually does.
+
+### Laplace (Additive) Smoothing
+
+The multinomial and Bernoulli estimates suffer from the zero-frequency problem. If token $j$ never appears in any class-$c$ training document, then $\hat{\theta}_{jc} = 0$. A single zero factor sends the entire product $\prod_j p(x_j \mid y = c)$ to zero, so the model assigns class $c$ a posterior of exactly zero for any test document containing that token, regardless of all other evidence. In log-space this is a $\log 0 = -\infty$ score.
+
+> **Warning:** This is a hard, brittle failure, not a soft one. One never-before-seen word can veto a class that every other word in the document strongly supports. A spam filter that has never seen "unsubscribe" in a legitimate email would refuse to call any "unsubscribe"-containing message legitimate. Smoothing is not optional polish; it is required for the model to behave sensibly.
+
+Additive (Laplace) smoothing fixes this by adding a pseudocount $\alpha > 0$ to every count before normalizing. For the multinomial model,
+
+$$
+\hat{\theta}_{jc} = \frac{\alpha + \sum_{i : y_i = c} x_{ij}}{\alpha p + \sum_{j'=1}^{p} \sum_{i : y_i = c} x_{ij'}},
+$$
+
+so that no estimated probability is ever exactly zero. The choice $\alpha = 1$ is Laplace smoothing; smaller values ($\alpha < 1$, Lidstone smoothing) shrink less. The pseudocount can be read as a symmetric Dirichlet prior on the token probabilities, with the smoothed estimate being the posterior mean. Smoothing is a form of regularization: it trades a little bias for a large reduction in the variance caused by rare features.
+
+## Why Naive Bayes Works Despite the Assumption
+
+It is fair to be suspicious at this point. We built the whole method on an assumption we admitted is usually false, so why should we trust its predictions? The answer is one of the more pleasant surprises in statistics, and it is worth understanding because it tells you *when* to trust the model and when not to.
+
+Conditional independence is almost never true. Word occurrences are correlated, and continuous measurements within a class are usually correlated as well. Yet Naive Bayes often classifies well.
+
+> **Key idea:** Classification asks only for the correct $\arg\max$, not for accurate probabilities. The model can be badly wrong about *how* confident to be and still pick the right class, because picking the right class only requires the true winner to come out on top, not to come out on top by the right margin.
+
+@domingos1997optimality showed that Naive Bayes can be optimal even when the independence assumption is grossly violated. The probability estimates may be badly miscalibrated (often pushed toward $0$ or $1$ because correlated features are counted as if they were independent pieces of evidence), but the predicted class is correct as long as the class with the highest true posterior still receives the highest estimated score. The errors in the estimated factors frequently preserve the ordering of the scores across classes even when they distort their magnitudes. In short, the decision boundary can be accurate even when the underlying density estimate is not.
+
+There is also a structural reason rooted in the bias-variance tradeoff. The diagonal-covariance restriction imposes strong bias (the model literally cannot represent within-class correlation) but drastically reduces the number of parameters, hence the variance. That trade pays off when training data are limited or the feature dimension is high, precisely the regime where a more flexible model would overfit. A slightly wrong model fit reliably can beat a correct model fit noisily.
+
+### Relationship to Logistic Regression
+
+Gaussian Naive Bayes and logistic regression form a classic generative-discriminative pair. With shared variances across classes, the Naive Bayes posterior $\log \frac{p(y=1 \mid x)}{p(y=0 \mid x)}$ is linear in $x$, which is exactly the functional form of logistic regression. The two methods fit the same parametric family of decision boundaries but estimate the parameters differently: Naive Bayes maximizes the joint likelihood $p(x, y)$ (generative), while logistic regression maximizes the conditional likelihood $p(y \mid x)$ (discriminative).
+
+@ng2002discriminative analyzed this pair and reached two conclusions. The discriminative method (logistic regression) has lower asymptotic error, so with enough data it tends to win. But the generative method (Naive Bayes) approaches its (higher) asymptotic error faster, needing on the order of $\log p$ training examples to converge versus on the order of $p$ for logistic regression. As a result Naive Bayes can outperform logistic regression in the small-sample regime, with the two curves crossing as the sample size grows.
+
+> **When to use this:** The practical takeaway is a rule of thumb about sample size. With little data relative to the number of features, prefer Naive Bayes; as data accumulate, the discriminative model overtakes it. This is the same bias-variance story as above, now with a named competitor.
+
+## Worked Example
+
+With the theory settled, we put it to work. The goal of this section is to fit a model, read its confusion matrix and accuracy, inspect the Gaussian parameters it learned, visualize the class-conditional densities, and then deliberately break the independence assumption to watch the accuracy degrade.
+
+We use `e1071::naiveBayes`, which fits a Gaussian model for continuous predictors and a categorical model for factor predictors.
+
+```{r nb-setup, eval=TRUE}
+library(e1071)
+library(ggplot2)
+library(MASS)
+set.seed(1)
+```
+
+### Fitting and Evaluating on Iris
+
+We fit Naive Bayes to the iris data and report a confusion matrix and accuracy. To get an honest estimate we split into training and test sets.
+
+```{r nb-iris-fit, eval=TRUE}
+n <- nrow(iris)
+train_idx <- sample(n, size = floor(0.7 * n))
+train <- iris[train_idx, ]
+test <- iris[-train_idx, ]
+
+nb_fit <- naiveBayes(Species ~ ., data = train)
+pred <- predict(nb_fit, test)
+
+confusion <- table(Predicted = pred, Actual = test$Species)
+confusion
+```
+
+The diagonal of the confusion matrix counts correct predictions, so the accuracy is the sum of the diagonal divided by the total.
+
+```{r nb-iris-acc, eval=TRUE}
+accuracy <- sum(diag(confusion)) / sum(confusion)
+round(accuracy, 3)
+```
+
+The model classifies the held-out flowers correctly almost every time, with at most a single confusion between the two species that overlap in petal size. That is strong performance for a model that ignores all correlation among the four measurements.
+
+The fitted object stores the per-class Gaussian parameters. Each row gives the estimated mean and standard deviation of a feature within a class, exactly the $\hat\mu_{jc}$ and $\hat\sigma_{jc}$ from the Gaussian variant above.
+
+```{r nb-iris-params, eval=TRUE}
+nb_fit$tables$Petal.Length
+```
+
+The three rows confirm what makes petal length so useful here: the class means are well separated (roughly 1.5, 4.3, and 5.6) relative to their standard deviations, so this one feature alone almost sorts the species.
+
+### Class-Conditional Densities for One Feature
+
+The model's view of a single feature is a set of per-class Gaussians: one bell curve per class, each summarizing how that feature is distributed within the class. We overlay the fitted densities for petal length on top of the data to see how well the Gaussian summary matches the actual histogram. Figure \@ref(fig:naive-bayes-density) shows the result.
+
+```{r naive-bayes-density, eval=TRUE, fig.width=6, fig.height=4, out.width="80%", fig.cap="Fitted Gaussian class-conditional densities for petal length, one curve per iris species, overlaid on the training histograms. Each curve is centered on its class mean and the small overlap between the two larger-petaled species marks where misclassifications occur."}
+params <- nb_fit$tables$Petal.Length
+grid <- seq(min(iris$Petal.Length), max(iris$Petal.Length), length.out = 300)
+
+dens <- do.call(rbind, lapply(rownames(params), function(cls) {
+  data.frame(
+    Petal.Length = grid,
+    density = dnorm(grid, mean = params[cls, 1], sd = params[cls, 2]),
+    Species = cls
+  )
+}))
+
+ggplot() +
+  geom_histogram(
+    data = train,
+    aes(x = Petal.Length, y = after_stat(density), fill = Species),
+    alpha = 0.3, position = "identity", bins = 20
+  ) +
+  geom_line(
+    data = dens,
+    aes(x = Petal.Length, y = density, color = Species),
+    linewidth = 1
+  ) +
+  labs(
+    title = "Gaussian Naive Bayes class-conditional densities",
+    subtitle = "Fitted p(Petal.Length | Species) over training histograms",
+    y = "density"
+  )
+```
+
+Each fitted curve sits squarely over its class's histogram, which is why this feature is so informative. The slight overlap between the two larger-petaled species is exactly where the occasional misclassification in the confusion matrix comes from.
+
+### When the Naive Assumption Is Violated
+
+The iris example flatters Naive Bayes because petal measurements are already fairly separable. To see the cost of the independence assumption directly, we now construct a case engineered to violate it. We simulate two Gaussian classes that share a strongly correlated covariance structure. Within each class the two features have correlation $0.9$, so conditional independence is badly wrong.
+
+```{r nb-corr-sim, eval=TRUE}
+m <- 400
+Sigma <- matrix(c(1, 0.9, 0.9, 1), nrow = 2)
+g1 <- mvrnorm(m, mu = c(0, 0), Sigma = Sigma)
+g2 <- mvrnorm(m, mu = c(2, 2), Sigma = Sigma)
+
+sim <- data.frame(
+  x1 = c(g1[, 1], g2[, 1]),
+  x2 = c(g1[, 2], g2[, 2]),
+  y = factor(rep(c("A", "B"), each = m))
+)
+
+s_train <- sample(nrow(sim), floor(0.7 * nrow(sim)))
+nb_corr <- naiveBayes(y ~ x1 + x2, data = sim[s_train, ])
+pred_corr <- predict(nb_corr, sim[-s_train, ])
+mean(pred_corr == sim$y[-s_train])
+```
+
+The classifier still separates the classes reasonably well, but its accuracy is lower than a method that models the within-class correlation (such as linear discriminant analysis or logistic regression) would achieve here, because Naive Bayes treats the two highly redundant features as if each carried independent information.
+
+## Practical Notes
+
+To close, here are the points that matter most when you actually deploy a Naive Bayes classifier, distilled into a checklist:
+
+- Naive Bayes trains in a single pass over the data and predicts in time linear in the number of features, which makes it a strong baseline and a good choice when speed or memory is limited.
+- It handles high-dimensional sparse inputs (such as text) gracefully, which is why the multinomial and Bernoulli variants remain standard text-classification baselines.
+- The predicted class is usually more trustworthy than the predicted probability. Correlated features make Naive Bayes overconfident, so its probabilities often need recalibration (for example, Platt scaling or isotonic regression) before being used as risk scores.
+- Always apply smoothing for count and binary features to avoid the zero-frequency problem. For continuous features, guard against zero or near-zero estimated variances, which produce unstable likelihoods.
+- Decorrelating or pruning highly redundant features can help, since duplicated features are effectively double-counted under the independence assumption.
+
+> **Tip:** The single most common production mistake with Naive Bayes is using its raw probability outputs as if they were calibrated risk scores. Trust the predicted *label*; treat the predicted *probability* with suspicion until you have recalibrated it.
+
+## Further Reading
+
+- Domingos and Pazzani (1997) on the optimality of Naive Bayes under zero-one loss.
+- Ng and Jordan (2002) on the discriminative-generative comparison with logistic regression.
+- Hastie, Tibshirani, and Friedman, *The Elements of Statistical Learning*, on generative classifiers and the bias-variance view.
+- Manning, Raghavan, and Schutze, *Introduction to Information Retrieval*, on multinomial and Bernoulli Naive Bayes for text.

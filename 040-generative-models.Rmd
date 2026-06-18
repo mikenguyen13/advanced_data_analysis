@@ -1,0 +1,732 @@
+# Generative Models
+
+Imagine you have a folder of ten thousand photographs of faces and you want a
+computer to produce a brand new face that no one has ever seen, yet looks
+completely real. A classifier cannot do this. A classifier reads a photo and
+returns a label such as "smiling" or "not smiling". It never has to understand
+what makes a face a face. To invent a new one, the computer needs a model of
+what faces look like in general, not just a rule for telling two kinds apart.
+That distinction, between a model that *labels* data and a model that can
+*produce* data, is the subject of this chapter.
+
+Most of this book studies discriminative models. A discriminative model learns
+$p(y \mid x)$ directly: given an input $x$, it returns a label or a number. A
+generative model instead learns the data distribution itself, either the joint
+$p(x, y)$ or the marginal $p(x)$. Once you have a model of $p(x)$, you can do
+more than classify. You can draw new samples that look like the training data,
+score how likely a point is, fill in missing parts of an input, and compress
+data into a compact code.
+
+> **Intuition:** A discriminative model learns where to draw the line between
+> categories. A generative model learns the whole landscape the data live on, so
+> it can walk around and produce new points anywhere on that landscape.
+
+This chapter covers three families that dominate modern generative modeling:
+variational autoencoders (VAEs), generative adversarial networks (GANs), and
+diffusion models. For each one you will see the intuition first, then the math
+that makes it precise, then a sketch of the code, and finally what the result
+means. The three families reach the same goal, a model you can sample from, by
+very different routes, and the closing comparison lays out the trade-offs side by
+side. The runnable demonstration near the end uses base R and ggplot2 only, so
+every number in it reproduces without a deep learning backend.^[The full neural
+network versions need a GPU and the Keras/TensorFlow stack, so those code blocks
+are shown for reference but not executed here. The base R demonstration captures
+the key mathematical facts, the forward diffusion process and the optimal GAN
+discriminator, that you can verify on your own machine.]
+
+## Generative versus Discriminative
+
+Before meeting the three model families, it is worth pinning down precisely what
+"generative" means and why it is a different job from the classification and
+regression that fill the rest of this book. The cleanest way in is to write the
+joint distribution two ways:
+
+$$
+p(x, y) = p(y \mid x)\, p(x) = p(x \mid y)\, p(y).
+$$
+
+A discriminative model targets the first factor $p(y \mid x)$ and ignores
+$p(x)$. Logistic regression, random forests, and the neural network classifiers
+from earlier chapters all sit here. They tend to predict well because they spend
+all of their capacity on the boundary between classes.
+
+A generative model targets $p(x \mid y)$ and $p(y)$, or just $p(x)$ when there
+are no labels. Classification then comes from Bayes rule,
+
+$$
+p(y \mid x) = \frac{p(x \mid y)\, p(y)}{\sum_{y'} p(x \mid y')\, p(y')}.
+$$
+
+Naive Bayes and Gaussian discriminant analysis are classic examples. Modeling
+$p(x)$ is harder than modeling a boundary, because the model has to account for
+everything in the data, not just the part that separates classes. So why pay
+that price? Classification is only one of several payoffs. A model of $p(x)$ lets
+you:
+
+- sample new data, for example images, audio, or molecules,
+- detect outliers as points with low $p(x)$,
+- impute missing features,
+- learn a useful low dimensional representation,
+- augment a small training set with synthetic examples.
+
+> **Note:** None of the three families below require the labels $y$. They learn
+> the shape of $p(x)$ from inputs alone, which is why they are usually trained on
+> unlabeled data, of which the world has far more than labeled data.
+
+The three families take different routes to a model you can sample from. We start
+with the one closest to ideas already in this book, the autoencoder.
+
+## Variational Autoencoders
+
+The first family stays closest to familiar territory. A variational autoencoder
+(VAE) is a latent variable model: it assumes each observed point $x$ is generated
+from an unobserved, low dimensional code $z$ that we never see directly. The
+generative story is
+
+$$
+z \sim p(z) = \mathcal{N}(0, I), \qquad x \sim p_\theta(x \mid z),
+$$
+
+so the marginal likelihood of a data point integrates over the latent variable,
+
+$$
+p_\theta(x) = \int p_\theta(x \mid z)\, p(z)\, dz .
+$$
+
+Here $z$ is the *latent code*, a short vector that captures the essence of $x$
+(say, a handful of numbers summarizing a face), and $p_\theta(x \mid z)$ is the
+*decoder*, the network with parameters $\theta$ that turns a code back into a
+data point.
+
+This connects to the autoencoders introduced in the neural networks chapter. A
+plain autoencoder maps $x$ to a code and back with no probabilistic meaning. A
+VAE keeps the encoder and decoder shape but makes both stochastic, which lets us
+sample new $x$ by drawing $z \sim \mathcal{N}(0, I)$ and passing it through the
+decoder.
+
+> **Key idea:** A plain autoencoder compresses and reconstructs. A VAE turns that
+> same architecture into a generator by insisting the codes follow a known
+> distribution, the standard normal, so you can sample a fresh code and decode it
+> into a new, plausible $x$.
+
+### The problem with the integral
+
+There is a snag. To train the model we would like to maximize $p_\theta(x)$, but
+the integral over $z$ has no closed form for a neural network decoder, and the
+posterior $p_\theta(z \mid x) = p_\theta(x \mid z)\, p(z) / p_\theta(x)$ (which
+codes are likely to have produced a given $x$) is equally hard. The VAE works
+around both by introducing a second network, an encoder $q_\phi(z \mid x)$, that
+*approximates* the true posterior. The encoder outputs a mean and a variance,
+
+$$
+q_\phi(z \mid x) = \mathcal{N}\!\big(\mu_\phi(x),\, \mathrm{diag}(\sigma_\phi^2(x))\big).
+$$
+
+### The evidence lower bound
+
+Because we cannot maximize $\log p_\theta(x)$ directly, we maximize a quantity
+that is guaranteed to sit just below it and is computable. Start from the log
+marginal likelihood and insert $q_\phi$:
+
+$$
+\log p_\theta(x)
+= \log \int p_\theta(x \mid z)\, p(z)\, dz
+= \log \mathbb{E}_{q_\phi(z \mid x)}\!\left[\frac{p_\theta(x \mid z)\, p(z)}{q_\phi(z \mid x)}\right].
+$$
+
+Jensen inequality moves the log inside the expectation and gives a lower bound,
+the evidence lower bound or ELBO:
+
+$$
+\log p_\theta(x) \ge \mathbb{E}_{q_\phi(z \mid x)}\big[\log p_\theta(x \mid z)\big]
+- D_{\mathrm{KL}}\!\big(q_\phi(z \mid x)\,\|\,p(z)\big) =: \mathcal{L}(\theta, \phi; x).
+$$
+
+The gap between $\log p_\theta(x)$ and the ELBO is exactly
+$D_{\mathrm{KL}}(q_\phi(z \mid x)\,\|\,p_\theta(z \mid x))$, which is non
+negative,^[The Kullback Leibler divergence $D_{\mathrm{KL}}(q \| p)$ measures how
+far one distribution $q$ is from another $p$. It is zero when $q = p$ and
+positive otherwise, which is why a lower bound that differs from the target by a
+KL term can never overshoot.] so maximizing $\mathcal{L}$ does two good things at
+once: it pushes the bound up and it makes the approximate posterior close to the
+true one.
+
+Read the two terms as a loss. The first term is a reconstruction term: it
+rewards a decoder that assigns high probability to the actual $x$ given its code.
+The second term is a Kullback Leibler penalty that pulls the encoded
+distribution toward the prior $\mathcal{N}(0, I)$. The KL term acts as a
+regularizer. Without it the encoder could place every input in its own tiny
+region of latent space, which would reconstruct well but leave gaps that decode
+to nothing. The penalty keeps the latent space packed near the prior so that
+random draws decode into plausible samples.
+
+> **Intuition:** Picture the reconstruction term as "remember the data" and the
+> KL term as "stay tidy". Pull only on the first and the model memorizes inputs
+> into scattered, unusable codes. Pull only on the second and every input
+> collapses to the same blurry average. The ELBO balances the two.
+
+When both $q_\phi(z \mid x)$ and $p(z)$ are Gaussian the KL term has a closed
+form, so there is nothing to estimate by sampling. For a $d$ dimensional diagonal Gaussian,
+
+$$
+D_{\mathrm{KL}}\!\big(\mathcal{N}(\mu, \sigma^2 I)\,\|\,\mathcal{N}(0, I)\big)
+= \tfrac{1}{2} \sum_{j=1}^{d} \big(\mu_j^2 + \sigma_j^2 - \log \sigma_j^2 - 1\big).
+$$
+
+### The reparameterization trick
+
+To train with gradient descent we need gradients of $\mathcal{L}$ with respect
+to the encoder parameters $\phi$. The trouble is that the expectation is taken
+over a distribution that depends on $\phi$, so we cannot just sample $z$ and
+backpropagate through the sampling step. The reparameterization trick rewrites
+the sample as a deterministic function of $\phi$ plus external noise,
+
+$$
+z = \mu_\phi(x) + \sigma_\phi(x) \odot \epsilon, \qquad \epsilon \sim \mathcal{N}(0, I),
+$$
+
+where $\odot$ is elementwise multiplication. Now the randomness lives in
+$\epsilon$, which does not depend on $\phi$, and the path from $\phi$ to $z$ is
+differentiable. The Monte Carlo estimate of the ELBO using one or a few draws of
+$\epsilon$ then has a well defined gradient.
+
+> **Key idea:** You cannot differentiate through "draw a random sample", but you
+> can differentiate through "scale and shift a fixed random sample". The
+> reparameterization trick is exactly that move, and it is what makes the VAE
+> trainable by ordinary backpropagation.
+
+The next block sketches a VAE in Keras. It is shown for reference and is marked
+`eval = FALSE` because it needs the Keras/TensorFlow backend, which is not
+available in this build.
+
+```{r vae-keras, eval = FALSE}
+library(keras)
+
+latent_dim <- 2
+
+# Encoder outputs mean and log variance of q(z | x)
+encoder_in <- layer_input(shape = 784)
+h <- encoder_in %>% layer_dense(256, activation = "relu")
+z_mean <- h %>% layer_dense(latent_dim)
+z_log_var <- h %>% layer_dense(latent_dim)
+
+# Reparameterization: z = mean + exp(log_var / 2) * epsilon
+sampling <- function(args) {
+    z_mean <- args[[1]]
+    z_log_var <- args[[2]]
+    eps <- k_random_normal(shape = k_shape(z_mean))
+    z_mean + k_exp(0.5 * z_log_var) * eps
+}
+z <- list(z_mean, z_log_var) %>% layer_lambda(sampling)
+
+# Decoder maps z back to x
+decoder <- keras_model_sequential() %>%
+    layer_dense(256, activation = "relu", input_shape = latent_dim) %>%
+    layer_dense(784, activation = "sigmoid")
+x_decoded <- decoder(z)
+
+vae <- keras_model(encoder_in, x_decoded)
+
+# Loss = reconstruction + KL regularizer
+recon <- 784 * loss_binary_crossentropy(encoder_in, x_decoded)
+kl <- -0.5 * k_sum(1 + z_log_var - k_square(z_mean) - k_exp(z_log_var), axis = -1L)
+vae$add_loss(k_mean(recon + kl))
+vae %>% compile(optimizer = "adam")
+```
+
+## Generative Adversarial Networks
+
+The VAE works hard to keep an explicit, if approximate, handle on the
+likelihood. A generative adversarial network (GAN) throws that away and asks a
+different question: instead of "how probable is this data point?", it asks "can
+anyone tell my fakes from the real thing?" Think of an art forger and a
+detective. The forger (the generator) paints fakes; the detective (the
+discriminator) tries to spot them. Each makes the other better. When the forger
+finally wins, the fakes are indistinguishable from genuine work.
+
+Concretely, two networks compete. A generator $G$ maps noise $z \sim p(z)$ to a
+fake sample $G(z)$. A discriminator $D$ takes a sample and outputs the
+probability that it is real. Training is a minimax game,
+
+$$
+\min_G \max_D \;
+\mathbb{E}_{x \sim p_{\mathrm{data}}}\big[\log D(x)\big]
++ \mathbb{E}_{z \sim p_z}\big[\log\big(1 - D(G(z))\big)\big].
+$$
+
+The discriminator wants to push $D(x)$ toward one on real data and toward zero
+on fakes. The generator wants the opposite, to make $D(G(z))$ close to one. The
+$\min_G \max_D$ notation reads literally: the inner $\max_D$ trains the best
+detective it can, and the outer $\min_G$ trains the forger to defeat that best
+detective.
+
+> **Note:** A GAN never writes down or evaluates $p(x)$. It is an *implicit*
+> generative model: it can hand you samples but cannot tell you how likely any
+> particular point is. That is the price of skipping the likelihood.
+
+### The optimal discriminator
+
+It helps to ask what the perfect detective would do, holding the forger fixed.
+Fix the generator, so the distribution of fakes $p_g$ is fixed. Write the value
+function as a single integral over $x$,
+
+$$
+V(D) = \int_x \Big( p_{\mathrm{data}}(x) \log D(x) + p_g(x) \log\big(1 - D(x)\big) \Big)\, dx .
+$$
+
+For each $x$ the integrand has the form $a \log d + b \log(1 - d)$, which is
+maximized at $d = a / (a + b)$. The optimal discriminator is therefore the
+density ratio
+
+$$
+D^*(x) = \frac{p_{\mathrm{data}}(x)}{p_{\mathrm{data}}(x) + p_g(x)} .
+$$
+
+Substitute $D^*$ back into the value function. After collecting terms it becomes
+
+$$
+V(G, D^*) = -\log 4 + 2\, D_{\mathrm{JS}}\!\big(p_{\mathrm{data}} \,\|\, p_g\big),
+$$
+
+where $D_{\mathrm{JS}}$ is the Jensen Shannon divergence, a symmetric measure of
+how far two distributions are apart.^[The Jensen Shannon divergence is a smoothed,
+symmetric cousin of the KL divergence: $D_{\mathrm{JS}}(p \| q) = \tfrac12
+D_{\mathrm{KL}}(p \| m) + \tfrac12 D_{\mathrm{KL}}(q \| m)$ with $m = \tfrac12(p +
+q)$. Unlike KL it is always finite and symmetric in its two arguments.] Since the
+JS divergence is zero only when $p_g = p_{\mathrm{data}}$, the generator that
+wins the game matches the data distribution exactly, with the value reaching its
+minimum of $-\log 4$.
+
+> **Key idea:** Underneath the forger-versus-detective story, the GAN is
+> secretly minimizing a divergence between the fake and real distributions. The
+> adversarial game is just a clever, sample-only way to estimate and descend that
+> divergence without ever computing a density.
+
+The demonstration below evaluates $D^*(x)$ for two Gaussians so the density ratio
+result is visible as a concrete curve.
+
+### Mode collapse and instability
+
+The clean theory above assumes both networks are trained to optimality at each
+step, which never happens in practice. Two failures are common, and knowing their
+names is half of diagnosing a misbehaving GAN.
+
+The first is *mode collapse*: the generator discovers a few outputs that reliably
+fool the current discriminator and produces only those, ignoring whole regions of
+the data. The samples look fine one at a time but lack variety, like a forger who
+only knows how to paint one convincing painting.
+
+The second is *training instability*: the two networks chase a moving target. If
+the discriminator gets too strong, the term $\log(1 - D(G(z)))$ saturates and the
+generator gradient vanishes, so the forger stops learning precisely when it is
+losing badly. A common fix is to have the generator maximize $\log D(G(z))$
+instead, which gives stronger gradients early in training. Balancing the two
+networks, tuning learning rates, and choosing alternative losses such as the
+Wasserstein objective are all standard parts of getting a GAN to converge.
+
+> **Warning:** Unlike the VAE loss, a GAN loss curve does not tell you much. The
+> generator and discriminator losses can stay flat while sample quality improves
+> or collapses. Judge a GAN by looking at its samples, not by watching the loss
+> go down.
+
+A minimal GAN training loop in Keras follows. It is marked `eval = FALSE` because
+it needs the Keras/TensorFlow backend.
+
+```{r gan-keras, eval = FALSE}
+library(keras)
+
+generator <- keras_model_sequential() %>%
+    layer_dense(128, activation = "relu", input_shape = 100) %>%
+    layer_dense(784, activation = "tanh")
+
+discriminator <- keras_model_sequential() %>%
+    layer_dense(128, activation = "relu", input_shape = 784) %>%
+    layer_dense(1, activation = "sigmoid")
+discriminator %>% compile(optimizer = "adam", loss = "binary_crossentropy")
+
+# Combined model trains the generator with the discriminator frozen
+freeze_weights(discriminator)
+gan_in <- layer_input(shape = 100)
+gan_out <- gan_in %>% generator() %>% discriminator()
+gan <- keras_model(gan_in, gan_out)
+gan %>% compile(optimizer = "adam", loss = "binary_crossentropy")
+
+# Each step: update D on real plus fake, then update G through the frozen D.
+```
+
+## Diffusion Models
+
+Here is a different idea entirely. Take a clear photo and add a tiny bit of
+static noise, then a little more, then more, until after many steps nothing is
+left but television snow. That destruction is easy and needs no learning. Now
+suppose you could run the tape backward, removing a little noise at each step. If
+you could learn that one denoising step, you could start from pure static and
+walk all the way back to a brand new clear photo. That is the whole idea of a
+diffusion model.
+
+Diffusion models generate data by learning to reverse a gradual noising process.
+The idea goes back to Sohl-Dickstein et al. (2015) and was turned into a
+practical image generator by Ho et al. (2020). The forward process slowly
+destroys structure in the data by adding Gaussian noise over $T$ steps. The
+reverse process, learned by a network, removes noise one step at a time, turning
+pure noise back into a sample.
+
+> **Intuition:** Noising is trivial and requires no model. The model only has to
+> learn the *reverse*, and because each reverse step undoes just a sliver of
+> noise, it is a much easier task than producing a whole image in one shot.
+
+### Forward noising process
+
+Fix a variance schedule $\beta_1, \dots, \beta_T$ with small positive values.
+The forward process is a Markov chain that adds a little noise at each step,
+
+$$
+q(x_t \mid x_{t-1}) = \mathcal{N}\!\big(\sqrt{1 - \beta_t}\, x_{t-1},\; \beta_t I\big).
+$$
+
+The scaling by $\sqrt{1 - \beta_t}$ shrinks the previous value just enough that
+the variance stays controlled as noise accumulates, rather than growing without
+bound. After many steps $x_T$ is essentially standard Gaussian noise with all
+structure gone.
+
+### Closed form for any step
+
+Simulating the chain step by step would be slow during training. A convenient
+property rescues us: you can jump from the clean data $x_0$ to any noised version
+$x_t$ in a single shot, without running the intermediate steps. Let
+$\alpha_t = 1 - \beta_t$ and
+$\bar{\alpha}_t = \prod_{s=1}^{t} \alpha_s$. Then
+
+$$
+q(x_t \mid x_0) = \mathcal{N}\!\big(\sqrt{\bar{\alpha}_t}\, x_0,\; (1 - \bar{\alpha}_t) I\big),
+$$
+
+which can be written with an explicit noise variable,
+
+$$
+x_t = \sqrt{\bar{\alpha}_t}\, x_0 + \sqrt{1 - \bar{\alpha}_t}\, \epsilon, \qquad \epsilon \sim \mathcal{N}(0, I).
+$$
+
+As $t$ grows, $\bar{\alpha}_t \to 0$, so the signal $\sqrt{\bar{\alpha}_t}\, x_0$
+fades and the noise term takes over.
+
+> **Tip:** This closed form is also what makes the runnable demonstration cheap.
+> To show data dissolving at step $t$, we never simulate $t$ separate noising
+> steps. We apply the one formula above once.
+
+The simulation later in the chapter uses exactly this closed form to push two
+dimensional data toward noise.
+
+### Reverse denoising model
+
+To generate, we run the chain backward. The reverse step is also modeled as a
+Gaussian,
+
+$$
+p_\theta(x_{t-1} \mid x_t) = \mathcal{N}\!\big(\mu_\theta(x_t, t),\; \Sigma_\theta(x_t, t)\big),
+$$
+
+with the mean produced by a network. Training the reverse process can be derived
+as a variational bound similar to the ELBO, but Ho et al. (2020) showed a
+simpler reparameterization. Rather than predicting the mean directly, the network
+predicts the noise $\epsilon$ that was added. Given the closed form above, a
+network $\epsilon_\theta(x_t, t)$ is trained to recover that noise, and the
+training objective collapses to a plain regression on the noise,
+
+$$
+\mathcal{L}_{\mathrm{simple}}(\theta) = \mathbb{E}_{x_0, \epsilon, t}\Big[\big\| \epsilon - \epsilon_\theta\big(\sqrt{\bar{\alpha}_t}\, x_0 + \sqrt{1 - \bar{\alpha}_t}\, \epsilon,\; t\big)\big\|^2\Big].
+$$
+
+In words, the network is shown a noised point and the timestep it came from, and
+its only job is to guess the noise that was mixed in. Sampling then alternates a
+denoising step using $\epsilon_\theta$ with a small injection of fresh noise,
+from $t = T$ down to $t = 1$.
+
+> **Key idea:** The forbidding-looking diffusion objective is, in the end, plain
+> regression: predict the noise with mean squared error. That stability is a big
+> part of why diffusion models train more reliably than GANs, which have no
+> single well-behaved loss to descend.
+
+A sketch of the noise prediction loss in Keras follows. It is marked
+`eval = FALSE` because it depends on the Keras backend.
+
+```{r diffusion-keras, eval = FALSE}
+library(keras)
+
+# eps_model(x_t, t) predicts the noise added to reach x_t.
+# Training: sample x0 from data, t uniform in 1..T, epsilon ~ N(0, I),
+# form x_t = sqrt(abar[t]) * x0 + sqrt(1 - abar[t]) * epsilon,
+# then minimize mean((epsilon - eps_model(x_t, t))^2).
+
+train_step <- function(x0, abar, T) {
+    t <- sample.int(T, nrow(x0), replace = TRUE)
+    eps <- matrix(rnorm(length(x0)), nrow = nrow(x0))
+    a <- sqrt(abar[t])
+    b <- sqrt(1 - abar[t])
+    x_t <- a * x0 + b * eps
+    # loss = mean((eps - eps_model(x_t, t))^2); backprop with optimizer
+}
+```
+
+## Runnable Demonstration
+
+The neural network versions above need a GPU and a deep learning backend, but
+two of the central mathematical facts can be checked exactly with base R and
+ggplot2 on a laptop. This section does two things. First it runs the forward
+diffusion process on a two dimensional Gaussian mixture and watches the data
+dissolve into noise, confirming the closed form from the diffusion section.
+Second it evaluates the optimal GAN discriminator for two one dimensional
+Gaussians and confirms the density ratio formula $D^*(x) = p_{\mathrm{data}} /
+(p_{\mathrm{data}} + p_g)$.
+
+> **When to use this:** Treat the demonstration as a sanity check on the theory,
+> not as a recipe for generating images. It isolates the math, the noising
+> schedule and the optimal discriminator, in a setting small enough to verify by
+> eye and by number.
+
+```{r gm-setup}
+library(ggplot2)
+set.seed(1)
+```
+
+### Forward diffusion on a 2-D mixture
+
+We sample a small mixture of three Gaussians, then apply the closed form
+$x_t = \sqrt{\bar\alpha_t}\, x_0 + \sqrt{1 - \bar\alpha_t}\, \epsilon$ at a few
+timesteps. Figure \@ref(fig:generative-models-diffusion-forward) shows the
+result: the three clear modes at $t = 0$ dissolve toward a single noise cloud as
+$t$ increases.
+
+```{r generative-models-diffusion-forward, fig.width = 7, fig.height = 5, fig.cap = "Forward diffusion applied to a two dimensional Gaussian mixture. The three modes visible at step zero degrade into standard Gaussian noise by step forty as the closed form mixes in progressively more noise."}
+# Sample a 2-D Gaussian mixture as the data distribution p(x0)
+n <- 600
+centers <- matrix(c(-3, 0, 3, 0, 0, 3), ncol = 2, byrow = TRUE)
+comp <- sample(1:3, n, replace = TRUE)
+x0 <- centers[comp, ] + matrix(rnorm(2 * n, sd = 0.35), ncol = 2)
+
+# Linear variance schedule and cumulative product alpha_bar
+T_steps <- 40
+beta <- seq(1e-4, 0.06, length.out = T_steps)
+alpha <- 1 - beta
+alpha_bar <- cumprod(alpha)
+
+# Apply the closed form at selected steps
+steps_to_show <- c(0, 5, 15, 40)
+make_frame <- function(t) {
+    if (t == 0) {
+        xt <- x0
+    } else {
+        ab <- alpha_bar[t]
+        eps <- matrix(rnorm(2 * n), ncol = 2)
+        xt <- sqrt(ab) * x0 + sqrt(1 - ab) * eps
+    }
+    data.frame(x = xt[, 1], y = xt[, 2], step = paste0("t = ", t))
+}
+frames <- do.call(rbind, lapply(steps_to_show, make_frame))
+frames$step <- factor(frames$step, levels = paste0("t = ", steps_to_show))
+
+ggplot(frames, aes(x, y)) +
+    geom_point(alpha = 0.4, size = 0.8, color = "steelblue") +
+    facet_wrap(~step, nrow = 1) +
+    coord_equal() +
+    labs(
+        title = "Forward diffusion: structured data degrading to noise",
+        x = NULL, y = NULL
+    )
+```
+
+At $t = 0$ the three modes are clear. By $t = 40$ the cumulative product
+$\bar\alpha_t$ is near zero, so the signal is gone and the points look like
+standard Gaussian noise.
+
+To quantify the loss of structure, we report two summaries per step: the total
+variance of the cloud, and a Kullback Leibler divergence between the marginal of
+the first coordinate at step $t$ and a standard normal, estimated from
+histograms. Both should move toward the noise reference as $t$ grows. Table
+\@ref(tab:generative-models-diffusion-decay) reports these summaries at selected
+steps.
+
+```{r generative-models-diffusion-decay}
+# KL(p || q) for two discrete histograms on a common grid
+kl_hist <- function(samp, ref_density, breaks) {
+    p <- hist(samp, breaks = breaks, plot = FALSE)$density
+    mids <- head(breaks, -1) + diff(breaks) / 2
+    q <- ref_density(mids)
+    p <- p / sum(p)
+    q <- q / sum(q)
+    keep <- p > 0 & q > 0
+    sum(p[keep] * log(p[keep] / q[keep]))
+}
+
+grid <- seq(-6, 6, length.out = 41)
+ref <- function(m) dnorm(m)
+
+summ <- lapply(0:T_steps, function(t) {
+    if (t == 0) {
+        xt <- x0
+    } else {
+        ab <- alpha_bar[t]
+        eps <- matrix(rnorm(2 * n), ncol = 2)
+        xt <- sqrt(ab) * x0 + sqrt(1 - ab) * eps
+    }
+    data.frame(
+        step = t,
+        total_var = round(sum(apply(xt, 2, var)), 3),
+        kl_to_normal = round(kl_hist(xt[, 1], ref, grid), 3)
+    )
+})
+diffusion_tab <- do.call(rbind, summ)
+diffusion_tab <- diffusion_tab[diffusion_tab$step %in% c(0, 5, 10, 20, 30, 40), ]
+knitr::kable(
+    diffusion_tab,
+    row.names = FALSE,
+    col.names = c("Step t", "Total variance", "KL of x1 to N(0,1)"),
+    caption = "Structure decays as the forward process adds noise."
+)
+```
+
+The KL divergence to a standard normal falls steeply over the first several
+steps and approaches zero, confirming that the marginal becomes standard
+Gaussian as the chain runs.
+
+### Optimal GAN discriminator as a density ratio
+
+Take real data as $\mathcal{N}(1, 1)$ and the generator distribution as
+$\mathcal{N}(-1, 1.5^2)$. The theory says the best discriminator is
+$D^*(x) = p_{\mathrm{data}}(x) / (p_{\mathrm{data}}(x) + p_g(x))$. We compute
+that curve directly and also fit a discriminator by logistic regression on real
+versus fake samples to check that the trained classifier recovers the same
+shape. Figure \@ref(fig:generative-models-gan-discriminator) overlays the
+closed form curve and the fitted classifier.
+
+```{r generative-models-gan-discriminator, fig.width = 7, fig.height = 4, fig.cap = "The optimal GAN discriminator as a density ratio. The closed form curve $D^*(x) = p_{data}/(p_{data}+p_g)$ and a logistic regression fitted on real versus fake samples coincide, sitting near one where the data density dominates and near zero where the generator density dominates."}
+# True densities
+p_data <- function(x) dnorm(x, mean = 1, sd = 1.0)
+p_g <- function(x) dnorm(x, mean = -1, sd = 1.5)
+
+xs <- seq(-7, 7, length.out = 400)
+d_star <- p_data(xs) / (p_data(xs) + p_g(xs))
+
+# Empirical check: label real = 1, fake = 0, fit logistic regression
+m <- 4000
+real <- rnorm(m, mean = 1, sd = 1.0)
+fake <- rnorm(m, mean = -1, sd = 1.5)
+df <- data.frame(
+    x = c(real, fake),
+    label = c(rep(1, m), rep(0, m))
+)
+fit <- glm(label ~ poly(x, 4), data = df, family = binomial())
+d_fit <- predict(fit, newdata = data.frame(x = xs), type = "response")
+
+plot_df <- rbind(
+    data.frame(x = xs, D = d_star, source = "optimal D*(x)"),
+    data.frame(x = xs, D = d_fit, source = "fitted logistic D")
+)
+
+ggplot(plot_df, aes(x, D, color = source, linetype = source)) +
+    geom_line(linewidth = 1) +
+    ylim(0, 1) +
+    labs(
+        title = "Optimal GAN discriminator is the density ratio",
+        x = "x", y = "D(x)", color = NULL, linetype = NULL
+    ) +
+    theme(legend.position = "bottom")
+```
+
+The closed form $D^*$ and the fitted classifier overlap closely. Where the data
+density dominates, $D^*$ is near one. Where the generator density dominates,
+$D^*$ is near zero. At the crossover point the two densities are equal and
+$D^* = 0.5$, which is the point a perfectly trained generator drives the whole
+curve toward. Table \@ref(tab:generative-models-gan-jsd) confirms numerically
+that the value at the optimal discriminator equals $-\log 4 + 2\,D_{\mathrm{JS}}$.
+
+```{r generative-models-gan-jsd}
+# Numerically relate the value at D* to Jensen-Shannon divergence
+mix <- function(x) 0.5 * (p_data(x) + p_g(x))
+kl_int <- function(p, q) {
+    integrate(function(x) {
+        pp <- p(x); qq <- q(x)
+        ifelse(pp > 0, pp * log(pp / qq), 0)
+    }, -20, 20)$value
+}
+jsd <- 0.5 * kl_int(p_data, mix) + 0.5 * kl_int(p_g, mix)
+value_at_opt <- -log(4) + 2 * jsd
+
+knitr::kable(
+    data.frame(
+        quantity = c("JS divergence", "value -log4 + 2*JSD", "-log 4"),
+        value = round(c(jsd, value_at_opt, -log(4)), 4)
+    ),
+    col.names = c("Quantity", "Value"),
+    caption = "GAN value at the optimal discriminator equals -log4 + 2 times JS divergence."
+)
+```
+
+When the two distributions differ, the JS divergence is positive and the
+generator pays a penalty above the floor of $-\log 4$. The generator minimizes
+this penalty by matching $p_{\mathrm{data}}$, at which point the JS divergence is
+zero and the value reaches $-\log 4$.
+
+## Comparison
+
+Now that each family has been seen on its own, it helps to line them up against
+each other. They trade off sample quality, training stability, whether they give
+a likelihood, and sampling speed, and no single one wins on every axis. Table
+\@ref(tab:generative-models-comparison) lays out the trade-offs side by side.
+
+```{r generative-models-comparison}
+cmp <- data.frame(
+    Property = c(
+        "Sample quality",
+        "Training stability",
+        "Likelihood",
+        "Sampling speed",
+        "Latent space"
+    ),
+    VAE = c(
+        "moderate, often blurry",
+        "stable",
+        "lower bound (ELBO)",
+        "fast, one decoder pass",
+        "smooth and structured"
+    ),
+    GAN = c(
+        "sharp, high quality",
+        "unstable, mode collapse",
+        "none, implicit",
+        "fast, one generator pass",
+        "usable but less regular"
+    ),
+    Diffusion = c(
+        "very high quality",
+        "stable, simple MSE loss",
+        "lower bound, tractable",
+        "slow, many denoising steps",
+        "no compact latent code"
+    )
+)
+knitr::kable(cmp, caption = "VAE, GAN, and diffusion at a glance.")
+```
+
+In short: VAEs give a clean probabilistic latent space and stable training but
+softer samples; GANs give sharp samples at the cost of fragile training; and
+diffusion models give the best samples with stable training but pay for it at
+sampling time because every sample needs many sequential steps.
+
+> **When to use this:** Reach for a VAE when you want a smooth, interpretable
+> latent space or a likelihood-style score (anomaly detection, representation
+> learning). Reach for a GAN when sharp samples matter more than coverage or
+> stability. Reach for a diffusion model when sample quality is the priority and
+> you can afford slower generation. These trade-offs shift as the field moves, so
+> treat the table as a snapshot rather than a verdict.
+
+## Further Reading
+
+- Kingma and Welling (2014), Auto-Encoding Variational Bayes. The original VAE
+  paper with the ELBO and the reparameterization trick.
+- Goodfellow et al. (2014), Generative Adversarial Nets. Introduces the minimax
+  game and proves the optimal discriminator and JS divergence result.
+- Sohl-Dickstein et al. (2015), Deep Unsupervised Learning using Nonequilibrium
+  Thermodynamics. The first diffusion model for generative modeling.
+- Ho et al. (2020), Denoising Diffusion Probabilistic Models. The simplified
+  noise prediction objective used in modern diffusion models.

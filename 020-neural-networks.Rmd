@@ -1,0 +1,912 @@
+# Neural Networks
+
+Almost every model you have met so far in this book starts from a fixed recipe for how the predictors enter the equation. Linear regression adds them up. Splines and basis expansions add them up after passing each one through a hand chosen set of functions. Trees split on them one at a time. In every case, a human decides the form of the relationship and the data only fills in the coefficients. Neural networks take a different stance: they let the data decide the form too. The central idea is simple to state, even if the machinery gets involved. A neural network builds nonlinear functions of linear combinations of the inputs, stacks several of those transformations on top of each other, and learns all of the coefficients at once so that the final output predicts the response as well as possible.
+
+That one sentence hides a lot of power. A network with even a single layer of these learned transformations is a "universal approximator," meaning that, given enough units, it can represent essentially any continuous function relating inputs to outputs.^[Universal approximation is an existence result, not a recipe. It guarantees that some setting of the weights reproduces the target function; it says nothing about whether gradient descent will find that setting from your data, or how much data you would need. In practice we care far more about generalization than about raw representational capacity.] When we stack many such layers, we get a "deep" network, and depth is what lets these models learn the rich, hierarchical structure in images, audio, and language that simpler models struggle with.
+
+It helps to keep two pictures in mind at the same time. The first is the engineering picture, which is where the field began: artificial neurons loosely inspired by the brain, wired together so that signals flow from inputs through hidden units to outputs, drawn as a network diagram. The second is the statistical picture, which is the one we lean on here: a neural network is just a multi stage nonlinear regression or classification model. There are far more parameters than in an ordinary regression (we call them weights), and the way we organize the computation is more clever, but the underlying task is the familiar one of choosing a loss function and minimizing it.
+
+> **Key idea:** A neural network is a nonlinear regression model in which the transformations of the inputs are themselves learned from the data rather than specified in advance.
+
+In this chapter we build that idea up in stages. We begin by recalling how nonlinear regression is estimated, because everything that follows is a scaled up version of the same gradient based optimization. We then introduce stochastic gradient descent, the workhorse that makes training feasible on large data. From there we assemble a single hidden layer network, extend it to many layers (deep feedforward networks) with backpropagation, and finally specialize to the two architectures that made deep learning famous: convolutional networks for images and recurrent networks for sequences. We close with a practical recipe for training and a tour of the R and Keras tooling. By the end you should be able to read a network diagram, explain what each piece does, and recognize when a neural network is the right tool and when a simpler model would serve you better.
+
+> **When to use this:** Reach for neural networks when you have a large amount of data, a prediction (not inference) goal, and structure that classical models handle poorly, such as raw pixels, waveforms, or text. For small, tabular problems where you want interpretable coefficients, the earlier chapters in this book are usually the better starting point.
+
+The treatment here draws on several standard references, which are also good next stops if you want more depth.
+
+-   [@james2013, Ch 10] with [(statlearning.com)](https://www.statlearning.com/) and [online course](https://www.dataschool.io/15-hours-of-expert-machine-learning-videos/)
+
+-   [@hastie2001a, Ch 11]
+
+-   [Deep Learning](https://www.deeplearningbook.org/) [@Goodfellow-et-al-2016]
+
+-   Deep Learning with R [@alma991043601650103276]
+
+-   @abdar2021
+
+-   @samek2021a
+
+Figure \@ref(fig:neural-networks-architecture) shows how this body of work fits together, mapping the landscape of neural network architectures and their relationships.
+
+```{r neural-networks-architecture, echo=FALSE, fig.cap="A high level map of neural network architectures and how they relate to one another, after Jiao and Zhao (2020, p. 321)."}
+knitr::include_graphics("images/architecture.jpeg")
+```
+
+<br>
+
+## A Refresher on Nonlinear Regression
+
+Before we wire up any neurons, it is worth recalling how a plain nonlinear regression is fit, because a neural network is trained the same way, only with many more parameters. Suppose the response follows a model of the form
+
+$$
+Y_i = f(\mathbf{x}_i ; \mathbf{\theta}) + \eta_i, i = 1, \dots, n
+$$
+
+where the symbols mean the following:
+
+-   $f(\mathbf{x}_i , \mathbf{\theta})$ is a nonlinear function (known up to its parameters $\mathbf{\theta}$) that relates the mean $E(Y_i)$ to the independent variables $\mathbf{x}_i$,
+
+-   $\mathbf{x}_i$ is a $p \times 1$ vector of independent variables (treated as fixed),
+
+-   $\mathbf{\theta}$ is a $q \times 1$ vector of parameters,
+
+-   the $\eta_i$ are independent errors with mean 0 and variance $\sigma^2$.
+
+To fit such a model we pick an objective function (a loss) that measures how badly the model misses, then choose the parameters that make it as small as possible. For continuous responses the natural choice is squared error loss, that is, the residual sum of squares:
+
+$$
+Q(f(\mathbf{x});y; \mathbf{\theta}) = \sum_{i=1}^n \{ y_i - f(\mathbf{x}_i; \mathbf{\theta})\}^2
+$$
+
+and
+
+$$
+\hat{\mathbf{\theta}} = \underset{\mathbf{\theta}}{\operatorname{argmin}} ( Q(f(\mathbf{x}); y; \mathbf{\theta})
+$$
+
+Because $f$ is nonlinear, there is usually no closed form solution. Instead we minimize numerically. Almost every method does the same thing: start somewhere, look at the local slope of the loss, and step downhill. Formally, based on a Taylor expansion of the loss, the updates take the iterative form
+
+$$
+\hat{\mathbf{\theta}}^{(j + 1)} = \hat{\mathbf{\theta}}^{(j)} - \epsilon_j \mathbf{A}_j \frac{\partial Q (\hat{\theta}^{(j)})}{\partial \mathbf{\theta}}
+$$
+
+Here the three ingredients are: $\mathbf{A}_j$, some positive definite matrix that reshapes the step; the gradient $\frac{\partial Q (\hat{\theta}^{(j)})}{\partial \mathbf{\theta}}$ (written $\nabla_\theta Q(\hat{\mathbf{\theta}}^{(j)})$), which is the direction of steepest increase of the loss at the current estimate; and the learning rate $\epsilon_j$, which controls how big a step we take.
+
+The matrix $\mathbf{A}_j$ is what distinguishes the classical optimization methods from one another. Intuitively it rescales the raw gradient so that all parameters move together in a sensible way and the model does not overshoot. The catch is that the good choices of $\mathbf{A}_j$ involve second derivatives, which are very expensive to compute when there are millions of parameters. This is exactly why modern deep learning mostly abandons $\mathbf{A}_j$ and tunes the learning rate instead. The classical choices are summarized below.
+
+-   Gradient descent sets $\mathbf{A}_j \equiv \mathbf{I}_p$, the identity, so we simply step along the negative gradient.
+
+-   Gauss-Newton uses $\mathbf{A}_j \equiv [\mathbf{F}( \hat{\theta}^{(j)})' \mathbf{F}( \hat{\theta}^{(j)})]^{-1}$, where $\mathbf{F} (\theta) \equiv \frac{\partial f(\mathbf{x}_i; \mathbf{\theta})}{\partial \theta_j}$ is the $n \times p$ Jacobian matrix.
+
+-   Levenberg-Marquardt adds a ridge term, $\mathbf{A}_j \equiv [\mathbf{F}( \hat{\theta}^{(j)})' \mathbf{F}( \hat{\theta}^{(j)}) + \tau \mathbf{I}]^{-1}$, an $L_2$ regularizer that keeps the step well behaved.
+
+-   Newton-Raphson uses the full curvature, $\mathbf{A}_j \equiv [\frac{\partial^2 Q (\hat{\mathbf{\theta}}^{(j)})}{\partial \theta \partial \mathbf{\theta}'}]^{-1}$, the inverse $p \times p$ Hessian matrix.
+
+> **Note:** The more curvature information a method uses, the faster it converges in iterations but the more it costs per iteration. With deep networks the Hessian is hopelessly large, so plain gradient descent (with smart learning rate tricks) wins on total cost.
+
+All of these methods share one feature that becomes a bottleneck at scale: the objective function is a sum over every training observation, so a single gradient evaluation touches the entire dataset. When $n$ is large, computing that full gradient is taxing, both because of the sheer number of floating point operations and because real training sets often contain redundant data, so many of those operations carry almost no new information. The next section shows how to sidestep both problems.
+
+## Stochastic Gradient Descent
+
+Stochastic gradient descent (SGD) is the optimization technique that made training on large data practical, and it is the engine inside essentially every deep learning library. The trick is a change of viewpoint. Instead of minimizing the loss summed over the fixed training set, we think of minimizing the *expected* loss over the data distribution. We never know that expectation exactly, but we can estimate it cheaply by averaging over a small random sample of the training data, called a mini-batch.^[This works because the training points are assumed to be draws from the same underlying distribution, so the gradient on a random mini-batch is an unbiased estimate of the gradient on the full data, just noisier.]
+
+So at each step we draw a small number of observations at random (without replacement within an epoch), compute the gradient on just those, and step. The method is called "stochastic" because each step is based on a random sample rather than the whole dataset. A useful side benefit is that the same idea works in an *online* setting, where data arrive sequentially and we update as each batch comes in.
+
+> **Intuition:** The full gradient tells you the exact downhill direction but is slow to compute. A mini-batch gradient is a quick, noisy guess at that direction. Taking many noisy steps usually gets you downhill faster than taking a few perfect ones, and the noise even helps by nudging you out of poor local minima.
+
+The batch size is a genuine tuning knob. Smaller batches inject more noise into each step, which acts as a mild form of regularization and tends to improve generalization outside the training sample; larger batches give smoother, more stable steps. The algorithm below states the basic version precisely.
+
+Basic Stochastic Gradient Descent (SGD) Algorithm (Goodfellow et al. 2016, Ch 18)
+
+-   Require: Learning rate $\epsilon$
+
+-   Require: Initial parameters $\mathbf{\theta}^{(j)}$
+
+    -   while Stopping criterion not met do
+
+        -   Sample a mini-batch of $m$ inputs $\{ \mathbf{x}_1, \dots, \mathbf{x}_m \}$ and targets $\{ \mathbf{y}_1, \dots, \mathbf{y}_m \}$
+
+        -   Set $\mathbf{g} = 0$
+
+        -   for $i = 1$ to $m$ do
+
+            -   Compute gradient estimate: $\mathbf{g} \leftarrow \mathbf{g} + \frac{1}{m} \nabla_\theta Q(f(\mathbf{x}_i; \theta), \mathbf{y}_i)$
+
+        -   end for
+
+        -   Apply update: $\mathbf{\theta}^{(j +1)} \leftarrow \mathbf{\theta}^{(j)} - \epsilon \mathbf{g}$
+
+    -   end while
+
+> **Note:** One full sweep through enough mini-batches to cover all training observations is called an *epoch*. The number of epochs is the number of complete passes through the training data, and it is one of the quantities you will set when training a network.
+
+Plain SGD can wobble: because each step follows a noisy gradient, the path down the loss surface can zig-zag, especially in narrow valleys. A simple and very effective fix is *momentum*. Instead of stepping along the current gradient alone, we let the new step be a blend of the previous step's direction and magnitude with the current gradient. This smooths the trajectory, the way a heavy ball rolling downhill keeps moving in a consistent direction rather than reacting to every bump. The algorithm below adds a "velocity" vector $\mathbf{v}$ to carry that memory.
+
+Basic Stochastic Gradient Descent (SGD) with Momentum Algorithm (Goodfellow et al. 2016, Ch 8)
+
+-   Require: Learning rate $\epsilon$, momentum parameter $\nu$
+
+-   Require: Initial parameters $\mathbf{\theta}^{(j)}$ and "velocity" $\mathbf{v}$
+
+    -   while Stopping criterion not met do
+
+        -   Sample a mini-batch of $m$ inputs $\{ \mathbf{x}_1, \dots, \mathbf{x}_m \}$ and targets $\{ \mathbf{y}_1, \dots, \mathbf{y}_m \}$
+
+        -   Set $\mathbf{g} = 0$
+
+        -   for $i = 1$ to $m$ do
+
+            -   Compute gradient estimate: $\mathbf{g} \leftarrow \mathbf{g} + \frac{1}{m} \nabla_\theta Q(f(\mathbf{x}_i; \theta), \mathbf{y}_i)$
+
+        -   end for
+
+        -   Compute velocity update: $\mathbf{v} \leftarrow \nu \mathbf{v} - \epsilon \mathbf{g}$
+
+        -   Apply update: $\mathbf{\theta}^{(j +1)} \leftarrow \mathbf{\theta}^{(j)} - \mathbf{v}$
+
+    -   end while
+
+<br>
+
+The learning rate is the single most important tuning parameter in SGD: too large and the loss can diverge, too small and training crawls. A great deal of effort has gone into adapting it automatically as training proceeds, usually by giving each parameter its own effective rate based on the history of its gradients. The three methods you will see most often build on one another.
+
+-   AdaGrad gives each parameter a learning rate scaled inversely by the sum of all of its past squared gradients, so parameters that have moved a lot slow down.
+
+-   RMSProp modifies AdaGrad by replacing that ever growing sum with an exponentially weighted moving average of squared gradients (the second moment), so the effective rate does not shrink to zero.
+
+-   Adam combines RMSProp with momentum, tracking exponentially weighted estimates of both the first and second moments of the gradient and applying a bias correction. It is the most common default in practice.
+
+> **Tip:** When in doubt, start with Adam and its default settings. It is rarely the best optimizer for a given problem, but it is rarely far off, and it saves you from hand tuning the learning rate schedule.
+
+No matter which optimizer you choose, gradient based training of nonlinear models brings a recurring set of challenges. The loss surface is not convex, so the algorithm can fail to converge or settle into a poor local minimum; the starting values matter; and with many parameters the model will overfit unless we rein it in. Regularization, which shrinks the estimates toward zero, is the standard remedy, and it works exactly as in the regression chapters:
+
+-   an $L_2$ penalty ([Ridge regression]) adds $\lambda \sum_{j=1}^q \theta_i^2$ to the objective $Q(\theta)$, and
+
+-   an $L_1$ penalty ([Lasso regression]) adds $\lambda \sum_{j=1}^q |\theta_i|$ instead, which can drive some weights exactly to zero.
+
+We will return to regularization in much more detail once the network has many layers, because deep models overfit aggressively. For now, keep the big picture in view: a neural network is a multi stage nonlinear regression or classification model that we draw as a network diagram, and we estimate its parameters (the weights) by exactly the gradient based machinery above, just with many more of them and a more efficient way to compute the gradients.
+
+## Simple Single Layer Neural Network
+
+With the optimization machinery in place, we can now assemble the simplest useful network. The starting point is a *single hidden layer feedforward network* (FNN), also called a *single layer perceptron*. Its job is to take a $p$-dimensional input $\mathbf{x}$ and produce a $k$-dimensional output $\mathbf{y}$, where $k = 1$ in most nonlinear regression and binary classification problems. Between input and output sits one layer of learned transformations, the *hidden layer*, which is where all the flexibility comes from.
+
+### Hidden Layer
+
+The hidden layer creates a set of new features, called hidden units, by taking linear combinations of the inputs and bending each one through a nonlinear function. The $j$-th hidden unit is
+
+$$
+z_j = g( \alpha_{j0} + \sum_{i = 1}^p \alpha_{ji} x_i), j = 1, \dots, J
+$$
+
+where the pieces are: $z_j$, the value of the $j$-th hidden unit; $\alpha_{j0}$, the *bias* (an offset, the network's version of an intercept); the $\{\alpha_{ji}\}$, the *weights* that say how strongly each input feeds this unit; and $g(\cdot)$, the *activation function* that supplies the nonlinearity.
+
+A classic activation function is the sigmoid (logistic) function, which squashes any real number into the interval $(0,1)$:
+
+$$
+g(a) = \frac{1}{1 + \exp(-a)}
+$$
+
+It is far from the only choice. Common alternatives include the hyperbolic tangent, the radial basis function, the rectified linear unit (now the near universal default, discussed below), the softmax (used for multiclass outputs), and the identity (used for regression outputs). We return to the most important of these shortly.
+
+> **Intuition:** Without the activation function $g$, each hidden unit would just be a linear combination of the inputs, and stacking linear maps only gives another linear map. The nonlinearity is what lets the network represent curves, interactions, and shapes that a linear model cannot.
+
+The hidden layer, then, is nothing more than a set of transformations of the input variables, much like the [Basis Function Representations] you have already seen. The difference, and the reason this matters, is that here we do not specify the basis functions in advance; the network *learns* the most useful ones from the data. To tidy the algebra, it is conventional to absorb the bias by setting $x_0 = 1$, so that
+
+$$
+z_j = g(\sum_{i=1}^p \alpha_{ji}x_i), j = 1, \dots, J
+$$
+
+It is worth seeing the three workhorse activation functions side by side, since the choice has real consequences for training.
+
+-   The sigmoid (logistic) squashes into $(0,1)$:
+
+$$
+\sigma(z) = \frac{1}{1 + \exp(-z)}
+$$
+
+-   The hyperbolic tangent is a rescaled sigmoid that squashes into $(-1,1)$, which keeps the hidden units centered around zero:
+
+$$
+\tanh (z) = \frac{ \exp(z) - \exp(-z)}{ \exp(z) + \exp(-z)}
+$$
+
+-   The rectified linear unit (ReLU) simply passes positive values through and zeroes out the rest:
+
+$$
+ReLU(z) = \max(0,z)
+$$
+
+ReLU has become the default for hidden layers, and for good reasons. It enforces sparse activations (many units output exactly zero), its gradient is trivial to compute and store (it is 1 for positive inputs and 0 otherwise), and the bias term can shift its kink away from zero where needed. Just as important, sigmoid and tanh saturate: for large positive or negative inputs their gradient is nearly zero, which stalls learning in deep networks, a problem ReLU largely avoids.
+
+> **Warning:** Saturating activations like the sigmoid are a major source of the *vanishing gradient* problem in deep networks. If you find a deep model training very slowly, an early thing to check is whether sigmoid or tanh activations are starving the early layers of gradient signal.
+
+### Output Layer
+
+The hidden units are not the final answer; they are intermediate features. The output layer combines them, with its own weights, and passes the result through a final activation to produce the prediction:
+
+$$
+y_k = h(\beta_{k0} + \sum_{j=1}^J \beta_{kj} z_j) , k = 1, \dots, K
+$$
+
+Here $y_k$ is the $k$-th output and $h(\cdot)$ is the output activation. The choice of $h$ is dictated by the task: the identity function for nonlinear regression (so the output can be any real number), a sigmoid for binary classification (so it reads as a probability), and the softmax for multiclass problems (so the outputs form a probability distribution over classes). As with the [Hidden Layer], absorbing the bias lets us write more compactly
+
+$$
+y_k = h(\sum_{j=0}^J \beta_{kj} z_j), k = 1, \dots, K
+$$
+
+Putting the two layers together, the entire single hidden layer feedforward network is the nested expression
+
+$$
+y_k(\mathbf{x}; \mathbf{\beta}, \mathbf{\alpha}) = h(\sum_{j=0}^J \beta_{kj} g(\sum_{i=0}^p \alpha_{ji} x_i))
+$$
+
+Read from the inside out, this says: form linear combinations of the inputs, bend them with $g$ to get hidden features, form linear combinations of those features, and bend the result with $h$ to get the output. Exactly as in traditional nonlinear regression, to estimate the parameters (to "train the network") we pick an objective function $Q(\alpha, \beta)$, such as squared error or cross-entropy, and use a gradient based method to find the $\alpha$ and $\beta$ that minimize it.
+
+> **Key idea:** A single hidden layer network is just a flexible, learnable nonlinear transformation of the inputs followed by a familiar regression or classification head. Nothing about the estimation is conceptually new; only the number of parameters and the bookkeeping have grown.
+
+### Discrimination Problem
+
+The same architecture handles classification once we change the output activation and the loss to match the task. We take the two standard cases in turn.
+
+#### Two Class Discrimination
+
+For a binary response coded as $(0,1)$, the standard setup uses one hidden layer and a single output unit with a sigmoidal output activation $h(\cdot)$, so the output reads as the probability of the positive class:
+
+$$
+y_l = h(\beta_0 + \sum_{j = 1}^J \beta_j z_{jl}) = h(\sum_{j=0}^J \beta_j z_{jl})
+$$
+
+The hidden layer is unchanged; only the loss differs. For classification the natural objective is cross-entropy loss, which is just the negative binomial log-likelihood (the same loss that drives logistic regression), where $\tilde{y}$ denotes the observed response:
+
+$$
+Q(\mathbf{\alpha}, \mathbf{\beta}, \{ \mathbf{x}_l , \tilde{y}_l \}) = - \sum_l \tilde{y}_l + ( 1 - \tilde{y}_l) \log(1 - y_l)
+$$
+
+#### Multiclass Discrimination
+
+When there are $K > 2$ categories, the output layer produces $K$ scores, one per class:
+
+$$
+o_{kl} = \sum_{j = 0}^{J} \beta_{kj} z_{jl}, k = 1, \dots, K
+$$
+
+The softmax function then turns these scores into a probability distribution over the $K$ classes (the same transformation used in multinomial logistic regression):
+
+$$
+y_{kl} = h(o_{kl}) = \frac{ \exp(o_{kl})}{\sum_{k'} \exp( o_{k'l})}
+$$
+
+and the loss is again cross-entropy, now the negative multinomial log-likelihood:
+
+$$
+Q(.) = - \sum_l \sum_k \tilde{y}_{kl} \log(y_{kl})
+$$
+
+To make this concrete, the following example from [@james2013, Ch. 10] sets up a regression problem on the baseball `Hitters` data so we can compare a neural network against simpler baselines. We start by loading the data, dropping rows with missing values, and reserving a third of the observations as a test set.
+
+```{r}
+library(ISLR2)
+Gitters <- na.omit(Hitters)
+n <-nrow(Gitters)
+set.seed(13)
+ntest <- trunc(n/3)
+testid <- sample(1:n, ntest)
+
+```
+
+As a baseline, we fit an ordinary linear regression and report its mean absolute prediction error on the held out test set. This is the number a neural network would need to beat to justify its extra complexity.
+
+```{r}
+lfit <- lm(Salary ~ ., data = Gitters[-testid,])
+lpred <- predict(lfit, Gitters[testid,])
+with(Gitters[testid,],mean(abs(lpred - Salary)))
+
+```
+
+Next we build a scaled model matrix (neural networks and penalized regression both want standardized inputs) and pull out the response.
+
+```{r}
+x <- scale(model.matrix(Salary ~ . -1, data = Gitters))
+y <- Gitters$Salary
+
+```
+
+A second, stronger baseline is the lasso, tuned by cross-validation. Its test error gives a sense of how much a well regularized linear model can achieve here.
+
+```{r}
+library(glmnet)
+cvfit <- cv.glmnet(x[-testid,], y[-testid],type.measure = "mae")
+cpred <- predict(cvfit, x[testid,], s = "lambda.min")
+mean(abs(y[testid] - cpred))
+```
+
+Finally, here is the neural network itself, defined with Keras: a single hidden layer of 50 ReLU units, a dropout layer for regularization, and a single linear output unit for the regression target. The chunk is left unevaluated because it requires a working TensorFlow/Keras backend, which is not available in this build; the code is the idiomatic R interface and will run wherever Keras is installed.^[The original line had two small bugs that are corrected here: `nocl(x)` should be `ncol(x)` (the number of input columns), and the `keras` library must actually be loaded for the `%>%` pipeline of layer functions to be found.]
+
+```{r, eval = FALSE}
+library(keras)
+modnn <- keras_model_sequential() %>%
+    layer_dense(units = 50, activation = "relu", input_shape = ncol(x)) %>%
+    layer_dropout(rate = 0.4) %>%
+    layer_dense(units = 1)
+```
+
+## Deep Neural Networks
+
+A single hidden layer is already a universal approximator, but in practice it can take an impractically wide layer to capture complicated structure. Stacking several hidden layers, so that the output of one becomes the input of the next, turns out to be far more efficient: each layer can build on the features discovered by the one below it. Networks built this way are *deep*, and they are what powers modern work on images, audio, and language. Before we can train them, though, we need an efficient way to compute the gradient through all those layers. That method is backpropagation.
+
+### Backpropagation
+
+Backpropagation is the algorithm that supplies the gradient that [Stochastic Gradient Descent] needs in order to update the weights. The idea rests on a single fact from calculus: because the network is a composition of simple functions (linear combination, then activation, then linear combination, and so on), the chain rule lets us compute the derivative of the loss with respect to any weight as a product of local derivatives along the path from that weight to the output. For the hidden and output weights of the single layer network, the chain rule reads
+
+$$
+\frac{\partial Q}{\partial \alpha_{ji}} = \frac{\partial Q}{\partial y_k} \frac{\partial y_k}{\partial z_j} \frac{\partial z_j}{\partial \alpha_{ji}} , j = 1, \dots, J; i = 0, \dots, p
+$$
+
+$$
+\frac{\partial Q}{\partial \beta_{kj}} = \frac{\partial Q}{\partial y_k} \frac{\partial y_k}{\partial \beta_{kj}} , k = 1, \dots, K; j = 0, \dots, J
+$$
+
+> **Intuition:** Each weight gets a share of the blame for the final error. Backpropagation distributes that blame backward through the network, layer by layer, multiplying local sensitivities as it goes. Weights closer to a large error, along a high sensitivity path, get a larger gradient.
+
+To see the mechanics, work through the simplest case: nonlinear regression with a single output, the identity output activation $h(\cdot)$, the sigmoid hidden activation $g(\cdot)$, and squared error loss. Let $\{ \tilde{y}_{(l)}, \mathbf{x}_{(l)} \}$ be the observed input/output pair for the $l$-th sample in the mini-batch. The forward computation is
+
+```{=tex}
+\begin{equation}
+(\#eq:1)
+y_{(l)} = \sum_{j=1}^J \beta_j z_{j(l)}
+\end{equation}
+```
+```{=tex}
+\begin{equation}
+(\#eq:2)
+z_{j(l)} = g(\sum_{i=0}^p \alpha_{ji} x_{i(l)})
+\end{equation}
+```
+Squared-error objective function
+
+$$
+Q(\alpha, \beta, \{ \mathbf{x}, \mathbf{\tilde{y}}) \}) = \frac{1}{2} \sum_l (\tilde{y}_{(l)} - y_{(l)})^2
+$$
+
+Then, the gradients are
+
+```{=tex}
+\begin{equation}
+(\#eq:3)
+\frac{\partial Q}{\partial \beta_{kj}} = \frac{\partial Q}{\partial y_k} \frac{\partial y_k}{\partial \beta_{kj}} = - \sum_l (\tilde{y}_{(l)} - y_{(l)}) z_{j(l)}
+\end{equation}
+```
+```{=tex}
+\begin{equation}
+(\#eq:4)
+\begin{aligned}
+\frac{\partial Q}{\partial \alpha} &= \sum_l \frac{\partial Q}{\partial y_k} \frac{\partial y_k}{\partial z_j} \frac{\partial z_j}{\partial \alpha_{ji}} \\
+&= \sum_l \{- (\tilde{y}_{(l)} - y_{(l)}) \} \{\beta_j\} \{ z_{j(l)} (1 - z_{j(l)}) x_{i(l)} \}
+\end{aligned}
+\end{equation}
+```
+Notice the structure of these gradients. The factor $(\tilde{y}_{(l)} - y_{(l)})$ in equations \@ref(eq:3) and \@ref(eq:4) is simply the residual, the gap between observation and prediction. The remaining factors say what fraction of that residual is attributed to each weight in the hidden and output layers. So the gradient is a residual, routed back through the network and scaled by local sensitivities, which is exactly the "distribute the blame" picture above.^[The convenient form of the hidden layer gradient relies on the sigmoid's tidy derivative: $\partial g(ab) / \partial a = g(a) (1 - g(a)) b$ when $g(\cdot)$ is the sigmoid. Different activations give different local factors, but the overall chain rule structure is identical.]
+
+With the gradients in hand, the basic SGD updates are just steps downhill, averaged over the $L$ samples in the batch:
+
+```{=tex}
+\begin{equation}
+(\#eq:5)
+\beta_{j}^{(r+1)} = \beta_j^{(r)} - \epsilon^{(r)} \frac{1}{L} \sum_l \frac{\partial Q}{\partial \beta_j}
+\end{equation}
+```
+```{=tex}
+\begin{equation}
+(\#eq:6)
+\alpha_{ji}^{(r+1)} = \alpha_{ji}^{(r)} - \epsilon^{(r)} \frac{1}{L} \sum_l \frac{\partial Q}{\partial \alpha_{ji}}
+\end{equation}
+```
+where $\epsilon^{(r)}$ is the learning rate at step $r$ and $L$ is the number of samples in the sum.
+
+The name "backpropagation" comes from the fact that these updates are carried out in two passes over the network. The procedure is:
+
+1.  *Forward pass:* hold the parameters at their current ($r$-th) values and compute the hidden units $z_{j(l)}$ and the output $y_{(l)}$ from equations \@ref(eq:1) and \@ref(eq:2).
+
+2.  *Backward pass:* using those values, compute the gradients from \@ref(eq:3) and \@ref(eq:4), then update the parameters with \@ref(eq:5) and \@ref(eq:6).
+
+A few properties of this scheme are worth highlighting, because they explain why deep learning became practical at all. Backpropagation is a *local* algorithm: each hidden unit exchanges information only with the units it is directly connected to. That locality is what lets the computation be spread across many processors at once, and the rise of cheap parallel hardware (GPUs) is a large part of why deep learning took off. The same machinery extends without change to multiple outputs $y_{k(l)}, k = 1, \dots, K$. And, perhaps surprisingly, the chain rule produces gradient expressions of the same general form for cross-entropy loss (both two class and multiclass) as for squared error, so we do not need a fresh derivation for each task.
+
+> **Tip:** You will essentially never derive these gradients by hand in practice. Modern libraries use *automatic differentiation* to compute exact derivatives of arbitrary network code algorithmically. Understanding backpropagation matters for intuition and debugging, not for daily coding.
+
+### Deep Feedforward Networks
+
+Deep feedforward networks, also called *multilayer perceptrons*, are simply the single layer model with the hidden layer repeated. The output of one hidden layer becomes the input of the next, and only the final layer produces the prediction. This depth is what lets the network tackle problems with rich structure, such as acoustic, image, and natural language processing, where a shallow model would need to be impractically wide.
+
+Two terms describe a network's size: the width is the number of units in a layer, and the depth is the number of layers. More of either means more capacity to fit, and also more parameters to estimate. The central tension with deep models is that they are easily over-parameterized, so they overfit unless we regularize them carefully (the subject of the implementation section below).
+
+To see the pattern, here is a network with two hidden layers feeding a single regression output. The first hidden layer transforms the inputs, the second transforms the first layer's features, and the output layer reads off the prediction:
+
+$$
+z_{1j(l)} = g(\sum_{i=0}^p \alpha_{1ji} x_{i(l)}), j = 1, \dots, J_1
+$$
+
+$$
+z_{2j'(l)} = g(\sum_{j=1}^{J_1} \alpha_{2j'j}z_{1j(l)}), j' = 1, \dots, J_2
+$$
+
+$$
+y_{(l)} = \sum_{j'=0}^{J_2} \beta_{j'} z_{2j'(l)}
+$$
+
+As with the single layer case, [Backpropagation] handles the gradients; the only cost of depth is that there are now many more parameters to estimate. The payoff is that the chain of transformations lets the network learn genuinely complex functions of the input, because each layer can combine the features built by the previous one. In images, for instance (as in a convolutional network), the early layers tend to pick out fine scale structure like edges, and later layers assemble those into larger parts and objects.
+
+> **Key idea:** Depth buys *compositional* representations. Rather than learning one giant transformation, a deep network learns a sequence of modest transformations that build on each other, which is a much more efficient way to represent the hierarchical structure of natural data.
+
+### Implementation
+
+Knowing the architecture is only half the battle; getting a deep network to train well is the other half, and it is where most of the practical effort goes. This section collects the decisions you face when actually fitting a model, organized by purpose. Treat it as a checklist to revisit whenever a model misbehaves.
+
+Preprocessing the data. Networks train far better on standardized inputs, and there are two common schemes. *Per sample feature normalization* centers each input vector $\mathbf{x}_m$ (removing its mean). *Global feature standardization*, which is more common, subtracts each feature's mean and divides by its standard deviation, computed across the whole training set. The same training set means and standard deviations must then be applied to the test set; computing them from the test data would leak information.
+
+Model initialization. Because networks are highly nonlinear, the starting weights matter a great deal. Two heuristics guide the choice. First, scale the weights so that each hidden unit begins in the roughly linear part of its activation function, where gradients are healthy; this is part of why we standardize the inputs in the first place. Second, initialize randomly rather than identically: hidden units are interchangeable, so if they all started with the same weights they would learn the same feature and the extra units would be wasted. An important exception to random initialization is pretraining, discussed below.
+
+Regularization. Deep networks overfit readily, so regularization is not optional. Several complementary tools are available.
+
+-   Weight decay (the most common) is just an $L_2$ ([ridge][Ridge regression]) penalty on the weights, of the form $\lambda(\sum_{ji} \alpha_{ji}^2 + \sum_{kj} \beta_{kj}^2)$ with tuning parameter $\lambda \ge 0$. It adds the terms $2 \lambda \beta_{kj}$ and $2 \lambda \alpha_{ji}$ to the gradients, gently shrinking weights toward zero.
+
+-   Weight elimination is the $L_1$ ([Lasso][Lasso regression]) analogue, which drives small weights exactly to zero.
+
+-   Dropout randomly switches off a fraction $\gamma$ of the hidden units in each layer for each mini-batch during training, by setting their activations to zero so no signal flows through them; the surviving units are rescaled to compensate. This breaks up co-dependence among units and is one of the most effective regularizers in practice. As a bonus, dropout can be used at prediction time to estimate uncertainty.
+
+-   Early stopping (the simplest) just halts gradient descent before it fully converges, since the best generalizing model rarely sits at the exact training loss minimum. The stopping iteration is a hyperparameter chosen on a validation set, and early stopping combines freely with the other methods.
+
+-   Weight sharing forces weights that ought to be similar (for example, weights attached to neighboring pixels or related words) to be identical, or penalizes their differences. Sharing reduces the number of free parameters and is the key idea behind convolutional networks.
+
+-   Data augmentation manufactures extra training examples by applying label preserving transformations to existing ones (small rotations, shifts, and flips of an image, say). It is well suited to prediction problems with limited data, especially for CNNs.
+
+-   Pretraining starts from a network already trained on a large dataset, either as initialization for further training or, when the pretrained model already fits your task, used directly. It is standard in image classification, where many architectures have been trained on ImageNet (about 1,000 categories and 1.4 million images). Early deep learning also used unsupervised generative pretraining, such as stacked restricted Boltzmann machines and autoencoders.
+
+> **Warning:** Regularization is usually the difference between a deep model that generalizes and one that memorizes the training set. If your training loss is excellent but your validation loss is poor, the fix is almost always more regularization or more data, not a bigger network.
+
+Batch size. Mini-batches make SGD cheap, and the choice of size interacts with optimization. Early in training, high gradient variance helps the solution escape poor local minima, which argues for smaller batches; later, when you want stable convergence, larger batches are better. It is common to grow the batch size over the course of training.
+
+Metrics. At the end of each epoch you evaluate the model so you can watch its progress. Typical metrics are an estimate of the loss on the training and validation data, and, for classification, the accuracy or error rate.
+
+Momentum. As discussed under [Stochastic Gradient Descent], a momentum term blends previous gradients into the current step for a smoother descent. The momentum coefficient is usually set between 0.9 and 0.99.
+
+Learning rate. The effective learning rate depends on both the learning rate parameter $\epsilon$ and the mini-batch size $M_b$, so it is often useful to think in terms of the ratio $\epsilon^* = \epsilon / M_b$. If you vary the batch size during training, adjust the learning rate to match.
+
+Network architecture. The number of layers and units per layer are themselves choices. You want enough units to capture the relevant features (a network is, at heart, a feature extractor) but not so many that it overfits, and finding that balance is where the "art" of deep learning lives. As rough guidance, wide and shallow networks tend to overfit while narrow and deep ones tend to underfit, and it often helps to put more units in the lower layers.
+
+## Convolutional Neural Networks {#convolutional-neural-networks}
+
+Convolutional neural networks (CNNs) are the architecture that made deep learning a household name, thanks to their success on images. Their advantage comes from two properties suited to spatial data. They are *translation invariant*, meaning a pattern is recognized wherever it appears in the image, and they learn *spatial hierarchies*, building large patterns out of small ones. The contrast with an ordinary dense network is instructive: a dense layer learns global patterns spanning the entire input, whereas a convolutional layer learns local patterns in small patches, which is exactly what images call for.
+
+### Convolution
+
+The operation at the heart of these networks is convolution. In its continuous form, convolving two functions slides one across the other and integrates the overlap:
+
+$$
+(f \times g) (t) = \int_{R^d} f(\tau) g(t - \tau) d \tau = \int_{R^d} f(t - \tau) g(\tau) d\tau
+$$
+
+For images we use the discrete two-dimensional version ($d = 2$):
+
+$$
+f[x, y ] \times g [x, y] = \sum_{i = - \infty}^\infty \sum_{j = - \infty}^\infty f[i,j] g[x-i, y - j]
+$$
+
+Here $f[\,]$ is a small *kernel* of weights that is slid over the spatial image $g[\,]$, much like the weighting window in [Kernel Smoothing]. The key difference is that a smoothing kernel must sum to 1, whereas a convolution kernel faces no such constraint, which is why these weight patterns are called "kernels" or, equivalently, "filters."
+
+> **Intuition:** A filter is a small pattern detector. Sliding a $3 \times 3$ edge filter over an image produces a new image (a *feature map*) that lights up wherever an edge appears. Stack many filters and you detect many patterns; stack many layers of filters and you detect patterns of patterns.
+
+Several practical points flesh out how convolution is used inside a network.
+
+-   *Padding.* Near the edges of the image there are fewer neighbors, so a naive convolution shrinks the output. Surrounding the input with a border of zeros (padding) lets the filter center on every pixel and keeps the feature map the same size as the input.
+
+-   *Learned filters.* The filters are not specified by hand; the network learns them, although standard initializations exist. Each filter, convolved with the input, yields one feature map. Filters are typically $3 \times 3$ or $5 \times 5$.
+
+-   *Weight sharing.* A CNN uses a single set of weights per filter, applied at every location. This shared weight assumption is a dramatic reduction in the parameter space compared with a dense layer, and it is what makes the network translation invariant. After convolution, a *pooling* layer (also called subsampling or downsampling) condenses the result.
+
+-   *Tensors.* Real images are tensors: each spatial location (pixel) carries several values. A color image in RGB format has three values per pixel, one per *channel*. CNNs therefore use tensor convolutions, averaging over both location and channels, so every layer has a height, a width, and a depth (a black and white image has depth 1).
+
+-   *Depth of hidden layers.* Hidden CNN layers always have depth greater than 1, often much greater. A filter spans a small region in width and height but the full depth, so its weights form a small three-dimensional tensor.
+
+-   *Stride.* Sliding the filter by more than one pixel at a time (a stride greater than 1) skips locations, which reduces both the number of outputs and the computation.
+
+-   *Batch normalization.* With many filters per layer, normalizing the convolved values across those filters, applied right after the ReLU step, stabilizes and speeds up training. It improves gradient flow and enables deeper networks.
+
+-   *Data augmentation.* As with deep networks generally, augmenting the training images with random but believable transformations enlarges the effective dataset.
+
+-   *Pretrained networks.* A network trained on a large dataset such as ImageNet has already learned a spatial hierarchy of features that serves as a generic model of the visual world. There are two ways to reuse it: in *feature extraction* you freeze the convolutional base and train only new fully connected layers on top; in *fine-tuning* you unfreeze the top few convolutional layers and train them jointly with the new layers, but only after the new top layers have first been trained on their own.
+
+The convolution itself is computationally expensive. A classic speedup exploits the *fast Fourier transform* (FFT) and the convolution theorem. Writing $F(f)$ and $F(g)$ for the Fourier transforms of $f$ and $g$,
+
+$$
+F(f \times g) = F(f)\cdot F(g) \\
+f \times g = F^{-1}(F(g) \cdot F(g))
+$$
+
+convolution becomes a simple element-wise multiplication in Fourier space, which is much faster to evaluate.
+
+### Pooling
+
+After convolution comes pooling, which shrinks each feature map by summarizing small blocks. A pooling layer takes a small rectangular block of the convolved output and replaces it with a single number. The summary can be computed several ways:
+
+-   max pooling (the favorite), which takes the block maximum, usually over $2 \times 2$ windows with a stride of 2;
+
+-   block average (mean) pooling;
+
+-   block weighted average pooling; and
+
+-   plain downsampling, which keeps one element per block.
+
+Pooling serves two purposes: it reduces the size of the representation, and it makes the network more invariant to small translations of the input, which is what you want when the presence of a structure matters more than its exact location. By convention, the convolved values pass through a ReLU rectification, $ReLU(x) = \max(0,x)$, before being pooled.
+
+### Structure and Training
+
+A few facts about how a CNN is assembled and trained tie the pieces together. The convolution filters and the weights of the final fully connected layers are *learned*, whereas the activation and pooling operations are *fixed* (they have no parameters). Because a filter's weights are shared across the whole feature map, a shape is processed identically wherever it occurs, which is the source of translation invariance. Pooling, unlike convolution, is applied to each feature map separately and never across the depth (channel) dimension. At the top of the network, each unit in the final spatial layer connects to every unit in the first fully connected layer, exactly like a deep feedforward network; there can be several such layers, and they hold most of the network's parameters, so they dominate its cost. In practice all of this, including backpropagation, is carried out with matrix and vector multiplications.
+
+> **Note:** Most of a CNN's parameters live in the dense layers at the end, not in the convolutional layers. This is why techniques like global pooling, which shrink the representation before the dense layers, can dramatically reduce parameter count.
+
+### Interpretation
+
+CNNs are often criticized as opaque, but several visualization tools open the black box, which matters for explainable AI. We can inspect the *intermediate activations* to see which features fire on a given image, examine the *learned filters* to see what patterns each one detects, and produce *class activation heatmaps* that highlight the regions of an image most responsible for a prediction. The last of these is related to layer-wise relevance propagation, which propagates the prediction backward through the network using purpose built rules to assign credit to input pixels.
+
+## Recurrent Neural Networks
+
+The networks so far, including [CNNs](#convolutional-neural-networks), treat each input independently and have no notion of order. That is fine for a single image, but it fails for data where sequence carries meaning, such as:
+
+-   document and time series classification,
+
+-   time series comparison,
+
+-   sequence-to-sequence learning such as translation,
+
+-   sentiment analysis of text, and
+
+-   time series forecasting.
+
+Statisticians have of course modeled sequential dependence for a long time, through time series and spatio-temporal models, but those classical tools can struggle with complex nonlinear or non-Markovian dependence. Recurrent neural networks (RNNs) were developed to handle feedback in sequence data, and they have become a successful deep learning method, especially for language. Conceptually they are close cousins of the multivariate state-space models used in time series, econometrics, and spatio-temporal statistics.
+
+The starting point is a classical dynamical system, in which the state at one time is a function of the state at the previous time:
+
+$$
+\mathbf{s}_t = f(\mathbf{s}_{t-1} ; \mathbf{\theta})
+$$
+
+where $\mathbf{s}_t$ is the state of the system at time $t$. It is called *recurrent* because the state at time $t$ feeds back in as the input that produces the state at time $t+1$. Unrolling the recursion shows that the current state is a deeply nested function of all the past states:
+
+$$
+\begin{aligned}
+\mathbf{s}_t &= f(\mathbf{s}_{t-1}; \mathbf{\theta}) \\
+&= f(f(\mathbf{s}_{t-2}; \mathbf{\theta}); \mathbf{\theta}) \\
+&= f(f(f(\mathbf{s}_{t-3}; \mathbf{\theta}); \mathbf{\theta}); \mathbf{\theta}) \\
+&= \dots
+\end{aligned}
+$$
+
+Crucially, the same parameters $\mathbf{\theta}$ are reused at every time step. This weight sharing across time is the temporal analogue of the spatial weight sharing in a CNN, and it is what lets an RNN handle sequences of any length with a fixed number of parameters.
+
+As in a state-space model, we treat the state as *hidden*, write it $\mathbf{h}_t$, and feed in an external input $\mathbf{x}_t$ at each step:
+
+$$
+\mathbf{h}_t = f(\mathbf{h}_{t-1}, \mathbf{x}_t; \mathbf{\theta})
+$$
+
+So an RNN processes a sequence by stepping through it one element at a time, updating a running state that acts as a memory of everything it has seen so far, carried forward by an internal feedback loop. Figure \@ref(fig:neural-networks-rnn-unfold) shows this loop "unfolded" into a chain.
+
+```{r neural-networks-rnn-unfold, echo=FALSE, fig.cap="A recurrent network's feedback loop unfolded across time into an equivalent chain, where the same parameters are reused at every step (after Goodfellow et al. 2016, Ch. 10)."}
+knitr::include_graphics("images/unfold.png")
+```
+
+Adding an output at each step gives the full picture, shown in Figure \@ref(fig:neural-networks-rnn-unfold-output).
+
+```{r neural-networks-rnn-unfold-output, echo=FALSE, fig.cap="The unfolded recurrent network with an output produced at each time step from the current hidden state (after Goodfellow et al. 2016, Ch. 10)."}
+knitr::include_graphics("images/unfold2.png")
+```
+
+Spelled out, a basic RNN computes a hidden state, maps it to an output score, and applies an activation to produce the prediction:
+
+$$
+\mathbf{y}_t = g_o (\mathbf{o}_t) \\
+\mathbf{o}_t = \mathbf{W}_{hy} \mathbf{h}_t \\
+\mathbf{h}_t = g_h (\mathbf{W}_{hh} \mathbf{h}_{t-1} + \mathbf{W}_{xh} \mathbf{x}_t)
+$$
+
+where $g_o(\cdot)$ and $g_h(\cdot)$ are activation functions and $\mathbf{W}_{hy}, \mathbf{W}_{hh}, \mathbf{W}_{xh}$ are weight matrices (which typically absorb bias terms as well).
+
+We train an RNN the same way as any other network: define a loss and minimize it by backpropagation. Sharing parameters across time, however, introduces a complication. The standard approach, backpropagation through time (BPTT), unrolls the network across the sequence and applies SGD, but because the gradient must pass through many time steps, it tends to either *vanish* (the common case) or *explode*. Exploding gradients can be tamed for stability, but vanishing gradients are more insidious: the long chain of dependencies makes the influence of distant time steps shrink exponentially, so the network effectively forgets the far past.
+
+> **Warning:** Vanishing and exploding gradients are the central difficulty of training RNNs. A plain ("vanilla") RNN can rarely learn dependencies more than a handful of steps apart, which is why the gated architectures below were invented.
+
+The fix is to add *gates*, small learned controllers that decide what information to keep, overwrite, or pass along at each step. By providing a protected path along which information (and gradient) can flow nearly unchanged, gates let the network remember things over long spans. The two most important gated architectures are LSTMs and GRUs.
+
+### Long Short-Term Memory (LSTM) RNNs {#long-short-term-memory-lstm-rnns}
+
+The long short-term memory (LSTM) network is the most common gated RNN. Its design deliberately creates paths through time along which the gradient neither vanishes nor explodes, so it can learn long range dependencies. The mechanism is a separate *internal memory* cell $\mathbf{c}_t$ that is updated through three gates. The full set of equations is collected in Table \@ref(tab:neural-networks-lstm-equations).
+
++------------------------+----------------------------------------------------------------------------------+
+| Name                   | Formula                                                                          |
++========================+==================================================================================+
+| Output                 | $\mathbf{y}_t = g_o(\mathbf{Vh}_t)$                                              |
++------------------------+----------------------------------------------------------------------------------+
+| Hidden State           | $\mathbf{h}_t = \tanh (\mathbf{c}_t) \odot \mathbf{o}$                           |
++------------------------+----------------------------------------------------------------------------------+
+| Internal Memory        | $\mathbf{c} = \mathbf{c}_{t-1} \odot \mathbf{f} + \mathbf{g} \odot \mathbf{i}$   |
+|                        |                                                                                  |
+|                        | (first part = forgetting, second part =new info)                                 |
++------------------------+----------------------------------------------------------------------------------+
+| Candidate Hidden State | $\mathbf{g} = \tanh (\mathbf{U}^g \mathbf{x}_t + \mathbf{W}^g \mathbf{h}_{t-1})$ |
++------------------------+----------------------------------------------------------------------------------+
+| Output Gate            | $\mathbf{o} = g(\mathbf{U}^o \mathbf{x}_t + \mathbf{W}^o \mathbf{h}_{t-1})$      |
++------------------------+----------------------------------------------------------------------------------+
+| Forget Gate            | $\mathbf{f} = g(\mathbf{U}^f \mathbf{x}_t + \mathbf{W}^f \mathbf{h}_{t-1})$      |
++------------------------+----------------------------------------------------------------------------------+
+| Input Gate             | $\mathbf{i} = g(\mathbf{U}^i \mathbf{x}_t + \mathbf{W}^i \mathbf{h}_{t-1})$      |
++------------------------+----------------------------------------------------------------------------------+
+
+Table: (\#tab:neural-networks-lstm-equations) The full set of LSTM equations: the output, hidden state, internal memory cell, candidate hidden state, and the three gates that control it.
+
+Here $g(\cdot)$ is typically a sigmoid (so each gate outputs values between 0 and 1, acting like a soft switch) and $\odot$ is the Hadamard product (component-wise multiplication). The three gates have intuitive roles:
+
+-   the input gate $\mathbf{i}$ decides which units receive new information at time $t$,
+
+-   the forget gate $\mathbf{f}$ decides which entries of the previous memory to erase, and
+
+-   the output gate $\mathbf{o}$ decides which parts of the memory are exposed to the response.
+
+The memory cell itself is what carries information across time, learning when to hold onto a past state and when to let it go. This is exactly what mitigates the vanishing and exploding gradient problem, and it matches the way many real processes behave: an event in the distant past can shape the present regardless of what happened in between.
+
+> **Intuition:** Think of the memory cell as a notepad. The forget gate erases entries that are no longer relevant, the input gate writes new entries, and the output gate decides which entries to read out right now. Because writing and erasing are additive rather than repeatedly multiplicative, information can persist for many steps without being washed out.
+
+LSTMs are workhorses across a range of sequence tasks, including classification and segmentation, object detection and localization, similarity learning, generative models, and video analysis.
+
+### Gated Recurrent Units
+
+The gated recurrent unit (GRU) is a streamlined alternative to the LSTM. It merges the input and forget gates into a single update gate and drops the separate memory cell, which leaves fewer parameters to learn while keeping much of the LSTM's ability to model long range dependence. Its equations are collected in Table \@ref(tab:neural-networks-gru-equations).
+
+| Name                   | Formula                                                                                             |
+|------------------------|-----------------------------------------------------------------------------------------------------|
+| Output                 | $\mathbf{y}_t = g_o (\mathbf{Vh}_t)$                                                                |
+| Hidden state           | $\mathbf{h}_t = (1- \mathbf{z}) \circ\mathbf{s}+\mathbf{z} \odot \mathbf{h}_{t-1}$                  |
+| Candidate Hidden State | $\mathbf{s} = \tanh (\mathbf{U}^s \mathbf{x}_t + \mathbf{W}^s (\mathbf{r} \odot \mathbf{h}_{t-1}))$ |
+| Reset Gate             | $\mathbf{r} = g(\mathbf{U}^r \mathbf{x}_t+ \mathbf{W}^r \mathbf{h}_{t-1})$                          |
+| Update Gate            | $\mathbf{z} = g(\mathbf{U}^z \mathbf{x}_t + \mathbf{W}^z \mathbf{h}_{t-1})$                         |
+
+Table: (\#tab:neural-networks-gru-equations) The GRU equations: the output, hidden state, candidate hidden state, and the reset and update gates that replace the LSTM's three gates and memory cell.
+
+As a sanity check on the notation, setting $\mathbf{r} = 1$ and $\mathbf{z} = 0$ recovers the vanilla RNN, so the GRU strictly generalizes the basic model.
+
+A handful of practical observations round out the discussion of recurrent models. Both [Long Short-Term Memory (LSTM) RNNs](#long-short-term-memory-lstm-rnns) and [Gated Recurrent Units] are computationally intensive and, like the standard [Deep Neural Networks] and [Convolutional Neural Networks](#convolutional-neural-networks), need a lot of data and parallelized implementations. They are also more of a black box than the simpler models, though that complexity has an upside: they are modular and easy to connect, which lets practitioners build very deep stacks. Several refinements come up often.
+
+-   Recurrent dropout. Ordinary dropout, applied between time steps, disrupts the information the recurrent state is trying to carry. The fix is to use the *same* dropout mask at every time step within a recurrent layer (recurrent dropout). Regular dropout is still fine on the input connections.
+
+-   Stacking recurrent layers. As with feedforward and convolutional networks, stacking recurrent layers builds more expressive models, at a sharp increase in cost.
+
+-   Recurrent attention. A plain RNN cannot easily focus on specific regions of a long sequence. A *neural attention mechanism* gives the network the ability to concentrate on a subset of its inputs ([more detail](http://akosiorek.github.io/ml/2017/10/14/visual-attention.html)). The [Recurrent Attention Unit](https://arxiv.org/abs/1810.12754) builds an attention gate into the interior of the RNN, improving its long term memory and helping cells discard unimportant content [@zhong2020].
+
+-   1D convolutions for sequences. One-dimensional [CNNs](#convolutional-neural-networks) are a cheaper alternative for sequence data. They are weaker when global order matters (as in time series, where the recent past dominates), but for text they can match or beat RNNs, and it is common to stack a 1D CNN layer first (to reduce dimensionality) followed by a recurrent layer [@alma991043601650103276].
+
+<br>
+
+Having developed the mathematical foundations above, we now turn to the practical side of deep learning: how to train these models in practice, a conceptual view of what "deep" really buys us, and how to implement everything in R with TensorFlow and Keras. @LeCun_2015 provide a classic review and define a deep-learning architecture as "a multilayer stack of simple modules, all (or most) of which are subject to learning, and many of which compute non-linear input-output mappings".
+
+A practical caveat: even though deep learning can be a powerful tool when it comes to fitting a function to data, unless you have a causal diagram/model, its knowledge is still not transferable. For example, when you get a new population, you will have to train your deep learning model again.
+
+## Practical Deep Learning Recipe
+
+When a deep model disappoints, the first diagnostic question is *where* it disappoints, because the cure depends on the answer. A useful way to organize troubleshooting is to separate two failure modes and match each to its own set of remedies.
+
+The first failure mode is a poor result on the training data, which means the model cannot even fit what it has seen, an underfitting (high bias) problem. The usual responses are to revisit the loss function, the mini-batch scheme, the activation function, the learning rate, and momentum:
+
+-   [Choosing proper loss]
+-   [Mini-batch]
+-   [New activation function]
+-   [Adaptive Learning Rate]
+-   [Momentum (recipe)][Momentum (recipe)]
+
+The second failure mode is a poor result on the testing data despite a good fit on training, which is overfitting (high variance). Here the tools are the various forms of regularization:
+
+-   [Early Stopping (recipe)][Early Stopping (recipe)]
+-   [Regularization (recipe)][Regularization (recipe)]
+-   [Dropout (recipe)][Dropout (recipe)]
+-   [Network Structure]
+
+> **Tip:** Always check training performance before reaching for regularization. Adding dropout to a model that is underfitting will only make things worse. Fix the training fit first, then worry about the gap to the test set.
+
+### Choosing proper loss
+
+The loss should match the output layer. With a softmax output, use cross-entropy rather than squared error, since cross-entropy gives stronger gradients when the prediction is confidently wrong and matches the probabilistic interpretation of the softmax. For background on why this matters for training stability, see this [discussion](http://proceedings.mlr.press/v9/glorot10a/glorot10a.pdf).
+
+### Mini-batch
+
+The Python snippets in this recipe are illustrative Keras pseudocode and are kept unevaluated (`eval = FALSE`) because they require a Python and TensorFlow backend that is not part of this build. The first shows how a fit call specifies the batch size and number of epochs.
+
+```{python eval = FALSE}
+model.fit(x_train,y_train,batch_size = 100,nb_epoch = 20) # 100 examples in a mini-batch
+# repeat 20 times
+```
+
+Operationally, training with mini-batches proceeds as follows. After randomly initializing the network parameters, one epoch sweeps through all the batches, updating the parameters once per batch:
+
+-   pick the first batch (a random subset of training examples) and update the parameters once,
+-   pick the second batch and update once again,
+-   and so on until every mini-batch has been used.
+
+We then repeat this for as many epochs as needed. The reason mini-batches are faster than updating once per epoch is simple arithmetic: if the data splits into 20 batches, we make 20 updates per epoch instead of one, so the model improves far more per pass through the data.
+
+### New Activation Function
+
+The default hidden activation today is the rectified linear unit (ReLU). Several reasons explain its dominance:
+
+1.  it is fast to compute (just a comparison with zero),
+2.  it has a loose biological motivation,
+3.  it can be seen as a limit of infinitely many sigmoids with different biases, and
+4.  it sidesteps the vanishing gradient problem that plagues saturating activations.
+
+ReLU does have a weakness: units that fall into the negative region can stop learning entirely (the "dying ReLU" problem). Variants address this by allowing a small slope for negative inputs, including Leaky ReLU and the Parametric ReLU (PReLU), in which that slope is itself learned [@Glorot_2011].
+
+### Adaptive Learning Rate
+
+The learning rate $\eta$ has to be set with care, because it controls the size of every step. If it is too large, the total loss may fail to decrease (or even diverge) after each update; if it is too small, training crawls. A simple and popular remedy is to *schedule* the rate: start large, because we begin far from the optimum, and shrink it every few epochs as we close in. A common schedule is a $1/t$ style decay such as $\eta^t = \eta / \sqrt{t+1}$.
+
+A single global rate is rarely ideal, though, because different parameters need different step sizes. This motivates per parameter adaptive rates (and note that $\eta$ is unit dependent, typically taking values between 0 and 1).
+
+The classic adaptive method is Adagrad. Where plain gradient descent updates a weight by
+
+$$w \leftarrow w - \eta \,\partial L /\partial w,$$
+
+Adagrad replaces the global $\eta$ with a per parameter rate $\eta_w$:
+
+$$
+\eta_w = \frac{\eta}{\sqrt{\sum_{i=1}^{t}(g^i)^2}}
+$$
+
+where $\eta$ is a constant and $g^i = \partial L / \partial w$ is the gradient at the $i$-th update. The effect is that parameters with consistently large gradients get smaller steps and those with small gradients get larger steps, automatically balancing the learning across the network. The trade-off is that the accumulating sum in the denominator makes every rate shrink over time, which is the issue RMSProp later fixed (see [Stochastic Gradient Descent]). For more detail, see these [slides](https://courses.cs.washington.edu/courses/cse547/15sp/slides/adagrad.pdf).
+
+### Momentum (recipe)
+
+Finding good network parameters is hard because the loss surface has flat regions and sharp valleys. Momentum helps the optimizer push through these by combining the current downhill direction with a memory of where it was already heading:
+
+$$\text{movement} = -\,\partial L/ \partial w \;+\; \text{momentum}.$$
+
+In Keras this is supplied by the optimizer; the snippet below (left unevaluated since it needs a Python backend) compiles a model first with momentum-based SGD and then with Adam.
+
+```{python eval = FALSE}
+# RMSProp (Advanced Adagrad) + Momentum
+model.compile(loss='categorial_crossentropy',optimizer = SGD(lr=0.1),metrics = ['accuracy'])
+model.compile(loss='categorial_crossentropy',optimizer=Adam(),metrics = ['accuracy'])
+```
+
+### Early Stopping (recipe)
+
+Early stopping rests on a simple observation: the training and test distributions are not identical, and the learning target is defined only by the training data. The parameters that minimize the training loss therefore need not be the ones that do best on the test set. By halting training at the point where validation performance is best, rather than where training loss bottoms out, we trade a little training fit for better generalization.
+
+### Regularization (recipe)
+
+The penalty based regularizers (weight decay, weight elimination, and the rest) were covered in detail under [Implementation] above, so we do not repeat them here.
+
+### Dropout (recipe)
+
+Dropout deserves its own walk-through because it behaves differently during training and testing. During *training*, before each parameter update, every neuron is independently dropped with some probability $p$. This changes the network structure on the fly, and we train on this thinned network; for each mini-batch we resample which neurons are dropped, so the network is constantly varying.
+
+During *testing* we use no dropout at all. Instead, to account for the fact that more units are now active than during training, we scale every weight by $1 - p$. For example, with a dropout rate of 50%, a weight learned as $w = 1$ is used as $w = 0.5$ at test time.
+
+> **Intuition:** Dropout is a form of ensembling. With $M$ neurons there are $2^M$ possible thinned sub-networks, and training visits a different one on each mini-batch while sharing parameters across all of them. Prediction with the scaled full network approximates averaging over that huge ensemble, which is why dropout reduces variance.
+
+The Keras snippet below shows dropout layers inserted between dense layers (again unevaluated, since it needs a Python backend).
+
+```{python eval = FALSE}
+
+model = Sequential()
+model.add(Dense(input_dim = 28*28,output_dim = 500))
+model.add(Activation('sigmoid'))
+model.add(dropout(0.8))
+model.add(Dense (output_dim=500))
+model.add(Activation('sigmoid'))
+model.add(dropout(0.8))
+model.add(Dense(output_dim = 10))
+model.add(Activation('softmax'))
+
+```
+
+### Network Structure
+
+Sometimes the right fix is the architecture itself. For image data the structural choice is a convolutional network, which is widely used in image processing and usually forms the first layers of a deep model. CNNs work because images satisfy three properties that the convolutional structure exploits:
+
+-   *Property 1:* useful patterns are often much smaller than the whole image, so a small filter suffices;
+-   *Property 2:* the same pattern can appear in different regions, which is why a single shared filter is scanned everywhere; and
+-   *Property 3:* subsampling the pixels does not change what the object is, which justifies pooling.
+
+Building a CNN in Keras requires only changing the network structure and the input format (from a flat vector to a 3-D tensor), as in the snippet below (unevaluated, since it needs a Python backend).
+
+```{python eval = FALSE}
+model2.add(Convolution2D(25,3,3),input_shape= (1,28,28))
+# 25 3x3 filters; 1:black/weight, 3: RFB, 28x28 pixels
+model2.add(MaxPooling2D(2,2))
+model2.add(Convolution2D(50,3,3))
+model2.add(MaxPooling2D(2,2))
+model2.add(Flatten())
+model2.add(Dense(output_dim = 100))
+model2.add(Activation('relu'))
+model2.add(Dense(output_dim=10))
+model2.add(Activation('softmax'))
+```
+
+A natural question is whether we must always know the set of classes in advance. With a standard classifier the answer is yes, and adding a class means retraining. An alternative is *transfer learning*, where a model trained on one task is adapted to a related one, which is the dominant approach in modern practice. Beyond the architectures covered here, the field continues to expand into neural topic modeling, graph representation learning and graph neural networks (with libraries such as DGL), and large pretrained language models such as BERT, all of which build on the same foundations.
+
+## Conceptual Overview of Deep Learning
+
+Having worked through the mechanics, it helps to step back and view deep learning from a single unifying angle: it is the practice of transforming an input into an output through a sequence of *layers of representation*. Each layer is a geometric transformation of the data passing through it, and the weights are precisely what determine that transformation. Learning, in this view, means finding weights that turn the raw input into a representation in which the task becomes easy.
+
+This is why the field is called *deep* learning: the depth refers to the use of many layers. Some authors argue the name undersells the idea and suggest more descriptive alternatives, all capturing the same notion:
+
+-   layered representation learning,
+-   hierarchical representation learning, or
+-   chained geometric transformation learning.
+
+> **Key idea:** Deep learning is representation learning. Rather than hand engineering features and then fitting a model, a deep network learns the features and the model together, organized as a stack of transformations of increasing abstraction.
+
+This representational power has opened problem domains that were once out of reach for R users, including computer vision, speech recognition, and reinforcement learning. The standard way to learn the workflow is the MNIST handwritten digit example: define the model in R, watch how each layer forms a representation, and run the training loop that repeatedly exposes the model to example data and nudges the weights toward better predictions.
+
+It is worth keeping the broader contrast in mind. A machine learning algorithm learns its parameters by exposure to many example data points, and this is where the cultures of statistics and machine learning diverge: statistics is often concerned with *inferring the process* that generated the data, while machine learning is concerned chiefly with *predicting future data*. Deep learning sits firmly on the prediction side, and its active frontiers, including computer vision, natural language processing, time series, and biomedical applications, are largely prediction problems at heart.
+
+\pagebreak
+
+## TensorFlow and Keras in R
+
+To actually build these models in R you work through TensorFlow, Google's deep learning engine. TensorFlow exposes its functionality at three levels of abstraction: the high level Keras API for assembling networks from layers, the mid level Estimator API for canned model types, and the low level Core API for direct access to the computational graph. Most users live in Keras, and that is where we focus.
+
+### R packages
+
+The R ecosystem mirrors those TensorFlow APIs with a family of packages. The main modeling packages are:
+
+-   keras: the interface for building neural networks, designed for fast experimentation;
+-   tfestimators: implementations of common model types such as regressors and classifiers;
+-   tensorflow: a low level interface to the TensorFlow computational graph; and
+-   tfdatasets: scalable input pipelines for feeding data to TensorFlow models.
+
+A second group of packages supports the surrounding workflow:
+
+-   tfruns: track, visualize, and manage training runs and experiments;
+-   tfdeploy: tools for exporting and serving trained models; and
+-   cloudml: an R interface to Google Cloud Machine Learning Engine.
+
+Working with the Keras interface follows a predictable path: define the model with a step-by-step example, choose its [Keras layers], compile it (see [Compiling models]), specify its [Losses, Optimizers, and Metrics], and then iterate. We take those pieces in turn.
+
+### Keras layers
+
+Keras ships with dozens of layer types (around 65), but a handful cover most use cases, and each maps onto an architecture from earlier in this chapter:
+
+-   dense layers are the classic fully connected layers of a feedforward network;
+-   convolutional layers are the filters that learn local patterns, used in CNNs;
+-   recurrent layers maintain state across previously seen inputs, used in RNNs; and
+-   embedding layers turn text into vectors that capture semantic relationships between words.
+
+## Compiling models
+
+Once the layers are stacked, the model must be *compiled* before training. Compilation does three things:
+
+1.  converts the layers into a TensorFlow computational graph,
+2.  attaches the chosen loss function and optimizer, and
+3.  sets up the collection of metrics to monitor during training.
+
+## Losses, Optimizers, and Metrics
+
+The available losses, optimizers, and metrics are all catalogued in the Keras for R [cheatsheet](https://github.com/rstudio/cheatsheets/raw/master/keras.pdf). For a complete worked application, see this walkthrough of [image classification](https://blogs.rstudio.com/ai/posts/2017%20*12%20*14%20*image%20*classification%20*on%20*small%20*datasets/) on small datasets.
+
+## Additional Intuition (NYU Deep Learning)
+
+To close, here is a complementary set of intuitions drawn from the [NYU Deep Learning](https://atcold.github.io/pytorch-Deep-Learning/) course, which frames the same ideas from a slightly different angle.
+
+As we have stressed, the "deep" in deep learning means multiple layers: "a deep network has several layers and uses them to build a hierarchy of features of increasing complexity." Supervised learning, in this framing, is simply *function optimization*: given inputs and outputs, you tune the machine's parameters so it produces the right outputs from the inputs. The key contrast with traditional machine learning is *who designs the features*. There, a human engineers the feature extractor by hand; in deep learning the feature extractor is itself learned, layer by layer. The layers must be nonlinear, because a stack of purely linear layers would collapse into a single linear layer and gain nothing from depth.
+
+Why does this layered approach work so well? Because natural data is *compositional*: complex things are built from simpler parts, so they are efficiently represented in a hierarchy. This hierarchical structure is visible in every domain, and learning a representation just means turning raw data into something useful at each level:
+
+-   in image recognition: pixel, edge, texton, motif, part, object;
+-   in text: character, group, word, word group, clause, sentence, story; and
+-   in speech: sample, spectral band, sound, phone, phoneme, word.
+
+That this works at scale was demonstrated in a series of breakthroughs, with speech recognition transformed around 2010, image recognition around 2013, and natural language processing around 2015.
+
+A couple of comparisons sharpen the picture. A support vector machine can be viewed as a two-layer network: layer 1 forms templates and layer 2 is a linear classifier. A deep network has many more layers and builds a hierarchy of increasingly complex features, which makes it more efficient than an SVM at representing certain classes of functions. The reason any of this is possible is captured by the *manifold hypothesis*, which "states that real-world high-dimensional data lie on low-dimensional manifolds embedded within the high-dimensional space." Finally, deep learning generalizes the dimension reduction you already know: it is like principal components analysis, except that PCA uses only linear functions whereas a deep network uses nonlinear ones, letting it find curved manifolds that PCA cannot.
+
+> **Tip:** If you remember one thing from this chapter, make it this: a neural network is a learnable, layered feature extractor trained by gradient descent. Almost every architecture, loss, and trick in deep learning is a variation on that single theme.
+
+A final caution carries over from earlier in the chapter. Deep learning is a powerful tool for fitting a function to data, but without a causal model its knowledge does not transfer across populations. If the data-generating distribution shifts, you will generally have to retrain. With that caveat in mind, the @LeCun_2015 description quoted earlier, a "multilayer stack of simple modules" that mostly learn and mostly compute nonlinear mappings, is a fitting one-sentence summary of everything in this chapter.

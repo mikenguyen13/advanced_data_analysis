@@ -1,0 +1,96 @@
+# Contextual Bandits
+
+Imagine you run a news website. Every time a reader arrives, you get to show them one headline out of several, and you find out only whether they clicked the headline you chose. You never learn what would have happened if you had shown a different one. Over many readers, you want to show headlines that get the most clicks, but you also have to keep trying less-tested headlines now and then, because the one you have ignored might turn out to be the best. This is the contextual bandit problem in a nutshell: repeated decisions, feedback only on the choice you made, and a context (who the reader is) that should shape the choice.
+
+This chapter introduces that problem and the vocabulary around it. By the end you will understand what makes contextual bandits different from ordinary supervised learning, why the tension between exploration and exploitation is unavoidable, and how to read the formal setup and its regret objective. We treat this as a bridge topic: it sits between classical prediction (where you see the right answer for every example) and full reinforcement learning (where actions change future states). Contextual bandits are sometimes called "one-step reinforcement learning" for exactly that reason.
+
+A useful external walkthrough, with runnable examples in Vowpal Wabbit, is the tutorial at <https://vowpalwabbit.org/tutorials/contextual_bandits.html>.
+
+> **Intuition:** A bandit problem is named after a slot machine ("one-armed bandit"). You face several arms (actions), each pays out with some unknown probability, and you want to find the good arms while spending as few pulls as possible on the bad ones. The "contextual" version adds a clue before each pull that tells you something about which arm is likely to pay off this time.
+
+## A topic with many names
+
+The same idea shows up across machine learning, statistics, and operations research, often under different names. If you read widely, you will meet it called multi-world testing, associative bandits, learning with partial feedback (or, equivalently, learning with bandit feedback), bandits with side information, multi-class classification with bandit feedback, associative reinforcement learning, and one-step reinforcement learning.
+
+> **Note:** The phrase "bandit feedback" is the key technical term among these. It means you observe the reward only for the action you took, not for the alternatives. Contrast this with "full feedback," where you would learn the reward of every possible action. Bandit feedback is what makes the problem hard.
+
+## Where it is used
+
+Contextual bandits are a natural fit whenever you make many small decisions, get quick feedback, and want to improve as you go. Three common settings illustrate the range:
+
+-   A/B testing. Classic A/B testing splits traffic evenly and waits for a verdict. A bandit can shift traffic toward the better variant while the test is still running, so fewer users see the worse option.
+-   Recommendation feeds. Systems like the TikTok or YouTube recommendation engine repeatedly choose what to show next and learn from whether you watch, like, or skip.
+-   Clinical trials. Adaptive trial designs can route more patients toward treatments that appear to be working, using patient characteristics as context, though this raises ethical and statistical subtleties that ordinary bandits do not address.^[Adaptive clinical trials are a careful, regulated application. The exploration cost in a medical setting is not abstract: a suboptimal action can harm a patient. Real trials add safeguards well beyond the plain bandit formulation discussed here.]
+
+> **When to use this:** Reach for a contextual bandit when (1) you choose one action per round from a fixed menu, (2) you observe a reward only for the chosen action, and (3) you have features describing the situation that plausibly predict which action is best. If actions also change the future state of the world, you have crossed into full reinforcement learning, not a bandit.
+
+## The core idea
+
+At heart, a contextual bandit is an algorithm that tries out different actions and figures out, on its own, which action is best for a given situation. It learns a mapping from context to action by acting, observing rewards, and adjusting.
+
+You do not have to build this from scratch. Managed services exist: for example, [Google Cloud AutoML Tables](https://cloud.google.com/automl-tables/) packages much of the modeling work behind a hosted interface [@dutta2019automl]. Such platforms typically bundle several steps that you would otherwise hand-tune yourself:
+
+-   Automated feature engineering
+-   Architecture search
+-   Hyper-parameter tuning (for example, grid search)
+-   Model selection
+-   Model tuning and ensembling
+
+> **Tip:** For getting a contextual-bandit workflow running quickly without managing infrastructure, a hosted offering such as Google Cloud AutoML Tables is often a smoother starting point than running Microsoft's Vowpal Wabbit yourself. Vowpal Wabbit remains excellent for learning the mechanics and for fine control, which is why the tutorial linked above is worth working through.
+
+## Exploration versus exploitation
+
+The defining tension of any bandit algorithm is the trade-off between exploration and exploitation, and contextual bandits are designed to balance the two deliberately.
+
+-   Exploration means trying various possibilities to learn what reward they may bring, even actions you currently believe are mediocre.
+-   Exploitation means using the knowledge you already have to pick the action that maximizes your immediate return.
+
+Neither extreme works alone. Pure exploitation locks in whatever looked best early, before you had enough data to trust it. Pure exploration wastes feedback on actions you have already learned are poor. A good policy leans toward exploration early, when it knows little, and shifts toward exploitation as evidence accumulates.
+
+> **Key idea:** Every round of exploration has a cost (you may take a worse action now) but a benefit (better decisions later). The art of bandit algorithms is spending exploration where it buys the most future reward.
+
+## From multi-armed to contextual bandits
+
+It helps to place contextual bandits next to their simpler cousin. Two algorithm families are worth distinguishing:
+
+-   Multi-armed bandit (MAB). Every round is treated in isolation, with no side information. The learner just estimates which arm is best on average. This is independent learning: the same action is favored regardless of who is in front of you.
+-   Contextual bandit. An extension of the MAB, and equally a simplified version of reinforcement learning, this approach takes the context into account when choosing an arm. Because the choice adapts to the situation, the learner accumulates reward in a more holistic way, fitting a policy rather than a single best arm.
+
+> **Note:** A plain multi-armed bandit ignores context entirely. The contextual bandit's whole advantage is that it can give different answers for different inputs, which is exactly what you want when the best headline depends on the reader.
+
+## The formal setting
+
+We now make the picture precise. The following formulation draws on the lecture materials by [Alina Beygelzimer](http://videolectures.net/kdd2010_beygelzimer_langford_lte/).
+
+The interaction unfolds over rounds. For $t = 1, \dots, T$:
+
+1.  The environment produces a context $x_t \in X$.
+2.  The learner chooses an action $a_t \in \{1, \dots, K, \}$.
+3.  The environment reveals a reward $r_t(a_t) \in [0,1]$.
+
+The goal is to learn a good policy for selecting actions given context, where a policy $\pi$ is just a rule that maps a context to an action.^[The action set has $K$ choices and rewards are scaled to $[0,1]$, a standard convention that keeps the regret bound interpretable. The notation $\pi(x_t)$ means "the action the policy $\pi$ would take in context $x_t$."]
+
+We measure success by *regret*: how much total reward we gave up compared to the best fixed policy in our policy class $\Pi$, judged in hindsight.
+
+$$
+Regret = \underset{\pi \in \Pi}{\operatorname{max}} \sum_{t=1}^T r_t(\pi(x_t)) - \sum_{t=1}^T r_t (a_t)
+$$
+
+The first term is the reward the single best policy would have earned over all $T$ rounds; the second term is the reward we actually earned. Smaller regret means we came closer to acting optimally, so the entire learning problem can be stated as: keep regret small.
+
+> **Intuition:** Regret is "what we missed." We cannot compute it while the game is running, because we do not see the rewards of actions we skipped. It is an after-the-fact yardstick used to analyze and compare algorithms, not a quantity you optimize directly in real time.
+
+## How this differs from ordinary supervised learning
+
+Contextual bandits resemble supervised learning, but with one decisive twist that shapes everything. In standard supervised learning, each training example comes with the correct label, so you can compute the loss for any prediction. Here you face the same kind of input-to-output mapping, yet two features set the problem apart:
+
+-   The reward for actions you did not take is unknown. You see only $r_t(a_t)$, never $r_t(a)$ for the other actions $a$. The loss for the alternatives is hidden.
+-   Because of that hidden loss, you must explore to succeed, which means deliberately taking some suboptimal actions in order to gather the information you need.
+
+> **Warning:** Do not treat a contextual bandit as a plain classification task by simply training on the actions you happened to take. Doing so ignores the bias from your own past choices: if you rarely tried an action, you have almost no data about it, and a naive classifier will quietly assume it is bad. Proper bandit methods correct for this with exploration and reweighting.
+
+A final point of clarification: although a contextual bandit builds on the multi-armed bandit and shares the bandit-feedback structure, it is not the same as the multi-armed bandit problem. The presence of context, and the goal of learning a policy that varies with that context, is what separates the two.
+
+## Summary
+
+Contextual bandits handle repeated decisions where you act, observe a reward only for the action you chose, and use side information to choose well. They sit one step beyond the multi-armed bandit (which ignores context) and one step short of full reinforcement learning (where actions change future states). The central challenge is balancing exploration against exploitation, and the standard measuring stick is regret, the gap between the best policy in hindsight and what you actually achieved. With that framing in hand, the Vowpal Wabbit tutorial linked at the top is a good next step for seeing these ideas run on real data.

@@ -1,0 +1,450 @@
+# Semi-Supervised Learning
+
+## Intuition
+
+In many practical settings, labels are expensive but raw inputs are cheap. A bank has millions of transactions but only a few thousand confirmed fraud cases. A radiology group has a large archive of scans but only a small set annotated by an expert. A product team logs every user session but can hand-label intent on only a sliver of them. The common shape is the same: a small labeled set $L$ and a much larger unlabeled set $U$.
+
+Semi-supervised learning (SSL) is the family of methods that uses both. The goal is the usual supervised one, predict $y$ from $x$, but the training signal comes from the labeled points plus the geometry of the unlabeled points. The bet is that the unlabeled data tells us something about where the decision boundary should not go.
+
+> **Intuition:** Imagine scattering a handful of colored marbles into a room full of identical grey ones, then being told the grey marbles fall into a few neat piles. Even without recoloring every marble, you can guess the color of each pile from the few colored marbles that landed in it. SSL formalizes that guess: the unlabeled points reveal the piles, and the labeled points tell you which pile is which.
+
+By the end of this chapter you will be able to state the two assumptions that make SSL work, run the three workhorse method families (self-training, co-training, and graph-based label propagation), and recognize the situations where unlabeled data helps versus the situations where it quietly hurts. We close with a worked simulation you can run yourself, comparing a supervised baseline against label propagation on a classic benchmark.
+
+This only works when the marginal distribution of $x$, written $p(x)$, carries information about the conditional $p(y \mid x)$. Two standard assumptions make that link precise:
+
+- Cluster assumption. Points in the same cluster (a high-density region of $p(x)$) tend to share a label. Equivalently, the decision boundary should pass through low-density regions, not through the middle of a dense clump. This is the basis of low-density separation methods such as transductive SVMs.
+- Manifold assumption. The data lie near a low-dimensional manifold embedded in the high-dimensional input space, and the label varies smoothly along that manifold. Two points that are close along the manifold should get similar predictions, even if they are far apart in raw Euclidean distance. This is the basis of graph-based methods.
+
+If neither assumption holds, the unlabeled data is at best useless and at worst harmful: it can pull the model toward structure in $p(x)$ that has nothing to do with the label.
+
+> **Warning:** SSL is not a free lunch. Adding unlabeled data only helps when the shape of $p(x)$ actually lines up with the labels. When it does not, the extra data can degrade a model that would have been fine with the labels alone. Always sanity-check the assumptions before reaching for SSL.
+
+Where this fits in a modern workflow: SSL is a labeling-efficiency tool. It appears as pseudo-labeling in deep learning pipelines (a teacher model labels a large unlabeled pool, a student trains on the union), as a pre-step before active learning, and as a way to exploit a data lake when annotation budget is the bottleneck. It overlaps with self-supervised pretraining in spirit (both use unlabeled data) but differs in mechanics: self-supervised methods learn representations from a pretext task, while classic SSL propagates label information directly.
+
+## Notation and Setup
+
+We observe labeled pairs $L = \{(x_1, y_1), \dots, (x_l, y_l)\}$ and unlabeled inputs $U = \{x_{l+1}, \dots, x_{l+u}\}$, with $x_i \in \mathbb{R}^p$ and $y_i \in \{1, \dots, C\}$ for classification. Usually $u \gg l$. Write $n = l + u$ for the total number of points.
+
+Before listing methods, it helps to settle one distinction that quietly shapes which method you reach for. Two related but distinct goals appear in the literature:
+
+- Transductive learning: predict labels only for the specific unlabeled points $U$ we have in hand. There is no separate test set; the answer is the labeling of $U$.
+- Inductive learning: fit a function $\hat f$ that generalizes to new, unseen points. Transductive methods can be turned inductive by retraining a supervised model on the (now fully labeled) data, or by an out-of-sample extension.
+
+> **Key idea:** Transductive asks "what are the labels of these particular unlabeled points?" Inductive asks "what is the rule for labeling any future point?" The first is a one-time fill-in-the-blanks; the second is a reusable function.
+
+The methods below differ in which goal they target. Label propagation is naturally transductive; self-training and co-training are naturally inductive.
+
+## Self-Training
+
+We start with the simplest idea, which is also the oldest: let a model teach itself.
+
+Self-training (also called self-labeling or pseudo-labeling) is the simplest wrapper method.^[A *wrapper* method is one that sits on top of any existing supervised learner, treating it as a black box. You do not modify the classifier's internals; you only change the data you feed it.] It takes any base classifier that outputs confidence scores and bootstraps it with its own predictions.
+
+The procedure runs in a loop, each round trusting the model a little more:
+
+1. Train the base classifier on the labeled set $L$.
+2. Predict on the unlabeled set $U$. For each point keep the predicted label $\hat y$ and a confidence $\max_c \hat p(y = c \mid x)$.
+3. Move the most confident unlabeled points (above a threshold $\tau$, or the top fraction) into the labeled set with their predicted labels as pseudo-labels.
+4. Retrain on the enlarged labeled set.
+5. Repeat until no points exceed the threshold, the unlabeled pool is empty, or a fixed number of rounds is reached.
+
+The appeal is that it works with any model, including ones that give no probabilistic guarantee. The danger is feedback: a confident mistake becomes a training label, which reinforces the mistake on the next round. This is confirmation bias, and it is the central failure mode of self-training.
+
+> **Warning:** Once a wrong pseudo-label enters the training set, the model becomes *more* confident in the same wrong answer next round, so the error compounds rather than washing out. Guards against this include a high confidence threshold, adding only a few points per round, and re-evaluating (not freezing) pseudo-labels each round so an earlier guess can be corrected.
+
+Self-training is closely tied to the cluster assumption. Confident points sit far from the boundary, deep inside a class region, so labeling them tends to be safe and tends to push the boundary into the low-density gap between classes.
+
+> **When to use this:** Reach for self-training when you have a single decent classifier, no natural way to split the features, and unlabeled data that clusters cleanly by class. It is the lowest-effort SSL method and a sensible first thing to try.
+
+## Co-Training
+
+Self-training's weakness is that a model has no outside check on its own confidence. Co-training fixes this by giving the data a second, independent perspective that can catch the first one's mistakes.
+
+Co-training (Blum and Mitchell, 1998) splits the features into two views $x = (x^{(1)}, x^{(2)})$ that are each sufficient to classify and, ideally, conditionally independent given the label.^[*Conditionally independent given the label* means that once you know the class, the two views carry no extra information about each other. This is what stops the two classifiers from making the same mistakes.] The canonical example is web-page classification: one view is the words on the page, the other is the words on hyperlinks pointing to it.
+
+Two classifiers are trained, one per view. Each labels the unlabeled points; the points where classifier 1 is most confident are added to the training set of classifier 2, and vice versa. Because the views are (roughly) independent, a point that is easy for one view is often informative for the other, so the two classifiers teach each other rather than echo themselves.
+
+When a natural feature split exists, co-training resists confirmation bias better than single-view self-training. When no such split exists, people sometimes create artificial diversity by using different model families, different feature subsets, or different random seeds (a multi-view or disagreement-based heuristic). The independence condition is rarely exact in practice, and the method degrades gracefully toward self-training as the views become redundant.
+
+> **When to use this:** Co-training pays off when your features genuinely come in two (or more) independent groups, for example text plus metadata, or audio plus transcript. If you cannot point to such a split, the independence the method relies on is fiction and you are better off with plain self-training.
+
+## Graph-Based Methods: Label Propagation and Label Spreading
+
+Self-training and co-training both work one point at a time. The graph-based family takes a different stance: it looks at all the data at once and lets labels spread through the whole structure like dye through a network of pipes.
+
+Graph-based SSL builds a similarity graph over all $n$ points, labeled and unlabeled, and then diffuses the known labels across the edges. This is the most direct expression of the manifold assumption: labels flow along the manifold encoded by the graph.
+
+> **Intuition:** Picture each data point as a city and each edge as a road whose length reflects how similar two points are. You know the "color" of a few cities. The graph methods let color seep outward along the roads, so a city surrounded by red neighbors turns red. Because color travels along roads (the manifold) rather than as the crow flies, it can wrap around curved structure that straight-line distance would cut across.
+
+### The graph and its matrices
+
+Build a weighted graph with one node per point. A common edge weight is the Gaussian (radial basis function) kernel on Euclidean distance,
+
+$$
+W_{ij} = \exp\!\left( -\frac{\lVert x_i - x_j \rVert^2}{2\sigma^2} \right), \qquad W_{ii} = 0,
+$$
+
+where $\sigma$ is a bandwidth controlling how quickly similarity decays with distance.^[Small $\sigma$ makes the kernel pick out only very close neighbors (a tight, local graph); large $\sigma$ connects far-apart points too (a loose, global graph). This single number has more influence on the result than the choice of diffusion algorithm.] The weight is often sparsified by keeping only the $k$ nearest neighbors of each node. Let $D$ be the diagonal degree matrix with $D_{ii} = \sum_j W_{ij}$, and define the unnormalized graph Laplacian $\mathcal{L} = D - W$ and the symmetric normalized Laplacian $\mathcal{L}_{\text{sym}} = I - D^{-1/2} W D^{-1/2}$.^[The graph Laplacian is the discrete analogue of the second-derivative operator from calculus. Just as the second derivative measures how much a function curves, the Laplacian measures how much a labeling disagrees across edges, which is exactly the smoothness the manifold assumption wants to minimize.]
+
+### Label propagation (the harmonic solution)
+
+Encode labels in a matrix $F \in \mathbb{R}^{n \times C}$, where row $i$ is a soft label (a distribution over classes). For labeled points the row is fixed at the one-hot vector $Y_i$. The propagation of Zhu and Ghahramani (2002) repeats
+
+$$
+F^{(t+1)} = D^{-1} W F^{(t)},
+$$
+
+then resets the labeled rows back to their known values $F_i^{(t+1)} = Y_i$ for $i \in L$. Each step replaces a node's label by the degree-weighted average of its neighbors' labels (a random walk step), while the clamping keeps the labeled nodes anchored.
+
+This iteration has a closed form. Partition the nodes into labeled ($L$) and unlabeled ($U$) blocks and write the transition matrix $P = D^{-1} W$ in block form
+
+$$
+P = \begin{pmatrix} P_{LL} & P_{LU} \\ P_{UL} & P_{UU} \end{pmatrix}.
+$$
+
+The clamped iteration converges to the harmonic solution for the unlabeled rows,
+
+$$
+F_U = (I - P_{UU})^{-1} P_{UL} \, Y_L,
+$$
+
+where $Y_L$ stacks the one-hot labels of the labeled points. "Harmonic" means the solution minimizes the quadratic energy
+
+$$
+E(F) = \tfrac{1}{2} \sum_{i,j} W_{ij} \lVert F_i - F_j \rVert^2 = \operatorname{tr}(F^\top \mathcal{L} F)
+$$
+
+subject to $F_i = Y_i$ on the labeled set. Minimizing $E$ means giving similar soft labels to strongly connected nodes, which is the manifold assumption written as an objective. The predicted class of an unlabeled point is $\arg\max_c (F_U)_{ic}$.
+
+> **Note:** The word *harmonic* comes from physics. The solution is the discrete analogue of a steady-state heat distribution: fix the temperature at the labeled nodes and let the rest settle to equilibrium. Each unlabeled node ends up at the average temperature of its neighbors, which is precisely the harmonic property.
+
+### Label spreading (the regularized variant)
+
+Label propagation clamps the labeled nodes exactly, so noisy labels are never corrected. Label spreading (Zhou et al., 2004) relaxes the clamp and uses the symmetric normalization. With $S = D^{-1/2} W D^{-1/2}$ it iterates
+
+$$
+F^{(t+1)} = \alpha S F^{(t)} + (1 - \alpha) Y,
+$$
+
+where $Y$ holds the initial labels (zeros for unlabeled rows) and $\alpha \in (0, 1)$ trades off neighbor influence against the initial label. The iteration converges to the closed form
+
+$$
+F^{*} = (1 - \alpha)\,(I - \alpha S)^{-1} Y,
+$$
+
+which minimizes
+
+$$
+\mathcal{Q}(F) = \tfrac{1}{2} \sum_{i,j} W_{ij} \left\lVert \frac{F_i}{\sqrt{D_{ii}}} - \frac{F_j}{\sqrt{D_{jj}}} \right\rVert^2 + \frac{1 - \alpha}{\alpha} \sum_i \lVert F_i - Y_i \rVert^2.
+$$
+
+The first term is the normalized smoothness penalty; the second is a fit-to-initial-labels penalty that tolerates some disagreement, which makes label spreading more robust to mislabeled points than hard-clamped propagation.
+
+> **Tip:** Choosing between the two is mostly about trust in your labels. If the given labels are clean and authoritative, clamp them with label propagation. If some labels may be wrong, let label spreading override them by setting $\alpha$ close to (but below) 1, which leans heavily on the graph while still remembering the original labels.
+
+### Comparison of the methods
+
+With the four classic methods on the table, it is worth pausing to line them up side by side. Table \@ref(tab:semi-supervised-learning-method-comparison) summarizes how each one works, which assumption it leans on, and where it tends to break, so you can match a method to your situation at a glance.
+
+| Method | Mechanism | Key assumption | Handles label noise | Natural goal | Main pitfall |
+|---|---|---|---|---|---|
+| Self-training | Wrap any classifier, add its confident predictions as labels | Cluster | Poorly (reinforces errors) | Inductive | Confirmation bias |
+| Co-training | Two feature views teach each other | Cluster + view independence | Better than self-training | Inductive | Needs a real feature split |
+| Label propagation | Diffuse labels on a graph, clamp labeled nodes | Manifold | No (labels fixed) | Transductive | Sensitive to graph and $\sigma$ |
+| Label spreading | Diffuse on normalized graph, soft clamp via $\alpha$ | Manifold | Yes (soft clamp) | Transductive | Sensitive to graph and $\sigma$ |
+| Pseudo-labeling (deep) | Teacher labels pool, student trains on union | Cluster (low-density) | With confidence filtering | Inductive | Confident wrong labels |
+
+Table: (\#tab:semi-supervised-learning-method-comparison) Comparison of common semi-supervised methods, listing each method's mechanism, key assumption, robustness to label noise, natural learning goal, and main pitfall.
+
+## Pseudo-Labeling in Deep Learning
+
+The classic methods predate deep learning, but the self-training idea reappears, almost unchanged, at the heart of modern neural-network pipelines. It is worth seeing how the same loop scales up.
+
+Pseudo-labeling is self-training scaled up for neural networks. A model trained on $L$ produces soft predictions on $U$; high-confidence predictions become hard targets, and the network minimizes a combined loss
+
+$$
+\mathcal{L} = \mathcal{L}_{\text{sup}} + \lambda(t)\, \mathcal{L}_{\text{unsup}},
+$$
+
+where $\mathcal{L}_{\text{sup}}$ is the usual loss on labeled data, $\mathcal{L}_{\text{unsup}}$ is the loss on pseudo-labeled data, and $\lambda(t)$ is a weight ramped up over training so the model first learns from real labels before trusting its own.
+
+> **Intuition:** The ramp on $\lambda(t)$ is the deep-learning version of "earn trust before you give it." Early on, the network's predictions are noise, so the unsupervised term is held back. As training progresses and the network gets reliable, its self-generated labels are gradually allowed to matter more. Modern variants (for example consistency-regularization methods that pair a weakly augmented input to generate the pseudo-label with a strongly augmented input for the loss) follow the same template with stronger guards on label quality. The code below is illustrative and is marked `eval=FALSE` because it needs Keras/TensorFlow and is meant to be read, not run inline.
+
+```{r ssl-pseudo-keras, eval=FALSE}
+library(keras)
+
+# Toy pseudo-labeling loop for a small neural net classifier.
+# x_lab, y_lab: labeled features and one-hot labels
+# x_unlab: unlabeled features
+
+build_model <- function(p, n_class) {
+  keras_model_sequential() |>
+    layer_dense(64, activation = "relu", input_shape = p) |>
+    layer_dense(64, activation = "relu") |>
+    layer_dense(n_class, activation = "softmax") |>
+    compile(optimizer = "adam",
+            loss = "categorical_crossentropy",
+            metrics = "accuracy")
+}
+
+model <- build_model(ncol(x_lab), ncol(y_lab))
+model |> fit(x_lab, y_lab, epochs = 30, verbose = 0)
+
+tau <- 0.95
+for (round in 1:5) {
+  probs <- model |> predict(x_unlab)
+  conf  <- apply(probs, 1, max)
+  keep  <- which(conf >= tau)
+  if (length(keep) == 0) break
+
+  pseudo_y <- keras::to_categorical(max.col(probs[keep, , drop = FALSE]) - 1,
+                                    num_classes = ncol(y_lab))
+  x_aug <- rbind(x_lab, x_unlab[keep, , drop = FALSE])
+  y_aug <- rbind(y_lab, pseudo_y)
+
+  model <- build_model(ncol(x_lab), ncol(y_lab))
+  model |> fit(x_aug, y_aug, epochs = 30, verbose = 0)
+
+  x_unlab <- x_unlab[-keep, , drop = FALSE]  # remove consumed points
+}
+```
+
+## Simulation: Label Propagation on Two Moons
+
+We now demonstrate the core idea end to end in base R, with no SSL package. We generate a two-moons dataset, a standard SSL benchmark where the two classes are interleaved crescents. The classes are not linearly separable, but each lies on a clear one-dimensional manifold, so the manifold assumption holds and graph diffusion should shine.
+
+We label only a handful of points and hide the rest, then compare three predictions on the held-out labels:
+
+1. A purely supervised baseline (1-nearest-neighbor trained on the few labels).
+2. Label propagation using the labeled and unlabeled points together.
+3. Label spreading (the soft-clamp variant).
+
+```{r ssl-moons-data}
+set.seed(1)
+
+# Generate a two-moons dataset.
+make_moons <- function(n, noise = 0.12) {
+  n1 <- n %/% 2
+  n2 <- n - n1
+  # upper moon (class 0)
+  t1 <- runif(n1, 0, pi)
+  x1 <- cbind(cos(t1), sin(t1))
+  # lower moon (class 1), shifted
+  t2 <- runif(n2, 0, pi)
+  x2 <- cbind(1 - cos(t2), 0.5 - sin(t2))
+  X <- rbind(x1, x2)
+  X <- X + matrix(rnorm(2 * n, sd = noise), ncol = 2)
+  y <- c(rep(0L, n1), rep(1L, n2))
+  list(X = X, y = y)
+}
+
+dat <- make_moons(400, noise = 0.10)
+X <- dat$X
+y_true <- dat$y
+n <- nrow(X)
+
+# Reveal only a few labels per class; the rest are unlabeled (-1).
+n_lab_per_class <- 3
+lab_idx <- c(
+  sample(which(y_true == 0), n_lab_per_class),
+  sample(which(y_true == 1), n_lab_per_class)
+)
+y_obs <- rep(-1L, n)          # -1 marks unlabeled
+y_obs[lab_idx] <- y_true[lab_idx]
+
+cat("Labeled points:", length(lab_idx),
+    " Unlabeled points:", sum(y_obs == -1), "\n")
+```
+
+```{r semi-supervised-learning-moons-setup, fig.width=7, fig.height=4, fig.cap="Two-moons dataset with 6 labeled points (large triangle and square markers) among 400 total points (grey dots are unlabeled). The two classes form interleaved crescents that lie on clear one-dimensional manifolds."}
+library(ggplot2)
+
+plot_df <- data.frame(
+  x1 = X[, 1], x2 = X[, 2],
+  status = ifelse(y_obs == -1, "unlabeled",
+                  ifelse(y_obs == 0, "labeled class 0", "labeled class 1"))
+)
+
+ggplot(plot_df, aes(x1, x2)) +
+  geom_point(aes(color = status, size = status, shape = status)) +
+  scale_color_manual(values = c("unlabeled" = "grey75",
+                                "labeled class 0" = "#1b9e77",
+                                "labeled class 1" = "#d95f02")) +
+  scale_size_manual(values = c("unlabeled" = 1.2,
+                               "labeled class 0" = 3.5,
+                               "labeled class 1" = 3.5)) +
+  scale_shape_manual(values = c("unlabeled" = 16,
+                                "labeled class 0" = 17,
+                                "labeled class 1" = 15)) +
+  labs(title = "Two moons: 6 labeled points among 400",
+       x = expression(x[1]), y = expression(x[2]),
+       color = NULL, size = NULL, shape = NULL) +
+  coord_equal()
+```
+
+Figure \@ref(fig:semi-supervised-learning-moons-setup) shows the difficulty: with only six labels, a supervised method has almost nothing to anchor the boundary. But the unlabeled points trace out two clear crescents, and the graph methods will exploit that shape.
+
+### Building the graph and propagating
+
+We build a Gaussian-kernel similarity matrix, restrict it to $k$ nearest neighbors for sparsity, and run both the clamped (label propagation) and soft-clamp (label spreading) closed-form solutions.
+
+```{r ssl-graph}
+# Pairwise squared Euclidean distances.
+sq_dist <- as.matrix(dist(X))^2
+
+# k-nearest-neighbor Gaussian weights (symmetrized).
+knn_gaussian_W <- function(D2, k = 10, sigma = NULL) {
+  n <- nrow(D2)
+  if (is.null(sigma)) {
+    # median heuristic on nonzero distances
+    sigma <- sqrt(median(D2[D2 > 0]))
+  }
+  Wfull <- exp(-D2 / (2 * sigma^2))
+  W <- matrix(0, n, n)
+  for (i in seq_len(n)) {
+    ord <- order(D2[i, ])
+    nbrs <- ord[2:(k + 1)]          # skip self
+    W[i, nbrs] <- Wfull[i, nbrs]
+  }
+  W <- pmax(W, t(W))                # symmetrize
+  diag(W) <- 0
+  W
+}
+
+W <- knn_gaussian_W(sq_dist, k = 10)
+D <- rowSums(W)
+
+# One-hot label matrix Y (n x C); unlabeled rows are all zero.
+C <- 2
+Y <- matrix(0, n, C)
+for (i in lab_idx) Y[i, y_obs[i] + 1L] <- 1
+
+L <- which(y_obs != -1)
+Uidx <- which(y_obs == -1)
+```
+
+```{r ssl-propagate}
+# --- Label propagation: harmonic solution with clamped labels ---
+# F_U = (I - P_UU)^{-1} P_UL Y_L,  where P = D^{-1} W.
+P <- W / D                                  # row-normalized transition matrix
+P_UU <- P[Uidx, Uidx]
+P_UL <- P[Uidx, L]
+F_U  <- solve(diag(length(Uidx)) - P_UU, P_UL %*% Y[L, , drop = FALSE])
+
+pred_lp <- rep(NA_integer_, n)
+pred_lp[L]    <- y_obs[L]
+pred_lp[Uidx] <- max.col(F_U) - 1L
+
+# --- Label spreading: F* = (1 - alpha)(I - alpha S)^{-1} Y ---
+alpha <- 0.99
+Dinv_sqrt <- 1 / sqrt(D)
+S <- (Dinv_sqrt) * W * rep(Dinv_sqrt, each = n)   # D^{-1/2} W D^{-1/2}
+F_star <- (1 - alpha) * solve(diag(n) - alpha * S, Y)
+
+pred_ls <- max.col(F_star) - 1L
+
+# --- Supervised baseline: 1-NN trained on the 6 labeled points only ---
+nn_predict <- function(Xtr, ytr, Xte) {
+  apply(Xte, 1, function(q) {
+    d <- colSums((t(Xtr) - q)^2)
+    ytr[which.min(d)]
+  })
+}
+pred_nn <- nn_predict(X[L, , drop = FALSE], y_obs[L], X)
+```
+
+### Accuracy gain from unlabeled data
+
+We score each method on the points that were hidden during training (the unlabeled set), which is the fair comparison: did using the unlabeled structure help recover the true labels?
+
+```{r semi-supervised-learning-accuracy}
+acc_on_U <- function(pred) mean(pred[Uidx] == y_true[Uidx])
+
+results <- data.frame(
+  method = c("Supervised 1-NN (labels only)",
+             "Label propagation (clamped)",
+             "Label spreading (soft clamp)"),
+  uses_unlabeled = c("no", "yes", "yes"),
+  accuracy_on_unlabeled = round(
+    c(acc_on_U(pred_nn), acc_on_U(pred_lp), acc_on_U(pred_ls)), 3
+  )
+)
+
+knitr::kable(
+  results,
+  caption = "Accuracy on the held-out unlabeled points. The supervised baseline sees only the six labels; the graph methods also use the 394 unlabeled points to trace the manifold."
+)
+```
+
+Table \@ref(tab:semi-supervised-learning-accuracy) reports the result. The supervised 1-NN has only six reference points, so it splits the plane by raw distance and misclassifies large stretches of each crescent. The graph methods diffuse the six labels along the two arcs and recover almost all of the hidden labels. The gap between the rows is the accuracy gain attributable to the unlabeled data.
+
+### Visualizing the propagated labels
+
+```{r semi-supervised-learning-propagated-labels, fig.width=7, fig.height=4, fig.cap="Predicted labels after label propagation. Each point is colored by its propagated class, and the black circles mark the 6 originally labeled points. Both crescents are recovered, showing that propagation followed the manifold rather than straight-line distance."}
+res_df <- data.frame(
+  x1 = X[, 1], x2 = X[, 2],
+  predicted = factor(pred_lp, levels = c(0, 1)),
+  is_labeled = y_obs != -1
+)
+
+ggplot(res_df, aes(x1, x2)) +
+  geom_point(aes(color = predicted), size = 1.4, alpha = 0.8) +
+  geom_point(data = subset(res_df, is_labeled),
+             shape = 21, fill = NA, color = "black",
+             size = 4, stroke = 1.1) +
+  scale_color_manual(values = c("0" = "#1b9e77", "1" = "#d95f02")) +
+  labs(title = "Labels after propagation (circled points were the 6 given labels)",
+       x = expression(x[1]), y = expression(x[2]), color = "predicted") +
+  coord_equal()
+```
+
+Figure \@ref(fig:semi-supervised-learning-propagated-labels) shows the outcome: each crescent is now colored consistently, even though only three labels per class were given. The black circles mark the original labeled points. Propagation followed the manifold rather than raw straight-line distance, which is exactly what the manifold assumption promises.
+
+> **Key idea:** Six labels were nowhere near enough for the supervised baseline, yet they were plenty once the 394 unlabeled points revealed the two crescents. That is the entire SSL bargain in one picture: unlabeled data supplies the shape, and a few labels supply the names.
+
+## Practical Guidance
+
+Methods are only half the story; knowing when to apply them is the other half. The conditions below tell you when SSL is likely to pay off.
+
+### When to use semi-supervised learning
+
+SSL tends to help when all three of the following hold:
+
+- You have far more unlabeled than labeled data, and labeling is the expensive step.
+- The cluster or manifold assumption is plausible for your data. Check this: if a quick unsupervised view (clustering, a 2-D projection) shows class-coherent structure, SSL is likely to help.
+- The unlabeled data comes from the same distribution as the labeled data and the eventual test data. Distribution shift between $L$ and $U$ breaks the premise.
+
+### When to be cautious
+
+By the same token, hold off when any of these warning signs appear:
+
+- Labels are abundant relative to the problem's complexity. Once you have enough labeled data, adding unlabeled data yields little and can hurt.
+- The assumptions fail. If classes overlap in dense regions, low-density separation pushes the boundary to the wrong place. SSL is not free; the negative-result literature shows unlabeled data can degrade performance when the model of $p(x)$ is wrong.
+- You cannot validate. SSL has hyperparameters (the threshold $\tau$, the graph bandwidth $\sigma$, the neighbor count $k$, the spreading weight $\alpha$) that need a labeled validation set or principled defaults.
+
+### Pitfalls and how to manage them
+
+When you do apply SSL, a handful of recurring traps account for most failures. Each one below pairs the problem with a concrete remedy:
+
+- Confirmation bias in self-training. Use a high confidence threshold, add few points per round, and re-evaluate pseudo-labels each round instead of freezing them. Consider class-balanced selection so the majority class does not swamp the pseudo-labels.
+- Graph construction dominates results. The choice of $\sigma$, $k$, and the distance metric matters more than the diffusion algorithm. Standardize features first (distances are scale-sensitive), and tune $\sigma$ with a heuristic like the median pairwise distance, then refine on validation labels.
+- Computational cost. The closed-form graph solutions invert an $n \times n$ (or $u \times u$) matrix, $O(n^3)$ in general. For large $n$ use the iterative form, exploit sparsity from $k$-NN graphs, or use scalable approximations.
+- Calibration. Confidence-based methods assume the model's probabilities mean something. Poorly calibrated models pseudo-label badly; calibrate (for example with temperature scaling) before thresholding.
+- Validation must use real labels. Never tune on pseudo-labels; that measures self-consistency, not accuracy. Hold out a genuinely labeled validation set.
+
+### Inductive use
+
+Label propagation and spreading label only the points you give them. To predict on new data, either rebuild the graph including the new points and rerun (transductive), or train a standard supervised model on the now-labeled set and use it inductively. The second route is common in production: SSL is the labeling engine, and a fast supervised model is the deployed predictor.
+
+> **Tip:** In a deployed system, do not put a graph method on the serving path. Run it offline to manufacture labels, then train a lightweight inductive model (logistic regression, a gradient-boosted tree, a small network) on the enlarged labeled set and ship that. You get the labeling benefit of SSL with the latency of an ordinary classifier.
+
+## Further Reading
+
+To go deeper, the references below trace the field from its founding algorithms to modern deep-learning practice. The first three are the original papers behind the methods in this chapter; the last three are surveys and edited volumes that give the wider map.
+
+- Blum, A. and Mitchell, T. (1998). Combining labeled and unlabeled data with co-training. The original co-training algorithm and its theory under the view-independence assumption.
+- Zhu, X. and Ghahramani, Z. (2002). Learning from labeled and unlabeled data with label propagation. The harmonic label-propagation method on graphs.
+- Zhou, D., Bousquet, O., Lal, T. N., Weston, J., and Schölkopf, B. (2004). Learning with local and global consistency. The label-spreading method with the normalized Laplacian and soft clamping.
+- Chapelle, O., Schölkopf, B., and Zien, A. (eds.) (2006). Semi-Supervised Learning. A comprehensive reference covering the cluster and manifold assumptions, graph methods, and low-density separation.
+- Zhu, X. and Goldberg, A. B. (2009). Introduction to Semi-Supervised Learning. A concise, readable survey of the main method families.
+- van Engelen, J. E. and Hoos, H. H. (2020). A survey on semi-supervised learning. A modern overview that connects classic methods to deep pseudo-labeling and consistency regularization.

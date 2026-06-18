@@ -1,0 +1,317 @@
+# Structured Prediction
+
+Most of this book treats prediction as a question with a single, self-contained answer: given an input, return a number (regression) or a class label (classification). Many real problems are not like that. When you tag the words of a sentence with parts of speech, the answer is a whole sequence of labels, one per word, and the labels are not independent: a determiner is rarely followed by a verb, a noun phrase has internal grammar. When you segment an image into regions, the label of one pixel pulls on its neighbors. When you parse a sentence, the output is a tree. In each case the thing you are predicting has internal shape, and the parts constrain one another. Predicting such objects is called structured prediction.
+
+The naive workaround is to chop the structured output into pieces and predict each piece on its own. Tag each word with an independent classifier; label each pixel by itself. This throws away exactly the information that makes the problem solvable. If "fly" can be a noun or a verb, the word alone will not tell you which; the surrounding tags will. Structured prediction keeps the pieces together and scores whole configurations, so that the prediction for one part can depend on the predictions for the others.
+
+> **Intuition:** A spell-checker that corrects each letter in isolation is hopeless. One that knows which letter sequences form real words, and which word sequences form real sentences, can fix errors a per-letter model cannot even see. Structure is the extra constraint that turns an impossible local decision into an easy global one.
+
+This raises an immediate difficulty. If a sentence has $T$ words and each word can take one of $K$ tags, there are $K^T$ possible taggings. We cannot score them all. The art of structured prediction is to define scores that decompose over small, overlapping pieces of the output, so that the best whole configuration can be found efficiently by dynamic programming even though the number of configurations is astronomical. This chapter develops that idea for the most common and most tractable case, the linear chain, which covers sequence labeling tasks like part-of-speech tagging, named-entity recognition, and gene finding.
+
+We build up in layers. First we set notation and the central computational problem, the search for the highest-scoring output (the argmax or inference problem). Then we cover the three workhorse models that share this computational core but differ in how they are trained: the hidden Markov model seen as a scorer, the conditional random field, the structured perceptron, and the structured support vector machine. The runnable centerpiece is a from-scratch implementation of the Viterbi algorithm, the dynamic program that solves the argmax for a linear chain, applied to a small toy model so you can watch it decode the most likely label sequence.
+
+## Notation and the Scoring View
+
+Fix some notation we will use throughout. The input is a sequence $x = (x_1, \dots, x_T)$, where $x_t$ is the observation at position $t$ (a word, a pixel, a measurement). The output is a label sequence $y = (y_1, \dots, y_T)$, where each $y_t$ takes a value in a finite tag set $\mathcal{S} = \{1, \dots, K\}$. We write $\mathcal{Y}(x)$ for the set of all valid label sequences for input $x$; for an unconstrained linear chain this is simply $\mathcal{S}^T$, all $K^T$ sequences.
+
+The unifying idea across every model in this chapter is that we assign a real-valued score $s(x, y)$ to each input-output pair, and predict by choosing the highest-scoring output:
+
+$$
+\hat{y} = \arg\max_{y \in \mathcal{Y}(x)} s(x, y).
+$$
+
+This is the inference or decoding problem. It is the structured analogue of "take the class with the largest predicted probability," except that the maximization now ranges over an exponentially large set.
+
+The score is built to decompose over local pieces. For a linear chain we assume it factors into per-position terms plus pairwise terms between adjacent labels:
+
+$$
+s(x, y) = \sum_{t=1}^{T} \psi_t(y_t, x) \;+\; \sum_{t=2}^{T} \phi(y_{t-1}, y_t),
+$$
+
+where $\psi_t(k, x)$ scores "label $k$ at position $t$ given the input" (the emission or unary score) and $\phi(j, k)$ scores the transition from label $j$ to label $k$ (the pairwise score). The crucial property is the Markov assumption: a label interacts directly only with its immediate neighbors, never with distant positions except through the chain. This locality is what makes efficient inference possible.
+
+> **Key idea:** Decomposition is everything. Because the score is a sum of terms that each touch at most two adjacent labels, we can find the best whole sequence without enumerating all $K^T$ of them. The number of sequences is exponential; the work to find the best one is linear in $T$.
+
+In a linear model, every score is a weighted feature count. Collect all the model parameters into a single weight vector $w$, and define a feature function $\mathbf{f}(x, y)$ that counts how often each feature fires across the whole structure. Then
+
+$$
+s(x, y) = w^\top \mathbf{f}(x, y) = \sum_{t} w^\top \mathbf{f}_t(y_{t-1}, y_t, x, t),
+$$
+
+where $\mathbf{f}_t$ is the vector of local features at position $t$ (emission features depending on $y_t$ and $x$, transition features depending on $y_{t-1}$ and $y_t$). The decomposition of the score is inherited from the decomposition of the features into local pieces. Models differ in how $w$ is learned, not in this scoring structure, which is why they all share the same Viterbi decoder.
+
+## The Models
+
+### Hidden Markov Models as Scorers
+
+The hidden Markov model (HMM) is the classical generative model for sequences. It posits that a hidden label sequence $y$ is drawn from a Markov chain, and each observation $x_t$ is generated from its label $y_t$:
+
+$$
+p(x, y) = \pi(y_1) \prod_{t=2}^{T} A(y_{t-1}, y_t) \prod_{t=1}^{T} B(y_t, x_t),
+$$
+
+where $\pi$ is the initial-state distribution, $A(j,k) = p(y_t=k \mid y_{t-1}=j)$ is the transition matrix, and $B(k, o) = p(x_t = o \mid y_t = k)$ is the emission matrix. Taking logs turns the product into a sum and reveals an HMM as a special case of the additive score above, with $\psi_t(k, x) = \log B(k, x_t)$ (plus $\log \pi(k)$ at $t=1$) and $\phi(j, k) = \log A(j, k)$.
+
+> **Note:** An HMM is a *generative* model: it describes how $x$ and $y$ are jointly produced, and is trained to maximize $p(x, y)$. The discriminative models below model $p(y \mid x)$ or just a score, never spending capacity on explaining $x$. For prediction we only ever need $p(y \mid x)$, so the generative effort can be wasted, but HMMs are simple, have closed-form maximum-likelihood estimates (just count transitions and emissions), and decode with the very same Viterbi algorithm.
+
+### Conditional Random Fields
+
+A conditional random field (CRF) models the conditional distribution directly. The linear-chain CRF defines
+
+$$
+p(y \mid x) = \frac{1}{Z(x)} \exp\!\big( s(x, y) \big) = \frac{1}{Z(x)} \exp\!\Big( \sum_t \psi_t(y_t, x) + \sum_t \phi(y_{t-1}, y_t) \Big),
+$$
+
+where the partition function $Z(x) = \sum_{y' \in \mathcal{Y}(x)} \exp(s(x, y'))$ normalizes over all sequences. The exponential family form means CRFs are the structured generalization of multinomial logistic regression: replace "softmax over $K$ classes" with "softmax over $K^T$ sequences."
+
+Training maximizes the conditional log-likelihood over a labeled corpus $\{(x^{(i)}, y^{(i)})\}$, usually with an $\ell_2$ penalty:
+
+$$
+\max_{w} \; \sum_i \Big[ w^\top \mathbf{f}(x^{(i)}, y^{(i)}) - \log Z_w(x^{(i)}) \Big] - \frac{\lambda}{2}\lVert w \rVert^2.
+$$
+
+This objective is concave, so it has a unique optimum. Its gradient has the elegant form of "observed feature counts minus expected feature counts,"
+
+$$
+\nabla_w = \sum_i \Big[ \mathbf{f}(x^{(i)}, y^{(i)}) - \mathbb{E}_{y \sim p_w(\cdot \mid x^{(i)})}\,\mathbf{f}(x^{(i)}, y) \Big] - \lambda w,
+$$
+
+where the expectation is computed with the forward-backward algorithm (the sum-product analogue of Viterbi). At the optimum, model expectations match empirical counts. The two hard quantities, $Z(x)$ and the feature expectations, are both computable in $O(T K^2)$ time by dynamic programming, the same complexity as decoding.
+
+> **Intuition:** A CRF is logistic regression that has learned to be polite to its neighbors. The transition scores let it say "I would label this word a verb, but the previous tag makes that unlikely, so I will reconsider," and it balances all such local pressures into one globally coherent sequence.
+
+### The Structured Perceptron
+
+Collins's structured perceptron dispenses with probabilities entirely. It keeps the linear score $s(x, y) = w^\top \mathbf{f}(x, y)$ and trains $w$ by a stunningly simple online rule. For each training example, decode with the current weights, and if the prediction is wrong, nudge the weights toward the correct features and away from the predicted ones:
+
+$$
+\hat{y} = \arg\max_{y} w^\top \mathbf{f}(x^{(i)}, y), \qquad
+w \leftarrow w + \mathbf{f}(x^{(i)}, y^{(i)}) - \mathbf{f}(x^{(i)}, \hat{y}).
+$$
+
+If the prediction is already correct, the two feature vectors cancel and nothing changes. The only structured ingredient is the $\arg\max$, which is again solved by Viterbi. There is no partition function, no expectation, no gradient of a log-likelihood. In practice one averages the weight vectors across all updates, which dramatically improves generalization and is the standard form.
+
+### The Structured Support Vector Machine
+
+The structured SVM (Tsochantaridis et al.; Taskar et al.) brings the large-margin principle of the support vector machine (covered in the Support Vector chapter) to structured outputs. It asks not merely that the correct output score higher than every wrong one, but that it score higher by a margin that grows with how wrong the alternative is. Let $\Delta(y, y')$ be a loss measuring the discrepancy between two label sequences, for example the Hamming loss $\sum_t \mathbb{1}[y_t \neq y'_t]$, the number of mislabeled positions. The training objective is
+
+$$
+\min_{w} \; \frac{\lambda}{2}\lVert w \rVert^2 + \frac{1}{n}\sum_i \max_{y \in \mathcal{Y}(x^{(i)})} \Big[ \Delta(y^{(i)}, y) + w^\top \mathbf{f}(x^{(i)}, y) - w^\top \mathbf{f}(x^{(i)}, y^{(i)}) \Big].
+$$
+
+The inner maximization is called loss-augmented inference: find the output that is both high-scoring and far from the truth, the most dangerous competitor. When $\Delta$ decomposes over positions (as Hamming loss does), the loss-augmented argmax is still a linear-chain argmax and is solved by, once again, Viterbi with the per-position loss folded into the emission scores.
+
+> **Key idea:** CRF, structured perceptron, and structured SVM are three training objectives bolted onto one shared engine. The CRF needs sum-over-sequences (forward-backward); the perceptron and structured SVM need only max-over-sequences (Viterbi). Get the decoder right and you can swap training criteria freely.
+
+Table \@ref(tab:structured-prediction-model-compare) lays out how these models relate.
+
+```{r structured-prediction-model-compare}
+library(knitr)
+compare <- data.frame(
+  Model = c("HMM", "Linear-chain CRF", "Structured perceptron",
+            "Structured SVM"),
+  Type = c("Generative", "Discriminative (probabilistic)",
+           "Discriminative (non-prob.)", "Discriminative (max-margin)"),
+  `Trained to` = c("max p(x,y)", "max p(y|x)",
+                   "mistake-driven updates", "max-margin + task loss"),
+  `Inference engine` = c("Viterbi", "Viterbi + forward-backward",
+                         "Viterbi", "loss-augmented Viterbi"),
+  `Models p(x)?` = c("Yes", "No", "No", "No"),
+  check.names = FALSE
+)
+kable(compare,
+      caption = "Linear-chain structured prediction models: all share the Viterbi decoder but differ in training objective and what they model.")
+```
+
+Table \@ref(tab:structured-prediction-model-compare) shows the common thread: every row decodes with Viterbi, and the discriminative models avoid modeling $p(x)$, spending their parameters only where prediction needs them.
+
+## The Inference Problem: Viterbi
+
+Everything reduces to solving $\hat{y} = \arg\max_{y} s(x, y)$ for a linear chain. The Viterbi algorithm is a dynamic program that does this in $O(T K^2)$ time and $O(TK)$ space, instead of the $O(K^T)$ cost of brute force.
+
+The idea is to compute, for each position $t$ and each candidate label $k$, the score of the best label prefix that ends in label $k$ at position $t$. Call this quantity $\delta_t(k)$. It obeys a recursion: the best prefix ending in $k$ at $t$ extends some best prefix ending in $j$ at $t-1$, paying the transition cost $\phi(j,k)$ and the emission cost $\psi_t(k, x)$:
+
+$$
+\delta_1(k) = \psi_1(k, x), \qquad
+\delta_t(k) = \psi_t(k, x) + \max_{j \in \mathcal{S}} \big[ \delta_{t-1}(j) + \phi(j, k) \big].
+$$
+
+We also record which previous label $j$ achieved each maximum, in a back-pointer table $\beta_t(k)$. After the forward sweep, the best final label is $\arg\max_k \delta_T(k)$, and we recover the full sequence by following back-pointers from $T$ down to $1$. The maximization over $j$ is the only place the previous position enters, which is precisely the Markov assumption paying off.
+
+> **Warning:** Run Viterbi in **log space**, adding log-probabilities, never multiplying raw probabilities. For a sequence of length $T$, a product of $T$ probabilities underflows to zero in floating point well before $T$ gets large, and the algorithm silently returns garbage. Sums of logs are numerically stable.
+
+### A Runnable Viterbi Decoder
+
+We now implement Viterbi from scratch in base R and decode a toy weather example, the textbook "ice cream" style HMM. The hidden labels are weather states, `Hot` and `Cold`. The observations are the number of ice creams a person ate that day (`1`, `2`, or `3`). Hot days tend to produce more ice cream; weather is sticky, so a hot day tends to follow a hot day. We define the model in log space and decode an observation sequence.
+
+```{r structured-prediction-viterbi-impl}
+# --- Toy HMM specification (a linear-chain scorer) ---
+states <- c("Hot", "Cold")
+obs_alphabet <- c("1", "2", "3") # ice creams eaten
+
+# Initial-state distribution pi(state)
+pi0 <- c(Hot = 0.6, Cold = 0.4)
+
+# Transition matrix A[j, k] = P(next = k | current = j); weather is sticky
+A <- matrix(c(0.7, 0.3,
+              0.4, 0.6),
+            nrow = 2, byrow = TRUE,
+            dimnames = list(from = states, to = states))
+
+# Emission matrix B[k, o] = P(observe o | state = k)
+B <- matrix(c(0.2, 0.4, 0.4,   # Hot: more ice cream
+              0.5, 0.4, 0.1),  # Cold: less ice cream
+            nrow = 2, byrow = TRUE,
+            dimnames = list(state = states, obs = obs_alphabet))
+
+# --- Viterbi decoder, working entirely in log space ---
+viterbi <- function(obs, states, pi0, A, B) {
+  Tlen <- length(obs)
+  K <- length(states)
+  logpi <- log(pi0)
+  logA <- log(A)
+  logB <- log(B)
+
+  delta <- matrix(-Inf, nrow = Tlen, ncol = K,
+                  dimnames = list(t = seq_len(Tlen), state = states))
+  back <- matrix(0L, nrow = Tlen, ncol = K,
+                 dimnames = list(t = seq_len(Tlen), state = states))
+
+  # Initialization: best prefix of length 1 ending in each state
+  delta[1, ] <- logpi + logB[, obs[1]]
+
+  # Recursion: best prefix ending in state k at time t
+  for (t in 2:Tlen) {
+    for (k in 1:K) {
+      scores <- delta[t - 1, ] + logA[, k]   # extend each predecessor j -> k
+      back[t, k] <- which.max(scores)         # remember the best predecessor
+      delta[t, k] <- max(scores) + logB[k, obs[t]]
+    }
+  }
+
+  # Termination + backtrace
+  path <- integer(Tlen)
+  path[Tlen] <- which.max(delta[Tlen, ])
+  for (t in seq(Tlen - 1, 1)) {
+    path[t] <- back[t + 1, path[t + 1]]
+  }
+  best_logprob <- max(delta[Tlen, ])
+
+  list(path = states[path], log_prob = best_logprob, delta = delta)
+}
+
+# Decode an observed ice-cream sequence
+observed <- c("3", "3", "1", "1", "2", "3", "3")
+result <- viterbi(observed, states, pi0, A, B)
+
+data.frame(day = seq_along(observed),
+           ice_creams = observed,
+           decoded_weather = result$path)
+cat(sprintf("Log-probability of best path: %.3f\n", result$log_prob))
+```
+
+The decoder reads the streak of high ice-cream days as hot weather and the dip at days 3 and 4 as a cold spell, then a return to hot. Notice that a single low-ice-cream day in the middle of a hot streak need not flip the state: the sticky transition score can outvote one weak emission, which is exactly the neighbor-awareness that an independent per-day classifier lacks.
+
+> **Note:** To turn this HMM decoder into a CRF decoder, replace `logpi + logB[, obs[1]]` and `logB[k, obs[t]]` with arbitrary emission scores $\psi_t(k, x)$ and replace `logA` with arbitrary transition scores $\phi(j, k)$. The control flow is identical; only the source of the numbers changes. That is the sense in which Viterbi is the shared engine.
+
+### Watching the Trellis
+
+To see *why* Viterbi avoids exponential work, it helps to picture the trellis: at each time step there is one node per state, and the algorithm keeps a single best-score-so-far per node rather than tracking whole paths. Figure \@ref(fig:structured-prediction-trellis) plots the running best log-score $\delta_t(k)$ for each state across the sequence, with the decoded path highlighted, and beside it the brute-force cost it sidesteps.
+
+```{r structured-prediction-trellis, fig.width=9, fig.height=4.5, fig.cap="Left: the Viterbi trellis for the ice-cream sequence; each line is the best accumulated log-score for a state over time, and the filled markers trace the decoded path. Right: brute-force cost K^T versus the linear-chain Viterbi cost T*K^2 as the sequence grows, on a log scale."}
+op <- par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
+
+# --- Panel 1: the trellis of accumulated best log-scores ---
+delta <- result$delta
+Tlen <- nrow(delta)
+matplot(seq_len(Tlen), delta, type = "b", pch = 1, lty = 2,
+        col = c("firebrick", "steelblue"), lwd = 1.5,
+        xlab = "Day (t)", ylab = expression(delta[t](k)~" (log-score)"),
+        main = "Viterbi trellis")
+# Highlight the decoded path
+decoded_idx <- match(result$path, states)
+for (t in seq_len(Tlen)) {
+  col_t <- if (decoded_idx[t] == 1) "firebrick" else "steelblue"
+  points(t, delta[t, decoded_idx[t]], pch = 19, cex = 1.6, col = col_t)
+}
+legend("bottomleft", legend = states, col = c("firebrick", "steelblue"),
+       lty = 2, pch = 1, bty = "n", cex = 0.9)
+
+# --- Panel 2: exponential brute force vs linear-chain Viterbi ---
+K <- length(states)
+Ts <- 1:20
+brute <- K^Ts
+vit <- Ts * K^2
+plot(Ts, brute, type = "l", log = "y", col = "firebrick", lwd = 2,
+     xlab = "Sequence length (T)", ylab = "Operations (log scale)",
+     main = "Cost of decoding")
+lines(Ts, vit, col = "steelblue", lwd = 2)
+legend("topleft", legend = c(expression(K^T~"(brute force)"),
+                             expression(T %*% K^2~"(Viterbi)")),
+       col = c("firebrick", "steelblue"), lwd = 2, bty = "n", cex = 0.9)
+
+par(op)
+```
+
+Figure \@ref(fig:structured-prediction-trellis) makes the payoff visible: the brute-force curve (left, exponential) rockets off the top of the log scale while the Viterbi curve stays nearly flat. The trellis panel shows that we never store more than $K$ numbers per column, no matter how many paths funnel through.
+
+### Sanity Check Against Brute Force
+
+For a short sequence we can afford to enumerate all $K^T$ label sequences and confirm that Viterbi returns the true maximizer. This is the kind of check worth keeping in a test suite for any dynamic program.
+
+```{r structured-prediction-bruteforce-check}
+# Score any full label sequence under the same model (log space)
+score_seq <- function(labels, obs, states, pi0, A, B) {
+  idx <- match(labels, states)
+  sc <- log(pi0[idx[1]]) + log(B[idx[1], obs[1]])
+  for (t in 2:length(obs)) {
+    sc <- sc + log(A[idx[t - 1], idx[t]]) + log(B[idx[t], obs[t]])
+  }
+  unname(sc)
+}
+
+# Enumerate all K^T sequences for a short input and find the best
+short_obs <- c("3", "1", "3")
+grid <- expand.grid(rep(list(states), length(short_obs)),
+                    stringsAsFactors = FALSE)
+all_scores <- apply(grid, 1, function(lab)
+  score_seq(as.character(lab), short_obs, states, pi0, A, B))
+brute_best <- as.character(grid[which.max(all_scores), ])
+
+vit_short <- viterbi(short_obs, states, pi0, A, B)
+
+cat("Brute-force best:", paste(brute_best, collapse = " "), "\n")
+cat("Viterbi best:    ", paste(vit_short$path, collapse = " "), "\n")
+cat("Scores agree:    ",
+    isTRUE(all.equal(max(all_scores), vit_short$log_prob)), "\n")
+```
+
+The two methods return the same sequence and the same score, which is the reassurance we want before trusting the decoder on inputs too long to enumerate.
+
+## Practical Guidance and Pitfalls
+
+A few hard-won lessons separate a structured predictor that works from one that quietly underperforms.
+
+- Always decode in log space. As the warning above stressed, multiplying probabilities underflows. Add logs. For computing the partition function and expectations in a CRF, use the log-sum-exp trick (subtract the row maximum before exponentiating) to stay stable.
+- Features are where the accuracy lives. For a CRF or structured perceptron, the model is only as good as $\mathbf{f}(x, y)$. Rich emission features (word identity, prefixes and suffixes, capitalization, neighboring words, gazetteer membership) typically matter far more than the choice between CRF and structured SVM. Spend your effort there.
+- Pick the training objective to match your needs. Use a CRF when you need calibrated probabilities or marginal confidences per position. Use the structured perceptron when you want something dead simple and fast that only needs the argmax. Use the structured SVM when a structured task loss (not plain accuracy) is what you will be judged on, since it optimizes that loss directly through loss-augmented inference.
+- Label-bias is a real trap. The older maximum-entropy Markov model (MEMM) normalizes transitions locally, per position, which lets states with few outgoing transitions ignore the observation, the label-bias problem. Linear-chain CRFs normalize globally over the whole sequence and avoid it. If you find a per-position normalized model behaving strangely, suspect label bias.
+- Mind the inference budget. Viterbi is $O(TK^2)$. With a large tag set $K$ (hundreds of named-entity types, thousands of words in a language model) the $K^2$ term dominates and you need pruning (beam search) or structured tag sets. Higher-order chains (depending on the previous $m$ labels) cost $O(TK^{m+1})$, so order grows expensive fast.
+- Beyond chains, exact inference can be intractable. Viterbi exploits the chain. For general graphs (grids in image segmentation, loopy CRFs) exact argmax is NP-hard, and you fall back on approximate inference: loopy belief propagation, graph cuts for certain energy forms, or LP relaxations. Trees still admit exact dynamic programming.
+- Class and label imbalance still bite. Rare tags (a sparse entity type) can be swamped. Position-decomposable losses like weighted Hamming loss, plumbed through the structured SVM's loss-augmented inference, are a clean way to upweight what you care about.
+
+> **When to use this:** Reach for structured prediction whenever the output is a sequence, segmentation, alignment, or tree whose parts constrain each other, and when a per-part classifier visibly ignores obvious consistency. If the parts really are independent, the extra machinery buys nothing; predict them separately.
+
+A closing perspective: the linear-chain models here are the foundation, not the frontier. Modern sequence labelers usually compute the emission scores $\psi_t(k, x)$ with a neural network (a BiLSTM or a transformer encoder, see the Transformers chapter) and then place a CRF layer on top to enforce label consistency, decoded with the very Viterbi algorithm implemented above. The dynamic program has outlived every change in how the scores are produced.
+
+## Further Reading
+
+- Lafferty, McCallum, and Pereira (2001) introduced conditional random fields and articulated the label-bias problem that motivates global normalization.
+- Sutton and McCallum (2012), "An Introduction to Conditional Random Fields," is a thorough and readable monograph on CRFs and their inference.
+- Collins (2002) introduced the structured (averaged) perceptron for sequence labeling and proved convergence and generalization bounds.
+- Tsochantaridis, Joachims, Hofmann, and Altun (2005) developed structured support vector machines for interdependent and structured output spaces.
+- Taskar, Guestrin, and Koller (2003) presented max-margin Markov networks, the large-margin view of structured prediction.
+- Rabiner (1989) is the classic tutorial on hidden Markov models, including the Viterbi and forward-backward algorithms.
+- Viterbi (1967) is the original paper on the decoding algorithm, framed for convolutional codes.
+- Koller and Friedman (2009), "Probabilistic Graphical Models," gives the general theory of inference in graphical models, of which linear-chain inference is a special case.
+- Smith (2011), "Linguistic Structure Prediction," surveys structured prediction with an emphasis on natural language applications.

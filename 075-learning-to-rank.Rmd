@@ -1,0 +1,502 @@
+# Learning to Rank
+
+Imagine you type a query into a search box. The system holds millions of documents, and almost all of them are useless to you. Its real job is not to label each document "relevant" or "not relevant" in isolation, but to put the few good ones at the very top of the list, where your eyes actually go. The same problem shows up everywhere: a recommender deciding which ten products to show on a page, an email client deciding which messages float to the top of the inbox, a hospital triage tool deciding which patients to review first. In all of these, the output that matters is an *ordering*, and the cost of a mistake depends on *where* in the ordering it happens. Putting the best result in position 1 versus position 2 is a small sin; burying it in position 50 is a large one.
+
+This is the ranking problem, and it is genuinely different from the regression and classification problems that fill most of this book. In ordinary supervised learning we score each example on its own and we are graded on per-example accuracy. In ranking we are graded on the quality of a *sorted list*, and the grade is dominated by the top of that list. The field that studies how to train models for this objective is called learning to rank (LTR).
+
+> **Key idea:** In ranking, the unit of evaluation is an ordered list (typically the list of documents retrieved for a single query), and errors near the top of the list cost far more than errors near the bottom. Good ranking models optimize for that asymmetry directly.
+
+Three pieces of vocabulary will recur. A *query* $q$ is the context: a search string, a user, a session. For each query we have a set of *candidate items* (often called documents) $d_1, \dots, d_n$. Each query-document pair has a *relevance label* $y$, which may be binary (relevant or not) or graded (for example $0, 1, 2, 3, 4$ from "useless" to "perfect"). The model learns a scoring function $f(\mathbf{x})$ where $\mathbf{x}$ is a feature vector describing one query-document pair, and the final ranking for a query is produced by sorting its candidates by their scores in descending order.
+
+The chapter proceeds as follows. We first make the evaluation problem precise, because in ranking the metric *is* the problem: precision@k, MAP, MRR, and NDCG. We then survey the three families of training approaches (pointwise, pairwise, listwise) and explain why pairwise and listwise methods exist at all. We work through the core ideas of RankNet and LambdaMART, the two algorithms that shaped modern LTR. Finally we build a runnable base-R demonstration: we implement the metrics from scratch, score several candidate rankings, simulate query-document data, and train a simple pairwise ranker, then compare it against a strong gradient-boosted ranker.
+
+## Why ranking is not just regression
+
+A natural first instinct is to treat ranking as regression: predict each item's relevance label with squared error, then sort by the prediction. This can work, and it is a legitimate baseline (it is exactly the "pointwise" approach below). But it optimizes the wrong thing in two ways.
+
+First, it spends equal effort everywhere. Squared error cares just as much about getting a document at rank 500 right as one at rank 2, even though no user will ever scroll to rank 500. Second, ranking only depends on the *relative order* of scores, not their absolute values. A model that predicts relevances $(3.0, 2.0, 1.0)$ and one that predicts $(0.31, 0.30, 0.29)$ produce the identical ranking, yet squared-error training treats them very differently and may waste capacity matching label magnitudes that have no effect on the output.
+
+> **Intuition:** The output of a ranker is invariant to any order-preserving (monotone) transformation of its scores. The loss we train with should respect that invariance: it should reward getting pairs in the right order and getting the top of the list right, not getting numeric labels exactly.
+
+This mismatch between an easy-to-optimize surrogate loss (squared error, log loss) and the true objective (a list-quality metric like NDCG) is the central tension in learning to rank, and every method below is a different way of managing it.
+
+## Ranking metrics
+
+We need to measure list quality before we can train for it. Throughout, fix a single query with $n$ candidate items. The model produces a ranking, which we read as an ordered list of positions $1, 2, \dots, n$ from top to bottom. Let $\text{rel}_i$ denote the relevance label of the item placed at position $i$. We will average any per-query metric over all queries in the evaluation set at the end.
+
+### Precision@k and recall@k
+
+For binary relevance (each item is relevant, $\text{rel}_i \in \{0,1\}$), the simplest useful metric looks only at the top $k$ positions:
+
+$$
+\text{Precision@}k = \frac{1}{k} \sum_{i=1}^{k} \text{rel}_i ,
+$$
+
+the fraction of the top $k$ items that are actually relevant. Recall@k instead divides by the total number of relevant items for the query, measuring how many of the good items we managed to surface in the top $k$. Precision@k is intuitive and matches how people consume a results page, but it has a blind spot: it ignores order *within* the top $k$. A relevant item at position 1 and at position $k$ count the same. The next metrics fix that.
+
+### Mean reciprocal rank (MRR)
+
+Some tasks have essentially one right answer per query: a "navigational" search ("facebook login"), or a question with a single correct answer. There, what matters is how far down you had to look to find the first relevant item. Let $\text{rank}_q$ be the position of the first relevant item for query $q$. The reciprocal rank is $1/\text{rank}_q$, and averaging over the set of queries $Q$ gives
+
+$$
+\text{MRR} = \frac{1}{|Q|} \sum_{q \in Q} \frac{1}{\text{rank}_q} .
+$$
+
+If the first relevant result is at position 1 the query scores $1$; at position 2 it scores $0.5$; at position 10 only $0.1$. MRR rewards getting *a* good answer to the top and ignores everything after the first hit, which is exactly right when there is one answer and wrong when there are many.
+
+### Average precision and MAP
+
+When a query has several relevant items, we want credit for surfacing all of them and for ordering them well. Average precision (AP) does this by averaging the precision computed at each position where a relevant item appears:
+
+$$
+\text{AP}_q = \frac{1}{R_q} \sum_{k=1}^{n} \text{Precision@}k \cdot \text{rel}_k ,
+$$
+
+where $R_q$ is the total number of relevant items for the query and the factor $\text{rel}_k$ means we only add a term at positions that hold a relevant item. Mean average precision (MAP) is the average of $\text{AP}_q$ over all queries:
+
+$$
+\text{MAP} = \frac{1}{|Q|} \sum_{q \in Q} \text{AP}_q .
+$$
+
+> **Intuition:** AP is high when relevant items are clustered near the top. Each relevant item is scored by the precision of the list *up to and including its own position*, so a relevant item that appears after a lot of junk earns a low precision and drags the average down.
+
+### Normalized discounted cumulative gain (NDCG)
+
+Precision-based metrics assume binary relevance. Real labels are often graded: a result can be "perfect," "good," "fair," or "useless." NDCG is the workhorse metric for graded relevance, and it makes two ideas explicit, a *gain* that grows with relevance and a *discount* that shrinks with position.
+
+Discounted cumulative gain at cutoff $k$ is
+
+$$
+\text{DCG@}k = \sum_{i=1}^{k} \frac{2^{\text{rel}_i} - 1}{\log_2(i + 1)} .
+$$
+
+The numerator $2^{\text{rel}_i} - 1$ is the *gain*: exponentiating the relevance means a single "perfect" document is worth much more than several "fair" ones, which matches how users feel about quality. The denominator $\log_2(i+1)$ is the *discount*: it grows with position, so the same document contributes less the further down it sits. Position 1 has discount $\log_2 2 = 1$ (no discount), position 2 has $\log_2 3 \approx 1.585$, and so on.
+
+DCG is not comparable across queries because queries differ in how many relevant items they have and how relevant those items are. We normalize by the best possible DCG for that query, the *ideal* DCG (IDCG@k), obtained by sorting the items by true relevance descending:
+
+$$
+\text{NDCG@}k = \frac{\text{DCG@}k}{\text{IDCG@}k} .
+$$
+
+NDCG@k lies in $[0, 1]$, equals $1$ for the ideal ordering, and averages cleanly over queries. It is the metric most LTR systems report and, indirectly, the metric LambdaMART tries to optimize.
+
+> **Note:** There are two slightly different DCG conventions in the literature. The one above (with the $2^{\text{rel}}-1$ gain) is the form used by most modern toolkits and competitions; an older form uses $\text{rel}_i$ directly in the numerator. They agree for binary relevance up to scaling. We use the exponential-gain form throughout.
+
+Table \@ref(tab:learning-to-rank-metric-summary) summarizes when each metric is the right choice.
+
+```{r learning-to-rank-metric-summary, echo=FALSE}
+metric_tab <- data.frame(
+  Metric = c("Precision@k", "MRR", "MAP", "NDCG@k"),
+  `Relevance type` = c("Binary", "Binary", "Binary", "Graded or binary"),
+  `Rewards order in top-k` = c("No", "First hit only", "Yes", "Yes"),
+  `Best used when` = c(
+    "You only care how many of the top k are good",
+    "There is one right answer per query (navigational search, QA)",
+    "Several relevant items per query, all worth finding",
+    "Graded relevance and position both matter (web search, recsys)"
+  ),
+  check.names = FALSE
+)
+knitr::kable(
+  metric_tab,
+  caption = "Ranking metrics and the situations they fit. Precision@k is the simplest; NDCG@k is the most general because it handles graded relevance and discounts by position."
+)
+```
+
+Table \@ref(tab:learning-to-rank-metric-summary) shows that the metrics form a rough ladder of generality, from precision@k (binary, order-insensitive within the cutoff) up to NDCG@k (graded relevance with an explicit position discount).
+
+## Three families of training approaches
+
+Given a metric, how do we train a scoring function $f(\mathbf{x})$ to do well on it? The metrics above are step functions of the ranking: they change only when two items swap order, so they are flat almost everywhere and have zero gradient. We cannot optimize them directly with gradient descent. The three families of LTR methods are three answers to "what differentiable surrogate do we optimize instead?"
+
+Pointwise. Treat each query-document pair independently and predict its relevance label with ordinary regression or classification. The loss is a sum over individual pairs, for example squared error $\sum (f(\mathbf{x}) - y)^2$. Then sort by predicted score. This is the simplest approach and reuses every regression or classification tool you already know, but as argued above it optimizes label magnitudes rather than order, and it weights all positions equally.
+
+Pairwise. Look at *pairs* of documents within the same query and learn to get their relative order right. If document $a$ is more relevant than document $b$, we want $f(\mathbf{x}_a) > f(\mathbf{x}_b)$. The loss penalizes pairs that are ordered incorrectly. This turns ranking into a binary classification problem over pairs ("is $a$ better than $b$?") and aligns much better with the goal, since ranking *is* about relative order. RankNet, RankSVM, and the original gradient-boosted rankers are pairwise.
+
+Listwise. Define a loss over the *entire ranked list* for a query at once, ideally a smooth surrogate for the actual metric (NDCG). This is the most direct but also the most complex. ListNet, ListMLE, and the NDCG-aware variant of LambdaMART live here.
+
+> **When to use this:** Start pointwise for a baseline and when labels are reliable cardinal values. Move to pairwise (the usual sweet spot) when you have many items per query and care about order. Reach for listwise when you are squeezing out the last few points of NDCG and can afford the complexity. In practice, gradient-boosted pairwise/listwise rankers (LambdaMART) are the default production choice for tabular ranking features.
+
+Table \@ref(tab:learning-to-rank-approaches) lays out the tradeoffs.
+
+```{r learning-to-rank-approaches, echo=FALSE}
+appr_tab <- data.frame(
+  Approach = c("Pointwise", "Pairwise", "Listwise"),
+  `What it models` = c(
+    "Score of one item",
+    "Relative order of an item pair",
+    "Quality of the whole list"
+  ),
+  `Training signal` = c(
+    "Item label (regression/classification)",
+    "Which item in a pair ranks higher",
+    "List-level metric surrogate"
+  ),
+  `Examples` = c(
+    "Linear/GBM regression on labels",
+    "RankNet, RankSVM, GBM pairwise",
+    "ListNet, ListMLE, LambdaMART"
+  ),
+  `Tradeoff` = c(
+    "Simple, but ignores order and position",
+    "Aligns with order, scales as pairs (can be many)",
+    "Most aligned with metric, most complex"
+  ),
+  check.names = FALSE
+)
+knitr::kable(
+  appr_tab,
+  caption = "The three families of learning-to-rank methods. Pairwise is the common default; listwise is the most direct optimizer of list-level metrics."
+)
+```
+
+Table \@ref(tab:learning-to-rank-approaches) makes clear that moving down the table buys closer alignment with the true metric at the cost of more machinery.
+
+## RankNet: a pairwise model with a probabilistic loss
+
+RankNet [@burges2005learning] is the cleanest way to see the pairwise idea, and it underlies the later Lambda methods. The model is any differentiable scoring function $f$ (originally a neural network, but it can be linear). For two documents $i$ and $j$ in the same query with scores $s_i = f(\mathbf{x}_i)$ and $s_j = f(\mathbf{x}_j)$, define the modeled probability that $i$ should rank above $j$ using a logistic (sigmoid) function of the score difference:
+
+$$
+P_{ij} = \frac{1}{1 + e^{-\sigma (s_i - s_j)}} ,
+$$
+
+where $\sigma > 0$ is a shape parameter. The larger the score gap in the right direction, the closer $P_{ij}$ is to $1$. Let $\bar{P}_{ij}$ be the target: $1$ if $i$ is truly more relevant than $j$, $0$ if less, $0.5$ if tied. RankNet uses the cross-entropy (log loss) between target and model:
+
+$$
+C_{ij} = -\bar{P}_{ij} \log P_{ij} - (1 - \bar{P}_{ij}) \log (1 - P_{ij}) .
+$$
+
+For a pair where $i$ truly outranks $j$ ($\bar{P}_{ij} = 1$), this simplifies to $C_{ij} = \log\!\big(1 + e^{-\sigma(s_i - s_j)}\big)$, a smooth, convex penalty that is near zero when $s_i \gg s_j$ and grows linearly when the order is badly wrong. This is exactly a logistic loss applied to score *differences* rather than raw scores. We sum $C_{ij}$ over all pairs whose order we know and minimize by gradient descent.
+
+> **Note:** Because the loss depends only on $s_i - s_j$, RankNet learns relative order and is naturally invariant to adding a constant to every score. That is the order-invariance property we wanted from a ranking loss.
+
+The gradient of $C_{ij}$ with respect to the score difference has the clean form
+
+$$
+\frac{\partial C_{ij}}{\partial s_i} = -\frac{\partial C_{ij}}{\partial s_j} = \sigma \left( \frac{1}{2}(1 - S_{ij}) - \frac{1}{1 + e^{\sigma(s_i - s_j)}} \right),
+$$
+
+where $S_{ij} \in \{-1, 0, +1\}$ encodes whether $i$ is less, equally, or more relevant than $j$. Define $\lambda_{ij}$ as this gradient. A key observation is that each document's total gradient is just the sum of $\lambda_{ij}$ over all pairs it participates in. These per-pair forces $\lambda_{ij}$ can be read as little "tugs": document $i$ is pulled up and $j$ is pulled down whenever $i$ should outrank $j$ but does not by enough.
+
+## From RankNet to LambdaMART
+
+RankNet minimizes pairwise error, but pairwise error is not NDCG. Swapping two documents near the bottom of the list barely changes NDCG, while swapping two near the top changes it a lot. Plain RankNet treats both swaps as equally important. LambdaRank [@burges2010ranknet] fixes this with a remarkably simple trick: scale each pairwise tug $\lambda_{ij}$ by the *change in NDCG* that would result from swapping documents $i$ and $j$:
+
+$$
+\lambda_{ij}^{\text{Lambda}} = \lambda_{ij} \cdot \left| \Delta \text{NDCG}_{ij} \right| .
+$$
+
+The model never differentiates NDCG (it cannot, NDCG is flat almost everywhere). Instead it defines the gradients *directly*, weighting each pairwise force by how much fixing that pair would improve the metric. Pairs that matter for NDCG pull harder. Empirically these "lambda" gradients optimize NDCG very well even though no closed-form loss is being differentiated.
+
+LambdaMART [@burges2010ranknet] is LambdaRank's gradient signal plugged into gradient-boosted regression trees (MART = Multiple Additive Regression Trees, the boosting machine of Chapter \@ref(boosting)) instead of a neural net. At each boosting round it computes the lambda gradients for every document, fits a regression tree to them, and adds that tree to the ensemble. LambdaMART has won ranking competitions and remains a default in production search and recommendation. The practical recipe is short:
+
+- Compute scores $s_i$ for all documents in a query with the current ensemble.
+- For each pair, compute $\lambda_{ij}$ (the RankNet tug) times $|\Delta\text{NDCG}_{ij}|$.
+- Sum the lambdas per document to get a target gradient.
+- Fit one regression tree to those targets and add it to the ensemble.
+
+> **Key idea:** LambdaMART never optimizes a differentiable copy of NDCG. It hand-defines gradients that point in the direction NDCG improves, weighting each document-pair by the metric gain from fixing it, and feeds those gradients to gradient boosting.
+
+Both `xgboost` (objective `rank:pairwise`, `rank:ndcg`) and `lightgbm` (objective `lambdarank`) implement this family, and they are what you will actually run in practice.
+
+## A runnable demonstration in base R
+
+We now build the ideas from scratch. First we implement the metrics, then we simulate query-document data, train a pointwise baseline and a simple pairwise (RankNet-style) ranker, and compare them. Everything in this section runs in base R plus `ggplot2`; the gradient-boosted ranker at the end uses `xgboost`.
+
+### Implementing DCG, NDCG, and MAP
+
+The functions below take a vector of true relevance labels ordered by the model's predicted score (so `rel_sorted[1]` is the label of the item the model placed first).
+
+```{r learning-to-rank-metric-fns}
+# DCG at cutoff k using the exponential-gain convention:
+#   gain_i = 2^rel_i - 1, discount_i = log2(i + 1)
+dcg_at_k <- function(rel_sorted, k = length(rel_sorted)) {
+  k <- min(k, length(rel_sorted))
+  rel <- rel_sorted[seq_len(k)]
+  gains <- (2^rel - 1) / log2(seq_len(k) + 1)
+  sum(gains)
+}
+
+# NDCG = DCG of the model ordering / DCG of the ideal (by-relevance) ordering
+ndcg_at_k <- function(rel_sorted, k = length(rel_sorted)) {
+  ideal <- sort(rel_sorted, decreasing = TRUE)
+  idcg <- dcg_at_k(ideal, k)
+  if (idcg == 0) return(0)
+  dcg_at_k(rel_sorted, k) / idcg
+}
+
+# Average precision for binary relevance, given labels in model order
+average_precision <- function(rel_sorted) {
+  rel_sorted <- as.integer(rel_sorted > 0)   # binarize
+  R <- sum(rel_sorted)
+  if (R == 0) return(0)
+  hits <- cumsum(rel_sorted)                  # relevant so far at each position
+  precision_at_k <- hits / seq_along(rel_sorted)
+  sum(precision_at_k * rel_sorted) / R
+}
+
+# Reciprocal rank: 1 / position of first relevant item
+reciprocal_rank <- function(rel_sorted) {
+  hit <- which(rel_sorted > 0)
+  if (length(hit) == 0) return(0)
+  1 / hit[1]
+}
+```
+
+Let us sanity-check the metrics by scoring a few candidate orderings of the same five-item query. The true relevance labels are graded $0$ to $3$. We compare the ideal ordering, a reversed (worst) ordering, and a plausible model ordering.
+
+```{r learning-to-rank-score-orderings}
+# Five items with graded relevance 0..3
+ideal_order    <- c(3, 2, 2, 1, 0)   # best documents first
+reversed_order <- c(0, 1, 2, 2, 3)   # worst: relevant items buried
+model_order    <- c(2, 3, 1, 0, 2)   # a so-so ranking
+
+scores <- data.frame(
+  Ordering = c("Ideal", "Reversed", "Model"),
+  NDCG = round(c(
+    ndcg_at_k(ideal_order),
+    ndcg_at_k(reversed_order),
+    ndcg_at_k(model_order)
+  ), 3),
+  `NDCG@3` = round(c(
+    ndcg_at_k(ideal_order, 3),
+    ndcg_at_k(reversed_order, 3),
+    ndcg_at_k(model_order, 3)
+  ), 3),
+  MAP = round(c(
+    average_precision(ideal_order),
+    average_precision(reversed_order),
+    average_precision(model_order)
+  ), 3),
+  MRR = round(c(
+    reciprocal_rank(ideal_order),
+    reciprocal_rank(reversed_order),
+    reciprocal_rank(model_order)
+  ), 3),
+  check.names = FALSE
+)
+scores
+```
+
+The ideal ordering scores NDCG $= 1$ by construction, the reversed ordering scores lowest, and the model ordering lands in between, confirming the implementations behave sensibly. Table \@ref(tab:learning-to-rank-orderings) presents the same comparison as a formatted exhibit.
+
+```{r learning-to-rank-orderings, echo=FALSE}
+knitr::kable(
+  scores,
+  caption = "Metric values for three candidate orderings of the same five-item query (graded relevance 0 to 3). The ideal ordering achieves NDCG = 1; the reversed ordering is worst on every metric."
+)
+```
+
+Table \@ref(tab:learning-to-rank-orderings) shows the metrics agree on the ranking of the orderings (Ideal > Model > Reversed) while disagreeing on magnitude, which is expected since each metric weights position and grade differently.
+
+### Simulating query-document data
+
+We simulate a dataset with several queries, each holding a handful of candidate documents described by two features. The true relevance is a noisy monotone function of a hidden "utility" that depends on the features, so a model that recovers the utility direction will rank well.
+
+```{r learning-to-rank-simulate}
+set.seed(2026)
+
+n_queries <- 200
+docs_per_query <- 8
+
+make_query <- function(qid) {
+  x1 <- rnorm(docs_per_query)                 # e.g. text match score
+  x2 <- rnorm(docs_per_query)                 # e.g. popularity score
+  # hidden utility: x1 matters twice as much as x2
+  utility <- 2 * x1 + 1 * x2 + rnorm(docs_per_query, sd = 0.5)
+  # graded relevance 0..3 from utility quantiles within the query
+  rel <- cut(utility, breaks = quantile(utility, probs = c(0, .4, .7, .9, 1)),
+             labels = FALSE, include.lowest = TRUE) - 1L
+  data.frame(qid = qid, x1 = x1, x2 = x2, rel = rel)
+}
+
+dat <- do.call(rbind, lapply(seq_len(n_queries), make_query))
+
+# split queries into train and test
+train_q <- 1:150
+test_q  <- 151:n_queries
+train <- dat[dat$qid %in% train_q, ]
+test  <- dat[dat$qid %in% test_q, ]
+
+head(train, 8)
+```
+
+A helper evaluates any scoring function by computing mean NDCG and MAP across the test queries.
+
+```{r learning-to-rank-eval-helper}
+# Given a data frame with columns qid, rel and a numeric score vector,
+# compute mean NDCG and MAP over queries (sorting each query by score).
+evaluate_ranker <- function(df, score, k = docs_per_query) {
+  df$score <- score
+  qids <- unique(df$qid)
+  ndcgs <- numeric(length(qids))
+  maps  <- numeric(length(qids))
+  for (i in seq_along(qids)) {
+    sub <- df[df$qid == qids[i], ]
+    ord <- order(sub$score, decreasing = TRUE)   # model ordering
+    rel_sorted <- sub$rel[ord]
+    ndcgs[i] <- ndcg_at_k(rel_sorted, k)
+    maps[i]  <- average_precision(rel_sorted)
+  }
+  c(NDCG = mean(ndcgs), MAP = mean(maps))
+}
+```
+
+### A pointwise baseline
+
+The pointwise baseline ignores the ranking structure entirely: fit ordinary least squares predicting `rel` from the features, then rank by the fitted value.
+
+```{r learning-to-rank-pointwise}
+pointwise_fit <- lm(rel ~ x1 + x2, data = train)
+test_pred_pw  <- predict(pointwise_fit, newdata = test)
+pointwise_perf <- evaluate_ranker(test, test_pred_pw)
+round(pointwise_perf, 3)
+```
+
+### A pairwise (RankNet-style) ranker from scratch
+
+Now the pairwise ranker. We use a linear scoring function $s = \mathbf{w}^\top \mathbf{x}$ and the RankNet log loss over all within-query document pairs, minimized by plain gradient descent. For every ordered pair $(i, j)$ in a query where $i$ is more relevant than $j$, the gradient contribution to $\mathbf{w}$ is the RankNet $\lambda_{ij}$ times the feature difference $(\mathbf{x}_i - \mathbf{x}_j)$.
+
+```{r learning-to-rank-pairwise}
+# Build all "i more relevant than j" pairs within each training query.
+build_pairs <- function(df) {
+  feats <- as.matrix(df[, c("x1", "x2")])
+  pairs <- list()
+  for (q in unique(df$qid)) {
+    idx <- which(df$qid == q)
+    for (a in idx) for (b in idx) {
+      if (df$rel[a] > df$rel[b]) {            # a should outrank b
+        pairs[[length(pairs) + 1]] <- feats[a, ] - feats[b, ]
+      }
+    }
+  }
+  do.call(rbind, pairs)                       # rows = x_i - x_j for i > j
+}
+
+pair_diffs <- build_pairs(train)
+cat("Number of training pairs:", nrow(pair_diffs), "\n")
+
+# RankNet loss for the "i > j" pairs (target prob = 1):
+#   C = sum log(1 + exp(-sigma * w . (x_i - x_j)))
+# Gradient wrt w: sum  -sigma * (x_i - x_j) / (1 + exp(sigma * w . diff))
+sigma <- 1
+w <- c(0, 0)                                  # initial weights for x1, x2
+lr <- 0.05
+n_iter <- 200
+loss_hist <- numeric(n_iter)
+
+for (t in seq_len(n_iter)) {
+  margin <- as.numeric(pair_diffs %*% w)      # w . (x_i - x_j) per pair
+  loss_hist[t] <- mean(log1p(exp(-sigma * margin)))
+  grad <- -sigma * colMeans(pair_diffs / (1 + exp(sigma * margin)))
+  w <- w - lr * grad
+}
+
+cat("Learned weights (x1, x2):", round(w, 3), "\n")
+test_pred_pair <- as.numeric(as.matrix(test[, c("x1", "x2")]) %*% w)
+pairwise_perf  <- evaluate_ranker(test, test_pred_pair)
+round(pairwise_perf, 3)
+```
+
+The learned weights should recover the hidden utility direction (roughly a 2:1 ratio favoring `x1`), because that is the direction that orders pairs correctly. Figure \@ref(fig:learning-to-rank-training) shows the pairwise loss decreasing over gradient-descent iterations alongside the learned weight ratio converging toward the true value of 2.
+
+```{r learning-to-rank-training, fig.cap="Left: the RankNet pairwise log loss falls smoothly as gradient descent orders more training pairs correctly. Right: the ratio of learned weights (x1 over x2) converges toward the true utility ratio of 2 (dashed line).", fig.width=8, fig.height=4}
+# Re-run the descent while recording the weight ratio at each step
+w <- c(0, 0); ratio_hist <- numeric(n_iter)
+for (t in seq_len(n_iter)) {
+  margin <- as.numeric(pair_diffs %*% w)
+  grad <- -sigma * colMeans(pair_diffs / (1 + exp(sigma * margin)))
+  w <- w - lr * grad
+  ratio_hist[t] <- w[1] / w[2]
+}
+
+par(mfrow = c(1, 2), mar = c(4, 4, 2, 1))
+plot(loss_hist, type = "l", lwd = 2, col = "steelblue",
+     xlab = "Iteration", ylab = "Mean pairwise log loss",
+     main = "Pairwise loss")
+plot(ratio_hist, type = "l", lwd = 2, col = "darkorange",
+     xlab = "Iteration", ylab = "Learned weight ratio (x1 / x2)",
+     main = "Weight ratio")
+abline(h = 2, lty = 2, col = "grey40")
+```
+
+Figure \@ref(fig:learning-to-rank-training) confirms two things at once: the surrogate loss is being minimized, and minimizing it drives the model toward the feature weighting that produces correct orderings.
+
+### A gradient-boosted ranker with xgboost
+
+Finally we train a real LambdaMART-style ranker with `xgboost`, using the `rank:ndcg` objective. The grouping vector tells xgboost how many rows belong to each query so it only forms pairs within a query.
+
+```{r learning-to-rank-xgboost}
+library(xgboost)
+
+# xgboost needs rows grouped by query and a group-size vector
+train_sorted <- train[order(train$qid), ]
+test_sorted  <- test[order(test$qid), ]
+
+dtrain <- xgb.DMatrix(
+  data  = as.matrix(train_sorted[, c("x1", "x2")]),
+  label = train_sorted$rel
+)
+setinfo(dtrain, "group", as.numeric(table(train_sorted$qid)))
+
+xgb_fit <- xgb.train(
+  params = list(
+    objective = "rank:ndcg",
+    eta = 0.1,
+    max_depth = 4,
+    min_child_weight = 1
+  ),
+  data = dtrain,
+  nrounds = 60,
+  verbose = 0
+)
+
+test_pred_xgb <- predict(xgb_fit, as.matrix(test_sorted[, c("x1", "x2")]))
+xgb_perf <- evaluate_ranker(test_sorted, test_pred_xgb)
+round(xgb_perf, 3)
+```
+
+We collect all three rankers into one comparison. Table \@ref(tab:learning-to-rank-comparison) reports mean NDCG and MAP on the held-out queries.
+
+```{r learning-to-rank-comparison, echo=FALSE}
+comp <- data.frame(
+  Ranker = c("Pointwise (OLS)", "Pairwise (RankNet, linear)", "Gradient-boosted (xgboost rank:ndcg)"),
+  NDCG = round(c(pointwise_perf["NDCG"], pairwise_perf["NDCG"], xgb_perf["NDCG"]), 3),
+  MAP  = round(c(pointwise_perf["MAP"],  pairwise_perf["MAP"],  xgb_perf["MAP"]),  3),
+  row.names = NULL
+)
+knitr::kable(
+  comp,
+  caption = "Held-out ranking quality for three approaches on the simulated query-document data. All three do well here because the true utility is linear; the boosted ranker has the most capacity but the least to gain on this easy, linear signal."
+)
+```
+
+Table \@ref(tab:learning-to-rank-comparison) shows that on this deliberately linear problem the simple pairwise ranker is competitive with gradient boosting, a useful reminder that model complexity should match signal complexity. On real data with nonlinear feature interactions, the gradient-boosted ranker typically pulls ahead.
+
+## Practical guidance and pitfalls
+
+A few hard-won lessons separate a working ranking system from a broken one.
+
+Always group by query. The single most common bug is forming document pairs across different queries. A document's relevance is only meaningful relative to other candidates for the *same* query; comparing a document from query A against one from query B is nonsense. Every pairwise and listwise method needs a query/group identifier, and metrics must be computed per query then averaged. In `xgboost` and `lightgbm` this is the `group` vector; forget it and the model silently trains on garbage pairs.
+
+Evaluate offline with the metric you care about, online with experiments. Offline NDCG/MAP on logged judgments is necessary but not sufficient. Logged data is biased: users only clicked what was *shown*, and what was shown was chosen by the old ranker (this is *position bias* and *presentation bias*). A model that scores well offline can lose in an A/B test. Treat offline metrics as a filter, not a verdict.
+
+Mind the gain and discount conventions. As noted, two NDCG formulas circulate. If your offline number disagrees with a library's, check whether both use the $2^{\text{rel}} - 1$ gain and the $\log_2(i+1)$ discount. Mismatched conventions are a frequent source of "my metric does not match the paper."
+
+Calibrate cutoffs to the surface. A search results page shows ten links; a mobile carousel shows three. Optimize and report NDCG@k for the $k$ that matches where users actually look. Reporting NDCG over all candidates can hide failures right where they hurt.
+
+> **Warning:** Graded-relevance labels are expensive and noisy. Human judges disagree, and "relevance" drifts with intent and time. Before investing in a listwise model, make sure your labels are good enough that the metric differences you are chasing are real and not label noise.
+
+Pairwise count can explode. A query with $n$ candidates generates up to $O(n^2)$ pairs. With long candidate lists this dominates training time. Sampling pairs, capping candidates, or using listwise losses that avoid explicit pair enumeration are the usual remedies.
+
+Features matter more than the loss. In tabular ranking, careful query-document features (match scores, freshness, popularity, personalization signals) typically move NDCG more than the choice between pairwise and listwise. Spend effort there first.
+
+## Further reading
+
+- Burges, Shaked, Renshaw, Lazier, Deeds, Hamilton, and Hullender (2005), "Learning to Rank Using Gradient Descent," introduces RankNet and the pairwise probabilistic loss.
+- Burges (2010), "From RankNet to LambdaRank to LambdaMART: An Overview," is the definitive walk-through of the lambda-gradient idea and LambdaMART; readable and self-contained.
+- Liu (2009), "Learning to Rank for Information Retrieval," is the standard survey organizing the pointwise, pairwise, and listwise families.
+- Cao, Qin, Liu, Tsai, and Li (2007), "Learning to Rank: From Pairwise Approach to Listwise Approach," introduces ListNet and motivates listwise training.
+- Järvelin and Kekäläinen (2002), "Cumulated Gain-Based Evaluation of IR Techniques," is the original source for DCG and NDCG.
+- Manning, Raghavan, and Schütze (2008), *Introduction to Information Retrieval*, gives the classic treatment of precision, recall, MAP, and MRR with worked examples.
+- Chen and Guestrin (2016), "XGBoost: A Scalable Tree Boosting System," documents the gradient-boosted ranking objectives used in the demonstration above.

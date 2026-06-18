@@ -1,0 +1,115 @@
+# Class Imbalance
+
+Imagine you are building a classifier to flag fraudulent credit card transactions. In a realistic dataset, perhaps 1 in 1000 transactions is fraudulent. A lazy model that simply predicts "not fraud" for every single transaction would be correct 99.9% of the time. Its accuracy looks spectacular, yet it is completely useless: it never catches a single fraud, which is the entire point of the exercise. This is the trap of class imbalance, the situation in classification problems where the relative frequencies of the classes are dramatically out of balance.
+
+Imbalance shows up almost everywhere that the interesting event is rare: fraud detection, disease screening, equipment failure, customer churn, spam filtering, and detection of rare defects on a production line. In all of these, the class we care most about (the minority class) is the one we have the fewest examples of, and the one a naive model is most tempted to ignore.
+
+> **Intuition:** Most learning algorithms are built to minimize overall error. When 99.9% of the data belongs to one class, the algorithm can drive overall error very low by paying almost all of its attention to the majority class. The minority class, despite being the reason we built the model, gets drowned out.
+
+The good news is that imbalance is a well studied problem with a toolkit of remedies. This chapter walks through that toolkit. The strategies fall into a few natural families: changing how we *tune and evaluate* the model, changing how we *decide* a class from a predicted probability, changing the *prior beliefs* we feed the model, changing the *weight* each observation carries, changing the *data* we train on through resampling, and changing the *loss function* so that mistakes on the rare class are explicitly more expensive. By the end you will know what each remedy does, when to reach for it, and what it costs you.
+
+The remedies we will cover are:
+
+-   [Model Tuning]
+
+-   [Alternative Cutoffs]
+
+-   [Adjusting Prior Probabilities]
+
+-   [Unequal Case Weights]
+
+-   [Sampling Methods]
+
+-   [Cost-Sensitive Training]
+
+> **Note:** Before applying any of these techniques, stop using plain accuracy as your scorecard. With heavy imbalance, accuracy is dominated by the majority class and hides poor minority performance. Track sensitivity (the proportion of true positive cases you correctly catch), specificity (the proportion of true negatives you correctly leave alone), precision, and summary measures such as the area under the ROC curve.^[Sensitivity is also called recall or the true positive rate; specificity is the true negative rate. A confusion matrix breaks predictions into true positives, false positives, true negatives, and false negatives, and every metric above is just a ratio of those four counts.]
+
+## Model Tuning
+
+The first and least invasive idea is to keep the data and the model family fixed, and simply tune the model's hyperparameters with the *right objective in mind*. Instead of tuning to maximize overall accuracy, we tune to maximize the accuracy of the minority class, that is, to maximize sensitivity (the proportion of true minority cases that are correctly identified) while doing as little damage as possible to specificity (the proportion of true majority cases that are correctly identified).
+
+In practice this means that when you search over hyperparameters by cross-validation, you select the configuration that gives the best minority-class performance rather than the best overall accuracy. The model itself is unchanged in form; only the settings you land on differ.
+
+> **Warning:** This is an ad hoc procedure. There is no single principled criterion that tells you the "right" trade-off between sensitivity and specificity for tuning, so the choice involves judgment about how much you value catching the rare class versus avoiding false alarms. Treat it as a useful first pass, not a final answer.
+
+## Alternative Cutoffs
+
+Most classifiers do not actually output a class; they output a *probability*, and a class is assigned by comparing that probability to a cutoff. By default the cutoff is 0.5, but nothing forces that choice. When the positive class is rare, the model's predicted probabilities for that class tend to stay below 0.5 even for genuine cases, so the default cutoff systematically misses them. The fix, in a two-category problem, is to lower the cutoff so that more cases get assigned to the minority class, raising sensitivity at the expense of specificity.
+
+> **Key idea:** Changing the cutoff does not change the fitted model at all. The probabilities are exactly the same. You are only changing the rule that turns a probability into a decision, which means you are choosing where to sit on the trade-off between different kinds of errors.
+
+How do you pick the cutoff? The ROC (Receiver Operating Characteristic) curve is the natural tool, because it plots sensitivity against specificity across the entire range of possible cutoffs.^[The ROC curve traces the true positive rate against the false positive rate as the cutoff sweeps from 0 to 1. A model that is no better than guessing lies on the diagonal; a perfect model hugs the top-left corner.] Each point on the curve corresponds to one cutoff, so you can read off the threshold that gives the balance you want. A common heuristic is to choose the point closest to the "optimal model," the top-left corner where sensitivity and specificity are both perfect.
+
+There is a subtlety about *where* you measure this. The relationship between cutoff and performance is itself estimated from data, and with small samples the cutoff chosen on the training set is typically biased (it looks better in training than it will perform in practice).
+
+> **Tip:** Whenever possible, choose your cutoff using an independent dataset, or via cross-validation, rather than on the same data the model was fit to. Otherwise the apparent gain in minority-class accuracy may not survive on new data.
+
+## Adjusting Prior Probabilities
+
+Several classifiers, naive Bayes and discriminant analysis among them, combine the evidence in the predictors with a prior probability for each class, the baseline belief about how common each class is before seeing the predictors. By default these priors are set to the class frequencies observed in the training data. Under heavy imbalance, that default prior is tiny for the minority class, which biases the model toward almost never predicting it.
+
+The remedy is direct: override the priors by hand. Increase the prior probability assigned to the minority class and decrease it for the majority class, nudging the model to take the rare class more seriously.
+
+> **Note:** Like changing the cutoff, adjusting priors does not modify the underlying classification model; it only changes the prior probabilities that feed into the class decision. It is another lever on the same trade-off, expressed in the language of probability rather than thresholds.
+
+## Unequal Case Weights
+
+A case weight lets an individual observation carry more or less emphasis during the model training phase, so that the algorithm tries harder to get the heavily weighted observations right. Many modeling procedures accept case weights directly, including boosting (see Chapter \@ref(boosting)). The natural move for imbalance is to give the minority-class observations larger weights, so that errors on them count for more when the model is fit.
+
+> **Intuition:** Up-weighting a rare observation is conceptually like cloning it. In several models, an observation with weight $w$ behaves exactly as if the dataset contained $w$ identical copies of it, same predictors, same label. Logistic regression is a clean example: duplicating a data point and weighting it by 2 give the same fitted model.
+
+This connection between weighting and duplication is worth holding onto, because it is the bridge to the next family of methods. If up-weighting the minority class is like duplicating its observations, then perhaps we should just resample the data so that the classes are more balanced to begin with.
+
+## Sampling Methods
+
+If we know in advance that the classes are imbalanced, we can blunt its effect on training by constructing a training set whose class frequencies are roughly equal. In the ideal case we would arrange this when we *collect* the data, deliberately gathering comparable numbers of each class. More often the data are already in hand and we have to rebalance after the fact, a post hoc approach.
+
+The three standard resampling strategies are:
+
+-   [Down-sampling]
+
+-   [Up-sampling]
+
+-   [SMOTE]
+
+> **When to use this:** Resampling is attractive when you want a balanced training set without touching the model's machinery, and when discarding or duplicating data is acceptable. It pairs naturally with algorithms that do not expose case weights or adjustable priors.
+
+### Down-sampling
+
+Down-sampling throws away data from the majority class until it is roughly the same size as the minority class. The simplest version randomly samples the majority-class observations down to the target count. A more careful version draws bootstrap samples of the majority class, which has the bonus of letting you gauge how sensitive your results are to the particular sample drawn.^[Repeating the down-sampling with different bootstrap draws and refitting each time gives a spread of results, which is a rough measure of the uncertainty introduced by the sampling itself.]
+
+> **Warning:** Down-sampling discards potentially useful information from the majority class, which can hurt when data are scarce. Its advantage is speed and a smaller, balanced training set; its cost is the thrown-away examples.
+
+### Up-sampling
+
+Up-sampling takes the opposite tack: rather than shrinking the majority class, it grows the minority class. The traditional approach samples the minority-class observations with replacement until each class has roughly the same number of cases. As noted above, this is closely related to the [Unequal Case Weights] approach, since repeated copies of an observation act like a larger weight on it.
+
+Plain duplication is not the only option. We can instead *generate* new minority observations, for example by imputation methods that build new cases from "nearby" data points rather than copying existing ones. More recently, the data augmentation procedures common in deep learning create fresh minority samples by transforming existing ones; with images, for instance, we can rotate, translate, flip, or recolor a minority example to manufacture plausible new ones.
+
+> **Tip:** Synthetic or augmented examples avoid the overfitting risk of exact duplicates, because the model sees variety rather than the same point many times. The catch is that the synthetic points must be realistic; nonsensical augmentations teach the model nonsense.
+
+### SMOTE
+
+SMOTE, the Synthetic Minority Over-Sampling Technique, is the best known way to generate new minority cases rather than merely copying them. According to @chawla2002, SMOTE is a data sampling procedure that combines [Up-sampling] of the minority class (using K-nearest neighbors to synthesize new points) with [Down-sampling] of the majority class (by random sampling), applying each depending on the class.
+
+> **Intuition:** To invent a new minority observation, SMOTE picks an existing minority point, finds one of its nearest minority neighbors, and places a synthetic point somewhere on the line segment between them. The new point is not a copy of any real observation but a plausible blend of two, which fills in the region the minority class occupies rather than just stacking duplicates.
+
+SMOTE exposes three operational parameters that you set to control the rebalancing:
+
+-   the amount of up-sampling (how many synthetic minority cases to create),
+
+-   the amount of down-sampling (how much of the majority class to keep), and
+
+-   the number of neighbors used to impute each new case.
+
+> **Warning:** No resampling method is free of risk. Aggressive synthesis or down-sampling can inject bias and distort the class boundary, so the rebalanced data may no longer reflect reality. A conservative habit is to use these methods to *tune* the model rather than to train the final one, or at least to validate carefully on untouched, naturally distributed data.
+
+## Cost-Sensitive Training
+
+All of the methods so far work around the learning algorithm's objective. Cost-sensitive training confronts it head on. The cleanest and often best approach is to modify the loss function directly so that it accounts for the different costs of misclassifying different classes. If missing a fraud is far worse than a false alarm, the loss should say so explicitly, and the optimizer will then prefer models that protect the expensive class.
+
+> **Key idea:** Instead of tricking a cost-blind algorithm into respecting the rare class through resampling or reweighting, you tell the algorithm the truth: that some errors cost more than others. The model then optimizes the quantity you actually care about.
+
+A closely related implementation is to add a misclassification cost term to the classification probabilities, which can be tuned to accommodate the different class frequencies and the different consequences of each error type. Either way, the costs become a transparent part of the model rather than a side adjustment.
+
+To close, it helps to see these remedies as different points of intervention along the same pipeline. You can change the data before training (sampling methods), change the emphasis during training (case weights, cost-sensitive loss), change the prior beliefs the model holds (adjusting priors), or change how you turn a fitted model into a decision (alternative cutoffs, with tuning watching over all of it). They are not mutually exclusive, and in difficult problems they are often combined. The constant across every one of them is the discipline introduced at the start of the chapter: judge the model on metrics that reward catching the rare class, never on raw accuracy alone.

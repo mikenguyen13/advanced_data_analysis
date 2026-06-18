@@ -1,0 +1,307 @@
+# Autoencoders and Representation Learning
+
+Imagine you had to describe a friend's face over the phone so that a sketch artist on the other end could draw it. You would not read off the color of every pixel. You would say a few things that matter: round face, dark curly hair, glasses, a small scar above the left eyebrow. From that short description the artist can reconstruct something close to the original. You have just done by hand what an autoencoder does automatically: compress a high-dimensional thing into a short summary, then rebuild it from that summary.
+
+An autoencoder is a neural network trained to copy its input to its output. That sounds pointless, because copying is trivial. The trick is that the network is forced to pass the data through a low-capacity intermediate representation, so the copying cannot be perfect. To reconstruct the input well despite that constraint, the network must learn what is worth keeping. What it learns to keep in that intermediate representation is a compressed code for the data. This makes the autoencoder a tool for representation learning, where the goal is to discover useful features without labels.^[Most of the supervised methods in this book need labeled examples: an input paired with a known answer. Autoencoders need only the inputs themselves, which is why they belong to *unsupervised* learning alongside PCA and clustering.]
+
+> **Key idea:** An autoencoder is not interesting because it can reconstruct the input. It is interesting because of *what it is forced to throw away* to do so. The discarded information is noise and redundancy; the retained information is the structure of the data.
+
+By the end of this chapter you will understand the encoder, the decoder, and the bottleneck that makes the whole thing work; you will see the precise sense in which a linear autoencoder is just PCA in disguise; you will meet the main regularized variants (denoising, sparse, contractive) and the variational autoencoder used for generation; and you will run a small demonstration in base R that confirms the linear-autoencoder-equals-PCA result numerically. Autoencoders sit next to the [Dimension Reduction] chapter as the nonlinear generalization of the ideas you saw there.
+
+## Encoder, Decoder, and the Bottleneck
+
+Every autoencoder is built from two halves that work in opposite directions. The first half squeezes the data down into a short code; the second half tries to rebuild the original from that code. Training rewards the network when the rebuilt output matches the input.
+
+An autoencoder has two parts. The encoder maps an input $x \in \mathbb{R}^p$ to a code $z \in \mathbb{R}^k$,
+
+$$
+z = f_\theta(x),
+$$
+
+and the decoder maps the code back to the input space,
+
+$$
+\hat{x} = g_\phi(z).
+$$
+
+Training minimizes a reconstruction loss over the data. With squared error the objective is
+
+$$
+\min_{\theta, \phi} \; \sum_{i=1}^n \lVert x_i - g_\phi(f_\theta(x_i)) \rVert^2 .
+$$
+
+In words, we want the round trip from input to code and back to land as close to the original input as possible, averaged over the data.^[Squared error is the natural loss for real-valued inputs. For binary or pixel-intensity inputs in $[0,1]$ a cross-entropy reconstruction loss is more common, but the logic is identical: reward faithful reconstruction.]
+
+Everything then hinges on one number: the dimension $k$ of the code. It controls how much room the network has to store information, and therefore what it can and cannot do. There are two regimes to distinguish.
+
+-   An undercomplete autoencoder has $k < p$. The code is smaller than the input, so the network cannot copy every input perfectly. It must use the limited capacity of the code to capture the structure that matters most for reconstruction. The layer that holds $z$ is called the bottleneck.
+
+-   An overcomplete autoencoder has $k \ge p$. Here the code is at least as large as the input, and the network can learn the identity map and reconstruct everything with zero error. That solution is useless because it stores the data rather than a representation of it. Overcomplete autoencoders are only interesting when some form of regularization is added to stop the trivial copy.
+
+The bottleneck is the mechanism that turns a copy machine into a feature learner. By restricting how much information can flow from input to output, it forces the encoder to throw away noise and redundancy and keep the directions that explain the data.
+
+> **Intuition:** Think of the bottleneck as a narrow doorway. If you must pass all your belongings through a doorway only $k$ items wide, you will carry the essentials and leave the clutter behind. The width $k$ decides how much detail survives the trip.
+
+> **Warning:** An overcomplete autoencoder with no regularization will happily learn to do nothing useful, achieving zero reconstruction error by memorizing the identity. If you widen the code to $k \ge p$, you must add one of the constraints from the [Regularized Autoencoders] section, or the model learns nothing about the data.
+
+## Linear Autoencoders Recover the Principal Subspace
+
+Before reaching for nonlinear networks, it pays to ask what the simplest possible autoencoder learns. The answer is reassuring and clarifying: a linear autoencoder learns exactly the same thing as Principal Component Analysis. This is worth establishing carefully, because it tells us where the power of autoencoders actually comes from (the answer, given at the end of this section, is nonlinearity).
+
+The simplest autoencoder uses linear encoder and decoder with no nonlinear activations,
+
+$$
+z = W x, \qquad \hat{x} = U z = U W x,
+$$
+
+where $W$ is $k \times p$ and $U$ is $p \times k$. Assume the data are centered so that $\frac{1}{n}\sum_i x_i = 0$. The training objective is
+
+$$
+\min_{U, W} \; \sum_{i=1}^n \lVert x_i - U W x_i \rVert^2 .
+$$
+
+The key theoretical result, due to @baldi1989, is that the global minimum of this loss is reached when $U W$ equals the orthogonal projection onto the subspace spanned by the top $k$ principal components of the data. In other words, a linear autoencoder with squared-error loss learns the same subspace that PCA finds.
+
+> **Key idea:** A linear autoencoder is PCA wearing a neural-network costume. Training it by gradient descent and computing the top principal components are two routes to the same low-dimensional subspace.
+
+The reasoning is direct. The composed map $M = UW$ has rank at most $k$, so the problem is to find the rank-$k$ matrix $M$ that best reconstructs the centered data in squared error,
+
+$$
+\min_{\operatorname{rank}(M)\le k} \; \sum_{i=1}^n \lVert x_i - M x_i \rVert^2 .
+$$
+
+Let $X$ be the $n \times p$ matrix with the centered observations in its rows and let $\Sigma = \frac{1}{n} X^\top X$ be the sample covariance. The minimizing $M$ is the projection $M = V_k V_k^\top$, where $V_k$ holds the top $k$ eigenvectors of $\Sigma$, equivalently the top $k$ right singular vectors of $X$. This is the Eckart and Young low-rank approximation result, and it is exactly the rank-$k$ representation that PCA produces. See the [Dimension Reduction] chapter for the PCA derivation through the singular value decomposition.
+
+Two points are worth stating precisely, because they are easy to get wrong.
+
+-   The autoencoder recovers the span of the top $k$ principal components, not the components themselves. The factorization $M = UW$ is not unique because $UW = (UA)(A^{-1}W)$ for any invertible $A$. So the learned $W$ rows are some basis of the principal subspace, not necessarily orthonormal and not ordered by variance. PCA pins down a specific orthonormal ordered basis through the eigenvalue ordering, which the plain linear autoencoder does not impose.
+
+-   @baldi1989 also showed that under squared-error loss the only local minima are global minima for this linear network. The loss surface has saddle points but no suboptimal local minima, which is why gradient descent on a linear autoencoder reliably finds the principal subspace.
+
+The practical message is that nonlinearity is what makes autoencoders more than PCA. A linear autoencoder cannot beat PCA. Once the encoder and decoder use nonlinear activations, the network can learn curved low-dimensional manifolds that no linear projection can represent.
+
+> **When to use this:** If your data really do lie near a flat subspace, PCA is faster, has a closed-form solution, and gives you ordered, orthonormal components for free. Reach for a nonlinear autoencoder only when you have reason to believe the structure is curved, for example images, where a straight-line projection loses too much.
+
+## Regularized Autoencoders
+
+So far the bottleneck has done all the work: a narrow code forces compression. But what if we want a code that is large, perhaps even larger than the input, yet still meaningful? As the warning above noted, a wide code with no other constraint just learns to copy. Regularized autoencoders solve this by adding a penalty or a constraint so that the network learns a useful representation even when the bottleneck alone would not force one. The three variants below differ only in *what* they penalize, and each encodes a different idea about what makes a representation good.
+
+### Denoising Autoencoders
+
+The denoising autoencoder starts from a simple observation: if the network has to repair damage, it cannot get away with copying, because the thing it sees is no longer the thing it must produce.
+
+A denoising autoencoder corrupts the input and asks the network to reconstruct the clean version. Draw a corrupted input $\tilde{x}$ from a noise process $C(\tilde{x} \mid x)$, for example by adding Gaussian noise or by randomly zeroing entries, then train
+
+$$
+\min_{\theta, \phi} \; \mathbb{E}_{x}\, \mathbb{E}_{\tilde{x} \sim C(\cdot \mid x)} \; \lVert x - g_\phi(f_\theta(\tilde{x})) \rVert^2 .
+$$
+
+The network cannot simply copy because the input it sees is not the target it must produce. To remove noise it has to learn the structure of the clean data, which gives a representation that captures the data distribution rather than the identity map. This works even when the autoencoder is overcomplete.
+
+> **Intuition:** Filling in a smudged word in a sentence requires understanding the sentence. Forcing the network to undo corruption forces it to learn how the data are supposed to look, which is exactly the structure we want it to capture.
+
+### Sparse Autoencoders
+
+The sparse autoencoder takes a different angle. Instead of corrupting the input, it limits how many code units may switch on for any single example. A sparse autoencoder adds a penalty on the code activations so that only a few units are active for any given input. With an $L_1$ penalty the objective is
+
+$$
+\min_{\theta, \phi} \; \sum_{i=1}^n \lVert x_i - g_\phi(z_i) \rVert^2 + \lambda \lVert z_i \rVert_1 ,
+$$
+
+where $z_i = f_\theta(x_i)$. The $L_1$ penalty pushes most entries of the code to exactly zero, so each input is explained by a handful of active units. An alternative penalty drives the average activation of each unit toward a small target $\rho$ (the desired activation rate, for example $0.05$) using a Kullback and Leibler term.^[The Kullback-Leibler divergence measures how far one probability is from another. Here it compares the observed average activation $\hat{\rho}_j$ to the target $\rho$ and grows whenever a unit fires far more or far less often than intended.] If $\hat{\rho}_j$ is the mean activation of unit $j$ over the data, the penalty is
+
+$$
+\sum_{j=1}^k \mathrm{KL}(\rho \,\Vert\, \hat{\rho}_j) = \sum_{j=1}^k \left[ \rho \log \frac{\rho}{\hat{\rho}_j} + (1-\rho) \log \frac{1-\rho}{1-\hat{\rho}_j} \right] .
+$$
+
+Sparsity lets the code be large while keeping each example explained by a few active features, which tends to produce parts-based and interpretable representations. For a face, one unit might respond to a nose, another to an eyebrow, rather than every unit firing a little for everything.
+
+### Contractive Autoencoders
+
+The contractive autoencoder regularizes a third property: stability. It penalizes the sensitivity of the code to small changes in the input, so that wiggling the input a little barely moves the code. A contractive autoencoder penalizes the sensitivity of the code to small changes in the input. The penalty is the squared Frobenius norm of the encoder Jacobian,
+
+$$
+\min_{\theta, \phi} \; \sum_{i=1}^n \lVert x_i - g_\phi(f_\theta(x_i)) \rVert^2 + \lambda \left\lVert \frac{\partial f_\theta(x_i)}{\partial x} \right\rVert_F^2 .
+$$
+
+This pushes the encoder to be flat in most directions and to respond only along the directions in which the data actually vary, so the learned representation is locally invariant to small perturbations off the data manifold.^[The Jacobian $\partial f_\theta(x)/\partial x$ collects all the partial derivatives of the code with respect to the inputs. Its Frobenius norm is large when small input changes produce large code changes, so penalizing it asks the encoder to ignore directions that lead off the data.]
+
+To summarize the three: denoising asks the code to survive corruption, sparsity asks it to use few units at a time, and contraction asks it to stay still under small input nudges. All three break the trivial-copy solution, which is what lets an overcomplete autoencoder learn something real.
+
+## Variational Autoencoders
+
+Every autoencoder so far has been a deterministic compressor: feed in $x$, get back one code $z$. The variational autoencoder changes the question from "how do I compress this?" to "how was this data generated?" That shift lets it not only compress but also *generate* brand-new examples by sampling codes and decoding them.
+
+A variational autoencoder (VAE) is a generative latent-variable model rather than a deterministic compressor. It assumes data are produced by sampling a latent code $z$ from a prior $p(z)$, usually a standard normal, then sampling $x$ from a decoder distribution $p_\phi(x \mid z)$. We would like to fit the parameters by maximizing the marginal likelihood $\log p(x)$, but that integral over $z$ is intractable.
+
+The VAE introduces an approximate posterior $q_\theta(z \mid x)$, the encoder, and optimizes a lower bound on the log likelihood called the evidence lower bound (ELBO),
+
+$$
+\log p(x) \ge \mathbb{E}_{q_\theta(z \mid x)}\big[\log p_\phi(x \mid z)\big] - \mathrm{KL}\big(q_\theta(z \mid x) \,\Vert\, p(z)\big).
+$$
+
+The first term rewards reconstructing $x$ from codes drawn from the encoder, and plays the role of the reconstruction loss. The second term pulls the encoder distribution toward the prior, which regularizes the latent space so that nearby codes decode to similar inputs and the space can be sampled to generate new data.
+
+> **Intuition:** The two ELBO terms are in tension, and that tension is the whole point. Reconstruction wants each input to claim its own private corner of the latent space; the KL term wants every input to look like a draw from the same standard normal. The compromise is a latent space that is both faithful and smooth, smooth enough that sampling a random $z$ and decoding it yields a plausible new example.
+
+To train by gradient descent we need gradients through the sampling step $z \sim q_\theta(z \mid x)$. The reparameterization trick rewrites the sample as a deterministic function of the parameters and an external noise variable. With a Gaussian encoder $q_\theta(z \mid x) = \mathcal{N}(\mu_\theta(x), \operatorname{diag}(\sigma_\theta^2(x)))$, write
+
+$$
+z = \mu_\theta(x) + \sigma_\theta(x) \odot \epsilon, \qquad \epsilon \sim \mathcal{N}(0, I),
+$$
+
+where $\odot$ is elementwise multiplication. The randomness now lives in $\epsilon$, which does not depend on the parameters, so gradients flow through $\mu_\theta$ and $\sigma_\theta$. This is the construction of @kingma2014.
+
+> **Note:** You cannot backpropagate through a coin flip. Sampling $z$ directly blocks the gradient because the random draw has no derivative with respect to the parameters. The reparameterization trick sidesteps this by moving the randomness into $\epsilon$, an input the network does not control, leaving a smooth deterministic path from the parameters to $z$.
+
+This is only a brief introduction. The full treatment of VAEs, including the decoder likelihood choices and the connection to other generative models, belongs with the Generative Models material.
+
+## What Autoencoders Are Used For
+
+The pieces above come together in four recurring applications. Each one reuses the same trained network but reads a different part of it: some use the code, one uses the reconstruction error, one uses the output directly.
+
+-   Dimensionality reduction. The bottleneck code is a low-dimensional representation. A nonlinear autoencoder can capture curved structure that PCA misses, which is the point of @hinton2006.
+
+-   Pretraining. An encoder trained on unlabeled data gives features that can initialize or feed a supervised model, useful when labels are scarce.
+
+-   Anomaly detection. Train the autoencoder on normal data only. Normal inputs reconstruct with small error, while anomalous inputs that do not match the learned structure reconstruct poorly. The reconstruction error $\lVert x - \hat{x} \rVert^2$ becomes an anomaly score.
+
+-   Denoising. A denoising autoencoder maps corrupted inputs to clean ones, so it can be used directly to clean up noisy signals or images.
+
+> **Tip:** Anomaly detection is the most common practical use and the easiest to deploy. You need only normal data to train, and the anomaly score is just the reconstruction error, with no labels and no threshold tuning beyond picking a cutoff.
+
+## Demonstration: Linear Autoencoder Equals PCA
+
+We will now turn the central theoretical result into numbers you can check. If a linear autoencoder really does learn the PCA subspace, then PCA must produce exactly the reconstruction error that a perfectly trained linear autoencoder would reach. We can verify that without training any network at all.
+
+The runnable demonstration below confirms the central theoretical result in base R. We do not train a neural network. Instead we use the fact that the optimal linear autoencoder reconstruction is the rank-$k$ PCA projection, so PCA gives us the reconstruction error that an ideally trained linear autoencoder would reach.
+
+We generate data with low-dimensional structure, compute PCA two ways (through `prcomp` and through the SVD), reconstruct from the top $k$ components, and tabulate the reconstruction error as a function of the code dimension $k$. The plan is to build data that secretly lives near a 3-dimensional subspace, then watch the reconstruction error collapse exactly when the code reaches dimension 3.
+
+We start by simulating the data. Three latent factors are mixed by random loadings to fill ten observed dimensions, then a small amount of noise is added so the structure is approximate rather than exact.
+
+```{r ae-data}
+set.seed(1301)
+
+n <- 500   # observations
+p <- 10    # ambient dimension
+r <- 3     # true latent rank
+
+# Latent factors and random loadings give data that lives near a 3D subspace
+Z <- matrix(rnorm(n * r), n, r)
+B <- matrix(rnorm(r * p), r, p)
+signal <- Z %*% B
+noise <- matrix(rnorm(n * p, sd = 0.4), n, p)
+X <- signal + noise
+
+# Center the data, which the linear-autoencoder = PCA result assumes
+X_c <- scale(X, center = TRUE, scale = FALSE)
+dim(X_c)
+```
+
+Now reconstruct from the top $k$ principal components. The reconstruction is $\hat{X} = X_c V_k V_k^\top$, where $V_k$ holds the top $k$ right singular vectors. This $V_k V_k^\top$ is exactly the projection $UW$ that an optimal linear autoencoder learns.
+
+```{r ae-recon}
+# SVD of the centered data
+sv <- svd(X_c)
+V <- sv$v   # right singular vectors (principal directions)
+
+# Mean squared reconstruction error per observation for a given code size k
+recon_error <- function(k) {
+    if (k == 0) {
+        Xhat <- matrix(0, nrow(X_c), ncol(X_c))
+    } else {
+        Vk <- V[, 1:k, drop = FALSE]
+        Xhat <- X_c %*% Vk %*% t(Vk)   # project then lift back
+    }
+    mean(rowSums((X_c - Xhat)^2))
+}
+
+ks <- 0:p
+errors <- sapply(ks, recon_error)
+
+err_table <- data.frame(
+    latent_dim_k = ks,
+    reconstruction_error = round(errors, 4)
+)
+err_table
+```
+
+Reading down the table, the error drops sharply up to $k = 3$, the true latent rank, and then flattens because the remaining components capture only noise. This is the signature of an undercomplete bottleneck matching the intrinsic dimension of the data: once the code is wide enough to hold the real structure, extra capacity buys almost nothing.
+
+We can confirm that the SVD reconstruction agrees with `prcomp` and that the error equals the sum of the discarded eigenvalues, which is the closed form for the optimal linear reconstruction error.
+
+```{r ae-check}
+# prcomp route should match the SVD route at, say, k = 3
+pc <- prcomp(X, center = TRUE, scale. = FALSE)
+k <- 3
+scores_k <- pc$x[, 1:k, drop = FALSE]
+Xhat_pc <- scores_k %*% t(pc$rotation[, 1:k, drop = FALSE])
+err_prcomp <- mean(rowSums((X_c - Xhat_pc)^2))
+
+# Closed form: discarded variance = sum of squared singular values beyond k,
+# divided by n, summed over the dropped directions
+d2 <- sv$d^2
+err_closed <- sum(d2[(k + 1):p]) / nrow(X_c)
+
+c(svd_route = recon_error(k),
+  prcomp_route = err_prcomp,
+  closed_form = err_closed)
+```
+
+The three numbers agree, which is the numerical statement of the @baldi1989 result: the best rank-$k$ linear map is the PCA projection, and its reconstruction error is the variance left in the dropped directions. A trained linear autoencoder cannot do better than this, and at its optimum it does exactly this.
+
+Finally we plot the reconstruction-error curve against the code dimension.
+
+```{r autoencoders-recon-error-curve, fig.width=6, fig.height=4.5, fig.cap="Reconstruction error as a function of the latent code dimension k. The elbow at k = 3 matches the true latent rank of the data."}
+plot(ks, errors, type = "b", pch = 19,
+     xlab = "Latent dimension k",
+     ylab = "Mean reconstruction error",
+     main = "Linear autoencoder (PCA) reconstruction error")
+abline(v = r, lty = 2, col = "red")
+text(r, max(errors) * 0.8, labels = "true rank = 3",
+     pos = 4, col = "red")
+```
+
+Figure \@ref(fig:autoencoders-recon-error-curve) shows the resulting curve. The elbow at $k = 3$ tells us how many code units a linear autoencoder needs to capture the data, and it lines up with the rank we built into the simulation. In practice you rarely know the true rank in advance, so reading the elbow off a curve like this is one way to choose the bottleneck size.
+
+## Sketch of a Nonlinear Autoencoder in Keras
+
+The demonstration above stayed linear so it could run anywhere. To go beyond PCA you add nonlinear activations, and at that point the model is a genuine neural network that needs a deep-learning backend to train. The code below shows how a nonlinear undercomplete autoencoder is specified with Keras. It is not run here because the Python backend is not available in this build. The point of contrast with the demonstration above is the nonlinear activations, which let the model fit curved low-dimensional structure that the linear PCA reconstruction cannot.
+
+```{r ae-keras, eval=FALSE}
+library(keras)
+
+input_dim <- 10
+code_dim <- 3
+
+inputs <- layer_input(shape = input_dim)
+code <- inputs |>
+    layer_dense(units = 16, activation = "relu") |>
+    layer_dense(units = code_dim, activation = "relu", name = "bottleneck")
+outputs <- code |>
+    layer_dense(units = 16, activation = "relu") |>
+    layer_dense(units = input_dim, activation = "linear")
+
+autoencoder <- keras_model(inputs, outputs)
+autoencoder |>
+    compile(optimizer = "adam", loss = "mse")
+
+# autoencoder |> fit(X, X, epochs = 50, batch_size = 32)
+```
+
+Notice that the architecture mirrors the encoder-decoder picture from the start of the chapter: a stack of layers narrows down to a three-unit `bottleneck`, then a symmetric stack widens back out to the input dimension. The single change that lifts this above PCA is the `relu` activations, which let the encoder and decoder bend, so the code can trace curved low-dimensional structure that no straight projection can follow.
+
+## Summary
+
+An autoencoder learns by reconstruction: it compresses an input into a code and rebuilds the input from it, and the value lies in what the bottleneck forces it to discard. When the encoder and decoder are linear, the result is PCA, a fact you verified numerically above. Nonlinear activations are what let autoencoders outrun PCA by fitting curved manifolds. When you want a wide code rather than a narrow one, regularization (denoising, sparsity, or contraction) takes over the job the bottleneck was doing, and the variational autoencoder turns the whole apparatus into a generative model by making the code a distribution instead of a point. From there the same trained network serves dimensionality reduction, pretraining, anomaly detection, and denoising.
+
+## Further Reading
+
+The three works below are the foundational references for the results in this chapter.
+
+-   @baldi1989 prove that a linear autoencoder under squared-error loss recovers the principal subspace and that its loss surface has no suboptimal local minima.
+
+-   @hinton2006 show that deep nonlinear autoencoders, trained with a careful initialization, produce low-dimensional codes that outperform PCA for reconstruction and visualization.
+
+-   @kingma2014 introduce the variational autoencoder, the ELBO objective, and the reparameterization trick.

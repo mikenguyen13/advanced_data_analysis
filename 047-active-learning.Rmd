@@ -1,0 +1,352 @@
+# Active Learning
+
+Most supervised learning assumes labels are free: you have a labeled training set, you fit a model, you move on. In practice labels are the expensive part. A radiologist annotating scans, a human rating the helpfulness of an LLM response, a technician running a wet-lab assay: each label costs money and time, while unlabeled inputs (raw images, web text, sensor logs) are cheap and plentiful.
+
+Active learning studies how a model can choose which examples to get labeled so that it learns more per label. Instead of labeling a random sample of the pool, the learner ranks unlabeled points by how useful their labels would be, asks an oracle^[An *oracle* is whatever can supply a true label on demand: a human annotator, a panel of raters, or a physical measurement. The word just means "the thing we pay to get a label," with no assumption that it is infallible.] (a human or an expensive measurement) for the most useful ones, retrains, and repeats. The goal is to reach a target accuracy with fewer labels than random sampling would need.
+
+> **Intuition:** A student who only studies the problems they already get right learns little. A student who seeks out the problems they find confusing learns fast. Active learning is the model behaving like the second student, spending its labeling budget on the examples it is least sure about.
+
+By the end of this chapter you will know the active-learning loop, the three families of query strategies (uncertainty, committee disagreement, and expected model change), and how to read a learning curve that shows the payoff. We close with a runnable demo in base R that compares smart querying against random sampling, plus a set of practical cautions so you know when the idea helps and when it can mislead.
+
+## Where this fits in a modern ML/AI workflow
+
+Active learning shows up wherever the labeling budget binds:
+
+- Building a labeled dataset from scratch for a classifier, where you can afford to label only a few thousand of millions of available inputs.
+- Data programming and human-in-the-loop pipelines, where annotators are the bottleneck and you want to route their attention to the examples that matter.
+- LLM alignment and evaluation, where preference labels or rubric scores are collected from people or from a strong judge model, and each query has a real dollar cost.
+- Model monitoring and drift, where you sample production traffic for human review and want to oversample the cases the current model is least sure about.
+
+The core loop is small and sits between your data store and your training code:
+
+```
+unlabeled pool  ->  query strategy  ->  oracle (human/measurement)  ->  labeled set  ->  model  -> (repeat)
+```
+
+The query strategy is the only new component. Everything else (the model, the training loop, the evaluation) is what you already have.
+
+> **Key idea:** Active learning does not invent a new model. It wraps a loop around your existing model that decides which labels to buy next. If you can fit a classifier and read off its predicted probabilities, you can run active learning.
+
+## Setup and notation
+
+Let $\mathcal{X} \subseteq \mathbb{R}^p$ be the input space and $\mathcal{Y} = \{1, \dots, K\}$ the label set for a $K$-class problem. We hold:
+
+- a small labeled set $\mathcal{L} = \{(x_i, y_i)\}_{i=1}^{n}$,
+- a large unlabeled pool $\mathcal{U} = \{x_j\}_{j=1}^{m}$ with $m \gg n$,
+- a budget $B$ of labels we are allowed to request.
+
+A model trained on $\mathcal{L}$ produces a class-probability estimate $\hat{p}_\theta(y \mid x)$, the model's guess at the chance that input $x$ belongs to each class. A query strategy is a scoring function $a(x)$, called the *acquisition function*, that assigns each $x \in \mathcal{U}$ a value, where higher means "more useful to label." Each round we pick the top points by $a(x)$, send them to the oracle, add the returned labels to $\mathcal{L}$, refit, and recompute $a$ on the remaining pool.
+
+> **Note:** The whole subject reduces to choosing $a(x)$. The sections below are really a tour of different sensible definitions of "useful," and the tradeoffs between them in cost and behavior.
+
+## Pool-based vs stream-based
+
+Two settings differ in how candidates arrive.
+
+In pool-based active learning the whole pool $\mathcal{U}$ is available at once. You score every point and pick the best. This is the common case in offline dataset construction and the one we demo below.
+
+In stream-based active learning inputs arrive one at a time and you must decide on the spot whether to pay for a label or discard the point. There is no global ranking, so you threshold the acquisition score: label $x$ if $a(x) \ge \tau$ for some threshold $\tau$ tuned to spend the budget at the right rate.^[Setting $\tau$ is the hard part: too low and you exhaust the budget on the first day's traffic, too high and you finish the month with labels unspent. A common fix is to track recent spend and nudge $\tau$ up or down to stay on pace.] This fits online systems and production traffic sampling, where storing and rescoring the full stream is impractical.
+
+> **When to use this:** Reach for pool-based active learning when you are building a dataset offline and can hold all candidates in memory. Reach for stream-based when points fly past in real time, as in sampling live production requests for human review, and you cannot revisit them later.
+
+Table \@ref(tab:active-learning-settings) lays out the two settings side by side, from how candidates arrive to how each one controls the labeling budget.
+
+```{r active-learning-settings, echo=FALSE}
+settings <- data.frame(
+  Aspect = c("Candidate access", "Decision", "Budget control",
+             "Typical use", "Main risk"),
+  `Pool-based` = c("All of U at once", "Rank, take top-k",
+                   "Pick exactly k per round",
+                   "Offline dataset building",
+                   "Rescoring a huge pool each round"),
+  `Stream-based` = c("One point at a time", "Label if a(x) >= tau",
+                     "Tune tau to hit spend rate",
+                     "Online / production sampling",
+                     "Wrong tau over- or under-spends"),
+  check.names = FALSE
+)
+knitr::kable(settings, caption = "Pool-based vs stream-based active learning.")
+```
+
+## Query strategies
+
+We now meet the three families of acquisition functions. They differ in what signal they use to judge "usefulness": the model's own confidence (uncertainty sampling), the disagreement among several models (query-by-committee), or the size of the update a label would trigger (expected model change). We start with the cheapest and most common.
+
+### Uncertainty sampling
+
+The simplest idea: label the points the current model is least confident about. With $\hat{p}_\theta(y \mid x)$ in hand there are three standard scores.
+
+Least confidence queries the point whose most likely label is least probable:
+
+$$
+a_{\mathrm{LC}}(x) = 1 - \max_{y} \hat{p}_\theta(y \mid x).
+$$
+
+Margin sampling looks at the gap between the top two classes. Let $y_1$ and $y_2$ be the first- and second-most-probable labels under the model. A small gap means the model is torn between them:
+
+$$
+a_{\mathrm{M}}(x) = -\big(\hat{p}_\theta(y_1 \mid x) - \hat{p}_\theta(y_2 \mid x)\big).
+$$
+
+We negate so that larger $a_{\mathrm{M}}$ still means "more useful." Equivalently, query the $x$ with the smallest margin $\hat{p}_\theta(y_1 \mid x) - \hat{p}_\theta(y_2 \mid x)$.
+
+Entropy uses the full predictive distribution:
+
+$$
+a_{\mathrm{H}}(x) = -\sum_{y=1}^{K} \hat{p}_\theta(y \mid x) \, \log \hat{p}_\theta(y \mid x).
+$$
+
+For binary problems all three rank points identically: each is maximized at $\hat{p} = 0.5$, the decision boundary. They diverge with three or more classes. Least confidence and margin focus on the top classes; entropy rewards spread across all classes, which can matter when many classes are plausible.
+
+For a binary logistic model with $\hat{p} = \hat{p}_\theta(y=1 \mid x)$, all three scores peak where $\hat{p} = 0.5$, that is, on the fitted decision boundary $x^\top \hat\beta = 0$. Uncertainty sampling therefore pulls queries toward the current boundary.
+
+> **Intuition:** Picture the model drawing a line between two classes. The points it is least sure about are the ones sitting right on the line. Labeling those tells the model exactly where the line should go, which is far more informative than labeling a point deep inside a region it already understands.
+
+### Query-by-committee
+
+Train a committee of $C$ models $\{\theta^{(1)}, \dots, \theta^{(C)}\}$ that all fit $\mathcal{L}$ but disagree off it (via bootstrapping, different seeds, or different model families). Query the points where the committee disagrees most. One measure is vote entropy: let $V(y, x)$ be the number of committee members predicting class $y$ for $x$, then
+
+$$
+a_{\mathrm{QBC}}(x) = -\sum_{y=1}^{K} \frac{V(y, x)}{C} \, \log \frac{V(y, x)}{C}.
+$$
+
+A soft alternative is the average Kullback-Leibler divergence^[The Kullback-Leibler divergence $\mathrm{KL}(p \,\|\, q) = \sum_y p(y)\log\frac{p(y)}{q(y)}$ measures how far one probability distribution sits from another. Here it measures how far each committee member's prediction sits from the group consensus, so a large value flags a member that strongly disagrees.] of each member from the consensus $\bar{p}(y \mid x) = \frac{1}{C}\sum_c \hat{p}_{\theta^{(c)}}(y \mid x)$:
+
+$$
+a_{\mathrm{KL}}(x) = \frac{1}{C} \sum_{c=1}^{C}
+  \sum_{y=1}^{K} \hat{p}_{\theta^{(c)}}(y \mid x)
+  \log \frac{\hat{p}_{\theta^{(c)}}(y \mid x)}{\bar{p}(y \mid x)}.
+$$
+
+The intuition is that high disagreement marks regions of the input space where the data so far does not pin down the model, so a label there is informative.
+
+### Expected model change
+
+Pick the point whose label, once added, would change the model the most. A common version is expected gradient length: for a model trained by gradient methods with loss $\ell$, score $x$ by the size of the training gradient its label would induce, averaged over the labels the current model thinks are possible:
+
+$$
+a_{\mathrm{EGL}}(x) = \sum_{y=1}^{K} \hat{p}_\theta(y \mid x)
+  \left\| \nabla_\theta \, \ell\big((x, y); \theta\big) \right\|.
+$$
+
+A large expected gradient means the new example would move the parameters substantially, which is taken as a proxy for learning a lot. This is more expensive (a gradient per candidate per possible label) and is sensitive to feature scaling, since gradient norms inherit the scale of the inputs.
+
+> **Warning:** Expected model change rewards points that would jolt the parameters hard, but a hard jolt is not always good learning. Outliers and mislabeled points also produce large gradients, so this strategy can chase noise. Standardize features first and watch for it spending budget on junk.
+
+### Strategy comparison
+
+Table \@ref(tab:active-learning-strategies) summarizes the three families side by side, including what each one scores, its computational cost, and the situations where it tends to shine.
+
+```{r active-learning-strategies, echo=FALSE}
+strat <- data.frame(
+  Strategy = c("Least confidence", "Margin", "Entropy",
+               "Query-by-committee", "Expected model change"),
+  `What it scores` = c("1 - max prob",
+                       "gap between top two probs",
+                       "entropy of predictive dist",
+                       "committee disagreement",
+                       "expected gradient / param change"),
+  Cost = c("very low", "very low", "low",
+           "medium (train C models)", "high (grad per candidate)"),
+  `Needs probabilities` = c("yes", "yes", "yes",
+                            "votes or probs", "no (uses gradients)"),
+  `Good when` = c("calibrated probs, binary/few classes",
+                  "many classes, top-2 confusion",
+                  "many classes, broad uncertainty",
+                  "model unstable / small L",
+                  "expensive labels, gradient models"),
+  check.names = FALSE
+)
+knitr::kable(strat, caption = "Query strategies at a glance.")
+```
+
+## Runnable demo: uncertainty vs random sampling
+
+We simulate a binary classification problem, then compare two label-acquisition policies under the same budget:
+
+1. Random sampling: pick the next batch uniformly at random from the pool (the baseline).
+2. Uncertainty sampling: pick the pool points whose predicted probability is closest to $0.5$ under the current `glm` fit.
+
+Both start from the same small seed set and the same model (logistic regression via `glm`). We track test accuracy as a function of the number of labels acquired. Everything here is base R.
+
+> **Tip:** To compare label-acquisition policies fairly, hold everything else fixed: the same seed batch, the same model, the same held-out test set. The only thing that may differ between runs is which points get queried. That isolation is what lets us attribute any accuracy gap to the query strategy rather than to luck in the starting data.
+
+```{r al-data, eval=TRUE}
+.libPaths(c("C:/Users/miken/R/library-4.4", .libPaths()))
+set.seed(1301)
+
+# Simulate two classes with overlapping Gaussian clusters in 2D.
+# The optimal boundary is nonlinear-ish but glm still learns a useful one.
+make_data <- function(n) {
+  # class 0: two blobs; class 1: two blobs, interleaved
+  k <- n %/% 4
+  s <- 1.4                       # cluster spread: larger = more class overlap
+  c0 <- rbind(
+    cbind(rnorm(k, -2, s), rnorm(k, -2, s)),
+    cbind(rnorm(k,  2, s), rnorm(k,  2, s))
+  )
+  c1 <- rbind(
+    cbind(rnorm(k, -2, s), rnorm(k,  2, s)),
+    cbind(rnorm(k,  2, s), rnorm(k, -2, s))
+  )
+  X <- rbind(c0, c1)
+  y <- c(rep(0L, nrow(c0)), rep(1L, nrow(c1)))
+  # add an interaction-friendly feature so a linear glm can separate the XOR pattern
+  data.frame(x1 = X[, 1], x2 = X[, 2], x1x2 = X[, 1] * X[, 2], y = y)
+}
+
+pool_all  <- make_data(4000)   # large unlabeled pool
+test_set  <- make_data(2000)   # fixed held-out test set
+
+# The two classes form an XOR pattern, which no straight line in (x1, x2) can
+# split. Adding the product feature x1*x2 gives the linear glm a coordinate in
+# which the classes ARE linearly separable, so logistic regression can learn
+# a useful boundary. This is the classic feature-engineering fix for XOR.
+
+# Reserve indices for the pool; labels exist in simulation but the learner
+# may only "see" a label once it spends budget to query that row.
+pool_idx  <- seq_len(nrow(pool_all))
+```
+
+```{r al-loop, eval=TRUE}
+fit_glm <- function(train) {
+  suppressWarnings(
+    glm(y ~ x1 + x2 + x1x2, data = train, family = binomial())
+  )
+}
+
+test_accuracy <- function(model, test) {
+  p   <- predict(model, newdata = test, type = "response")
+  yhat <- as.integer(p > 0.5)
+  mean(yhat == test$y)
+}
+
+# One active-learning run. strategy is "uncertainty" or "random".
+run_al <- function(strategy, seed,
+                   n_seed = 20, batch = 10, budget = 300) {
+  set.seed(seed)
+  available <- pool_idx
+  # initial seed labels, drawn at random for both strategies
+  labeled <- sample(available, n_seed)
+  available <- setdiff(available, labeled)
+
+  n_labels <- integer(0)
+  acc      <- numeric(0)
+
+  repeat {
+    train <- pool_all[labeled, ]
+    model <- fit_glm(train)
+
+    n_labels <- c(n_labels, length(labeled))
+    acc      <- c(acc, test_accuracy(model, test_set))
+
+    if (length(labeled) >= budget || length(available) == 0) break
+
+    take <- min(batch, length(available))
+    if (strategy == "random") {
+      chosen <- sample(available, take)
+    } else {
+      # uncertainty: probability closest to 0.5 over the remaining pool
+      p_pool <- predict(model, newdata = pool_all[available, ],
+                        type = "response")
+      score  <- abs(p_pool - 0.5)          # smaller = more uncertain
+      chosen <- available[order(score)[seq_len(take)]]
+    }
+    labeled   <- c(labeled, chosen)
+    available <- setdiff(available, chosen)
+  }
+  data.frame(strategy = strategy, seed = seed,
+             n_labels = n_labels, accuracy = acc)
+}
+
+# Average over several seeds to smooth out sampling noise.
+seeds <- 1:15
+runs <- do.call(rbind, lapply(seeds, function(s) {
+  rbind(run_al("uncertainty", s), run_al("random", s))
+}))
+
+# Average accuracy at each label count, per strategy.
+curve <- aggregate(accuracy ~ strategy + n_labels, data = runs, FUN = mean)
+head(curve[order(curve$n_labels), ], 6)
+```
+
+The learning curves in Figure \@ref(fig:active-learning-curve) plot mean test accuracy against the number of labels spent. The uncertainty curve sits above the random curve over most of the budget: it reaches a given accuracy with fewer labels, which is exactly the win active learning is after. The gap is widest in the middle of the budget and shrinks at the end, because once enough labels are spent both policies approach the accuracy ceiling of this model and data.
+
+```{r active-learning-curve, eval=TRUE, fig.width=7, fig.height=4.5, fig.cap="Learning curves comparing uncertainty sampling against random sampling. Test accuracy is averaged over 15 seeds at each label count, and uncertainty sampling reaches higher accuracy per label over most of the budget."}
+ul <- curve[curve$strategy == "uncertainty", ]
+rl <- curve[curve$strategy == "random", ]
+ul <- ul[order(ul$n_labels), ]
+rl <- rl[order(rl$n_labels), ]
+
+plot(ul$n_labels, ul$accuracy, type = "l", lwd = 2, col = "#1b6ca8",
+     ylim = range(curve$accuracy),
+     xlab = "Number of labels acquired",
+     ylab = "Mean test accuracy",
+     main = "Active learning vs random sampling")
+lines(rl$n_labels, rl$accuracy, lwd = 2, col = "#b8341b", lty = 2)
+legend("bottomright",
+       legend = c("Uncertainty sampling", "Random sampling"),
+       col = c("#1b6ca8", "#b8341b"), lwd = 2, lty = c(1, 2), bty = "n")
+grid()
+```
+
+```{r al-savings, eval=TRUE}
+# Labels each strategy needs to first reach a target accuracy.
+labels_to_reach <- function(df, target) {
+  hit <- df[df$accuracy >= target, ]
+  if (nrow(hit) == 0) return(NA_integer_)
+  min(hit$n_labels)
+}
+target <- 0.86
+u_need <- labels_to_reach(ul, target)
+r_need <- labels_to_reach(rl, target)
+data.frame(
+  target_accuracy = target,
+  uncertainty_labels = u_need,
+  random_labels = r_need
+)
+```
+
+The last table reports how many labels each policy needs to first cross a target accuracy. When uncertainty sampling crosses it earlier, the difference is the label budget you save by querying smartly instead of uniformly. (Exact numbers depend on the seed and simulation, so read the gap, not the absolute counts.)
+
+## A note on probabilities and committees
+
+The demo uses raw `glm` probabilities for the score. Two refinements carry over to real work.
+
+First, uncertainty sampling trusts the model's probabilities, so calibration matters. A model is *calibrated* when its stated probabilities match reality: among inputs it labels "70% class 1," about 70% truly are. If $\hat{p}$ is overconfident, the "closest to 0.5" set may not be the genuinely ambiguous set. Calibrating probabilities (Platt scaling, isotonic regression) before scoring helps.
+
+> **Warning:** A model can be confidently wrong. An overconfident model pushes most predictions toward 0 or 1, so very few points look uncertain, and the ones that do may not be the truly hard cases. Calibrate before you trust an uncertainty score.
+
+Second, query-by-committee needs only a set of differing models. A cheap committee is a handful of bootstrap refits of the same `glm`: resample $\mathcal{L}$ with replacement, fit each, and score pool points by the variance of their predicted probabilities across committee members. High variance flags disagreement and is a drop-in replacement for the `abs(p - 0.5)` score above.
+
+## Practical guidance
+
+The strategies above sound like a free win, and often they are. But the same focus that makes active learning efficient also gives it sharp edges. This section collects the conditions under which it pays off and the failure modes to watch for.
+
+Active learning tends to help when these three conditions hold together:
+
+- Labels are expensive and unlabeled data is abundant.
+- The model class is a reasonable fit for the data, so its uncertainty estimates mean something.
+- You can retrain cheaply enough to run several query rounds.
+
+Just as often, though, the strategy backfires in predictable ways. Watch for the following:
+
+- Cold start. Early on, the seed model is bad and its uncertainty is noise. Begin with a random or diversity-based seed batch before switching to uncertainty.
+- Sampling bias. Uncertainty sampling deliberately builds a non-random, boundary-heavy labeled set. That set is great for fitting the boundary but is not a representative sample, so do not use it to estimate class priors or population statistics, and keep a separate random test set for honest evaluation.
+- Outliers and label noise. Uncertainty scores spike on garbage inputs and mislabeled points, so the strategy can waste budget querying noise. Filter obvious outliers first, and consider density-weighted scores $a(x) \cdot \mathrm{density}(x)^\beta$ that down-weight isolated points.
+- Redundant batches. Top-$k$ by uncertainty often selects near-duplicate points clustered on one stretch of the boundary. Batch-mode methods add a diversity term (cluster the candidate set, or use determinantal point processes) so a batch covers different regions.
+- Model and oracle drift. If the labeling guidelines or the data distribution shift mid-collection, earlier queries may no longer reflect what you need.
+- Reproducibility. Because the labeled set depends on the model that selected it, results are tied to the strategy and seeds. Log which strategy chose each label.
+
+> **Key idea:** The actively chosen labels are deliberately biased toward the decision boundary, so they are excellent training data but a terrible random sample. Never estimate population quantities (class frequencies, base rates) from them, and always evaluate on a separate, randomly drawn test set.
+
+Putting the cautions together, here is a sensible default recipe: seed with a small random (or clustered) batch, use margin or entropy sampling with calibrated probabilities, query in modest batches with a light diversity penalty, and always evaluate on a fixed random held-out set rather than on the actively chosen data.
+
+## Further reading
+
+- Settles, B. (2009, revised 2012). *Active Learning Literature Survey* and *Active Learning* (Synthesis Lectures on AI and ML). The standard reference for query strategies and settings.
+- Lewis, D. D., and Gale, W. A. (1994). A sequential algorithm for training text classifiers. The origin of uncertainty sampling.
+- Seung, H. S., Opper, M., and Sompolinsky, H. (1992). Query by committee.
+- Cohn, D. A., Ghahramani, Z., and Jordan, M. I. (1996). Active learning with statistical models.
+- Sener, O., and Savarese, S. (2018). Active learning for convolutional neural networks: a core-set approach. A diversity-driven, batch-mode view that scales to deep models.
+- Gal, Y., Islam, R., and Ghahramani, Z. (2017). Deep Bayesian active learning with image data (BALD with MC dropout).

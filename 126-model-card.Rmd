@@ -1,0 +1,56 @@
+# Model Card
+
+Imagine you are handed a powerful predictive model that someone else built. It scores loan applications, flags medical images, or decides which job postings to show a user. Before you trust it, you would want to ask some basic questions: What was it trained on? Who built it, and for what purpose? When does it work well, and when does it quietly fail? A model card is a short, structured document that answers exactly these questions. It plays the same role for a machine learning model that a nutrition label plays for packaged food: a standardized summary that lets non-experts make an informed decision without reverse-engineering the recipe.
+
+In this chapter you will learn what a model card is, why it exists, what sections it typically contains, and where to find tooling to produce one. The goal is not to train a new model but to document one responsibly so that the people affected by its predictions can understand and scrutinize it. This sits naturally alongside the interpretability material elsewhere in the book: interpretability tells you *why* a model made a particular prediction, while a model card tells you *whether and where* the model should be used at all.
+
+> **Key idea:** A model card does not change what a model does. It changes who can understand and challenge it, by making the model's intended use, performance, and limitations explicit and public.
+
+## Why model cards exist
+
+The idea of the model card was introduced by Margaret Mitchell and colleagues [@Mitchell_2019] and popularized through [Google's Model Card](https://modelcards.withgoogle.com/about) effort. It grew out of a practical problem: machine learning models increasingly make or influence decisions about people, yet the people affected, regulators, auditors, and even downstream engineers rarely have a clear picture of how a model behaves across different groups. A model can post strong overall accuracy while performing badly for a particular subgroup, and that gap stays invisible unless someone reports it.
+
+Model cards are an attempt to bring transparency, fairness, and equity to the many stakeholders affected by AI models, not just the team that built them.^[Stakeholders here include end users whose data is scored, decision subjects affected by the output, policy makers, and the practitioners who later reuse or fine-tune the model. Each group needs a different slice of the same underlying facts.] By writing down intended use and measured performance up front, the authors of a model take on a small accountability burden that pays off when the model is reused, audited, or questioned later.
+
+> **Intuition:** Think of a model card as the difference between "trust me, it works" and "here is the evidence, broken down by group, so you can judge for yourself." The second is harder to write and much harder to argue with.
+
+## What a model card contains
+
+A model card is organized into a handful of standard sections so that any reader knows where to look. The exact headings vary by template, but most cards cover the following, and it helps to introduce them as a checklist rather than prose:
+
+ * Model details: who developed the model, the version and date, the model type and architecture, and how to cite or contact the team.
+ * Intended use: the primary use cases the model was designed for, the intended users, and explicitly out-of-scope uses the authors do not endorse.
+ * Factors: the relevant groups, instruments, or environments along which performance is reported, such as demographic groups, camera types, or lighting conditions.
+ * Metrics: which performance measures are reported (for example accuracy, false positive rate, or error bands) and why those measures were chosen for this task.
+ * Evaluation and training data: what datasets were used, how they were collected, and any preprocessing, so a reader can judge whether the data matches their own setting.
+ * Quantitative analysis: the metrics actually broken down by the factors above, which is where hidden subgroup gaps become visible.
+ * Ethical considerations and limitations: known risks, failure modes, and recommendations for responsible deployment.
+
+The single most important move in that list is the combination of *factors* and *quantitative analysis*: reporting performance disaggregated by group rather than as one headline number.
+
+> **Warning:** A model that is 95% accurate overall can still be 60% accurate for a minority subgroup. A model card that reports only the aggregate number hides exactly the information a fairness review needs. Always read the disaggregated metrics, not just the summary line.
+
+> **When to use this:** Write a model card whenever a model will be used by people other than its authors, will affect decisions about people, or will be reused in a context different from the one it was trained for. For a one-off exploratory model that never leaves your laptop, a full card is overkill.
+
+## Worked examples to imitate
+
+The fastest way to learn the format is to read finished cards. Google published two reference cards that serve well as templates, because they show the disaggregated reporting style in a concrete setting:
+
+ * [Face Detection](https://modelcards.withgoogle.com/face-detection)
+ * [Object Detection](https://modelcards.withgoogle.com/object-detection)
+
+Notice how each one states the intended use, then reports performance sliced by factors such as perceived skin tone, age, or gender, and is candid about where the model is weaker. That structure, plain language on top and disaggregated numbers underneath, is the pattern worth copying.
+
+> **Tip:** When drafting your own card, start by filling in the *intended use* and *out-of-scope use* sections first. Pinning down what the model is *not* for often clarifies which factors and metrics actually matter.
+
+## Tooling, and a gap in R
+
+The good news is that you do not have to build a card by hand. There is a pre-defined template and toolkit in [Python](https://github.com/tensorflow/model-card-toolkit), a worked [example](https://www.googlenewsapp.com/using-model-card-toolkit-for-tf-model-transparency/) of using it for a TensorFlow model, and guidance on how to [deploy](https://cloud.google.com/blog/products/ai-machine-learning/create-a-model-card-with-scikit-learn) a model card built from a scikit-learn model. These tools generate the standard sections, plot the disaggregated metrics, and render a shareable document.
+
+The bad news, at least at the time of writing, is that there does not seem to be an equivalent turnkey package in R.^[This is a genuine opportunity rather than a dead end. Because a model card is ultimately a structured document, an R user can assemble one with the same tools used throughout this book: compute disaggregated metrics with the modeling packages you already know, then render the card as an R Markdown or bookdown document. The format matters more than the language that produces it.] An R practitioner who wants a model card today can still produce one by computing the required disaggregated metrics directly and writing them into a templated R Markdown report.
+
+> **Note:** Nothing about the model card concept is tied to Python. The Python toolkit is convenient, but the deliverable is just a well-organized report. If you can compute group-wise metrics in R, you can write a perfectly valid model card in R.
+
+## Summary
+
+A model card is a short, standardized document that records what a model is for, what data it was built on, how well it performs (broken down by group, not just in aggregate), and where it should not be used. It was introduced to bring transparency and fairness to the stakeholders affected by a model, and its most valuable feature is disaggregated performance reporting. Mature tooling exists in Python; in R you can reproduce the same document by hand using the modeling and reporting tools you already have. The takeaway is simple: once a model leaves the bench and starts affecting people, documenting it with a card is part of doing the job well.

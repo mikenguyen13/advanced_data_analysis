@@ -1,0 +1,577 @@
+# Transfer and Multi-Task Learning
+
+```{r setup-tml, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Most of the models in this book are trained on one dataset to solve one
+prediction problem. Transfer learning and multi-task learning relax that
+assumption. Transfer learning reuses knowledge learned on a source problem
+to help a related target problem, usually one with less labeled data.
+Multi-task learning trains a single model on several related tasks at once
+so that the tasks share statistical strength. Both ideas rest on the same
+bet: if two problems are related, then the data for one carries information
+about the other, and a model that respects that relatedness can beat models
+trained in isolation.
+
+This chapter explains where these methods fit in a modern workflow, derives
+the multi-task objective for the linear case, and gives a runnable base-R
+demonstration that compares a joint multi-task estimator to independent
+per-task models on simulated related tasks. By the end you should be able to
+say, for a given problem, whether to train tasks separately, pool them into
+one, or tie them together with a tunable penalty, and to recognize when
+sharing backfires.
+
+> **Intuition:** Think of two students studying for related exams. If they
+> compare notes, each learns faster than working alone, as long as the
+> subjects truly overlap. If the subjects are unrelated, swapping notes just
+> adds confusion. Transfer and multi-task learning automate that judgment:
+> share when sharing pays, and back off when it does not.
+
+## Intuition and workflow context
+
+A data scientist rarely starts from zero. A churn model for a new product
+line can borrow from a churn model on an established line. A sentiment
+classifier for a niche domain can start from a general language model. A
+demand forecast for a store that opened last month can borrow from stores
+that have years of history. In each case the target task has little data but
+a related source task has a lot, and we want to move usable structure from
+source to target.
+
+It helps to fix notation. Let a task be indexed by $t = 1, \dots, T$. Task
+$t$ has data $\{(x_{ti}, y_{ti})\}_{i=1}^{n_t}$ drawn from a distribution
+$P_t(x, y)$. In standard supervised learning we fit one model per task by
+minimizing its own loss. Transfer and multi-task learning instead assume the
+$P_t$ share structure, for example a common feature representation or
+parameter vectors that are close to one another, and they exploit that
+shared structure during fitting.
+
+Two distinctions organize the field.
+
+The first is the direction of reuse. *Transfer learning* is asymmetric: a
+source model is trained first, then adapted to a target. *Multi-task
+learning* is symmetric: all tasks are trained together and each is allowed
+to help the others.
+
+The second is what gets shared. In deep models the dominant transfer pattern
+is to share a learned representation (the lower layers of a network) and keep
+task-specific heads on top.^[A *head* is the small task-specific output layer
+that sits on top of a shared *backbone* or *body*. The backbone turns raw
+inputs into features; the head maps features to that task's predictions.] In
+classical models the shared object is more often the coefficient vector or a
+low-dimensional subspace that the coefficients live in.
+
+> **Key idea:** Transfer learning and multi-task learning are not separate
+> algorithms so much as a stance: assume related problems share structure,
+> then design the model so that structure can be reused. The rest of this
+> chapter is about *what* to share and *how strongly*.
+
+In a modern ML/AI workflow these methods show up at predictable points. When
+you pull a pretrained image or text encoder and adapt it, that is transfer
+learning. When you train one model to predict several related business
+outcomes from the same features, that is multi-task learning. When your
+training distribution differs from your serving distribution, the repair is
+domain adaptation, a special case of transfer where the label space is fixed
+but the input distribution shifts.
+
+## Feature extraction versus fine-tuning
+
+The previous section set up the two big choices, direction of reuse and what
+gets shared. We now zoom in on the most common modern case: the shared object
+is a pretrained representation, and you want to adapt it to your target task.
+There are two ways to do that.
+
+*Feature extraction* freezes the pretrained network and uses its output (or
+an intermediate layer) as a fixed feature vector. You train only a small new
+head, for example a logistic regression or a shallow dense layer, on those
+features. This is cheap, needs little target data, and cannot overfit the
+backbone because the backbone does not move.
+
+*Fine-tuning* unfreezes some or all of the pretrained weights and continues
+training them on the target task, usually with a smaller learning rate so the
+pretrained structure is not destroyed. This is more expensive and needs more
+target data, but it lets the representation itself adapt to the target.
+
+The choice is governed by how much target data you have and how similar the
+source and target are. Table \@ref(tab:transfer-multitask-learning-adapt-guidance)
+summarizes the standard guidance, following @Yosinski_2014 and the practical
+advice in @Howard_2018.
+
+| Target data | Source vs target similarity | Recommended approach |
+|---|---|---|
+| Small | Similar | Feature extraction, train head only |
+| Small | Different | Feature extraction from earlier layers |
+| Large | Similar | Fine-tune the whole network |
+| Large | Different | Fine-tune, or train from scratch |
+
+Table: (\#tab:transfer-multitask-learning-adapt-guidance) Recommended adaptation strategy as a function of target data size and source-target similarity.
+
+> **When to use this:** With only a few hundred labeled target examples,
+> default to feature extraction: it has few parameters to estimate and cannot
+> damage the backbone. Reach for fine-tuning only when target data are
+> plentiful enough to move the backbone safely without overfitting.
+
+A useful refinement is *gradual unfreezing*: start by training the head with
+the backbone frozen, then unfreeze the top blocks, then deeper blocks, each
+time with a lower learning rate. This protects the most general (lowest)
+layers, which tend to transfer across tasks, while letting the most specific
+(highest) layers adapt.
+
+The following Keras sketch shows both patterns on an image backbone. It is
+not run here because it needs a GPU and downloaded weights, but it is correct
+idiomatic code.
+
+```{r keras-finetune, eval=FALSE}
+library(keras)
+
+# Pretrained backbone without its classification head
+base <- application_efficientnet_b0(
+  include_top = FALSE,
+  weights = "imagenet",
+  input_shape = c(224, 224, 3),
+  pooling = "avg"
+)
+
+# --- Pattern 1: feature extraction (backbone frozen) ---
+freeze_weights(base)
+
+model <- keras_model_sequential() %>%
+  base() %>%
+  layer_dropout(0.2) %>%
+  layer_dense(units = 10, activation = "softmax")
+
+model %>% compile(
+  optimizer = optimizer_adam(learning_rate = 1e-3),
+  loss = "categorical_crossentropy",
+  metrics = "accuracy"
+)
+# model %>% fit(train_ds, epochs = 5, validation_data = val_ds)
+
+# --- Pattern 2: fine-tuning (unfreeze top of backbone) ---
+unfreeze_weights(base, from = "block6a_expand_conv")
+
+model %>% compile(
+  optimizer = optimizer_adam(learning_rate = 1e-5),  # small LR
+  loss = "categorical_crossentropy",
+  metrics = "accuracy"
+)
+# model %>% fit(train_ds, epochs = 10, validation_data = val_ds)
+```
+
+## Domain adaptation
+
+Feature extraction and fine-tuning assume the source and target solve
+different tasks. The next pattern is the opposite: the task stays the same but
+the inputs come from a different distribution. Domain adaptation handles the
+case where the task is fixed but the input distribution moves. Let the source domain be $P_S(x, y)$ and the target
+domain $P_T(x, y)$. *Covariate shift* is the assumption that the conditional
+$P(y \mid x)$ is the same in both domains while the marginal $P(x)$ differs,
+so $P_S(x) \neq P_T(x)$ but $P_S(y \mid x) = P_T(y \mid x)$.
+
+Under covariate shift the right correction is importance weighting. The
+target risk can be written as an expectation over the source distribution
+reweighted by the density ratio $w(x) = P_T(x) / P_S(x)$:
+
+$$
+\mathbb{E}_{P_T}[\ell(f(x), y)]
+= \mathbb{E}_{P_S}\!\left[ \frac{P_T(x)}{P_S(x)}\, \ell(f(x), y) \right].
+$$
+
+> **Intuition:** Importance weighting says: trust source points that look
+> like target points, and discount source points that do not. A source
+> example sitting in a region the target rarely visits gets a small weight, so
+> the fitted model concentrates on the part of input space you actually care
+> about at serving time.
+
+So you fit the model on source data but weight each source point by how
+likely it is under the target marginal. Estimating $w(x)$ directly by
+density estimation is hard, so in practice you train a classifier to
+distinguish source from target inputs and turn its probability into the
+weight, as in @Sugiyama_2007. When representations are learned, an
+alternative is to align the source and target feature distributions during
+training, for example by matching their means and covariances or by an
+adversarial domain classifier, as in @Ganin_2016.
+
+## Parameter sharing: hard and soft
+
+Domain adaptation reused a representation across input distributions. We now
+turn to the symmetric, multi-task side: training several tasks together. When
+tasks are trained together, the architecture decides how parameters are
+shared. There are two canonical schemes, described in @Ruder_2017.
+
+*Hard parameter sharing* uses one shared body for all tasks and a small
+task-specific head per task. The shared body is forced to learn a
+representation that serves every task. This is the most common multi-task
+setup, it is parameter-efficient, and the shared body acts as a strong
+regularizer because it must fit all tasks at once.
+
+*Soft parameter sharing* gives each task its own full set of parameters but
+adds a penalty that keeps the parameters of different tasks close. Nothing is
+literally shared; the coupling is through the penalty. This is more flexible
+when tasks are only loosely related, at the cost of more parameters.
+
+> **Note:** Hard sharing forces tasks to use exactly the same body, so the
+> coupling is total and not tunable. Soft sharing keeps separate parameters
+> and tunes the coupling through a penalty, so you can dial sharing from none
+> to near-total. That tunability is what makes the soft case the right one to
+> study in detail.
+
+The base-R demonstration below is an instance of soft sharing in its purest
+linear form. Each task has its own coefficient vector, and a penalty pulls
+the vectors toward a common center.
+
+## Multi-task linear model: derivation
+
+Consider $T$ linear regression tasks. Task $t$ has design matrix
+$X_t \in \mathbb{R}^{n_t \times p}$, response $y_t \in \mathbb{R}^{n_t}$, and
+coefficient vector $\beta_t \in \mathbb{R}^p$. Independent ordinary least
+squares solves $T$ separate problems:
+
+$$
+\hat\beta_t^{\,\text{ind}}
+= \arg\min_{\beta_t} \; \lVert y_t - X_t \beta_t \rVert_2^2,
+\qquad t = 1, \dots, T.
+$$
+
+When the tasks are related, their true coefficient vectors are close to a
+shared center. We model this with a decomposition $\beta_t = \beta_0 + v_t$,
+where $\beta_0$ is a common vector shared by all tasks and $v_t$ is a small
+task-specific deviation. We then penalize the deviations.
+
+> **Intuition:** The split $\beta_t = \beta_0 + v_t$ says each task is the
+> shared answer plus a small personal correction. Penalizing only $v_t$ keeps
+> the corrections small unless the data really demand them, which is exactly
+> the "borrow by default, deviate when justified" behavior we want.
+
+The joint objective is
+
+$$
+\min_{\beta_0,\, v_1, \dots, v_T}
+\; \sum_{t=1}^{T} \lVert y_t - X_t (\beta_0 + v_t) \rVert_2^2
+\;+\; \lambda \sum_{t=1}^{T} \lVert v_t \rVert_2^2 .
+$$
+
+The penalty $\lambda$ controls how much the tasks are tied together. As
+$\lambda \to 0$ each task is free and we recover independent fits (each task
+absorbs everything into its own $v_t$). As $\lambda \to \infty$ all
+deviations are forced to zero, $\beta_t = \beta_0$ for every task, and we
+recover a single pooled model fit on the stacked data. Intermediate
+$\lambda$ interpolates between these two extremes, which is exactly the
+multi-task regime: borrow strength across tasks without forcing them to be
+identical. This is the regularized multi-task formulation of
+@Evgeniou_2004.
+
+The objective is a single quadratic in the stacked parameter vector
+$\theta = (\beta_0, v_1, \dots, v_T)$, so it has a closed form. Build a block
+design matrix $Z$ where the columns for $\beta_0$ repeat $X_t$ across all
+task rows and the columns for $v_t$ contain $X_t$ only on task $t$'s rows.
+Stack all responses into $y$. With a diagonal penalty matrix $P$ that
+penalizes only the $v_t$ blocks (entries $\lambda$) and not $\beta_0$
+(entries $0$), the solution is ridge-like:
+
+$$
+\hat\theta = (Z^\top Z + P)^{-1} Z^\top y .
+$$
+
+> **Note:** This is just ridge regression on a cleverly laid-out design
+> matrix. The only twist is that the penalty matrix $P$ leaves the shared
+> block $\beta_0$ unpenalized and applies $\lambda$ only to the deviation
+> blocks $v_t$. Once you see that, the multi-task estimator is no harder to
+> compute than any other ridge fit.
+
+Each task estimate is then $\hat\beta_t = \hat\beta_0 + \hat v_t$. The next
+section builds exactly this $Z$ and $P$ in base R.
+
+## Runnable demonstration
+
+We simulate $T$ related regression tasks. Each task's true coefficients
+equal a shared vector plus a small random deviation, so the tasks are related
+but not identical. Each task gets only a modest sample, the situation where
+borrowing strength should help. We compare three estimators: independent OLS
+per task, a single pooled model, and the joint multi-task estimator across a
+grid of $\lambda$. We evaluate by out-of-sample mean squared error against
+the known truth.
+
+```{r mtl-simulate}
+set.seed(2026)
+
+T_tasks <- 6      # number of tasks
+p       <- 5      # number of predictors per task
+n_train <- 25     # small training sample per task
+n_test  <- 500    # large test sample per task
+
+# Shared coefficient center plus small task-specific deviations.
+beta0_true <- c(1.5, -2.0, 0.0, 1.0, -0.5)
+sigma_dev  <- 0.4   # how far tasks drift from the shared center
+sigma_eps  <- 1.0   # noise standard deviation
+
+# True per-task coefficients: beta_t = beta0 + deviation_t
+beta_true <- lapply(1:T_tasks, function(t) {
+  beta0_true + rnorm(p, mean = 0, sd = sigma_dev)
+})
+
+make_task <- function(t, n) {
+  X <- matrix(rnorm(n * p), nrow = n, ncol = p)
+  y <- as.numeric(X %*% beta_true[[t]]) + rnorm(n, sd = sigma_eps)
+  list(X = X, y = y)
+}
+
+train <- lapply(1:T_tasks, function(t) make_task(t, n_train))
+test  <- lapply(1:T_tasks, function(t) make_task(t, n_test))
+```
+
+Independent OLS, fit one task at a time.
+
+```{r mtl-independent}
+fit_independent <- function(task) {
+  # No intercept: data are centered around zero by construction.
+  solve(crossprod(task$X), crossprod(task$X, task$y))
+}
+beta_ind <- lapply(train, fit_independent)
+```
+
+The pooled model stacks all tasks and fits a single coefficient vector,
+the $\lambda \to \infty$ limit of the joint objective.
+
+```{r mtl-pooled}
+X_all <- do.call(rbind, lapply(train, `[[`, "X"))
+y_all <- do.call(c,    lapply(train, `[[`, "y"))
+beta_pool <- solve(crossprod(X_all), crossprod(X_all, y_all))
+```
+
+Now the joint multi-task estimator. We build the block matrix $Z$ and the
+penalty $P$ described in the derivation, then solve the ridge-like system.
+
+```{r mtl-joint}
+fit_mtl <- function(train, lambda, p, T_tasks) {
+  n_t <- sapply(train, function(z) length(z$y))
+  N   <- sum(n_t)
+
+  # Z has p shared columns followed by p columns per task.
+  Z <- matrix(0, nrow = N, ncol = p * (T_tasks + 1))
+  y <- numeric(N)
+
+  row0 <- 0
+  for (t in 1:T_tasks) {
+    rows <- (row0 + 1):(row0 + n_t[t])
+    Z[rows, 1:p] <- train[[t]]$X                       # shared block beta0
+    cols <- (t * p + 1):((t + 1) * p)                  # deviation block v_t
+    Z[rows, cols] <- train[[t]]$X
+    y[rows] <- train[[t]]$y
+    row0 <- row0 + n_t[t]
+  }
+
+  # Penalty: 0 on the shared block, lambda on every deviation block.
+  pen <- c(rep(0, p), rep(lambda, p * T_tasks))
+  P   <- diag(pen)
+
+  theta <- solve(crossprod(Z) + P, crossprod(Z, y))
+
+  beta0 <- theta[1:p]
+  betas <- lapply(1:T_tasks, function(t) {
+    beta0 + theta[(t * p + 1):((t + 1) * p)]
+  })
+  list(beta0 = beta0, betas = betas)
+}
+```
+
+A common test-MSE helper, evaluated against held-out data per task.
+
+```{r mtl-eval}
+test_mse <- function(beta_list) {
+  errs <- sapply(1:T_tasks, function(t) {
+    pred <- as.numeric(test[[t]]$X %*% beta_list[[t]])
+    mean((test[[t]]$y - pred)^2)
+  })
+  mean(errs)
+}
+
+mse_ind  <- test_mse(beta_ind)
+mse_pool <- test_mse(rep(list(beta_pool), T_tasks))
+
+lambda_grid <- 10^seq(-2, 3, length.out = 30)
+mse_mtl <- sapply(lambda_grid, function(lam) {
+  fit <- fit_mtl(train, lam, p, T_tasks)
+  test_mse(fit$betas)
+})
+
+best_idx    <- which.min(mse_mtl)
+best_lambda <- lambda_grid[best_idx]
+best_mse    <- mse_mtl[best_idx]
+
+results <- data.frame(
+  method   = c("Independent OLS", "Pooled", "Multi-task (best lambda)"),
+  test_mse = round(c(mse_ind, mse_pool, best_mse), 4)
+)
+print(results)
+cat("Best lambda:", round(best_lambda, 3), "\n")
+```
+
+Reading the printed table: the multi-task estimator at its best $\lambda$ has
+the lowest mean test MSE, beating both independent OLS (too noisy, because
+each task fits only 25 points) and pooling (too biased, because the tasks are
+not identical). The reported best $\lambda$ is an interior value, neither near
+zero nor near infinity, which is the signature of genuine borrowing.
+
+Figure \@ref(fig:transfer-multitask-learning-mse-curve) shows how multi-task
+test error varies with $\lambda$, with the
+independent and pooled baselines as horizontal references. The U shape is the
+bias-variance trade-off across the sharing strength: too little sharing
+behaves like the noisy independent fits, too much sharing behaves like the
+biased pooled fit, and the minimum sits in between.
+
+```{r transfer-multitask-learning-mse-curve, fig.width=7, fig.height=4.5, fig.cap="Multi-task test MSE versus sharing strength, against independent and pooled baselines."}
+library(ggplot2)
+
+df <- data.frame(lambda = lambda_grid, mse = mse_mtl)
+
+ggplot(df, aes(x = lambda, y = mse)) +
+  geom_line(color = "steelblue", linewidth = 1) +
+  geom_point(color = "steelblue") +
+  geom_hline(yintercept = mse_ind, linetype = "dashed", color = "firebrick") +
+  geom_hline(yintercept = mse_pool, linetype = "dotted", color = "darkgreen") +
+  annotate("point", x = best_lambda, y = best_mse, color = "black", size = 3) +
+  scale_x_log10() +
+  annotate("text", x = min(lambda_grid), y = mse_ind,
+           label = "Independent OLS", color = "firebrick",
+           hjust = 0, vjust = -0.6, size = 3.3) +
+  annotate("text", x = min(lambda_grid), y = mse_pool,
+           label = "Pooled", color = "darkgreen",
+           hjust = 0, vjust = -0.6, size = 3.3) +
+  labs(x = expression(lambda~"(log scale)"),
+       y = "Mean test MSE across tasks",
+       title = "Borrowing strength across related tasks") +
+  theme_minimal(base_size = 12)
+```
+
+With small per-task samples and genuinely related tasks, the multi-task
+estimator at its best $\lambda$ should beat both baselines: it avoids the
+high variance of independent OLS and the bias of pooling. If you increase
+`n_train` substantially, the independent fits improve and the gap shrinks,
+because each task no longer needs to borrow. If you increase `sigma_dev` so
+the tasks drift far apart, pooling and small-$\lambda$ multi-task degrade,
+which is negative transfer, discussed next.
+
+> **Tip:** Try editing `n_train`, `sigma_dev`, and `sigma_eps` and rerunning.
+> Watching the U-shaped curve flatten, deepen, or invert builds far more
+> intuition than any single number in the table. The whole point of a runnable
+> demonstration is that the trade-off is yours to probe.
+
+## Negative transfer
+
+Sharing helps only when tasks are actually related. When they are not, forcing
+them to share hurts, and the shared model does worse than independent models.
+This failure is called negative transfer, surveyed in @Pan_2010 and
+@Zhang_2021.
+
+> **Warning:** Negative transfer is not a rare edge case; it is the default
+> outcome when you assume relatedness without checking it. The discipline that
+> protects you is simple: always keep an independent-model baseline and refuse
+> to ship a shared model that loses to it on a clean target holdout.
+
+You can see it directly in the demonstration. The pooled model is the
+$\lambda \to \infty$ limit, and when `sigma_dev` is large the pooled MSE rises
+above the independent MSE: the tasks are too different to share a single
+coefficient vector. The remedy is to let $\lambda$ be chosen by validation
+rather than fixed, so the data decide how much sharing is appropriate, and to
+let it go small when sharing does not pay.
+
+Practical signals of negative transfer: a multi-task model whose per-task
+metrics are worse than separately trained models; one dominant task whose
+gradients swamp the others; or source and target distributions that look
+unrelated under a two-sample test. The defenses are task weighting (next
+section), grouping only tasks that are similar, and architectures that share
+less (soft sharing, or task-specific layers).
+
+## Task weighting
+
+When tasks are trained jointly the total loss is a weighted sum,
+
+$$
+\mathcal{L} = \sum_{t=1}^{T} w_t \, \mathcal{L}_t ,
+$$
+
+and the weights $w_t$ matter.^[Setting every $w_t = 1$ looks neutral but is
+not: it implicitly weights each task by its raw loss scale, so a task measured
+in larger units silently dominates.] If one task has a much larger loss scale
+or many more examples, it dominates the gradient and the others are under-fit.
+The simplest fix is to normalize each task's loss to a comparable scale.
+Beyond that, two learned schemes are common.
+
+*Uncertainty weighting* (@Kendall_2018) treats each task's noise level as a
+parameter $\sigma_t$ and derives weights from a Gaussian likelihood. For
+regression tasks the objective becomes
+
+$$
+\mathcal{L}
+= \sum_{t=1}^{T}
+\left( \frac{1}{2 \sigma_t^2}\, \mathcal{L}_t + \log \sigma_t \right),
+$$
+
+so a task with high uncertainty gets a small weight $1 / (2\sigma_t^2)$, and
+the $\log \sigma_t$ term prevents the weights from collapsing to zero. The
+$\sigma_t$ are learned by gradient descent alongside the model.
+
+*Gradient normalization* (@Chen_2018) instead adjusts the weights so that the
+tasks train at similar rates, by balancing the magnitudes of their gradients
+on the shared parameters. Both methods aim at the same goal: keep any single
+task from dominating, which is one of the main causes of negative transfer.
+
+## Practical guidance and pitfalls
+
+When to reach for these methods:
+
+- The target task has little labeled data but a related, data-rich source
+  exists. Transfer learning is the default starting point.
+- You must predict several related outcomes from the same inputs. A
+  multi-task model can beat separate models and is cheaper to serve.
+- Your training and serving input distributions differ. Domain adaptation,
+  through importance weighting or representation alignment, is the repair.
+
+Pitfalls to watch:
+
+- *Assuming relatedness.* Verify it. Check whether sharing actually improves
+  held-out per-task metrics versus independent baselines. If it does not, you
+  have negative transfer.
+- *Data leakage during transfer.* If you select the source model or tune
+  $\lambda$ using the target test set, your reported gains are optimistic.
+  Keep a clean target holdout.
+- *Distribution shift in the source.* A pretrained backbone encodes its
+  source distribution. If the target inputs differ sharply (different sensors,
+  languages, time periods), early-layer features may not transfer.
+- *Catastrophic forgetting during fine-tuning.* Too high a learning rate
+  erases the pretrained structure. Use small learning rates and gradual
+  unfreezing.
+- *Imbalanced tasks.* Normalize loss scales and consider learned task
+  weighting so that large or noisy tasks do not dominate.
+- *Tuning the sharing strength on the wrong signal.* In the linear model,
+  pick $\lambda$ by cross-validation on the target, not by training error,
+  which always prefers small $\lambda$.
+
+A reasonable default recipe: start with feature extraction or a moderately
+penalized multi-task model, establish an independent-model baseline, tune the
+sharing strength on validation data, and only move to full fine-tuning or
+strong sharing if the data are abundant and the relatedness is confirmed.
+
+> **Key idea:** Every method in this chapter is a knob on a single dial, from
+> fully independent models to a single shared model. Transfer, multi-task,
+> domain adaptation, and task weighting are all ways of choosing, and
+> defending, where to set that dial. Let validation data, not optimism, make
+> the choice.
+
+## Further reading
+
+- Caruana (1997), the foundational treatment of multi-task learning as
+  inductive transfer.
+- Evgeniou and Pontil (2004), regularized multi-task learning, the formulation
+  used in this chapter's demonstration.
+- Pan and Yang (2010), a broad survey of transfer learning.
+- Yosinski, Clune, Bengio, and Lipson (2014), on how transferable features are
+  across layers of deep networks.
+- Ganin et al. (2016), domain-adversarial training for domain adaptation.
+- Ruder (2017), an overview of multi-task learning in deep networks, including
+  hard and soft parameter sharing.
+- Kendall, Gal, and Cipolla (2018), uncertainty-based task weighting.
+- Chen et al. (2018), GradNorm for gradient-based task balancing.
+- Howard and Ruder (2018), discriminative fine-tuning and gradual unfreezing.
+- Zhang and Yang (2021), a recent survey of multi-task learning methods.

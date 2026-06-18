@@ -1,0 +1,28 @@
+# Netlify configuration for the Advanced Data Analysis book.
+#
+# The book is rendered LOCALLY (it needs R + many packages, which is impractical
+# to install on Netlify's build image). Two supported deploy paths:
+#
+#   A. Quarto push-deploy (recommended): render locally, then
+#        quarto publish netlify
+#      Quarto uploads the rendered _book/ directly. No Git build needed.
+#
+#   B. Git-connected deploy of a pre-rendered site: commit _book/ and connect the
+#      repo to Netlify. This file makes Netlify serve _book/ as-is (no build).
+
+[build]
+  publish = "_book"
+  command = ""   # do not build on Netlify; _book is pre-rendered
+
+# Long-cache the hashed asset bundles; keep HTML fresh.
+[[headers]]
+  for = "/site_libs/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"

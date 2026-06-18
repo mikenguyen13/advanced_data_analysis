@@ -148,7 +148,7 @@ The next sequence follows the example from the package's own authors [@sparapani
 -   `x1 = rm`, the average number of rooms, and
 -   `x2 = lstat`, the percent of the population that is lower status.
 
-Before fitting anything, it pays to look at the raw relationships. Figure @fig-BART-scatter-raw shows each predictor against the response and the two predictors against each other.
+Before fitting anything, it pays to look at the raw relationships. @fig-BART-scatter-raw shows each predictor against the response and the two predictors against each other.
 
 ```{r fig-BART-scatter-raw, fig.cap="Scatterplots of the raw Boston data: median home value against average number of rooms (x1=rm), median home value against percent lower status (x2=lstat), and the two predictors against each other."}
 library(MASS)
@@ -179,7 +179,7 @@ post <- wbart(x, y, nskip = burn, ndpost = nd)
 
 ### Checking convergence
 
-Because BART is an MCMC method, we should never trust the output until we have checked that the chain actually converged. A standard diagnostic is to plot the sampled error standard deviation `sigma` across iterations: if the chain has settled, the trace should stop drifting and fluctuate around a stable level. Figure @fig-BART-sigma-trace shows this trace, where the red line marks the end of the burn-in period.
+Because BART is an MCMC method, we should never trust the output until we have checked that the chain actually converged. A standard diagnostic is to plot the sampled error standard deviation `sigma` across iterations: if the chain has settled, the trace should stop drifting and fluctuate around a stable level. @fig-BART-sigma-trace shows this trace, where the red line marks the end of the burn-in period.
 
 ```{r fig-BART-sigma-trace, fig.cap="Trace of the sampled error standard deviation sigma across MCMC iterations. The vertical red line marks the end of the burn-in period; the trace flattens and fluctuates around a stable level, indicating good convergence."}
 plot(post$sigma, type = "l")
@@ -193,7 +193,7 @@ The trace flattens out quickly and stays level after burn-in, which indicates go
 
 ### Comparing predictions with linear regression
 
-To put BART's fitted values in context, we compare them against ordinary linear regression on the same two predictors. We line up the observed `y`, the BART fitted means, and the linear model fitted values, then look at their correlations and the pairwise scatterplots in Figure @fig-BART-fit-pairs.
+To put BART's fitted values in context, we compare them against ordinary linear regression on the same two predictors. We line up the observed `y`, the BART fitted means, and the linear model fitted values, then look at their correlations and the pairwise scatterplots in @fig-BART-fit-pairs.
 
 ```{r BART-fit-pairs, fig.cap="Pairwise scatterplots of the observed response, BART fitted means, and linear-regression fitted values. The BART fitted values track the observed response more closely than the linear fit."}
 lmf <- lm(y~., data.frame(x, y))
@@ -207,7 +207,7 @@ The correlation matrix and the scatterplots tell the story: BART's fitted values
 
 ### From point predictions to uncertainty
 
-One of BART's selling points is that every prediction comes with a posterior distribution, not just a single number. Figure @fig-BART-posterior-boxplot shows, for each training observation (sorted by its fitted mean), the spread of predictions across the retained posterior draws. Wider boxes mean more uncertainty about that observation's prediction.
+One of BART's selling points is that every prediction comes with a posterior distribution, not just a single number. @fig-BART-posterior-boxplot shows, for each training observation (sorted by its fitted mean), the spread of predictions across the retained posterior draws. Wider boxes mean more uncertainty about that observation's prediction.
 
 ```{r fig-BART-posterior-boxplot, fig.cap="Boxplots of the posterior predictive draws for each training observation, sorted by fitted mean. Wider boxes indicate greater predictive uncertainty for that observation."}
 i <- order(post$yhat.train.mean)
@@ -230,7 +230,7 @@ In the same chunk we also create a proper 75/25 train/test split and refit, prod
 
 ### Thinning to save time and memory
 
-Long MCMC runs can produce huge output objects, and consecutive draws are correlated anyway, so we often *thin* the chain: run many iterations but keep only a subset. Thinning trades a little statistical efficiency for large savings in memory and storage. Below we run a long chain (1000 burn-in, 10000 draws) but keep only 200 tree draws, then predict on the test set and compare against the earlier, unthinned predictions in Figure @fig-BART-thin-pairs.^[The `nkeep*` arguments control which parts of the output are stored. Setting `nkeeptrain`, `nkeeptest`, and `nkeeptestmean` to 0 tells `wbart` not to keep those potentially large matrices, while `nkeeptreedraws = 200` keeps 200 tree ensembles so we can still predict later with `predict`.]
+Long MCMC runs can produce huge output objects, and consecutive draws are correlated anyway, so we often *thin* the chain: run many iterations but keep only a subset. Thinning trades a little statistical efficiency for large savings in memory and storage. Below we run a long chain (1000 burn-in, 10000 draws) but keep only 200 tree draws, then predict on the test set and compare against the earlier, unthinned predictions in @fig-BART-thin-pairs.^[The `nkeep*` arguments control which parts of the output are stored. Setting `nkeeptrain`, `nkeeptest`, and `nkeeptestmean` to 0 tells `wbart` not to keep those potentially large matrices, while `nkeeptreedraws = 200` keeps 200 tree ensembles so we can still predict later with `predict`.]
 
 ```{r BART-thin-pairs, fig.cap="Pairwise scatterplots of the observed test response, the full unthinned predictions (yhat), and the thinned predictions (yhatThin). The thinned predictions line up closely with the full predictions."}
 set.seed(4)
@@ -259,7 +259,7 @@ The scatterplots show that the thinned predictions (`yhatThin`) line up closely 
 
 Finally, we look at variable importance in a way that shows not just *whether* a variable matters but *how* it shapes the prediction. Friedman's partial dependence function answers the question: if we sweep one predictor across its range while averaging over the distribution of all the other predictors, how does the predicted response move?
 
-The procedure builds a grid of values for `lstat` (the 13th column), replaces that column with each grid value while holding the other columns at their observed combinations, predicts, and averages. In Figure @fig-BART-partial-dependence, the solid line is the average partial-dependence curve and the dashed lines are pointwise 2.5% and 97.5% posterior quantiles, giving an uncertainty band around the effect.
+The procedure builds a grid of values for `lstat` (the 13th column), replaces that column with each grid value while holding the other columns at their observed combinations, predicts, and averages. In @fig-BART-partial-dependence, the solid line is the average partial-dependence curve and the dashed lines are pointwise 2.5% and 97.5% posterior quantiles, giving an uncertainty band around the effect.
 
 ```{r fig-BART-partial-dependence, fig.cap="Partial dependence of predicted median home value on the lower-status percentage (lstat). The solid line is the average partial-dependence curve and the dashed lines are pointwise 2.5% and 97.5% posterior quantiles."}
 x.train <- as.matrix(MASS::Boston[i,-14])

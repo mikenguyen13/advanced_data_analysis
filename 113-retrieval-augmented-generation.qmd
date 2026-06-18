@@ -25,7 +25,7 @@ A RAG system has two phases.
 
 2.  Serving (online). Embed the user's query with the same embedding model, retrieve the nearest chunks, optionally rerank them, assemble a prompt that contains the question and the retrieved chunks, and call the language model to produce a grounded answer with citations.
 
-The decision of RAG versus fine-tuning is not exclusive. Fine-tuning changes how a model behaves (tone, format, task skill); RAG changes what a model knows (facts, current documents). Teams often do both: fine-tune for the response style, retrieve for the facts. Table @tbl-retrieval-augmented-generation-rag-vs-finetune lays the three options side by side so you can see which lever each one pulls.
+The decision of RAG versus fine-tuning is not exclusive. Fine-tuning changes how a model behaves (tone, format, task skill); RAG changes what a model knows (facts, current documents). Teams often do both: fine-tune for the response style, retrieve for the facts. @tbl-retrieval-augmented-generation-rag-vs-finetune lays the three options side by side so you can see which lever each one pulls.
 
 | Property | RAG | Fine-tuning | Long-context prompting |
 |----|----|----|----|
@@ -107,7 +107,7 @@ The reranker is typically a cross-encoder. For each candidate chunk $c_j$ in the
 
 > **Intuition:** The first stage casts a wide net to make sure the right chunk is somewhere in the haul; the reranker then sorts the haul carefully so the best chunk ends up on top. Doing both is cheaper than running the careful sort over the whole corpus and more accurate than trusting the wide net's rough ordering.
 
-Table @tbl-retrieval-augmented-generation-two-stage contrasts the two stages on the model they use, the set they run over, what they optimize, and their cost.
+@tbl-retrieval-augmented-generation-two-stage contrasts the two stages on the model they use, the set they run over, what they optimize, and their cost.
 
 | Stage | Model type | Runs over | Optimized for | Cost per query |
 |----|----|----|----|----|
@@ -212,7 +212,7 @@ The retriever ranks the energy and ATP chunks above the Paris chunks for an ener
 
 ### A Figure: Score Separation Across Queries
 
-Figure @fig-retrieval-augmented-generation-score-separation shows the retrieval scores of every chunk for two queries on different topics. A working retriever should separate the on-topic chunks (high score) from the off-topic ones (low score). The gap between the two groups is what makes top-$k$ selection reliable.
+@fig-retrieval-augmented-generation-score-separation shows the retrieval scores of every chunk for two queries on different topics. A working retriever should separate the on-topic chunks (high score) from the off-topic ones (low score). The gap between the two groups is what makes top-$k$ selection reliable.
 
 ```{r fig-retrieval-augmented-generation-score-separation, fig.width=7, fig.height=4.5, fig.cap="Cosine retrieval scores for every chunk under two queries. Each query scores its on-topic chunks well above the rest, and the gap is what top-k selection exploits."}
 score_all <- function(query, E, vocab) {
@@ -290,7 +290,7 @@ $$
 
 where $Q$ is the set of evaluation queries and $r_q$ is the rank of the first relevant chunk for query $q$. Recall@$k$ asks whether the answer is in the candidate set at all (the first-stage job); MRR rewards putting it near the top (the reranker's job).
 
-Generation metrics assess the answer given the retrieved context. The two that matter most for RAG are faithfulness (every claim in the answer is supported by the retrieved context, which detects hallucination) and answer relevance (the answer addresses the question). These are often scored by an LLM-as-judge^[*LLM-as-judge* means using a second language model to grade the first model's output, for example to decide whether each claim is supported by the context. It scales far better than human grading but introduces its own biases, so calibrate it against human labels before trusting it.]: a separate model is prompted to check each claim against the context. Treat judge scores as noisy and validate them against a small human-labeled sample. Table @tbl-retrieval-augmented-generation-eval-metrics gathers the retrieval and generation metrics and pairs each one with the failure it detects.
+Generation metrics assess the answer given the retrieved context. The two that matter most for RAG are faithfulness (every claim in the answer is supported by the retrieved context, which detects hallucination) and answer relevance (the answer addresses the question). These are often scored by an LLM-as-judge^[*LLM-as-judge* means using a second language model to grade the first model's output, for example to decide whether each claim is supported by the context. It scales far better than human grading but introduces its own biases, so calibrate it against human labels before trusting it.]: a separate model is prompted to check each claim against the context. Treat judge scores as noisy and validate them against a small human-labeled sample. @tbl-retrieval-augmented-generation-eval-metrics gathers the retrieval and generation metrics and pairs each one with the failure it detects.
 
 | Metric | What it measures | Detects which failure |
 |----|----|----|

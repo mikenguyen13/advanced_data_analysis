@@ -65,7 +65,7 @@ $$
 \qquad N = T - h - t_0 + 1 .
 $$
 
-Figure @fig-time-series-forecasting-rolling-origin illustrates the expanding-window scheme: each row is one origin, blue points are training, the orange point is the value being forecast, and gray points are not yet visible to the model.
+@fig-time-series-forecasting-rolling-origin illustrates the expanding-window scheme: each row is one origin, blue points are training, the orange point is the value being forecast, and gray points are not yet visible to the model.
 
 ```{r fig-time-series-forecasting-rolling-origin, fig.cap="Expanding-window rolling-origin evaluation. Each horizontal row is one forecast origin; the model trains on the blue points and is scored on the orange (future) point, while the gray points remain hidden. The origin advances downward, so no training point ever comes from after the point being scored.", fig.width=6.5, fig.height=4}
 set.seed(1)
@@ -90,7 +90,7 @@ legend("topright", legend = c("train", "forecast target", "hidden future"),
        bty = "n", cex = 0.9)
 ```
 
-Figure @fig-time-series-forecasting-rolling-origin makes the rule visual: read any row left to right and the orange target always sits to the right of every blue training point.
+@fig-time-series-forecasting-rolling-origin makes the rule visual: read any row left to right and the orange target always sits to the right of every blue training point.
 
 > **Note:** Leakage also hides inside feature engineering. If you scale features using the mean and standard deviation of the whole series, or impute missing values with a global statistic, the training rows have absorbed information from the test period. Compute every such statistic on the training window only, inside each fold.
 
@@ -253,7 +253,7 @@ xgb_pred <- exp(xgb_log_pred)           # back to passenger counts
 
 ### Visualizing the Forecasts
 
-Figure @fig-time-series-forecasting-forecasts overlays the four forecasts on the held-out period. The seasonal naive forecast keeps the right shape but misses the growth; ETS and ARIMA track both trend and seasonality closely; the boosting model, trained only on lags and calendar position, recovers the seasonal pattern from data alone.
+@fig-time-series-forecasting-forecasts overlays the four forecasts on the held-out period. The seasonal naive forecast keeps the right shape but misses the growth; ETS and ARIMA track both trend and seasonality closely; the boosting model, trained only on lags and calendar position, recovers the seasonal pattern from data alone.
 
 ```{r fig-time-series-forecasting-forecasts, fig.cap="Forecasts of monthly AirPassengers counts over the 24-month hold-out period. The black line is the truth; colored lines are the seasonal naive, ETS, ARIMA, and xgboost forecasts. ETS, ARIMA, and xgboost all capture trend and seasonality, while the seasonal naive baseline misses the upward growth.", fig.width=7, fig.height=4.5}
 actual <- y[test_idx]
@@ -274,7 +274,7 @@ legend("topleft", bty = "n", lwd = 2,
        legend = c("actual", "seasonal naive", "ETS", "ARIMA", "xgboost"))
 ```
 
-Figure @fig-time-series-forecasting-forecasts is a single-split snapshot. To judge the methods fairly we must average over many origins, which is the next step.
+@fig-time-series-forecasting-forecasts is a single-split snapshot. To judge the methods fairly we must average over many origins, which is the next step.
 
 ### Rolling-Origin Evaluation
 
@@ -341,7 +341,7 @@ results <- rbind(
 results <- round(results, 3)
 ```
 
-Table @tbl-time-series-forecasting-results reports the rolling-origin errors across `r length(origins)` one-step forecasts. Lower is better on all three columns, and a MASE below 1 beats the seasonal naive baseline.
+@tbl-time-series-forecasting-results reports the rolling-origin errors across `r length(origins)` one-step forecasts. Lower is better on all three columns, and a MASE below 1 beats the seasonal naive baseline.
 
 ```{r tbl-time-series-forecasting-results}
 knitr::kable(
@@ -350,7 +350,7 @@ knitr::kable(
 )
 ```
 
-Table @tbl-time-series-forecasting-results tells the realistic story: the statistical models (ETS, ARIMA) are very strong on a clean, strongly seasonal series like this one, and a generic boosting model trained on a handful of lag features is competitive but does not automatically dominate. That ordering is typical and worth internalizing.
+@tbl-time-series-forecasting-results tells the realistic story: the statistical models (ETS, ARIMA) are very strong on a clean, strongly seasonal series like this one, and a generic boosting model trained on a handful of lag features is competitive but does not automatically dominate. That ordering is typical and worth internalizing.
 
 > **Key idea:** On short, clean, strongly seasonal univariate series, well-tuned classical methods are hard to beat. Machine-learning forecasters earn their keep when you have many related series, many exogenous predictors, nonlinear interactions, or irregular structure that ARIMA and ETS cannot express.
 
@@ -380,7 +380,7 @@ Forecasting projects fail in predictable ways. The recurring lessons:
 
 - Always benchmark against naive methods. The seasonal naive and the last-value naive forecasts are free. If your elaborate model cannot beat them on a rolling-origin backtest, the complexity is not buying anything.
 - Evaluate with the deployment horizon. If you will forecast 12 weeks ahead, backtest at $h=12$, not $h=1$. One-step accuracy is a poor proxy for multi-step accuracy because errors compound.
-- Refit inside the backtest loop. Statistics used by features (means, scales) and model parameters must be recomputed on each training window. Fitting once on all data and then "evaluating" leaks the future, exactly the trap Table @tbl-time-series-forecasting-results avoids by refitting at every origin.
+- Refit inside the backtest loop. Statistics used by features (means, scales) and model parameters must be recomputed on each training window. Fitting once on all data and then "evaluating" leaks the future, exactly the trap @tbl-time-series-forecasting-results avoids by refitting at every origin.
 - Mind non-stationarity. Trends and changing variance violate the assumptions of many models. Differencing ($\nabla y_t = y_t - y_{t-1}$), seasonal differencing, and log or Box-Cox transforms are the standard fixes; ARIMA's middle "I" is integrated differencing.
 - Watch the warm-up cost. Large lags shorten your usable training data. A seasonal lag of 12 throws away the first year before any row is complete.
 - Tune the right thing. For boosting, the number of rounds, tree depth, and learning rate interact; tune them with the same rolling-origin scheme you use for evaluation, never with a random split.

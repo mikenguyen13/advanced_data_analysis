@@ -72,7 +72,7 @@ The second method, *permutation importance*, is model-agnostic and more trustwor
 
 > **Intuition:** Permutation importance asks, "if I scramble this column, how much worse does the model get?" A feature the model truly depends on, when scrambled, wrecks the predictions. An irrelevant feature can be scrambled with no effect.
 
-The `vip` package computes both kinds (Greenwell and Boehmke, 2020). We start with the impurity-based version, which random forest already stored for us; Figure @fig-interpretable-machine-learning-vip-impurity shows the result.
+The `vip` package computes both kinds (Greenwell and Boehmke, 2020). We start with the impurity-based version, which random forest already stored for us; @fig-interpretable-machine-learning-vip-impurity shows the result.
 
 ```{r fig-interpretable-machine-learning-vip-impurity, message=FALSE, warning=FALSE, fig.cap="Impurity-based feature importance from the random forest."}
 library(vip)
@@ -80,7 +80,7 @@ vip(rf, num_features = 9, geom = "col") +
   ggtitle("Impurity-based importance")
 ```
 
-Now the model-agnostic permutation version, which we compute on the test set so that it reflects generalization rather than fit; Figure @fig-interpretable-machine-learning-vip-perm shows the result.
+Now the model-agnostic permutation version, which we compute on the test set so that it reflects generalization rather than fit; @fig-interpretable-machine-learning-vip-perm shows the result.
 
 ```{r fig-interpretable-machine-learning-vip-perm, message=FALSE, warning=FALSE, fig.cap="Permutation-based feature importance on held-out data."}
 pred_fun <- function(object, newdata) predict(object, newdata = newdata)
@@ -97,7 +97,7 @@ vip(
 ) + ggtitle("Permutation importance")
 ```
 
-Read these plots (Figures @fig-interpretable-machine-learning-vip-impurity and @fig-interpretable-machine-learning-vip-perm) from the top down: the longest bars are the features the model leans on most. For Ames, overall quality and above-ground living area dominate in both methods, which matches intuition about what drives house prices and matches the large coefficients in our linear model. When the two importance methods agree, you can be fairly confident in the ranking. When they disagree, the disagreement is itself informative, often pointing to the cardinality bias of the impurity measure.
+Read these plots (@fig-interpretable-machine-learning-vip-impurity and @fig-interpretable-machine-learning-vip-perm) from the top down: the longest bars are the features the model leans on most. For Ames, overall quality and above-ground living area dominate in both methods, which matches intuition about what drives house prices and matches the large coefficients in our linear model. When the two importance methods agree, you can be fairly confident in the ranking. When they disagree, the disagreement is itself informative, often pointing to the cardinality bias of the impurity measure.
 
 > **Warning:** Importance tells you *how much* a feature matters, not *which direction* it pushes predictions or *what shape* its effect has. A feature can be highly important and have a U-shaped effect that a single number cannot convey. For direction and shape, we need the effect plots in the next section.
 
@@ -111,7 +111,7 @@ Mechanically, to draw the partial dependence of price on living area, we do the 
 
 > **Key idea:** A PDP marginalizes over the other features by brute force. It literally asks the model, "if this one feature were *x*, what would you predict on average across the population?" The result isolates the feature's effect from the others, as long as the features are not strongly correlated.
 
-The `pdp` package implements this directly (Greenwell, 2017), and Figure @fig-interpretable-machine-learning-pdp-single shows the partial dependence of price on living area.
+The `pdp` package implements this directly (Greenwell, 2017), and @fig-interpretable-machine-learning-pdp-single shows the partial dependence of price on living area.
 
 ```{r fig-interpretable-machine-learning-pdp-single, message=FALSE, warning=FALSE, fig.cap="Partial dependence of predicted sale price on above-ground living area."}
 library(pdp)
@@ -122,7 +122,7 @@ plotPartial(pd_area, main = "Partial dependence: living area")
 
 The curve rises from left to right: bigger houses cost more, as expected, and the slope flattens at the high end, suggesting diminishing returns to sheer size. A linear model could never have shown that bend; the PDP read it straight out of the forest.
 
-Partial dependence can also show how two features interact, by varying them jointly on a grid and drawing the result as a surface or heatmap. Figure @fig-interpretable-machine-learning-pdp-two looks at price as a function of living area and overall quality together.
+Partial dependence can also show how two features interact, by varying them jointly on a grid and drawing the result as a surface or heatmap. @fig-interpretable-machine-learning-pdp-two looks at price as a function of living area and overall quality together.
 
 ```{r fig-interpretable-machine-learning-pdp-two, message=FALSE, warning=FALSE, fig.cap="Two-way partial dependence on living area and overall quality."}
 pd_two <- partial(rf, pred.var = c("Gr_Liv_Area", "Overall_Qual"),
@@ -134,7 +134,7 @@ The PDP has one important blind spot. Because it averages over the population, i
 
 > **Intuition:** A PDP is the chorus; ICE plots are the individual voices. If every voice sings the same melody, the chorus represents them faithfully. If the voices split into groups singing different tunes, the average is misleading and the ICE plot reveals it.
 
-Figure @fig-interpretable-machine-learning-ice draws the centered ICE curves for living area together with their average.
+@fig-interpretable-machine-learning-ice draws the centered ICE curves for living area together with their average.
 
 ```{r fig-interpretable-machine-learning-ice, message=FALSE, warning=FALSE, fig.cap="Centered ICE plot for living area; the thick line is the partial dependence (average)."}
 ice_area <- partial(rf, pred.var = "Gr_Liv_Area", train = train,
@@ -168,7 +168,7 @@ The recipe is:
 
 > **Intuition:** LIME does not try to understand the whole model. It only builds a tiny, faithful caricature that is accurate right around the one prediction you care about, and trusts that caricature exactly that far and no further.
 
-The `lime` package implements this for R (Pedersen and Benesty, 2021). We explain the model's predictions for two specific houses from the test set, and Figure @fig-interpretable-machine-learning-lime shows the result.
+The `lime` package implements this for R (Pedersen and Benesty, 2021). We explain the model's predictions for two specific houses from the test set, and @fig-interpretable-machine-learning-lime shows the result.
 
 ```{r fig-interpretable-machine-learning-lime, message=FALSE, warning=FALSE, fig.width=8, fig.cap="LIME explanations for two individual house-price predictions."}
 library(lime)

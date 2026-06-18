@@ -2,7 +2,12 @@
 
 ```{r}
 #| include: false
+#| cache: false
 suppressPackageStartupMessages(library(tidyverse))
+# The parallel-computing examples spawn live worker processes (PSOCK clusters,
+# multidplyr, foreach), which are fragile to run during a book build, so they are
+# shown for reference but not executed. cache = FALSE keeps this in force.
+knitr::opts_chunk$set(eval = FALSE)
 ```
 
 Most of the analyses in this book run in a single, uninterrupted line of computation: the computer does one thing, finishes it, and moves on to the next. That is fine when each step is quick. It becomes painful when you have to repeat the same calculation thousands of times, fit hundreds of models for cross-validation, or grind through a data set too large to chew in one sitting. This chapter is about a simple idea for those situations: if a job can be split into pieces that do not depend on each other, you can hand the pieces to several workers and let them run at the same time. That is parallel computing.
@@ -37,7 +42,7 @@ Every parallel setup in R has the same two roles, and naming them makes the rest
 
 The *backend* is simply the channel through which the director and workers talk to each other. R offers two kinds, and the difference between them explains a lot of the behavior you will see later.
 
-Table @tbl-parallel-computing-backends summarizes the two backends.
+@tbl-parallel-computing-backends summarizes the two backends.
 
 | Type  | Available on                          | Works across machines in a cluster | How workers get their environment                                                       |
 |-------|---------------------------------------|------------------------------------|-----------------------------------------------------------------------------------------|
@@ -58,10 +63,20 @@ With the vocabulary in place, the rest of the chapter walks through four tools, 
 
 If you already think in `dplyr` verbs, `multidplyr` is the gentlest entry point: it lets you split a data frame across workers and run familiar `dplyr` operations on each piece in parallel, then gather the results back together.
 
-Figure @fig-parallel-computing-multidplyr-workflow sketches the idea: a data frame is split into groups, each group is shipped to a separate worker, the same `dplyr` operation runs on every worker at once, and the pieces are gathered back into one result.
+@fig-parallel-computing-multidplyr-workflow sketches the idea: a data frame is split into groups, each group is shipped to a separate worker, the same `dplyr` operation runs on every worker at once, and the pieces are gathered back into one result.
 
-```{r fig-parallel-computing-multidplyr-workflow, echo=FALSE, fig.cap="The multidplyr workflow: a data frame is partitioned across workers, the same dplyr operation runs on each piece in parallel, and the per-worker results are collected back into a single data frame. Figure by Business Science."}
-knitr::include_graphics("images/multidplyr.png")
+```{mermaid}
+%%| label: fig-parallel-computing-multidplyr-workflow
+%%| fig-cap: "The multidplyr workflow: a data frame is partitioned across workers, the same dplyr operation runs on each piece in parallel, and the per-worker results are collected back into a single data frame."
+graph LR
+  DF["Data frame"] --> PART["partition_df()"]
+  PART --> W1["Worker 1:<br/>dplyr pipeline"]
+  PART --> W2["Worker 2:<br/>dplyr pipeline"]
+  PART --> W3["Worker 3:<br/>dplyr pipeline"]
+  W1 --> COL["collect()"]
+  W2 --> COL
+  W3 --> COL
+  COL --> RES["Combined result"]
 ```
 
 There are two situations where this pays off:

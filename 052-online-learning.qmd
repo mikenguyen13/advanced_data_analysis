@@ -22,7 +22,7 @@ In a batch workflow you retrain on a schedule (nightly, weekly) and ship a new m
 
 Online learning addresses both. Each example is processed once, used to update the model, and discarded. Memory and per-step compute stay constant regardless of how many examples have been seen.^[This $O(1)$ per-step cost is the property that makes a stream of unbounded length feasible at all: whether you have seen a thousand examples or a billion, the work to absorb the next one is the same.] Because the update is incremental, the model tracks a moving target instead of freezing at a snapshot.
 
-To place online learning next to its relatives, Table @tbl-online-learning-paradigm-comparison contrasts how each style accesses data, what it costs, and where it shines.
+To place online learning next to its relatives, @tbl-online-learning-paradigm-comparison contrasts how each style accesses data, what it costs, and where it shines.
 
 | Property | Batch learning | Mini-batch SGD | Online / streaming |
 |---|---|---|---|
@@ -131,7 +131,7 @@ and the sample variance is $s_t^2 = M_{2,t} / (t-1)$. Each step is $O(1)$ in tim
 
 In the code below, `welford_update` carries the running state (count, mean, and $M_2$) and returns the new state after seeing one value. The `stopifnot` lines at the end are a self-check: they confirm the one-pass result equals what `mean()` and `var()` compute from the whole stored vector.
 
-Figure @fig-online-learning-welford-demo shows the running mean and standard deviation produced by the code below as the stream grows.
+@fig-online-learning-welford-demo shows the running mean and standard deviation produced by the code below as the stream grows.
 
 ```{r fig-online-learning-welford-demo, message=FALSE, warning=FALSE, fig.cap="Welford's running mean and standard deviation converging to the true population values (dashed lines) as the stream grows. Estimates are noisy early and stabilize as more data arrives."}
 set.seed(1)
@@ -193,7 +193,7 @@ The OGD update is therefore the compact $\theta \leftarrow \theta - \eta_t (p_t 
 
 > **Warning:** Never evaluate a temporal stream by shuffling it and taking a random train/test split. Doing so lets the model train on examples that came *after* the ones it is tested on, leaking the future and producing an optimistic, meaningless score. Prequential test-then-train respects the arrow of time.
 
-Figure @fig-online-learning-online-logit shows the resulting learning curves alongside the batch reference.
+@fig-online-learning-online-logit shows the resulting learning curves alongside the batch reference.
 
 ```{r fig-online-learning-online-logit, message=FALSE, warning=FALSE, fig.cap="Online logistic regression trained one observation at a time. The running-average training log loss (blue) falls as the weights improve, and the held-out test log loss (orange) tracks it, confirming the streaming fit generalizes. The dashed line is the log loss of the batch glm fit on all the data."}
 set.seed(42)
@@ -285,7 +285,7 @@ of its observed average. So if $\bar G_a - \bar G_b > \epsilon$, then with confi
 
 > **Intuition:** The Hoeffding bound answers "have I seen enough examples to be sure the leading feature really is leading, and is not ahead by luck?" When the gap between the top two features is larger than the statistical wiggle room $\epsilon$, the answer is yes and the node commits. The remarkable part is that this lets a single streaming pass build a tree whose splits match, with high probability, what a batch tree would have chosen on the same data, while reading each example only once.
 
-Table @tbl-online-learning-hoeffding-vs-batch contrasts the streaming tree with its batch ancestors.
+@tbl-online-learning-hoeffding-vs-batch contrasts the streaming tree with its batch ancestors.
 
 | Aspect | Batch CART / C4.5 | Hoeffding tree (VFDT) |
 |---|---|---|

@@ -248,7 +248,7 @@ round(c(FedAvg_IID    = tail(fed_iid$loss, 1),
 
 ### The learning curve {#federated-learning-curve}
 
-Figure @fig-federated-learning-curves plots the global loss against the communication round for all three runs, with the `glm` optimum drawn as a dashed floor. The centralized baseline here is full-batch gradient descent, which takes exactly one parameter step per round and so descends gradually toward the optimum. FedAvg reaches near-optimal loss almost immediately, because each of its rounds packs several epochs of mini-batch updates *inside* every client before a single message is exchanged. That is the FedAvg bargain made visible: a great deal of local computation per expensive communication round. The headline result is that FedAvg on IID data settles at the pooled-data optimum without any record leaving its client.
+@fig-federated-learning-curves plots the global loss against the communication round for all three runs, with the `glm` optimum drawn as a dashed floor. The centralized baseline here is full-batch gradient descent, which takes exactly one parameter step per round and so descends gradually toward the optimum. FedAvg reaches near-optimal loss almost immediately, because each of its rounds packs several epochs of mini-batch updates *inside* every client before a single message is exchanged. That is the FedAvg bargain made visible: a great deal of local computation per expensive communication round. The headline result is that FedAvg on IID data settles at the pooled-data optimum without any record leaving its client.
 
 The instructive contrast is between the two FedAvg curves. The IID run sits right on the optimum, while the non-IID run is noisier and plateaus at a visibly higher loss. The mechanism is the interaction flagged in Section \@ref(federated-learning-noniid): because only a couple of label-skewed clients are sampled each round, the average update is a biased estimate of the global gradient (a round that happens to draw two mostly-positive clients pulls the model the wrong way). Under the IID split the sampled clients all look like the population, so sampling adds variance but no bias.
 
@@ -271,7 +271,7 @@ legend("topright", bty = "n",
 
 ### Local epochs and the communication tradeoff {#federated-learning-epochs}
 
-The demo used $E = 3$ local epochs. To see the communication lever directly, we rerun FedAvg on the IID partition (full participation, so we isolate the effect of local work) for several values of $E$. More local work per round should reach a given loss in fewer rounds. Figure @fig-federated-learning-epochs shows the loss curves; larger $E$ drops the loss faster per round. On this well-behaved convex problem the gains keep accruing with $E$, but on heterogeneous data the curve for large $E$ eventually stops improving or oscillates once client drift overtakes the savings, which is the turnover discussed next.
+The demo used $E = 3$ local epochs. To see the communication lever directly, we rerun FedAvg on the IID partition (full participation, so we isolate the effect of local work) for several values of $E$. More local work per round should reach a given loss in fewer rounds. @fig-federated-learning-epochs shows the loss curves; larger $E$ drops the loss faster per round. On this well-behaved convex problem the gains keep accruing with $E$, but on heterogeneous data the curve for large $E$ eventually stops improving or oscillates once client drift overtakes the savings, which is the turnover discussed next.
 
 ```{r fig-federated-learning-epochs, fig.cap="Effect of local epochs E on FedAvg convergence (IID data). Each curve is the global loss per communication round for a different amount of local work. More local epochs reduce the loss faster per round, which is how FedAvg trades cheap on-client computation for expensive communication.", fig.width=7, fig.height=4.8}
 # Use a smaller learning rate and larger batches here so that a single local
@@ -333,7 +333,7 @@ round(c(no_noise = tail(dp_none$loss, 1),
 
 ### Comparing the variants {#federated-learning-table}
 
-Table @tbl-federated-learning-compare collects the final global loss and a simple classification accuracy for every method we ran. It quantifies the three lessons of the chapter: IID FedAvg reaches the pooled-data optimum, sampling label-skewed clients (non-IID) costs both loss and accuracy, and differential privacy trades accuracy for protection in proportion to the noise added. The differential-privacy rows use full client participation to isolate the noise effect, so they should be read against the IID run rather than the sampled non-IID run.
+@tbl-federated-learning-compare collects the final global loss and a simple classification accuracy for every method we ran. It quantifies the three lessons of the chapter: IID FedAvg reaches the pooled-data optimum, sampling label-skewed clients (non-IID) costs both loss and accuracy, and differential privacy trades accuracy for protection in proportion to the noise added. The differential-privacy rows use full client participation to isolate the noise effect, so they should be read against the IID run rather than the sampled non-IID run.
 
 ```{r tbl-federated-learning-compare}
 accuracy <- function(w) mean((sigmoid(as.vector(X %*% w)) > 0.5) == y)

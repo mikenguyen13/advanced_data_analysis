@@ -386,7 +386,7 @@ and i,j = 1,..,n
 
 and $\lambda \beta^T \Omega \beta$ is the regularization term used to shrink the components of $\hat{\beta}$ towards 0. $\lambda > 0$ is the tuning parameter (or smoothing parameter). Higher value of $\lambda$, faster shrinkage (shrinking away basis functions). This is a generalized ridge penalty: instead of penalizing the raw size of the coefficients, it penalizes the roughness they produce.
 
-> **Note:** Smoothing splines and kernel regression often produce nearly identical fits, because both are linear smoothers with one complexity knob. Table @tbl-spline-tuning-comparison lines up the corresponding tuning parameters.
+> **Note:** Smoothing splines and kernel regression often produce nearly identical fits, because both are linear smoothers with one complexity knob. @tbl-spline-tuning-comparison lines up the corresponding tuning parameters.
 
 |                  | Smoothing splines             | kernel regression |
 |------------------|-------------------------------|-------------------|
@@ -404,7 +404,7 @@ We now put the three one-dimensional methods to work. The first set of examples 
 
 #### Regression Spline Example
 
-We start with a cubic regression spline. The function `bs()` from the `splines` package builds the B-spline basis columns; passing three interior knots produces six basis functions, so with the intercept the model uses seven degrees of freedom. Figure @fig-spline-wage-regression shows the resulting fit.
+We start with a cubic regression spline. The function `bs()` from the `splines` package builds the B-spline basis columns; passing three interior knots produces six basis functions, so with the intercept the model uses seven degrees of freedom. @fig-spline-wage-regression shows the resulting fit.
 
 ```{r fig-spline-wage-regression, fig.cap="Cubic regression spline of wage on age fitted with three interior knots at ages 25, 40, and 60. The smooth curve rises through early adulthood, peaks in middle age, and tapers off near retirement."}
 library(ISLR2)
@@ -441,7 +441,7 @@ The reported knots fall at the 25th, 50th, and 75th percentiles of `age`, which 
 
 #### Natural Spline Example
 
-To tame the boundary variance discussed in [Natural splines], we switch to `ns()`, which fits a natural spline (linear beyond the extreme knots). Here `df = 4` selects the complexity. Figure @fig-spline-wage-natural shows the fit.
+To tame the boundary variance discussed in [Natural splines], we switch to `ns()`, which fits a natural spline (linear beyond the extreme knots). Here `df = 4` selects the complexity. @fig-spline-wage-natural shows the fit.
 
 ```{r fig-spline-wage-natural, fig.cap="Natural cubic spline of wage on age with four degrees of freedom. The fit resembles the regression spline through the bulk of the data but is steadier near the youngest and oldest ages, where the curve is forced to be linear."}
 fit2 <- lm(wage ~ ns(age, df = 4), data = Wage) # 4 df
@@ -456,7 +456,7 @@ Alternatively, we specify the knots using the `knots` options (similar to [Regre
 
 #### Smoothing Spline Example
 
-Finally we fit smoothing splines, which place a knot at every distinct age and control flexibility through $\lambda$. We show two ways to set complexity: fixing the effective degrees of freedom (here 16) and letting R back out the corresponding $\lambda$, or selecting $\lambda$ automatically by cross-validation. Figure @fig-spline-wage-smoothing compares the two fits.
+Finally we fit smoothing splines, which place a knot at every distinct age and control flexibility through $\lambda$. We show two ways to set complexity: fixing the effective degrees of freedom (here 16) and letting R back out the corresponding $\lambda$, or selecting $\lambda$ automatically by cross-validation. @fig-spline-wage-smoothing compares the two fits.
 
 ```{r fig-spline-wage-smoothing, fig.cap="Two smoothing splines for wage on age. The red curve fixes the effective degrees of freedom at 16, while the blue curve uses the roughly 6.8 effective degrees of freedom chosen by cross-validation, which is visibly smoother."}
 plot(age,
@@ -486,7 +486,7 @@ Cross-validation chooses about 6.8 effective degrees of freedom, noticeably less
 
 ### plot (Example 2)
 
-The second example moves to the `Boston` data and adds a proper train/test split so we can report out-of-sample performance. We fit a cubic regression spline of `medv` on `lstat` with knots at the quartiles, evaluate it on held-out data, and then overlay a smoothing spline for comparison. Table @tbl-spline-boston-performance reports the held-out accuracy.
+The second example moves to the `Boston` data and adds a proper train/test split so we can report out-of-sample performance. We fit a cubic regression spline of `medv` on `lstat` with knots at the quartiles, evaluate it on held-out data, and then overlay a smoothing spline for comparison. @tbl-spline-boston-performance reports the held-out accuracy.
 
 ```{r}
 library(tidyverse)
@@ -523,7 +523,7 @@ knitr::kable(
 )
 ```
 
-Figure @fig-spline-boston-ggplot shows the regression spline fit with its confidence band over the training data.
+@fig-spline-boston-ggplot shows the regression spline fit with its confidence band over the training data.
 
 ```{r fig-spline-boston-ggplot, fig.cap="Cubic regression spline of medv on lstat fitted to the Boston training data, with the shaded pointwise confidence band. The relationship curves downward steeply at low lstat and flattens at high lstat."}
 ggplot(train.data, aes(lstat, medv) ) +
@@ -531,7 +531,7 @@ ggplot(train.data, aes(lstat, medv) ) +
   stat_smooth(method = lm, formula = y ~ splines::bs(x, df = 3))
 ```
 
-Figure @fig-spline-boston-overlay overlays the cubic regression spline and a 3-df smoothing spline on the same data.
+@fig-spline-boston-overlay overlays the cubic regression spline and a 3-df smoothing spline on the same data.
 
 ```{r fig-spline-boston-overlay, fig.cap="Cubic regression spline (green) and 3-df smoothing spline (red) fitted to the Boston training data. Both track the same downward, curving relationship between lstat and medv, with the dashed vertical lines marking illustrative cut points."}
 attach(train.data)
@@ -550,7 +550,7 @@ legend("topright",c("Smoothing Spline with 3 df","Cubic Spline"),col=c("red","da
 
 ```
 
-The held-out RMSE and $R^2$ in Table @tbl-spline-boston-performance quantify how well the spline generalizes, and the overlay in Figure @fig-spline-boston-overlay shows the cubic regression spline (green) and the 3-df smoothing spline (red) tracking the same downward, curving relationship between `lstat` and `medv`. Both bend where a straight line could not, which is the whole point of this chapter.
+The held-out RMSE and $R^2$ in @tbl-spline-boston-performance quantify how well the spline generalizes, and the overlay in @fig-spline-boston-overlay shows the cubic regression spline (green) and the 3-df smoothing spline (red) tracking the same downward, curving relationship between `lstat` and `medv`. Both bend where a straight line could not, which is the whole point of this chapter.
 
 > **When to use this:** Reach for splines whenever you suspect a smooth but nonlinear relationship between a predictor and the response and you want a flexible fit that stays interpretable. Use a regression or natural spline when you are comfortable choosing a few knots (or letting quantiles choose them) and want a fast least-squares fit; use a smoothing spline when you would rather not pick knots and prefer to tune a single penalty by cross-validation.
 

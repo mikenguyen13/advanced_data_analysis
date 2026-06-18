@@ -159,7 +159,7 @@ Step 3 continues step 2 until the change in the functions falls below a pre-spec
 
 ## Summary
 
-GAMs occupy a useful middle ground: more flexible than linear models, more interpretable than a black box. Table @tbl-gam-pros-cons weighs what you gain against what you give up.
+GAMs occupy a useful middle ground: more flexible than linear models, more interpretable than a black box. @tbl-gam-pros-cons weighs what you gain against what you give up.
 
 +----------------------------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
 | Pros                                                                                                                                                     | Cons                                                                                                                                                                                                    |
@@ -189,7 +189,7 @@ Two worked examples follow. The first uses the `gam` package to fit and compare 
 
 \[@james2013, 7.8\]
 
-We begin by fitting the model two ways. First we use `lm` with natural splines, then we refit with smoothing splines through the `gam` package. Figure @fig-gam-wage-smoothing-splines plots the three smooth-spline components, and Figure @fig-gam-wage-natural-splines plots the natural-spline fit for comparison; both show a gently rising `year` effect and a hump-shaped `age` effect.
+We begin by fitting the model two ways. First we use `lm` with natural splines, then we refit with smoothing splines through the `gam` package. @fig-gam-wage-smoothing-splines plots the three smooth-spline components, and @fig-gam-wage-natural-splines plots the natural-spline fit for comparison; both show a gently rising `year` effect and a hump-shaped `age` effect.
 
 ```{r, warning=FALSE}
 library(ISLR2)
@@ -221,7 +221,7 @@ par(mfrow = c(1, 3))
 plot.Gam(gam1, se = T, col = "red") # the function of year is rather linear
 ```
 
-The natural-spline fit in Figure @fig-gam-wage-natural-splines already hints that the `year` effect is close to a straight line. We can test this formally by comparing three nested models with an F-test.
+The natural-spline fit in @fig-gam-wage-natural-splines already hints that the `year` effect is close to a straight line. We can test this formally by comparing three nested models with an F-test.
 
 ```{r, warning=FALSE}
 if ("package:mgcv" %in% search()) detach("package:mgcv")
@@ -236,7 +236,7 @@ preds <- predict(gam.m2, newdata = Wage)
 
 The `anova` comparison and the `summary` output tell the same story in two ways. The F-test prefers the model with a linear `year` term and a smooth `age` term (model 2), and the "Anova for Nonparametric Effects" block in the summary confirms it: the nonlinear part of `age` is strongly significant, while the nonlinear part of `year` is not. In words, age bends the wage curve but year is essentially a straight-line effect, which is exactly what the plotted curves show.
 
-We can also build a GAM from local-regression smoothers. Figure @fig-gam-wage-local-regression replaces the smoothing spline on `age` with a `lo` local-regression term.
+We can also build a GAM from local-regression smoothers. @fig-gam-wage-local-regression replaces the smoothing spline on `age` with a `lo` local-regression term.
 
 ```{r fig-gam-wage-local-regression, warning=FALSE, fig.cap="GAM for wage using a local-regression smoother for age. The year term is a degree-four spline and the age term is a loess fit with span 0.7."}
 if ("package:mgcv" %in% search()) detach("package:mgcv")
@@ -245,7 +245,7 @@ par(mfrow = c(1, 3))
 plot.Gam(gam.lo , se = T, col = "green")
 ```
 
-Local regression can also model a two-dimensional smooth surface in `year` and `age` jointly, as shown in Figure @fig-gam-wage-interaction-surface.
+Local regression can also model a two-dimensional smooth surface in `year` and `age` jointly, as shown in @fig-gam-wage-interaction-surface.
 
 ```{r gam-wage-interaction-surface, warning=FALSE, fig.cap="Two-dimensional local-regression surface for the joint effect of year and age on wage, fitted as a single bivariate loess term."}
 if ("package:mgcv" %in% search()) detach("package:mgcv")
@@ -258,7 +258,7 @@ par(mfrow = c(1, 2))
 plot(gam.lo.i)
 ```
 
-The additive idea extends to a binary outcome through a logistic link. Figure @fig-gam-wage-logistic fits a logistic GAM for the indicator that wage exceeds 250.
+The additive idea extends to a binary outcome through a logistic link. @fig-gam-wage-logistic fits a logistic GAM for the indicator that wage exceeds 250.
 
 ```{r fig-gam-wage-logistic, warning=FALSE, fig.cap="Components of a logistic GAM for the probability that wage exceeds 250, with a linear year term and a smooth age term."}
 if ("package:mgcv" %in% search()) detach("package:mgcv")
@@ -269,7 +269,7 @@ par(mfrow = c(1, 3))
 plot(gam.lr, se = T, col = "green")
 ```
 
-Table @tbl-gam-wage-education-cross cross-tabulates education against the high-wage indicator, which motivates dropping the sparse lowest education level before refitting.
+@tbl-gam-wage-education-cross cross-tabulates education against the high-wage indicator, which motivates dropping the sparse lowest education level before refitting.
 
 ```{r tbl-gam-wage-education-cross, warning=FALSE}
 knitr::kable(
@@ -278,7 +278,7 @@ knitr::kable(
 )
 ```
 
-Figure @fig-gam-wage-logistic-subset refits the logistic GAM after excluding the lowest education category.
+@fig-gam-wage-logistic-subset refits the logistic GAM after excluding the lowest education category.
 
 ```{r fig-gam-wage-logistic-subset, warning=FALSE, fig.cap="Logistic GAM for the high-wage indicator after excluding the lowest education category, which removes the unstable estimates caused by its empty cell."}
 if ("package:mgcv" %in% search()) detach("package:mgcv")
@@ -296,7 +296,7 @@ plot(gam.lr.s, se = T, col = "green")
 
 Spline regression makes you choose where to place the knots by hand. To sidestep [Spline Regression]'s requirement for specifying the knots, we can use a GAM, which selects the smoothness automatically through its penalty. Here we fit a single smooth of `medv` on `lstat` with `mgcv` and check how well it generalizes to a held-out test set.
 
-Figure @fig-gam-boston-smooth shows the estimated smooth term, and Table @tbl-gam-boston-performance reports its accuracy on the held-out test set.
+@fig-gam-boston-smooth shows the estimated smooth term, and @tbl-gam-boston-performance reports its accuracy on the held-out test set.
 
 ```{r fig-gam-boston-smooth, fig.cap="Estimated smooth effect of lstat on the median home value medv from an mgcv GAM fitted on the Boston training set, with a pointwise standard-error band."}
 library(tidyverse)
@@ -331,7 +331,7 @@ knitr::kable(
 )
 ```
 
-Figure @fig-gam-boston-ggplot overlays the same smooth on the training scatterplot using `stat_smooth`.
+@fig-gam-boston-ggplot overlays the same smooth on the training scatterplot using `stat_smooth`.
 
 ```{r fig-gam-boston-ggplot, fig.cap="Training-set scatterplot of medv against lstat with an overlaid GAM smooth fitted through stat_smooth, showing the same curved relationship as the mgcv fit."}
 ggplot(train.data, aes(lstat, medv) ) +
@@ -340,4 +340,4 @@ ggplot(train.data, aes(lstat, medv) ) +
 detach(train.data)
 ```
 
-The fitted curve bends sharply where `lstat` is low and flattens as `lstat` grows, a nonlinearity that a single straight line would miss entirely, and the test-set $R^2$ in Table @tbl-gam-boston-performance quantifies how much of that signal carries over to new data. Notice that we never told `mgcv` how many knots to use or where to put them: the penalty did that work for us, which is the practical payoff of the smoothness criterion from the start of this chapter.
+The fitted curve bends sharply where `lstat` is low and flattens as `lstat` grows, a nonlinearity that a single straight line would miss entirely, and the test-set $R^2$ in @tbl-gam-boston-performance quantifies how much of that signal carries over to new data. Notice that we never told `mgcv` how many knots to use or where to put them: the penalty did that work for us, which is the practical payoff of the smoothness criterion from the start of this chapter.

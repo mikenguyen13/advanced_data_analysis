@@ -34,7 +34,7 @@ Done by hand, each of these steps invites mistakes. The most common and most dam
 
 > **Key idea:** A modeling step is "data-dependent" if it learns a number from the data (a mean, a quantile, a set of retained categories, a PCA rotation). Every such number must be learned from training rows alone and then applied unchanged to held-out rows. The framework makes this the default rather than something you must remember.
 
-The framework breaks into focused packages, each owning one job in the skeleton above. Table @tbl-tidymodels-framework-package-map maps each package to its role and to the `scikit-learn` concept it most resembles, so readers coming from Python have a translation key.
+The framework breaks into focused packages, each owning one job in the skeleton above. @tbl-tidymodels-framework-package-map maps each package to its role and to the `scikit-learn` concept it most resembles, so readers coming from Python have a translation key.
 
 | Package | Job | Analogous concept |
 |---|---|---|
@@ -149,7 +149,7 @@ $$
 
 where $\hat f_{-v}$ is the model fit without fold $v$. Its standard error across folds gives a rough sense of how stable the estimate is. `rsample` produces the fold structure as a table of row indices, never copying the data, and stores analysis/assessment splits that the rest of the framework consumes.
 
-The choice of resampling scheme is itself a bias-variance tradeoff: a single split is cheap but its estimate jumps around depending on which rows landed in the validation set, while many folds average out that noise at a higher computational cost. Table @tbl-tidymodels-framework-resampling-schemes summarizes the usual options and when each one earns its keep.
+The choice of resampling scheme is itself a bias-variance tradeoff: a single split is cheap but its estimate jumps around depending on which rows landed in the validation set, while many folds average out that noise at a higher computational cost. @tbl-tidymodels-framework-resampling-schemes summarizes the usual options and when each one earns its keep.
 
 > **Tip:** When in doubt, 10-fold cross-validation is the sensible default for most tabular problems. Reach for the other schemes only when the data structure demands it: grouped CV when rows cluster, time-based resampling when rows are ordered in time.
 
@@ -272,7 +272,7 @@ The table reports, for the five best hyperparameter settings, the mean cross-val
 
 ### A figure from the tuning results
 
-Figure @fig-tidymodels-framework-tune-path plots cross-validated RMSE against the penalty for each mixing value, which shows the characteristic U-shape of regularization: too little penalty overfits, too much underfits.
+@fig-tidymodels-framework-tune-path plots cross-validated RMSE against the penalty for each mixing value, which shows the characteristic U-shape of regularization: too little penalty overfits, too much underfits.
 
 ```{r fig-tidymodels-framework-tune-path, eval=TRUE, fig.cap="Cross-validated RMSE versus penalty across elastic-net mixtures on the Ames data.", fig.width=7, fig.height=4.5}
 .libPaths(c("C:/Users/miken/R/library-4.4", .libPaths()))
@@ -316,7 +316,7 @@ The metrics here come from the test set, which was held out from splitting throu
 
 We have asserted several times that data-dependent steps must live inside each fold. This section proves it with numbers. The base-R simulation below contrasts two ways of doing a data-dependent step before cross-validation: the wrong way (do it once on all the data, then split) and the right way (redo it inside each fold). The trick that makes the lesson unmistakable is that the data is pure noise: the response is generated independently of every feature, so the true predictive $R^2$ is zero. Any positive cross-validated $R^2$ a method reports is therefore self-deception, and we can read leakage straight off the number.
 
-The chunk includes two variants. The first standardizes (scaling, where leakage is real but mild) and the second selects the most correlated features (where leakage is dramatic, because selection peeks at the labels). Watching the gap between leaky and honest in each case shows why selection and encoding are far more dangerous than plain scaling. Figure @fig-tidymodels-framework-leakage-sim plots the result.
+The chunk includes two variants. The first standardizes (scaling, where leakage is real but mild) and the second selects the most correlated features (where leakage is dramatic, because selection peeks at the labels). Watching the gap between leaky and honest in each case shows why selection and encoding are far more dangerous than plain scaling. @fig-tidymodels-framework-leakage-sim plots the result.
 
 ```{r fig-tidymodels-framework-leakage-sim, eval=TRUE, fig.cap="Cross-validated R-squared on pure-noise data, comparing feature selection done once on all rows against selection redone inside each fold.", fig.width=7, fig.height=4}
 .libPaths(c("C:/Users/miken/R/library-4.4", .libPaths()))
@@ -400,7 +400,7 @@ The leaky version reports a healthy-looking positive cross-validated $R^2$ even 
 
 ## Comparison with alternatives
 
-`tidymodels` is not the only way to organize a modeling workflow, and it is worth knowing where it sits among the alternatives so you can choose deliberately. Table @tbl-tidymodels-framework-alternatives sketches the main options, from rolling your own loops to the older `caret` framework, the more object-oriented `mlr3`, and Python's `scikit-learn`.
+`tidymodels` is not the only way to organize a modeling workflow, and it is worth knowing where it sits among the alternatives so you can choose deliberately. @tbl-tidymodels-framework-alternatives sketches the main options, from rolling your own loops to the older `caret` framework, the more object-oriented `mlr3`, and Python's `scikit-learn`.
 
 | Approach | Pros | Cons |
 |---|---|---|

@@ -91,7 +91,7 @@ HMC has two tuning parameters: the leapfrog step size $\epsilon$ and the number 
 
 > **Tip:** In day-to-day work you almost never tune the sampler by hand. The payoff of NUTS is that you can focus on the model (the priors and likelihood) and trust the defaults for inference, stepping in only when the diagnostics later in the chapter flag a problem.
 
-Table @tbl-probabilistic-programming-sampler-comparison contrasts the three samplers.
+@tbl-probabilistic-programming-sampler-comparison contrasts the three samplers.
 
 | Property | Metropolis-Hastings | Hamiltonian Monte Carlo | NUTS |
 |---|---|---|---|
@@ -216,7 +216,7 @@ abline(v = beta_true[2], col = "red", lwd = 2)
 par(op)
 ```
 
-Reading the output in words: Figure @fig-probabilistic-programming-mh-sampler shows the trace plots, which should look like stationary noise with no drift, a sign the chain has converged and is mixing. In the same figure the posterior histograms concentrate around the true coefficients (the red lines), and the 2.5 and 97.5 percent quantiles give a 95 percent credible interval for each parameter. A random-walk sampler typically mixes best with an acceptance rate somewhere between about 0.2 and 0.5; if the rate is very high the steps are too small and the chain crawls, and if very low most proposals are wasted, so in either case you would retune `proposal_sd`. Stan replaces this manual tuning with adaptive NUTS, but the underlying logic (propose, compare unnormalized posteriors, accept or reject) is the same.
+Reading the output in words: @fig-probabilistic-programming-mh-sampler shows the trace plots, which should look like stationary noise with no drift, a sign the chain has converged and is mixing. In the same figure the posterior histograms concentrate around the true coefficients (the red lines), and the 2.5 and 97.5 percent quantiles give a 95 percent credible interval for each parameter. A random-walk sampler typically mixes best with an acceptance rate somewhere between about 0.2 and 0.5; if the rate is very high the steps are too small and the chain crawls, and if very low most proposals are wasted, so in either case you would retune `proposal_sd`. Stan replaces this manual tuning with adaptive NUTS, but the underlying logic (propose, compare unnormalized posteriors, accept or reject) is the same.
 
 > **Warning:** This base R sampler is for teaching, not production. It uses a single chain, a fixed proposal scale, and no automatic warmup adaptation. For any real analysis use Stan through `brms` or `rstanarm`, which run multiple chains, adapt the sampler, and report the diagnostics covered later in this chapter.
 
@@ -241,7 +241,7 @@ $$
 
 In practice you draw $\theta^{(s)}$ from the posterior, then draw a replicated dataset $y^{\text{rep},(s)} \sim p(y^{\text{rep}} \mid \theta^{(s)})$ for each draw. You then compare summaries of $y^{\text{rep}}$ to the same summary of $y$. If the observed summary is far in the tail of the replicated summaries, the model is missing something.
 
-We can run a simple PPC with the base-R logistic fit from the demo. A reasonable test statistic for binary data is the proportion of ones in subgroups, or here the overall mean and its spread across replications. Figure @fig-probabilistic-programming-ppc shows the result.
+We can run a simple PPC with the base-R logistic fit from the demo. A reasonable test statistic for binary data is the proportion of ones in subgroups, or here the overall mean and its spread across replications. @fig-probabilistic-programming-ppc shows the result.
 
 ```{r fig-probabilistic-programming-ppc, eval=TRUE, fig.width=7, fig.height=4, fig.cap="Posterior predictive check: distribution of the replicated mean response across posterior draws, with the observed mean (red)."}
 set.seed(7)
@@ -370,7 +370,7 @@ generated quantities {
 
 ## Diagnostics you should always check
 
-After sampling, never read the posterior summaries without first checking that the sampler worked. A beautiful-looking posterior mean from a chain that never converged is worse than useless, because it looks authoritative while being wrong. The standard diagnostics are summarized in Table @tbl-probabilistic-programming-diagnostics.
+After sampling, never read the posterior summaries without first checking that the sampler worked. A beautiful-looking posterior mean from a chain that never converged is worse than useless, because it looks authoritative while being wrong. The standard diagnostics are summarized in @tbl-probabilistic-programming-diagnostics.
 
 > **Warning:** Treat the diagnostics as a gate, not an afterthought. If $\hat{R}$ is high or there are divergent transitions, the numbers in your summary table are not estimates of the posterior, and no amount of careful interpretation will fix that. Diagnose and refit first.
 

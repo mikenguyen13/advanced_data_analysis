@@ -54,7 +54,7 @@ A useful decomposition: the prediction-error change after deployment can be attr
 
 > **Warning:** No label-free metric can detect pure concept drift. If $P(X)$ holds steady while the answer key quietly changes, every input-distribution gauge stays green while the model rots. This is not a flaw in any particular metric; it is information that simply is not present in the inputs. The only cure is labels.
 
-Table @tbl-model-monitoring-drift-types summarizes the distinction and the response.
+@tbl-model-monitoring-drift-types summarizes the distinction and the response.
 
 | Property | Data drift (covariate shift) | Concept drift |
 |---|---|---|
@@ -104,7 +104,7 @@ Two implementation points matter, and both will reappear in the code. First, an 
 
 > **Tip:** Always derive the bin edges from the reference sample, never recompute them from the current sample. If you re-bin every period, the bins themselves move with the data and PSI can read near zero even under real drift. Fixed edges are what make today's PSI comparable to last week's.
 
-Conventional thresholds, which originate in retail credit scorecard practice (Siddiqi, 2006), are heuristics, not test statistics. Table @tbl-model-monitoring-psi-thresholds lists the bands and the action each one suggests.
+Conventional thresholds, which originate in retail credit scorecard practice (Siddiqi, 2006), are heuristics, not test statistics. @tbl-model-monitoring-psi-thresholds lists the bands and the action each one suggests.
 
 | PSI value | Interpretation | Typical action |
 |---|---|---|
@@ -156,7 +156,7 @@ So with large $n$ and $m$ the critical gap shrinks, and KS becomes very sensitiv
 
 > **Warning:** With millions of production rows the KS p-value is essentially always below 0.05, because the test detects shifts far too small to matter. Do not page an on-call engineer because $p < 0.05$. Threshold on the gap $D_{n,m}$, an effect size that stays interpretable at any sample size, or compare on a fixed downsampled size each period.
 
-Table @tbl-model-monitoring-psi-ks contrasts the two metrics.
+@tbl-model-monitoring-psi-ks contrasts the two metrics.
 
 | Aspect | PSI | KS statistic |
 |---|---|---|
@@ -271,7 +271,7 @@ flag_drift <- function(psi_value, D, n, m,
 flag_drift(psi_out$psi, D, n_ref, n_cur)
 ```
 
-Now the figure. The left panel overlays the two densities so the location-and-scale shift is visible; the right panel overlays the two ECDFs and marks the point of maximum vertical gap, which is exactly what the KS statistic measures. Figure @fig-model-monitoring-drift-plot shows both panels side by side.
+Now the figure. The left panel overlays the two densities so the location-and-scale shift is visible; the right panel overlays the two ECDFs and marks the point of maximum vertical gap, which is exactly what the KS statistic measures. @fig-model-monitoring-drift-plot shows both panels side by side.
 
 ```{r fig-model-monitoring-drift-plot, fig.width=10, fig.height=4.5, fig.cap="Left: reference and current densities; the current sample is shifted right and wider. Right: the two empirical CDFs with a vertical segment at the location of the maximum gap, the value reported as the KS statistic D."}
 op <- par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
@@ -304,7 +304,7 @@ legend("bottomright", legend = c("reference", "current", "max gap"),
 par(op)
 ```
 
-Finally, a tiny simulation that shows how PSI grows as the shift grows, which is the right way to calibrate thresholds for your own data: sweep the mean shift and watch the metric climb past the warn and alert lines. Figure @fig-model-monitoring-psi-sweep traces this relationship.
+Finally, a tiny simulation that shows how PSI grows as the shift grows, which is the right way to calibrate thresholds for your own data: sweep the mean shift and watch the metric climb past the warn and alert lines. @fig-model-monitoring-psi-sweep traces this relationship.
 
 ```{r fig-model-monitoring-psi-sweep, fig.width=7, fig.height=4.2, fig.cap="PSI as a function of the mean shift applied to the current sample. The horizontal lines are the conventional warn (0.10) and alert (0.25) thresholds. PSI rises smoothly with the magnitude of drift."}
 shifts <- seq(0, 1.2, by = 0.1)

@@ -72,7 +72,7 @@ There is a clean probabilistic reading. With squared-Euclidean distance, the sof
 
 A different family treats few-shot learning as learning an *initialization* (or an optimizer) from which a few gradient steps on the support set yield a good classifier. The flagship is Model-Agnostic Meta-Learning, MAML (Finn, Abbeel, and Levine, 2017). MAML learns parameters $\theta$ such that, for a new task, a small number of gradient steps on the support loss produces task-adapted parameters $\theta'$ that perform well on the query set. The inner loop adapts; the outer loop optimizes the initialization so that adaptation is fast.
 
-Because the Meta-Learning chapter develops MAML, its inner/outer-loop objective, and the second-order gradient that makes it work in full, this chapter does not repeat that derivation. See the Meta-Learning chapter for the optimization-based view; the takeaway here is the contrast in Table @tbl-few-shot-zero-shot-families.
+Because the Meta-Learning chapter develops MAML, its inner/outer-loop objective, and the second-order gradient that makes it work in full, this chapter does not repeat that derivation. See the Meta-Learning chapter for the optimization-based view; the takeaway here is the contrast in @tbl-few-shot-zero-shot-families.
 
 ```{r tbl-few-shot-zero-shot-families}
 fam <- data.frame(
@@ -98,7 +98,7 @@ knitr::kable(
 )
 ```
 
-Table @tbl-few-shot-zero-shot-families contrasts the families. Metric-based methods are attractive in practice because they need no test-time optimization: adding a new class is as cheap as embedding its support examples and storing a prototype. Optimization-based methods are more flexible but heavier, and fine-tuning sits at the data-hungry end. In-context learning with large language models is, in effect, metric-and-optimization-free adaptation whose "training across tasks" happened implicitly during pretraining.
+@tbl-few-shot-zero-shot-families contrasts the families. Metric-based methods are attractive in practice because they need no test-time optimization: adding a new class is as cheap as embedding its support examples and storing a prototype. Optimization-based methods are more flexible but heavier, and fine-tuning sits at the data-hungry end. In-context learning with large language models is, in effect, metric-and-optimization-free adaptation whose "training across tasks" happened implicitly during pretraining.
 
 ## A runnable few-shot demonstration: nearest-centroid classifier
 
@@ -171,7 +171,7 @@ knitr::kable(
 )
 ```
 
-Table @tbl-few-shot-zero-shot-shottable reports the numbers and Figure @fig-few-shot-zero-shot-shotcurve plots them. Two things are visible. First, even 1-shot accuracy is far above the 20% chance level of a 5-way problem, because the learned (here, simulated) embedding already separates classes. Second, accuracy rises with shots but with diminishing returns: most of the benefit arrives in the first few examples, because averaging more support points mainly reduces the variance of the prototype estimate, and that variance shrinks like $1/K$.
+@tbl-few-shot-zero-shot-shottable reports the numbers and @fig-few-shot-zero-shot-shotcurve plots them. Two things are visible. First, even 1-shot accuracy is far above the 20% chance level of a 5-way problem, because the learned (here, simulated) embedding already separates classes. Second, accuracy rises with shots but with diminishing returns: most of the benefit arrives in the first few examples, because averaging more support points mainly reduces the variance of the prototype estimate, and that variance shrinks like $1/K$.
 
 ```{r fig-few-shot-zero-shot-shotcurve, fig.width=6, fig.height=4.5, fig.cap="5-way nearest-centroid accuracy versus number of shots per class. Accuracy climbs steeply from 1-shot then flattens, the diminishing-returns pattern typical of few-shot learning. The dashed line marks 20% chance accuracy for a 5-way task."}
 plot(shots, acc, type = "b", pch = 19, lwd = 2, col = "steelblue",
@@ -182,7 +182,7 @@ abline(h = 1 / 5, lty = 2, col = "grey50")
 text(max(shots), 1/5 + 0.03, "chance (1/N)", pos = 2, col = "grey40", cex = 0.9)
 ```
 
-Figure @fig-few-shot-zero-shot-shotcurve is the empirical signature of few-shot learning: large gains from the first example, then flattening. The same curve shape appears with real learned embeddings; the difference is only how high the curve starts, which is governed by how well the embedding separates unseen classes.
+@fig-few-shot-zero-shot-shotcurve is the empirical signature of few-shot learning: large gains from the first example, then flattening. The same curve shape appears with real learned embeddings; the difference is only how high the curve starts, which is governed by how well the embedding separates unseen classes.
 
 > **When to use this:** Reach for a metric-based few-shot approach when new classes arrive often, each with only a few labels, and you can afford to train a good embedding once on a large pool of related classes. Nearest-centroid classification on top of a strong pretrained embedding (an image encoder, a text encoder) is a remarkably hard baseline to beat, and it adds new classes with zero retraining.
 
@@ -337,9 +337,9 @@ knitr::kable(
 )
 ```
 
-Table @tbl-few-shot-zero-shot-zsltable shows the payoff: the model classifies zebra inputs correctly despite never having trained on a single zebra, because the attribute vector ("striped, four-legged, large, maned") is enough to distinguish it once the feature-to-attribute map has been learned from other animals. The harder generalized setting, where the model must also avoid mistaking zebras for the visually similar seen classes (horse and lion share four of five attributes with zebra), drops accuracy, which is exactly the bias we discuss next.
+@tbl-few-shot-zero-shot-zsltable shows the payoff: the model classifies zebra inputs correctly despite never having trained on a single zebra, because the attribute vector ("striped, four-legged, large, maned") is enough to distinguish it once the feature-to-attribute map has been learned from other animals. The harder generalized setting, where the model must also avoid mistaking zebras for the visually similar seen classes (horse and lion share four of five attributes with zebra), drops accuracy, which is exactly the bias we discuss next.
 
-Figure @fig-few-shot-zero-shot-attrbar visualizes why the model can pull this off: the predicted attribute profile for zebra inputs lines up with the true zebra attributes, even though the predictions were produced by a map that never saw a zebra.
+@fig-few-shot-zero-shot-attrbar visualizes why the model can pull this off: the predicted attribute profile for zebra inputs lines up with the true zebra attributes, even though the predictions were produced by a map that never saw a zebra.
 
 ```{r fig-few-shot-zero-shot-attrbar, fig.width=6.5, fig.height=4.5, fig.cap="Predicted versus true attribute vector for the unseen zebra class. Bars show the mean predicted attribute strength over 200 zebra inputs (from a map trained only on other animals); circles mark the true binary attributes. The predicted profile recovers the zebra's defining attributes, which is what lets zero-shot matching succeed."}
 pa_zebra <- colMeans(predict_attributes(X_zebra))
@@ -354,7 +354,7 @@ legend("topright", legend = c("predicted (mean)", "true attribute"),
        pch = c(NA, 19), col = c(NA, "firebrick"), bty = "n")
 ```
 
-Figure @fig-few-shot-zero-shot-attrbar is the heart of the method made visible. Recognition of an unseen class reduces to predicting its attributes well and matching to the right description.
+@fig-few-shot-zero-shot-attrbar is the heart of the method made visible. Recognition of an unseen class reduces to predicting its attributes well and matching to the right description.
 
 ## Generalized zero-shot and the hubness problem
 

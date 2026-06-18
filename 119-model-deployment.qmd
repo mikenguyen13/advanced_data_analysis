@@ -39,7 +39,7 @@ In online (real-time) serving, the model sits behind an endpoint and scores one 
 
 > **Warning:** "Online serving" here means real-time request scoring with a *fixed* model. It is distinct from *online learning* (the [Online and Streaming Learning](#online-and-streaming-learning) chapter), where the model parameters themselves update as data arrive. A real-time endpoint usually serves a frozen model and is retrained out of band. Confusing the two leads people to expect an endpoint to "learn" from traffic when it is doing nothing of the kind.
 
-Table @tbl-model-deployment-batch-online lays out the two regimes side by side along the properties that usually drive the choice between them.
+@tbl-model-deployment-batch-online lays out the two regimes side by side along the properties that usually drive the choice between them.
 
 ```{r tbl-model-deployment-batch-online, echo=FALSE}
 knitr::kable(
@@ -91,7 +91,7 @@ $$
 r < \frac{c_b}{c_o}.
 $$
 
-So when the queried fraction $r$ is small relative to the per-unit cost ratio, pay only for what you use and serve online; when nearly everyone is queried ($r \to 1$), batch wins because it avoids the per-request overhead and amortizes setup.^[The result is intuitive once stated: online serving is "pay per use," so it is cheap exactly when usage is light. The break-even point $r = c_b/c_o$ says nothing more than "online is worth it until you are querying a large enough share of the population that you might as well have scored everyone." If the two per-row costs were equal ($c_o = c_b$), the break-even would be $r = 1$ and batch would never beat online on cost alone.] The freshness requirement can override this arithmetic, but the arithmetic is the right starting point. Figure @fig-model-deployment-breakeven visualizes this break-even: the online cost rises with the queried fraction while the batch cost is flat, and the two cross at $r = c_b/c_o$.
+So when the queried fraction $r$ is small relative to the per-unit cost ratio, pay only for what you use and serve online; when nearly everyone is queried ($r \to 1$), batch wins because it avoids the per-request overhead and amortizes setup.^[The result is intuitive once stated: online serving is "pay per use," so it is cheap exactly when usage is light. The break-even point $r = c_b/c_o$ says nothing more than "online is worth it until you are querying a large enough share of the population that you might as well have scored everyone." If the two per-row costs were equal ($c_o = c_b$), the break-even would be $r = 1$ and batch would never beat online on cost alone.] The freshness requirement can override this arithmetic, but the arithmetic is the right starting point. @fig-model-deployment-breakeven visualizes this break-even: the online cost rises with the queried fraction while the batch cost is flat, and the two cross at $r = c_b/c_o$.
 
 ```{r fig-model-deployment-breakeven, fig.width=6, fig.height=4, fig.cap="Cost of batch versus online serving as the queried fraction r grows. Online wins to the left of the crossing, batch to the right."}
 N  <- 1e6      # population size
@@ -139,7 +139,7 @@ The runnable demo at the end of this chapter implements exactly this validation 
 
 ## Tooling: vetiver, plumber, Docker, Posit Connect
 
-You do not have to build all of this by hand. The R ecosystem has a layered set of tools for serving, each handling one part of the problem, and they compose like a stack: a higher layer hands its output to the layer below it. Table @tbl-model-deployment-tooling summarizes the stack from the fitted object at the top to a hosted endpoint at the bottom.
+You do not have to build all of this by hand. The R ecosystem has a layered set of tools for serving, each handling one part of the problem, and they compose like a stack: a higher layer hands its output to the layer below it. @tbl-model-deployment-tooling summarizes the stack from the fitted object at the top to a hosted endpoint at the bottom.
 
 ```{r tbl-model-deployment-tooling, echo=FALSE}
 knitr::kable(
@@ -223,7 +223,7 @@ With more than one version live, two rollout strategies sit on top of versioning
 
 > **Warning:** Do not use a canary to decide which model is "better." A canary runs briefly on little traffic, which is fine for catching crashes but far too little data to measure a small business lift. Measuring lift is the job of an A/B test, and the next section shows why it needs so much more traffic.
 
-Table @tbl-model-deployment-rollout contrasts the three rollout strategies by their goal, traffic split, decision rule, and main risk.
+@tbl-model-deployment-rollout contrasts the three rollout strategies by their goal, traffic split, decision rule, and main risk.
 
 ```{r tbl-model-deployment-rollout, echo=FALSE}
 knitr::kable(
@@ -262,7 +262,7 @@ where $z_q$ is the $q$ quantile of the standard normal.^[This is the standard tw
 
 > **Intuition:** Small effects hide in noise. To be confident that a 1 percent improvement is real and not luck, you need enough data that random fluctuations average out below 1 percent, and that takes a great deal more traffic than confirming a 4 percent improvement. This is why canarying (a safety decision, needing little data) and A/B testing (a measurement decision, needing a lot) are genuinely different activities even though both split traffic.
 
-Figure @fig-model-deployment-abtest plots this relationship: the required sample size per arm climbs steeply as the lift to detect shrinks, reflecting the $\delta^2$ in the denominator.
+@fig-model-deployment-abtest plots this relationship: the required sample size per arm climbs steeply as the lift to detect shrinks, reflecting the $\delta^2$ in the denominator.
 
 ```{r fig-model-deployment-abtest, fig.width=6, fig.height=4, fig.cap="Required A/B sample size per arm versus the effect size to detect, at 5% significance and 80% power, baseline rate p = 0.10."}
 ab_n_per_arm <- function(p, delta, alpha = 0.05, power = 0.80) {

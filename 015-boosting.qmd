@@ -295,7 +295,7 @@ boost.boston <-
 summary(boost.boston) #rm and lstate are most important
 ```
 
-The `summary()` output ranks the variables by relative influence, shown in Figure @fig-boosting-boston-relinf. Here `rm` (average number of rooms) and `lstat` (percent lower-status population) dominate, which matches the intuition that house size and neighborhood drive price.
+The `summary()` output ranks the variables by relative influence, shown in @fig-boosting-boston-relinf. Here `rm` (average number of rooms) and `lstat` (percent lower-status population) dominate, which matches the intuition that house size and neighborhood drive price.
 
 For a fuller workflow (tuning, visualization, and prediction), we follow an example by the University of Cincinnati^[<http://uc-r.github.io/gbm_regression>], using the larger Ames housing data set. First, we load the packages that support the workflow.
 
@@ -367,7 +367,7 @@ sqrt(min(gbm.fit$cv.error))
 gbm.perf(gbm.fit, method = "cv")
 ```
 
-Figure @fig-boosting-gbm-perf-slow shows the loss falling as trees are added, with the optimal point marked. Because the learning rate is so small, the curve is still descending after many thousands of trees: a small learning rate can demand a great many trees.
+@fig-boosting-gbm-perf-slow shows the loss falling as trees are added, with the optimal point marked. Because the learning rate is so small, the curve is still descending after many thousands of trees: a small learning rate can demand a great many trees.
 
 #### Tuning
 
@@ -401,7 +401,7 @@ sqrt(gbm.fit2$cv.error[min_MSE])
 gbm.perf(gbm.fit2, method = "cv")
 ```
 
-Figure @fig-boosting-gbm-perf-fast shows that the faster, deeper model reaches a noticeably lower cross-validated RMSE with far fewer trees. Tuning one parameter at a time like this is instructive, but in practice we search the parameter space jointly with a grid search.
+@fig-boosting-gbm-perf-fast shows that the faster, deeper model reaches a noticeably lower cross-validated RMSE with far fewer trees. Tuning one parameter at a time like this is instructive, but in practice we search the parameter space jointly with a grid search.
 
 ```{r}
 # create hyperparameter grid
@@ -545,7 +545,7 @@ A trained boosting model is accurate but, on its own, opaque. The next few tools
 
 ##### Variable importance
 
-The first question is usually: which variable has the largest influence on the response? The `summary()` method answers this by relative influence, as plotted in Figure @fig-boosting-gbm-final-relinf.
+The first question is usually: which variable has the largest influence on the response? The `summary()` method answers this by relative influence, as plotted in @fig-boosting-gbm-final-relinf.
 
 ```{r boosting-gbm-final-relinf, fig.cap="Relative influence of the top predictors in the final tuned gbm model for the Ames housing data."}
 par(mar = c(5, 8, 1, 1))
@@ -557,7 +557,7 @@ summary(
   )
 ```
 
-The `vip` package produces a similar ranking with a cleaner default plot, shown in Figure @fig-boosting-gbm-vip.
+The `vip` package produces a similar ranking with a cleaner default plot, shown in @fig-boosting-gbm-vip.
 
 ```{r boosting-gbm-vip, fig.cap="Variable importance for the final tuned gbm model, produced by the vip package."}
 vip::vip(gbm.fit.final)
@@ -571,7 +571,7 @@ Variable importance tells you *which* variables matter but not *how*. Partial de
 
 -   ICE curves are an extension that shows the same thing for each observation separately, which can reveal interactions that the averaged PDP hides.
 
-The PDP in Figure @fig-boosting-gbm-pdp shows how predicted sale price rises with above-grade living area.
+The PDP in @fig-boosting-gbm-pdp shows how predicted sale price rises with above-grade living area.
 
 ```{r fig-boosting-gbm-pdp, fig.cap="Partial dependence of predicted sale price on above-grade living area (Gr_Liv_Area) for the final gbm model."}
 # PDP
@@ -581,7 +581,7 @@ gbm.fit.final %>%
   scale_y_continuous(labels = scales::dollar)
 ```
 
-Figure @fig-boosting-gbm-ice draws the ICE curves, both in their raw form and centered so every curve starts at the same point, which makes differences in slope easier to compare.
+@fig-boosting-gbm-ice draws the ICE curves, both in their raw form and centered so every curve starts at the same point, which makes differences in slope easier to compare.
 
 ```{r fig-boosting-gbm-ice, warning=FALSE, fig.cap="Individual conditional expectation curves for above-grade living area, shown non-centered (left) and centered (right) for the final gbm model."}
 ice1 <- gbm.fit.final %>%
@@ -638,7 +638,7 @@ explanation <- lime::explain(local_obs, explainer, n_features = 5)
 plot_features(explanation)
 ```
 
-Each bar in Figure @fig-boosting-gbm-lime shows how much a feature pushed that specific prediction up or down, which is exactly the kind of explanation you would want to give a stakeholder.
+Each bar in @fig-boosting-gbm-lime shows how much a feature pushed that specific prediction up or down, which is exactly the kind of explanation you would want to give a stakeholder.
 
 #### Prediction
 
@@ -1024,7 +1024,7 @@ ggplot(xgb.fit1$evaluation_log) +
   geom_line(aes(iter, test_rmse_mean), color = "blue")
 ```
 
-In Figure @fig-boosting-xgb-overfit, the red (training) curve keeps falling while the blue (test) curve flattens and then turns up: a textbook picture of overfitting as trees accumulate. Rather than guessing the right number of rounds, we can let XGBoost stop on its own once the test error stops improving, using `early_stopping_rounds`. Figure @fig-boosting-xgb-earlystop shows the result.
+In @fig-boosting-xgb-overfit, the red (training) curve keeps falling while the blue (test) curve flattens and then turns up: a textbook picture of overfitting as trees accumulate. Rather than guessing the right number of rounds, we can let XGBoost stop on its own once the test error stops improving, using `early_stopping_rounds`. @fig-boosting-xgb-earlystop shows the result.
 
 ```{r fig-boosting-xgb-earlystop, fig.cap="Training (red) and cross-validated test (blue) RMSE by boosting round when XGBoost uses early stopping, which halts training once the test error stops improving."}
 # reproducibility
@@ -1191,7 +1191,7 @@ XGBoost reports three importance measures, each answering a slightly different q
 
 -   Frequency: how often a feature is used to split, as a percentage.
 
-Gain is usually the most informative, so Figure @fig-boosting-xgb-importance plots the top ten features by gain.
+Gain is usually the most informative, so @fig-boosting-xgb-importance plots the top ten features by gain.
 
 ```{r fig-boosting-xgb-importance, fig.cap="Top ten features by gain for the final XGBoost model on the Ames housing data."}
 # create importance matrix
@@ -1223,7 +1223,7 @@ gridExtra::grid.arrange(pdp, ice, nrow = 1)
 
 ##### LIME
 
-Local explanations work the same way, except the observations must be one-hot encoded with the same treatment plan before they are explained. Figure @fig-boosting-xgb-lime shows the resulting explanations.
+Local explanations work the same way, except the observations must be one-hot encoded with the same treatment plan before they are explained. @fig-boosting-xgb-lime shows the resulting explanations.
 
 ```{r fig-boosting-xgb-lime, warning=FALSE, fig.cap="LIME local explanations for two test observations under the final XGBoost model, using the one-hot encoded features."}
 # one-hot encode the local observations to be assessed.
@@ -1653,14 +1653,14 @@ A few points about interpreting this estimate:
 
 > **Warning:** PDPs can mislead when the variable of interest is correlated with, or interacts with, the variables being averaged out. ICE curves and accumulated local effects (ALE) plots are useful complements when that is a concern.
 
-To make this concrete, Figure @fig-boosting-boston-pdp shows the PDPs for the two most important variables from our `gbm` Boston model, giving each variable's marginal effect on the response after integrating out the others.
+To make this concrete, @fig-boosting-boston-pdp shows the PDPs for the two most important variables from our `gbm` Boston model, giving each variable's marginal effect on the response after integrating out the others.
 
 ```{r fig-boosting-boston-pdp, fig.cap="Partial dependence of predicted median house value on the average number of rooms (rm) and on the percentage of lower-status population (lstat) for the gbm Boston model."}
 plot(boost.boston, i = "rm") # median house prices increase with rm
 plot(boost.boston, i = "lstat") # median house prices decrease with lstate
 ```
 
-The plots in Figure @fig-boosting-boston-pdp confirm the expected directions: predicted median house price rises with the average number of rooms (`rm`) and falls as the percentage of lower-status population (`lstat`) increases.
+The plots in @fig-boosting-boston-pdp confirm the expected directions: predicted median house price rises with the average number of rooms (`rm`) and falls as the percentage of lower-status population (`lstat`) increases.
 
 Finally, we evaluate the model's test-set MSE.
 

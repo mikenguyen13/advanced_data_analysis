@@ -27,7 +27,7 @@ A collective anomaly is a set of observations that is anomalous as a group even 
 
 > **Key idea:** The same numeric value can be a point anomaly, a contextual anomaly, or part of a collective anomaly, or none of these, depending on what structure you model. Choosing the type is a modeling decision, not a property of the raw number.
 
-Table @tbl-anomaly-detection-types summarizes the three types and what each one needs.
+@tbl-anomaly-detection-types summarizes the three types and what each one needs.
 
 ```{r tbl-anomaly-detection-types, echo=FALSE}
 anom_types <- data.frame(
@@ -55,7 +55,7 @@ knitr::kable(
 )
 ```
 
-Table @tbl-anomaly-detection-types makes the practical point explicit: if your data has no order or context and you treat it as an unordered cloud of points, you can only ever find point anomalies. The remainder of the chapter focuses on point anomalies in an unlabeled (or weakly labeled) setting, with notes on the other two types where the methods extend naturally.
+@tbl-anomaly-detection-types makes the practical point explicit: if your data has no order or context and you treat it as an unordered cloud of points, you can only ever find point anomalies. The remainder of the chapter focuses on point anomalies in an unlabeled (or weakly labeled) setting, with notes on the other two types where the methods extend naturally.
 
 ## Notation and the scoring view {#anomaly-detection-notation}
 
@@ -365,7 +365,7 @@ cat("Average precision  -  kNN:", round(ap_knn, 3),
     "| random baseline:", round(ap_baseline, 3), "\n")
 ```
 
-Both detectors land far above the random baseline of `r round(mean(y), 3)`, confirming they have learned something real. Table @tbl-anomaly-detection-results collects the numbers side by side.
+Both detectors land far above the random baseline of `r round(mean(y), 3)`, confirming they have learned something real. @tbl-anomaly-detection-results collects the numbers side by side.
 
 ```{r tbl-anomaly-detection-results, echo=FALSE}
 results <- data.frame(
@@ -385,7 +385,7 @@ knitr::kable(
 )
 ```
 
-Table @tbl-anomaly-detection-results shows both methods clearly beating the baseline. Finally we visualize the result. Figure @fig-anomaly-detection-plot places three panels side by side: the raw data with true anomalies marked, the isolation-forest score as a color gradient, and the two precision-recall curves overlaid.
+@tbl-anomaly-detection-results shows both methods clearly beating the baseline. Finally we visualize the result. @fig-anomaly-detection-plot places three panels side by side: the raw data with true anomalies marked, the isolation-forest score as a color gradient, and the two precision-recall curves overlaid.
 
 ```{r fig-anomaly-detection-plot, fig.width=9, fig.height=3.4, fig.cap="Left: simulated data, with injected anomalies marked as red triangles, lying in the sparse space around two normal clusters of differing density. Middle: the isolation-forest anomaly score, darker points scoring higher; the true anomalies are the darkest. Right: precision-recall curves for the kNN distance score and the isolation forest, both far above the dashed random-baseline line at the positive rate."}
 op <- par(mfrow = c(1, 3), mar = c(4, 4, 2.5, 1))
@@ -419,7 +419,7 @@ legend("bottomleft",
 par(op)
 ```
 
-Figure @fig-anomaly-detection-plot tells the whole story at a glance: the red triangles in the left panel sit exactly where the middle panel is darkest, and the right panel confirms both detectors recover most anomalies before precision collapses. The kNN score does slightly better here because the data is low-dimensional and the anomalies are genuinely far in Euclidean space; in higher dimensions the isolation forest would typically pull ahead.
+@fig-anomaly-detection-plot tells the whole story at a glance: the red triangles in the left panel sit exactly where the middle panel is darkest, and the right panel confirms both detectors recover most anomalies before precision collapses. The kNN score does slightly better here because the data is low-dimensional and the anomalies are genuinely far in Euclidean space; in higher dimensions the isolation forest would typically pull ahead.
 
 > **Tip:** For real use, prefer a maintained implementation: `isotree` or `solitude` for isolation forests, `dbscan::lof` for the Local Outlier Factor, and `e1071::svm(type = "one-classification")` for the one-class SVM. The from-scratch forest above is for understanding, not production; it is correct but slow.
 
@@ -449,7 +449,7 @@ Calibrate the threshold to a budget, not to 0.5. The default cutoff of a classif
 
 Choose the method to match the anomaly type. Everything in the demo finds point anomalies. Contextual anomalies need the context split (model the behavioral variable *given* the context, then score residuals). Collective anomalies need methods that respect sequence or graph structure, such as sliding-window reconstruction error or change-point detection. Using a point-anomaly detector on a collective-anomaly problem will quietly miss the very thing you care about.
 
-Table @tbl-anomaly-detection-compare compares the main methods to guide the first choice.
+@tbl-anomaly-detection-compare compares the main methods to guide the first choice.
 
 ```{r tbl-anomaly-detection-compare, echo=FALSE}
 compare <- data.frame(
@@ -480,7 +480,7 @@ knitr::kable(
 )
 ```
 
-Table @tbl-anomaly-detection-compare is a starting map, not a verdict: for a few thousand low-dimensional points, LOF or a kNN score is the fast first move; for large or high-dimensional data, reach for an isolation forest; for rich nonlinear data with abundant normal examples, an autoencoder; and when the normal data is genuinely Gaussian and low-dimensional, the classical tests are hard to beat for simplicity.
+@tbl-anomaly-detection-compare is a starting map, not a verdict: for a few thousand low-dimensional points, LOF or a kNN score is the fast first move; for large or high-dimensional data, reach for an isolation forest; for rich nonlinear data with abundant normal examples, an autoencoder; and when the normal data is genuinely Gaussian and low-dimensional, the classical tests are hard to beat for simplicity.
 
 ## Further reading {#anomaly-detection-further}
 

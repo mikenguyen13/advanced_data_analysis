@@ -31,10 +31,23 @@ The treatment here draws on several standard references, which are also good nex
 
 -   @samek2021a
 
-Figure @fig-neural-networks-architecture shows how this body of work fits together, mapping the landscape of neural network architectures and their relationships.
+@fig-neural-networks-architecture shows how this body of work fits together, mapping the landscape of neural network architectures and their relationships.
 
-```{r fig-neural-networks-architecture, echo=FALSE, fig.cap="A high level map of neural network architectures and how they relate to one another, after Jiao and Zhao (2020, p. 321)."}
-knitr::include_graphics("images/architecture.jpeg")
+```{mermaid}
+%%| label: fig-neural-networks-architecture
+%%| fig-cap: "A high-level map of neural network architectures and how they relate to one another."
+graph LR
+  NN["Neural network architectures"]
+  NN --> FF["Feedforward<br/>(MLP)"]
+  NN --> CNN["Convolutional<br/>(CNN)"]
+  NN --> RNN["Recurrent<br/>(RNN, LSTM, GRU)"]
+  NN --> ATT["Attention-based<br/>(Transformers)"]
+  NN --> AE["Autoencoders"]
+  NN --> GEN["Generative<br/>(VAE, GAN, diffusion)"]
+  NN --> GNN["Graph neural networks"]
+  CNN --> CV["Images: classification,<br/>detection, segmentation"]
+  RNN --> SEQ["Sequences and<br/>time series"]
+  ATT --> LLM["BERT, GPT,<br/>large language models"]
 ```
 
 <br>
@@ -594,16 +607,37 @@ $$
 \mathbf{h}_t = f(\mathbf{h}_{t-1}, \mathbf{x}_t; \mathbf{\theta})
 $$
 
-So an RNN processes a sequence by stepping through it one element at a time, updating a running state that acts as a memory of everything it has seen so far, carried forward by an internal feedback loop. Figure @fig-neural-networks-rnn-unfold shows this loop "unfolded" into a chain.
+So an RNN processes a sequence by stepping through it one element at a time, updating a running state that acts as a memory of everything it has seen so far, carried forward by an internal feedback loop. @fig-neural-networks-rnn-unfold shows this loop "unfolded" into a chain.
 
-```{r fig-neural-networks-rnn-unfold, echo=FALSE, fig.cap="A recurrent network's feedback loop unfolded across time into an equivalent chain, where the same parameters are reused at every step (after Goodfellow et al. 2016, Ch. 10)."}
-knitr::include_graphics("images/unfold.png")
+```{mermaid}
+%%| label: fig-neural-networks-rnn-unfold
+%%| fig-cap: "A recurrent network's feedback loop unfolded across time into an equivalent chain, where the same parameters are reused at every step."
+graph LR
+  hprev["..."] --> h1["h(t-1)"]
+  x1["x(t-1)"] --> h1
+  h1 --> h2["h(t)"]
+  x2["x(t)"] --> h2
+  h2 --> h3["h(t+1)"]
+  x3["x(t+1)"] --> h3
+  h3 --> hnext["..."]
 ```
 
-Adding an output at each step gives the full picture, shown in Figure @fig-neural-networks-rnn-unfold-output.
+Adding an output at each step gives the full picture, shown in @fig-neural-networks-rnn-unfold-output.
 
-```{r neural-networks-rnn-unfold-output, echo=FALSE, fig.cap="The unfolded recurrent network with an output produced at each time step from the current hidden state (after Goodfellow et al. 2016, Ch. 10)."}
-knitr::include_graphics("images/unfold2.png")
+```{mermaid}
+%%| label: fig-neural-networks-rnn-unfold-output
+%%| fig-cap: "The unfolded recurrent network with an output produced at each time step from the current hidden state."
+graph LR
+  hprev["..."] --> h1["h(t-1)"]
+  x1["x(t-1)"] --> h1
+  h1 --> o1["o(t-1)"] --> y1["y(t-1)"]
+  h1 --> h2["h(t)"]
+  x2["x(t)"] --> h2
+  h2 --> o2["o(t)"] --> y2["y(t)"]
+  h2 --> h3["h(t+1)"]
+  x3["x(t+1)"] --> h3
+  h3 --> o3["o(t+1)"] --> y3["y(t+1)"]
+  h3 --> hnext["..."]
 ```
 
 Spelled out, a basic RNN computes a hidden state, maps it to an output score, and applies an activation to produce the prediction:
@@ -624,7 +658,7 @@ The fix is to add *gates*, small learned controllers that decide what informatio
 
 ### Long Short-Term Memory (LSTM) RNNs {#long-short-term-memory-lstm-rnns}
 
-The long short-term memory (LSTM) network is the most common gated RNN. Its design deliberately creates paths through time along which the gradient neither vanishes nor explodes, so it can learn long range dependencies. The mechanism is a separate *internal memory* cell $\mathbf{c}_t$ that is updated through three gates. The full set of equations is collected in Table @tbl-neural-networks-lstm-equations.
+The long short-term memory (LSTM) network is the most common gated RNN. Its design deliberately creates paths through time along which the gradient neither vanishes nor explodes, so it can learn long range dependencies. The mechanism is a separate *internal memory* cell $\mathbf{c}_t$ that is updated through three gates. The full set of equations is collected in @tbl-neural-networks-lstm-equations.
 
 +------------------------+----------------------------------------------------------------------------------+
 | Name                   | Formula                                                                          |
@@ -664,7 +698,7 @@ LSTMs are workhorses across a range of sequence tasks, including classification 
 
 ### Gated Recurrent Units
 
-The gated recurrent unit (GRU) is a streamlined alternative to the LSTM. It merges the input and forget gates into a single update gate and drops the separate memory cell, which leaves fewer parameters to learn while keeping much of the LSTM's ability to model long range dependence. Its equations are collected in Table @tbl-neural-networks-gru-equations.
+The gated recurrent unit (GRU) is a streamlined alternative to the LSTM. It merges the input and forget gates into a single update gate and drops the separate memory cell, which leaves fewer parameters to learn while keeping much of the LSTM's ability to model long range dependence. Its equations are collected in @tbl-neural-networks-gru-equations.
 
 | Name                   | Formula                                                                                             |
 |------------------------|-----------------------------------------------------------------------------------------------------|

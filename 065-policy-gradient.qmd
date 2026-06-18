@@ -191,7 +191,7 @@ $$
 
 Advantage Actor-Critic (A2C) is the standard synchronous form. It runs several environment copies in parallel, collects a short batch of transitions from each, computes advantages (often with multi-step or generalized advantage estimation), and applies one synchronized update to a shared actor and critic. Running many environments at once decorrelates the data (which stabilizes the gradient, much as a replay buffer does for value-based methods) and keeps hardware busy. A2C is the synchronous counterpart of the earlier asynchronous A3C (Mnih et al. 2016); the synchronous version is simpler and usually performs at least as well.
 
-Table @tbl-policy-gradient-methods compares the methods discussed so far along the dimensions that matter when choosing one.
+@tbl-policy-gradient-methods compares the methods discussed so far along the dimensions that matter when choosing one.
 
 ```{r tbl-policy-gradient-methods, echo=FALSE}
 methods <- data.frame(
@@ -242,7 +242,7 @@ where $\hat{A}_t$ is an estimated advantage and $\epsilon$ (typically around $0.
 
 To make the mechanics concrete we train REINFORCE on a softmax-policy bandit, the simplest setting in which the full policy gradient machinery applies. There is a single state, so the policy is a distribution over $K$ actions controlled by preference parameters $\theta \in \mathbb{R}^K$. Each action $a$ pays a stochastic reward with unknown mean $\mu_a$; the agent never sees the means, only sampled rewards. This strips away the environment dynamics and lets us watch the score-function update, the baseline, and the rising return curve in isolation.
 
-The policy is the softmax over preferences, $\pi_\theta(a) = e^{\theta_a} / \sum_{a'} e^{\theta_{a'}}$. For this policy the score function for the sampled action $a$ is $\nabla_\theta \log \pi_\theta(a) = \mathbf{1}_a - \pi_\theta$, where $\mathbf{1}_a$ is the indicator vector for action $a$. We use a running average of observed rewards as the baseline $b$, so each update nudges $\theta$ by $\alpha\,(r - b)\,(\mathbf{1}_a - \pi_\theta)$. The hyperparameters are collected in Table @tbl-policy-gradient-hyperparams.
+The policy is the softmax over preferences, $\pi_\theta(a) = e^{\theta_a} / \sum_{a'} e^{\theta_{a'}}$. For this policy the score function for the sampled action $a$ is $\nabla_\theta \log \pi_\theta(a) = \mathbf{1}_a - \pi_\theta$, where $\mathbf{1}_a$ is the indicator vector for action $a$. We use a running average of observed rewards as the baseline $b$, so each update nudges $\theta$ by $\alpha\,(r - b)\,(\mathbf{1}_a - \pi_\theta)$. The hyperparameters are collected in @tbl-policy-gradient-hyperparams.
 
 ```{r policy-gradient-hyperparams, echo=FALSE}
 hp <- data.frame(
@@ -327,7 +327,7 @@ cat(sprintf("\nProbability on best action (action %d): %.3f\n",
             which.max(mu), final_policy[which.max(mu)]))
 ```
 
-The printed policy concentrates probability on action 4, the action with the highest hidden mean, even though the agent only ever saw noisy samples and never the means themselves. Figure @fig-policy-gradient-return shows the learning curves: the left panel is the moving-average reward climbing toward the best action's mean of $1.6$, and the right panel is the probability mass the policy places on the best action rising from $0.25$ (uniform over four actions) toward $1$.
+The printed policy concentrates probability on action 4, the action with the highest hidden mean, even though the agent only ever saw noisy samples and never the means themselves. @fig-policy-gradient-return shows the learning curves: the left panel is the moving-average reward climbing toward the best action's mean of $1.6$, and the right panel is the probability mass the policy places on the best action rising from $0.25$ (uniform over four actions) toward $1$.
 
 ```{r fig-policy-gradient-return, fig.cap="REINFORCE on a four-armed softmax bandit. Left: 50-step moving-average reward rising toward the best action's mean of 1.6 (dashed line). Right: probability the policy assigns to the best action, starting at the uniform value 0.25 and converging toward 1.", fig.width=9, fig.height=4}
 op <- par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))

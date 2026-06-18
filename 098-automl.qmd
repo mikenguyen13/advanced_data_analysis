@@ -116,7 +116,7 @@ The auto-sklearn system of Feurer et al. (2015) is the canonical example: it pre
 
 ## Tools in practice {#automl-tools}
 
-Two open systems anchor the practical landscape, and they make different design choices worth contrasting. Table @tbl-automl-tools-comparison summarizes them alongside the base-R demonstration built later in this chapter, so the moving parts of each are visible side by side.
+Two open systems anchor the practical landscape, and they make different design choices worth contrasting. @tbl-automl-tools-comparison summarizes them alongside the base-R demonstration built later in this chapter, so the moving parts of each are visible side by side.
 
 ```{r tbl-automl-tools-comparison, echo=FALSE}
 .libPaths(c("C:/Users/miken/R/library-4.4", .libPaths()))
@@ -142,7 +142,7 @@ kable(tools_tbl,
       caption = "Design choices of two production AutoML systems and the base-R demonstration in this chapter, compared across search strategy, surrogate, meta-learning, the form of the final model, the model families considered, native R access, and intended use.")
 ```
 
-Table @tbl-automl-tools-comparison draws out the main contrast. `h2o` AutoML follows a fixed, mostly random search plan and always finishes by training a stacked ensemble, which makes it a one-call workhorse for a strong tabular baseline and is covered in detail in the h2o chapter. auto-sklearn instead spends effort on a Bayesian-optimization search seeded by meta-learning and finishes with post-hoc ensemble selection, which makes it more sample-efficient under a tight budget at the cost of more machinery. The base-R demonstration below strips both down to the bones: it enumerates the CASH grid exactly so you can see the objective being minimized with nothing hidden.
+@tbl-automl-tools-comparison draws out the main contrast. `h2o` AutoML follows a fixed, mostly random search plan and always finishes by training a stacked ensemble, which makes it a one-call workhorse for a strong tabular baseline and is covered in detail in the h2o chapter. auto-sklearn instead spends effort on a Bayesian-optimization search seeded by meta-learning and finishes with post-hoc ensemble selection, which makes it more sample-efficient under a tight budget at the cost of more machinery. The base-R demonstration below strips both down to the bones: it enumerates the CASH grid exactly so you can see the objective being minimized with nothing hidden.
 
 The `h2o` call is shown for reference (it needs a running JVM cluster, so it does not execute when the book is built):
 
@@ -326,9 +326,9 @@ kable(leaderboard, digits = 4,
       caption = "AutoML leaderboard from the base-R CASH search. Pipelines are ranked by cross-validated AUC. The Test AUC column scores each refit pipeline on a held-out set the search never saw, and Optimism is the gap (CV minus test), a direct measure of how much the search overfit the validation procedure.")
 ```
 
-Table @tbl-automl-leaderboard shows the structure you should expect from any real AutoML run. The additive GLM and the high-bias models (large $k$, the near-stump tree) trail because they cannot represent the interaction in the data-generating boundary; the GLM with the interaction term, the deeper tree, and the stacked ensemble lead. The two columns the demonstration adds beyond a normal leaderboard are the important ones. The Test AUC confirms whether the cross-validation ranking holds up out of sample, and the Optimism column quantifies the validation-overfitting hazard: because we searched several pipelines and reported the maximum cross-validated score, the winner's CV AUC is biased upward relative to its true test performance. The gap is usually small here because the search space is tiny, but it grows with the number of pipelines searched, which is the point.
+@tbl-automl-leaderboard shows the structure you should expect from any real AutoML run. The additive GLM and the high-bias models (large $k$, the near-stump tree) trail because they cannot represent the interaction in the data-generating boundary; the GLM with the interaction term, the deeper tree, and the stacked ensemble lead. The two columns the demonstration adds beyond a normal leaderboard are the important ones. The Test AUC confirms whether the cross-validation ranking holds up out of sample, and the Optimism column quantifies the validation-overfitting hazard: because we searched several pipelines and reported the maximum cross-validated score, the winner's CV AUC is biased upward relative to its true test performance. The gap is usually small here because the search space is tiny, but it grows with the number of pipelines searched, which is the point.
 
-Figure @fig-automl-leaderboard-plot makes the same two stories visual: the left panel ranks the pipelines, and the right panel plots cross-validated against held-out AUC so the optimism (the distance below the diagonal) is read off directly.
+@fig-automl-leaderboard-plot makes the same two stories visual: the left panel ranks the pipelines, and the right panel plots cross-validated against held-out AUC so the optimism (the distance below the diagonal) is read off directly.
 
 ```{r fig-automl-leaderboard-plot, eval=TRUE, fig.cap="Left: the AutoML leaderboard, pipelines ranked by out-of-fold (cross-validated) AUC, with the stacked ensemble highlighted. Right: cross-validated AUC against held-out test AUC for each pipeline; points below the dashed diagonal scored better in cross-validation than on truly unseen data, the gap being the optimism of the search.", fig.width=9, fig.height=4.2}
 par(mfrow = c(1, 2), mar = c(4, 9, 3, 1))

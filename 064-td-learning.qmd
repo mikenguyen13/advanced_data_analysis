@@ -201,7 +201,7 @@ qlearn <- run_agent("qlearning")
 
 ### Learning curves {#td-demo-curve}
 
-Figure @fig-td-learning-curve shows the reward collected per episode, smoothed with a trailing moving average so the trend is visible through the exploration noise. Both agents improve quickly. The instructive part is the steady state: Q-learning learns the optimal (shorter, riskier) path and so would score best if it never explored, but its $\varepsilon$-greedy exploration occasionally tips it off the cliff, dragging its online reward down. SARSA learns a safer path that keeps it away from the edge, so its online performance during learning is actually higher.
+@fig-td-learning-curve shows the reward collected per episode, smoothed with a trailing moving average so the trend is visible through the exploration noise. Both agents improve quickly. The instructive part is the steady state: Q-learning learns the optimal (shorter, riskier) path and so would score best if it never explored, but its $\varepsilon$-greedy exploration occasionally tips it off the cliff, dragging its online reward down. SARSA learns a safer path that keeps it away from the edge, so its online performance during learning is actually higher.
 
 ```{r fig-td-learning-curve, fig.cap="Reward per episode (trailing 10-episode moving average) for SARSA and Q-learning on cliff walking. SARSA earns more online because it learns a safe path that tolerates its own exploration, while Q-learning's optimal-but-risky path costs it occasional falls off the cliff.", fig.width=7, fig.height=4.5}
 moving_avg <- function(x, k = 10L) {
@@ -231,7 +231,7 @@ legend("bottomright",
 
 ### The learned policies {#td-demo-policy}
 
-To see *why* the curves differ, we extract the greedy policy from each $Q$ table and draw the grid. Figure @fig-td-learning-policies overlays both. Each arrow is the greedy action in that cell. Q-learning steers along the row directly above the cliff (the optimal path); SARSA climbs one extra row first, buying a safety margin against an unlucky random step.
+To see *why* the curves differ, we extract the greedy policy from each $Q$ table and draw the grid. @fig-td-learning-policies overlays both. Each arrow is the greedy action in that cell. Q-learning steers along the row directly above the cliff (the optimal path); SARSA climbs one extra row first, buying a safety margin against an unlucky random step.
 
 ```{r fig-td-learning-policies, fig.cap="Greedy policies recovered from the learned action-values. Left: SARSA takes the safe route, stepping up and away from the cliff edge. Right: Q-learning takes the optimal route hugging the cliff. 'S' marks start, 'G' goal, and shaded cells are the cliff.", fig.width=7, fig.height=4}
 arrow_for <- function(a) c("↑", "→", "↓", "←")[a]  # up,right,down,left
@@ -264,7 +264,7 @@ par(mfrow = c(1, 1))
 
 ### Numerical comparison {#td-demo-table}
 
-Table @tbl-td-learning-compare summarizes the contrast quantitatively, reporting the average online reward over the final 100 training episodes (when exploration is still on) for each method. The pattern is the classic result from Sutton and Barto (2018): SARSA's online reward is higher even though Q-learning has learned the genuinely optimal policy.
+@tbl-td-learning-compare summarizes the contrast quantitatively, reporting the average online reward over the final 100 training episodes (when exploration is still on) for each method. The pattern is the classic result from Sutton and Barto (2018): SARSA's online reward is higher even though Q-learning has learned the genuinely optimal policy.
 
 ```{r tbl-td-learning-compare}
 final_window <- function(x, k = 100L) mean(tail(x, k))

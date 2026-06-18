@@ -57,7 +57,7 @@ Shuffles are the expensive part of distributed computing because network and dis
 
 > **Intuition:** Narrow transformations are like having each worker tidy their own desk: independent and quick. A wide transformation is like asking everyone in the building to sort their papers into shared bins by topic, which means carrying paper down the hall to whoever owns each bin. The hallway traffic, not the sorting, is what slows you down.
 
-We make the $cN + sm$ cost model visual in Figure @fig-spark-sparklyr-shuffle-cost near the end of the chapter, after we have seen the map and reduce pattern that produces those shuffles.
+We make the $cN + sm$ cost model visual in @fig-spark-sparklyr-shuffle-cost near the end of the chapter, after we have seen the map and reduce pattern that produces those shuffles.
 
 ## The map and reduce pattern, made precise
 
@@ -301,7 +301,7 @@ The `max_abs_diff` column is essentially zero (differences at the level of float
 
 ## A figure: why shuffle volume dominates cost
 
-We can now make the cost model from earlier visual. That model said a plan costs roughly $cN + sm$, where $N$ is rows processed, $m$ is rows shuffled, $c$ is per row compute cost, and $s$ is per row shuffle cost with $s \gg c$. Figure @fig-spark-sparklyr-shuffle-cost plots total cost against the fraction of rows shuffled for a fixed $N$, for three values of the shuffle penalty $s$. The steeper the line, the more a small reduction in shuffled rows saves, which is why reducing shuffle (through filtering early, pre-aggregating, and avoiding unnecessary joins and sorts) is where tuning effort pays off.
+We can now make the cost model from earlier visual. That model said a plan costs roughly $cN + sm$, where $N$ is rows processed, $m$ is rows shuffled, $c$ is per row compute cost, and $s$ is per row shuffle cost with $s \gg c$. @fig-spark-sparklyr-shuffle-cost plots total cost against the fraction of rows shuffled for a fixed $N$, for three values of the shuffle penalty $s$. The steeper the line, the more a small reduction in shuffled rows saves, which is why reducing shuffle (through filtering early, pre-aggregating, and avoiding unnecessary joins and sorts) is where tuning effort pays off.
 
 ```{r fig-spark-sparklyr-shuffle-cost, fig.width=7, fig.height=4.2, fig.cap="Modeled job cost as a function of the fraction of rows shuffled, for compute-cost-per-row c = 1 and three shuffle-cost-per-row values s. When shuffle is much more expensive than compute, the shuffled fraction drives total cost."}
 library(ggplot2)
@@ -331,7 +331,7 @@ ggplot(grid, aes(frac_shuffled, total_cost / 1e6, color = s_label)) +
 
 ## When to use Spark, and when not to
 
-The honest default is: do not use Spark until you need it. Spark adds a cluster, a JVM, network shuffles, and operational overhead, and for data that fits in memory a single machine tool is faster and simpler. Table @tbl-spark-sparklyr-tool-comparison compares the common options for an R user by the data size and setting where each is the right fit.
+The honest default is: do not use Spark until you need it. Spark adds a cluster, a JVM, network shuffles, and operational overhead, and for data that fits in memory a single machine tool is faster and simpler. @tbl-spark-sparklyr-tool-comparison compares the common options for an R user by the data size and setting where each is the right fit.
 
 | Tool | Where it runs | Good data size | Parallelism | Best when |
 |---|---|---|---|---|

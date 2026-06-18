@@ -143,7 +143,7 @@ A temperature $T > 1$ softens the distribution (less confident), $T < 1$ sharpen
 
 For binary problems with a single logit $z$ (log-odds), temperature scaling is $g(z) = \sigma(z / T)$ with $\sigma$ the logistic function, which is the special case of Platt scaling with $B = 0$ and $A = -1/T$. It is the most restrictive of the three methods (one parameter), hardest to overfit, and the right default for deep networks where the miscalibration is a uniform confidence inflation.
 
-Table @tbl-probability-calibration-methods summarizes the trade-offs.
+@tbl-probability-calibration-methods summarizes the trade-offs.
 
 ```{r tbl-probability-calibration-methods, echo=FALSE}
 methods_tbl <- data.frame(
@@ -164,7 +164,7 @@ knitr::kable(
 )
 ```
 
-Table @tbl-probability-calibration-methods shows the progression from most flexible (isotonic) to most constrained (temperature), with Platt scaling in between. The general rule: the less calibration data you have, the more constrained a method you should choose.
+@tbl-probability-calibration-methods shows the progression from most flexible (isotonic) to most constrained (temperature), with Platt scaling in between. The general rule: the less calibration data you have, the more constrained a method you should choose.
 
 ## A worked demonstration in base R
 
@@ -264,7 +264,7 @@ metric_table$Brier <- round(metric_table$Brier, 4)
 metric_table$ECE   <- round(metric_table$ECE, 4)
 ```
 
-Table @tbl-probability-calibration-metrics reports the Brier score and ECE on the untouched test set, before and after recalibration.
+@tbl-probability-calibration-metrics reports the Brier score and ECE on the untouched test set, before and after recalibration.
 
 ```{r tbl-probability-calibration-metrics}
 knitr::kable(
@@ -275,7 +275,7 @@ knitr::kable(
 
 Both recalibrators cut the ECE substantially relative to the uncalibrated model, confirming that the distortion we injected is largely repairable by a monotone map. The Brier score moves less dramatically because, as its decomposition shows, recalibration touches only the calibration term and leaves discrimination (resolution) alone.
 
-Now the picture. Figure @fig-probability-calibration-reliability overlays the reliability curves for all three versions on the test set. We draw the three curves in one figure using a single set of axes so they can be compared directly against the diagonal.
+Now the picture. @fig-probability-calibration-reliability overlays the reliability curves for all three versions on the test set. We draw the three curves in one figure using a single set of axes so they can be compared directly against the diagonal.
 
 ```{r fig-probability-calibration-reliability, fig.width=6, fig.height=6, fig.cap="Reliability diagram on the held-out test set. The dashed diagonal is perfect calibration. The uncalibrated model (circles) bows below the diagonal, the signature of over-confidence. Platt scaling (triangles) and isotonic regression (squares) both pull the curve back toward the diagonal."}
 rel_raw   <- reliability(p_model[test], dat$y[test])
@@ -297,7 +297,7 @@ legend("topleft", bty = "n",
        pch = c(1, 2, 0, NA), lty = c(1, 1, 1, 2))
 ```
 
-Figure @fig-probability-calibration-reliability shows the uncalibrated curve sagging below the diagonal across the middle of the range: when the model says 0.8, positives actually appear less often than 80% of the time. After recalibration both curves snap back toward the diagonal, matching the drop in ECE from Table @tbl-probability-calibration-metrics.
+@fig-probability-calibration-reliability shows the uncalibrated curve sagging below the diagonal across the middle of the range: when the model says 0.8, positives actually appear less often than 80% of the time. After recalibration both curves snap back toward the diagonal, matching the drop in ECE from @tbl-probability-calibration-metrics.
 
 > **Note:** We applied Platt scaling to the model's log-odds and isotonic regression to its probabilities. Either method can take either input; what matters is that the input is a monotone function of the score and that the map is fit on held-out data. Here both happened to work well because the injected distortion is smooth and monotone.
 

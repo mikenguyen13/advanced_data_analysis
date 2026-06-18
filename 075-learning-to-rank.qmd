@@ -87,7 +87,7 @@ NDCG@k lies in $[0, 1]$, equals $1$ for the ideal ordering, and averages cleanly
 
 > **Note:** There are two slightly different DCG conventions in the literature. The one above (with the $2^{\text{rel}}-1$ gain) is the form used by most modern toolkits and competitions; an older form uses $\text{rel}_i$ directly in the numerator. They agree for binary relevance up to scaling. We use the exponential-gain form throughout.
 
-Table @tbl-learning-to-rank-metric-summary summarizes when each metric is the right choice.
+@tbl-learning-to-rank-metric-summary summarizes when each metric is the right choice.
 
 ```{r tbl-learning-to-rank-metric-summary, echo=FALSE}
 metric_tab <- data.frame(
@@ -108,7 +108,7 @@ knitr::kable(
 )
 ```
 
-Table @tbl-learning-to-rank-metric-summary shows that the metrics form a rough ladder of generality, from precision@k (binary, order-insensitive within the cutoff) up to NDCG@k (graded relevance with an explicit position discount).
+@tbl-learning-to-rank-metric-summary shows that the metrics form a rough ladder of generality, from precision@k (binary, order-insensitive within the cutoff) up to NDCG@k (graded relevance with an explicit position discount).
 
 ## Three families of training approaches
 
@@ -122,7 +122,7 @@ Listwise. Define a loss over the *entire ranked list* for a query at once, ideal
 
 > **When to use this:** Start pointwise for a baseline and when labels are reliable cardinal values. Move to pairwise (the usual sweet spot) when you have many items per query and care about order. Reach for listwise when you are squeezing out the last few points of NDCG and can afford the complexity. In practice, gradient-boosted pairwise/listwise rankers (LambdaMART) are the default production choice for tabular ranking features.
 
-Table @tbl-learning-to-rank-approaches lays out the tradeoffs.
+@tbl-learning-to-rank-approaches lays out the tradeoffs.
 
 ```{r tbl-learning-to-rank-approaches, echo=FALSE}
 appr_tab <- data.frame(
@@ -155,7 +155,7 @@ knitr::kable(
 )
 ```
 
-Table @tbl-learning-to-rank-approaches makes clear that moving down the table buys closer alignment with the true metric at the cost of more machinery.
+@tbl-learning-to-rank-approaches makes clear that moving down the table buys closer alignment with the true metric at the cost of more machinery.
 
 ## RankNet: a pairwise model with a probabilistic loss
 
@@ -283,7 +283,7 @@ scores <- data.frame(
 scores
 ```
 
-The ideal ordering scores NDCG $= 1$ by construction, the reversed ordering scores lowest, and the model ordering lands in between, confirming the implementations behave sensibly. Table @tbl-learning-to-rank-orderings presents the same comparison as a formatted exhibit.
+The ideal ordering scores NDCG $= 1$ by construction, the reversed ordering scores lowest, and the model ordering lands in between, confirming the implementations behave sensibly. @tbl-learning-to-rank-orderings presents the same comparison as a formatted exhibit.
 
 ```{r tbl-learning-to-rank-orderings, echo=FALSE}
 knitr::kable(
@@ -292,7 +292,7 @@ knitr::kable(
 )
 ```
 
-Table @tbl-learning-to-rank-orderings shows the metrics agree on the ranking of the orderings (Ideal > Model > Reversed) while disagreeing on magnitude, which is expected since each metric weights position and grade differently.
+@tbl-learning-to-rank-orderings shows the metrics agree on the ranking of the orderings (Ideal > Model > Reversed) while disagreeing on magnitude, which is expected since each metric weights position and grade differently.
 
 ### Simulating query-document data
 
@@ -403,7 +403,7 @@ pairwise_perf  <- evaluate_ranker(test, test_pred_pair)
 round(pairwise_perf, 3)
 ```
 
-The learned weights should recover the hidden utility direction (roughly a 2:1 ratio favoring `x1`), because that is the direction that orders pairs correctly. Figure @fig-learning-to-rank-training shows the pairwise loss decreasing over gradient-descent iterations alongside the learned weight ratio converging toward the true value of 2.
+The learned weights should recover the hidden utility direction (roughly a 2:1 ratio favoring `x1`), because that is the direction that orders pairs correctly. @fig-learning-to-rank-training shows the pairwise loss decreasing over gradient-descent iterations alongside the learned weight ratio converging toward the true value of 2.
 
 ```{r fig-learning-to-rank-training, fig.cap="Left: the RankNet pairwise log loss falls smoothly as gradient descent orders more training pairs correctly. Right: the ratio of learned weights (x1 over x2) converges toward the true utility ratio of 2 (dashed line).", fig.width=8, fig.height=4}
 # Re-run the descent while recording the weight ratio at each step
@@ -425,7 +425,7 @@ plot(ratio_hist, type = "l", lwd = 2, col = "darkorange",
 abline(h = 2, lty = 2, col = "grey40")
 ```
 
-Figure @fig-learning-to-rank-training confirms two things at once: the surrogate loss is being minimized, and minimizing it drives the model toward the feature weighting that produces correct orderings.
+@fig-learning-to-rank-training confirms two things at once: the surrogate loss is being minimized, and minimizing it drives the model toward the feature weighting that produces correct orderings.
 
 ### A gradient-boosted ranker with xgboost
 
@@ -461,7 +461,7 @@ xgb_perf <- evaluate_ranker(test_sorted, test_pred_xgb)
 round(xgb_perf, 3)
 ```
 
-We collect all three rankers into one comparison. Table @tbl-learning-to-rank-comparison reports mean NDCG and MAP on the held-out queries.
+We collect all three rankers into one comparison. @tbl-learning-to-rank-comparison reports mean NDCG and MAP on the held-out queries.
 
 ```{r tbl-learning-to-rank-comparison, echo=FALSE}
 comp <- data.frame(
@@ -476,7 +476,7 @@ knitr::kable(
 )
 ```
 
-Table @tbl-learning-to-rank-comparison shows that on this deliberately linear problem the simple pairwise ranker is competitive with gradient boosting, a useful reminder that model complexity should match signal complexity. On real data with nonlinear feature interactions, the gradient-boosted ranker typically pulls ahead.
+@tbl-learning-to-rank-comparison shows that on this deliberately linear problem the simple pairwise ranker is competitive with gradient boosting, a useful reminder that model complexity should match signal complexity. On real data with nonlinear feature interactions, the gradient-boosted ranker typically pulls ahead.
 
 ## Practical guidance and pitfalls
 

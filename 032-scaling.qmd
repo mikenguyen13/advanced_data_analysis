@@ -52,7 +52,7 @@ This minimization is not analytical but can be solved computationally by a gradi
 The gradient is worth writing out, both because it drives the algorithm and because it exposes the geometry. Differentiating $S_M$ with respect to a single point $z_i$, and using $\partial \|z_i - z_{i'}\| / \partial z_i = (z_i - z_{i'})/\|z_i - z_{i'}\|$, gives
 
 $$
-\frac{\partial S_M}{\partial z_i} = -2 \sum_{i' \neq i} \big(d_{ii'} - \|z_i - z_{i'}\|\big)\, \frac{z_i - z_{i'}}{\|z_i - z_{i'}\|} .
+\frac{\partial S_M}{\partial z_i} = -4 \sum_{i' \neq i} \big(d_{ii'} - \|z_i - z_{i'}\|\big)\, \frac{z_i - z_{i'}}{\|z_i - z_{i'}\|} .
 $$ {#eq-scaling-ks-grad}
 
 Each term is a spring: the unit vector $(z_i - z_{i'})/\|z_i - z_{i'}\|$ points along the edge, and the scalar $d_{ii'} - \|z_i - z_{i'}\|$ is positive when the points are currently too close (pull apart) and negative when too far (push together). The configuration is in equilibrium when these spring forces balance at every point. A practical consequence of @eq-scaling-ks-grad is the singularity at $z_i = z_{i'}$: coincident points produce an undefined direction, so implementations either perturb ties or, more robustly, use the SMACOF majorization algorithm (Scaling by MAjorizing a COmplicated Function), which replaces the non-smooth stress by a quadratic upper bound at each iteration and so guarantees a monotone, divide-free decrease of stress.
@@ -82,7 +82,7 @@ Reach for the Sammon mapping over plain least squares when the fine-grained stru
 A third stress function is called classical scaling, where we start with similarities $s_{ii'}$ rather than distances. Typically, one uses the centered inner product similarity $s_{ii'} = <x_i - \bar{x}, x_{i'} - \bar{x}>$. In this case, we minimize
 
 $$
-S_C (z_1, \dots, z_n) = \sum_{i \neq i'} (s_{ii'} - <z_i \bar{z}, z_{i'} - \bar{z}>)^2
+S_C (z_1, \dots, z_n) = \sum_{i \neq i'} (s_{ii'} - <z_i - \bar{z}, z_{i'} - \bar{z}>)^2
 $$
 
 Unlike the previous two, this can be solved explicitly in terms of an eigen-decomposition, so no iterative search is needed. In fact, in this context one can show an equivalence between MDS and PCA.^[When the distances are Euclidean and the similarity is the centered inner product, classical scaling recovers exactly the same low-dimensional coordinates as principal component analysis. So classical MDS is, in a precise sense, PCA viewed through the lens of pairwise relationships.]

@@ -79,11 +79,13 @@ This is the central result of Elkan and Noto (2008): the classifier you can actu
 
 First, *if you only need a ranking or a thresholded decision*, you do not even need $c$, since dividing by a positive constant preserves the order of scores. The naive classifier already ranks correctly under SCAR. You only need $c$ when you want calibrated probabilities or a threshold tied to a true positive rate.
 
-Second, *you can estimate $c$ from a validation set*. Take a held-out set of labeled positives $P_{\text{val}}$. For any such point $y = 1$, so $g(x) = c \cdot f(x) = c \cdot 1 = c$. Averaging the naive model's score over known positives estimates the propensity:
+Second, *you can estimate $c$ from a validation set*. Take a held-out set of labeled positives $P_{\text{val}}$. On such a point $g(x) = c \cdot f(x)$, but note that $f(x) = p(y=1\mid x)$ need not equal $1$ even at a point known to be positive, because the classes overlap in feature space. Averaging the naive model's score over known positives,
 
 $$
-\hat c \;=\; \frac{1}{|P_{\text{val}}|} \sum_{x \in P_{\text{val}}} \hat g(x) .
+\hat c \;=\; \frac{1}{|P_{\text{val}}|} \sum_{x \in P_{\text{val}}} \hat g(x) ,
 $$
+
+therefore estimates $c\,\mathbb{E}[f(x)\mid y=1]$ (Elkan-Noto's "e1" estimator), not $c$ itself. It is exact only when the classes are (near-)separable, so that $f(x)\approx 1$ on labeled positives, and it underestimates $c$ whenever the classes overlap. When that bias matters, use a separability-robust estimator (Elkan-Noto's "e3") or recover $c$ from $\hat c = \hat p(s{=}1)/\hat\pi$ when the prior $\pi$ is available.
 
 
 ::: {.callout-tip title="Intuition"}

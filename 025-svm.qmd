@@ -283,13 +283,13 @@ $$
 The optimization problem then becomes
 
 $$
-\underset{\beta_0,\dots, \beta_p, \epsilon_1, \dots, \epsilon_n}{\operatorname{max}}
+\underset{\beta_0,\dots, \beta_p, \epsilon_1, \dots, \epsilon_n}{\operatorname{max}} M
 $$
 
 subject to
 
 $$
-y_i (\beta_0 + \sum_{j=1}^p \beta_{j1}x_{1j} + \sum_{j=1}^p \beta_{j2} x_{ij}^2) \ge M (1 - \epsilon_i), \forall i = 1, \dots, n
+y_i (\beta_0 + \sum_{j=1}^p \beta_{j1}x_{ij} + \sum_{j=1}^p \beta_{j2} x_{ij}^2) \ge M (1 - \epsilon_i), \forall i = 1, \dots, n
 $$
 
 $$
@@ -475,7 +475,7 @@ Then the solution to the constrained minimization
 $$
 \underset{\beta_0, \beta}{\operatorname{min}} [ \sum_{i=1}^n [1 - y_i f(x_i)]_+ + \frac{\lambda}{2}||\beta||^2]
 $$ {#eq-svm-reg4}
-gives the same estimates for $\beta$ as the support vector classifier, where $\lambda$ is proportional to $C$ as before. To express this in terms of the kernel's basis functions, suppose the basis set $\{ h_j(x) \}$ comes from the eigen-decomposition $K(x, \tilde{x}) = \sum_{j = 1}^\infty \delta_j \phi_j (x) \phi_j (\tilde{x})$, so that $h_j(x) = \sqrt{\delta_j} \phi_j(x)$. Letting $\delta_j \equiv \sqrt{\delta_j} \beta_j$ (recall the desired function is an expansion in these basis functions), the minimization becomes
+gives the same estimates for $\beta$ as the support vector classifier, where $\lambda$ is proportional to $C$ as before. To express this in terms of the kernel's basis functions, suppose the basis set $\{ h_j(x) \}$ comes from the eigen-decomposition $K(x, \tilde{x}) = \sum_{j = 1}^\infty \delta_j \phi_j (x) \phi_j (\tilde{x})$, so that $h_j(x) = \sqrt{\delta_j} \phi_j(x)$. Letting $\theta_j \equiv \sqrt{\delta_j}\, \beta_j$ (recall the desired function is an expansion in these basis functions), the minimization becomes
 
 $$
 \underset{\beta_0, \theta}{\operatorname{min}} [ \sum_{i=1}^n [1 - y_i (\beta_0 + \sum_{j=1}^\infty \theta_j \phi_j(x_i))]_+ + \frac{\lambda}{2} \sum_{j=1}^\infty \frac{\theta_j^2}{\delta_j}]
@@ -483,9 +483,9 @@ $$ {#eq-svm-reg5}
 One strength of the RKHS view of the SVM is that the "loss plus penalty" form makes it simple to swap in any convex loss function. For instance, using logistic regression as a classifier behaves much like an SVM, because the binomial deviance loss is shaped similarly to the hinge loss.^[Both losses penalize confident wrong predictions heavily and confident correct predictions lightly. They differ mainly in that hinge loss flattens to exactly zero past the margin, while binomial deviance never quite reaches zero, which is what lets logistic regression produce calibrated probabilities.] The RKHS theory then delivers the finite-dimensional solution @eq-svm-reg3, $f(x) = \beta_0 + \sum_{i=1}^n \alpha_i K(x, x_i)$, which equivalently minimizes
 
 $$
-\underset{\beta_0, \alpha}{\operatorname{min}} [ [1 - y_i f(x_i)]_+ + \frac{\lambda}{2} \mathbf{\alpha}^T \mathbf{K \alpha}]
+\underset{\beta_0, \alpha}{\operatorname{min}} [ \sum_{i=1}^n [1 - y_i f(x_i)]_+ + \frac{\lambda}{2} \mathbf{\alpha}^T \mathbf{K \alpha}]
 $$ {#eq-svm-reg6}
-As a sanity check, choose a linear kernel, $K(x, x_i) = <x, x_i>$ (which is essentially the Pearson correlation). The solution becomes $f(x) = \beta_0 + \sum_{i=1}^n \alpha_i <x, x_i>$, which is exactly the [Support Vector Classifiers]. The linear kernel recovers the linear model, as it should.
+As a sanity check, choose a linear kernel, $K(x, x_i) = <x, x_i>$ (which is the ordinary Euclidean inner product, proportional to cosine similarity only after centering and normalizing). The solution becomes $f(x) = \beta_0 + \sum_{i=1}^n \alpha_i <x, x_i>$, which is exactly the [Support Vector Classifiers]. The linear kernel recovers the linear model, as it should.
 
 For genuine SVM analysis we usually pick a richer kernel to allow flexible boundaries. The common choices are:
 
@@ -504,7 +504,7 @@ The honest drawback is that there is no general rule telling you which kernel to
 The finite-dimensional kernel representation also pays off computationally. We only need to consider the $\binom{n}{2}$ distinct pairs of $x_i$ and $x_{i'}$ in the kernel matrix. That can still be a large number, but it is finite, which is a decisive improvement over the infinite-dimensional feature space we started from. A second economy comes from sparsity: $\alpha_i = 0$ whenever the feature vector $x_i$ is not a support vector. This holds because the hinge loss is exactly zero for observations with $y_i f(x_i) \ge 1$, which are the ones safely on the correct side of the margin. The solution therefore simplifies to
 
 $$
-f(x) = \beta + \sum_{i \in S} \alpha_i K(x, x_i)
+f(x) = \beta_0 + \sum_{i \in S} \alpha_i K(x, x_i)
 $$
 
 where $S$ is the set of support vectors. It can further be shown that for a given $\lambda$, $\beta = (1/\lambda) \sum_{i \in S} \alpha_i y_i x_i$.
@@ -620,7 +620,7 @@ $$
 and they do not overlap,
 
 $$
-\bigcap_{i = 1}^N V_i = \phi \forall i\neq j
+V_i^{\circ}\cap V_j^{\circ}=\varnothing \quad \forall\, i\neq j
 $$
 
 To quantize an input vector, we represent it by the closest codeword in Euclidean distance,

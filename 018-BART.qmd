@@ -69,7 +69,7 @@ $$
 p_{\text{split}}(d) = \alpha\, (1 + d)^{-\beta}, \qquad \alpha \in (0,1),\ \beta \ge 0.
 $$ {#eq-BART-split}
 
-The factor $(1+d)^{-\beta}$ makes deeper splits exponentially less likely, so the prior concentrates on shallow "stumpy" trees. The `BART` defaults are $\alpha = 0.95$ and $\beta = 2$, under which the prior probability of a tree of depth $0, 1, 2, 3$ being a single node, then splitting once, twice, and so on, puts the overwhelming mass on trees with one or two levels: with $\beta = 2$ the split probabilities are $0.95$ at the root, $0.95/4 \approx 0.24$ at depth 1, $0.95/9 \approx 0.11$ at depth 2. Given that a node splits, the splitting variable is drawn uniformly over available predictors and the split point uniformly over its available values.
+The factor $(1+d)^{-\beta}$ makes deeper splits polynomially less likely, so the prior concentrates on shallow "stumpy" trees. The `BART` defaults are $\alpha = 0.95$ and $\beta = 2$, under which the prior probability of a tree of depth $0, 1, 2, 3$ being a single node, then splitting once, twice, and so on, puts the overwhelming mass on trees with one or two levels: with $\beta = 2$ the split probabilities are $0.95$ at the root, $0.95/4 \approx 0.24$ at depth 1, $0.95/9 \approx 0.11$ at depth 2. Given that a node splits, the splitting variable is drawn uniformly over available predictors and the split point uniformly over its available values.
 
 **Leaf-value prior $p(\mu_{kj} \mid T_k)$.** Each leaf parameter gets a conjugate Gaussian prior centered at zero,
 
@@ -109,7 +109,7 @@ In each later iteration, BART updates each of the $K$ trees, one at a time. The 
 Concretely, in the $b$-th iteration, to update the $k$-th tree, we subtract from each response value the predictions from all but the $k$-th tree to obtain a partial residual:
 
 $$
-r_i = y_i - \sum_{k'<k} \hat{f}_{k'}^b (x_i) - \sum_{k'>k} f_{k'}^{b-1}(x_i), i = 1, \dots, n
+r_i = y_i - \sum_{k'<k} \hat{f}_{k'}^b (x_i) - \sum_{k'>k} \hat{f}_{k'}^{b-1}(x_i), i = 1, \dots, n
 $$
 
 Notice the bookkeeping in the two sums: trees with index $k' < k$ have already been updated in the current iteration $b$, so we use their fresh values, while trees with $k' > k$ have not been touched yet this round, so we use their values from the previous iteration $b-1$.
@@ -127,7 +127,7 @@ Because we *perturb* the existing tree rather than regrowing it from scratch, no
 
 ### Deriving the Bayesian backfitting update
 
-The phrase "favoring perturbations that improve the fit" is, made precise, a Gibbs sampler that draws each unknown from its full conditional given everything else, a scheme @chipman2010 call Bayesian backfitting. We now derive each conditional. Condition throughout on $\sigma^2$ and on all trees other than the $k$-th, and let $r = (r_1, \dots, r_n)$ be the partial residual from @eq-BART-model, which is exactly the partial residual already defined above. By construction $r_i = g(x_i; T_k, M_k) + \varepsilon_i$, so the $k$-th tree sees a clean single-tree regression problem with response $r$. The full conditional for $(T_k, M_k)$ depends on the others only through $r$:
+The phrase "favoring perturbations that improve the fit" is, made precise, a Gibbs sampler that draws each unknown from its full conditional given everything else, a scheme @chipman2010 call Bayesian backfitting. We now derive each conditional. Condition throughout on $\sigma^2$ and on all trees other than the $k$-th, and let $r = (r_1, \dots, r_n)$ be the partial residual defined above. By construction $r_i = g(x_i; T_k, M_k) + \varepsilon_i$, so the $k$-th tree sees a clean single-tree regression problem with response $r$. The full conditional for $(T_k, M_k)$ depends on the others only through $r$:
 
 $$
 p(T_k, M_k \mid r, \sigma^2) \propto p(r \mid T_k, M_k, \sigma^2)\, p(M_k \mid T_k)\, p(T_k).
@@ -223,7 +223,7 @@ When someone asks "how confident are you in this prediction?", BART has a direct
 
 Putting the pieces together, the full procedure is summarized below, following [@james2013] Alg 8.3. The outer loop walks through MCMC iterations, the middle loop walks through the $K$ trees, and the inner loop computes the partial residual for each observation before perturbing the current tree.
 
-1.  Let $\hat{f}_1^1(x) = f^1_2(x) = \dots = \hat{f}_K^1(x) = \frac{1}{nK} \sum_{i=1}^n y_i$
+1.  Let $\hat{f}_1^1(x) = \hat{f}_2^1(x) = \dots = \hat{f}_K^1(x) = \frac{1}{nK} \sum_{i=1}^n y_i$
 
 2.  Compute $\hat{f}^1 (x) = \sum_{k=1}^K \hat{f}_k^1 (x) = \frac{1}{n}\sum_{i=1}^n y_i$
 
@@ -278,7 +278,7 @@ Always plot the `sigma` trace (@fig-BART-sigma-trace) and confirm it has stabili
 
 **Bias-variance and the role of $K$.** Each tree is a weak learner with small variance but high bias; summing $K$ of them, with leaf variance scaled as $\sigma_\mu^2 \propto 1/K$, keeps the prior variance of the sum $K\sigma_\mu^2$ constant while letting the ensemble represent rich interactions. This is the additive-model analogue of boosting's bias reduction, but achieved by averaging over a posterior rather than a single greedy path.
 
-**Posterior consistency and rates.** BART is not merely a heuristic. @rockova2020 prove that, with a tree prior of the form @eq-BART-split and appropriately chosen $\sigma_\mu$, the BART posterior concentrates around the true regression function at the near-minimax rate $n^{-\alpha/(2\alpha + p)}$ (up to log factors) for $\alpha$-Hölder smooth functions of $p$ inputs, and adapts to unknown smoothness and to low-dimensional structure (sparsity in the active predictors). The shrinkage prior on tree depth is essential to these guarantees: without it the posterior would overfit.
+**Posterior consistency and rates.** BART is not merely a heuristic. @rockova2020 prove that, with a tree prior of the form @eq-BART-split and appropriately chosen $\sigma_\mu$, the BART posterior concentrates around the true regression function at the near-minimax rate $n^{-s/(2s + p)}$ (up to log factors) for $s$-Hölder smooth functions of $p$ inputs, and adapts to unknown smoothness and to low-dimensional structure (sparsity in the active predictors). The shrinkage prior on tree depth is essential to these guarantees: without it the posterior would overfit.
 
 **Connections.** BART is a Bayesian sibling of gradient boosting (@sec-boosting): both fit a sum of trees to evolving residuals, but boosting takes one forward greedy pass with a fixed shrinkage step, whereas BART resamples every tree from its full conditional, producing a posterior. The leaf shrinkage @eq-BART-mu-post is exactly ridge-type regularization applied per leaf, and the marginal likelihood @eq-BART-marglik is the same evidence used in Bayesian linear regression, here applied locally within each leaf. Like random forests (@sec-random-forest), BART averages over many trees, but the averaging is over MCMC draws governed by a likelihood rather than over bootstrap resamples.
 

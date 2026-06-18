@@ -275,11 +275,11 @@ Because $W$ maps inputs into the semantic space (or aligns the two spaces), and 
 The bilinear score $F(x, a) = \phi(x)^\top W a$ has a training objective with a closed-form solution, which is worth deriving because it shows exactly how seen-class supervision determines $W$ and why ridge regularization is not optional here. Stack the $n$ seen-class training features as rows of $X \in \mathbb{R}^{n \times d}$, and let $S \in \mathbb{R}^{s \times m}$ hold the semantic vectors of the $s$ seen classes as rows. Encode labels as a one-hot matrix $Y \in \{0,1\}^{n \times s}$. The model's score matrix over training points and seen classes is $X W S^\top$, and the simplest objective fits these scores to the labels under a squared loss with Frobenius regularization (this is the Embarrassingly Simple Zero-Shot Learning, ESZSL, formulation of Romera-Paredes and Torr, 2015):
 $$
 \mathcal{L}(W) \;=\; \big\lVert X W S^\top - Y \big\rVert_F^2
-\;+\; \gamma \lVert W S^\top \rVert_F^2
-\;+\; \lambda \lVert X W \rVert_F^2
-\;+\; \beta \lVert W \rVert_F^2 .
+\;+\; \gamma \lVert X W \rVert_F^2
+\;+\; \lambda \lVert W S^\top \rVert_F^2
+\;+\; \gamma\lambda \lVert W \rVert_F^2 .
 $$
-The three penalties control, respectively, the projection of attributes into feature space, the projection of features into attribute space, and the raw map. Keeping the single penalty $\beta\lVert W\rVert_F^2$ for clarity and differentiating, with the Frobenius identity $\nabla_W \lVert AWB - Y\rVert_F^2 = 2 A^\top(AWB - Y)B$, gives
+The three penalties control, respectively, the projection of features into feature space, the projection of attributes into attribute space, and (via the cross term) the raw map. Keeping the single penalty $\beta\lVert W\rVert_F^2$ for clarity and differentiating, with the Frobenius identity $\nabla_W \lVert AWB - Y\rVert_F^2 = 2 A^\top(AWB - Y)B^\top$, gives
 $$
 \nabla_W \mathcal{L} \;=\; 2 X^\top (X W S^\top - Y) S \;+\; 2\beta W \;=\; 0 .
 $$

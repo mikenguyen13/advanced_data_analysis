@@ -403,7 +403,7 @@ For a layer, first project all nodes with a shared weight $W$, then compute an u
 
 $$
 e_{ij} = \text{LeakyReLU}\!\left( a^\top \big[\, W h_i \,\|\, W h_j \,\big] \right),
-$$
+$$ {#eq-graph-neural-networks-gat-score}
 
 where $a$ is a learnable attention vector. Normalize the scores over each node's neighborhood with a softmax:
 
@@ -469,7 +469,7 @@ $$
 O\!\Big( L\, |E|\, d + L\, n\, d^2 \Big)
 $$ {#eq-graph-neural-networks-cost}
 
-with $d = \max_k d_k$, and memory is $O(L n d)$ for stored activations plus $O(|E|)$ for the sparse operator. This is linear in the number of edges, which is the property that makes GCN scale to large sparse graphs but also explains the memory blow-up of full-batch training: every node's activation at every layer must be retained for backpropagation. Neighbor sampling (GraphSAGE) replaces the full neighborhood by a fixed sample of size $s$ per node, capping a single target node's $L$-layer receptive field at $\prod_{k=1}^{L} s_k$ nodes and decoupling per-batch cost from $n$. GAT adds the per-edge attention score @eq-graph-neural-networks-firstorder, costing $O(|E|\, d)$ extra per head for $H$ heads, so $O(H |E| d)$, which is why GAT sits at the high end of the compute table. On the statistical side there is no clean i.i.d. sample-complexity bound because the nodes are dependent through the edges; the effective sample size for node classification is closer to the number of labeled nodes times the diversity of their neighborhoods, and semi-supervised GCN training routinely succeeds with only a handful of labels per class precisely because message passing propagates label-correlated structure across the graph.
+with $d = \max_k d_k$, and memory is $O(L n d)$ for stored activations plus $O(|E|)$ for the sparse operator. This is linear in the number of edges, which is the property that makes GCN scale to large sparse graphs but also explains the memory blow-up of full-batch training: every node's activation at every layer must be retained for backpropagation. Neighbor sampling (GraphSAGE) replaces the full neighborhood by a fixed sample of size $s$ per node, capping a single target node's $L$-layer receptive field at $\prod_{k=1}^{L} s_k$ nodes and decoupling per-batch cost from $n$. GAT adds the per-edge attention score @eq-graph-neural-networks-gat-score, costing $O(|E|\, d)$ extra per head for $H$ heads, so $O(H |E| d)$, which is why GAT sits at the high end of the compute table. On the statistical side there is no clean i.i.d. sample-complexity bound because the nodes are dependent through the edges; the effective sample size for node classification is closer to the number of labeled nodes times the diversity of their neighborhoods, and semi-supervised GCN training routinely succeeds with only a handful of labels per class precisely because message passing propagates label-correlated structure across the graph.
 
 ## Over-smoothing and Other Pitfalls
 

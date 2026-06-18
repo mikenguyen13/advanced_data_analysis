@@ -194,11 +194,11 @@ where the ingredients are
 
 The notation $||\mathbf{A}||_F$ is the Frobenius matrix norm, defined through $||\mathbf{A}||_F^2 \equiv trace(\mathbf{A^T A})$ for a matrix $\mathbf{A}$. It is just the matrix version of ordinary Euclidean length: the square root of the sum of all squared entries.^[Restricting $\mathbf{R}$ to be orthonormal is what makes this a rigid alignment. An orthonormal matrix rotates (and possibly reflects) without stretching or shearing, so the shape of the point cloud is preserved and only its orientation and position change.]
 
-This problem has an elegant closed-form solution, and (no surprise given the theme of this chapter) it runs through the SVD. Let $\bar{x}_1$ and $\bar{x}_2$ be the column mean vectors of $\mathbf{X}_1$ and $\mathbf{X}_2$, and let $\tilde{\mathbf{X}}_1$ and $\tilde{\mathbf{X}}_2$ be the corresponding data matrices with those means removed. We then take the SVD of $\tilde{\mathbf{X}}_1^T\tilde{\mathbf{X}}_2^T = \mathbf{UDV}^T$. The optimal rotation and shift are
+This problem has an elegant closed-form solution, and (no surprise given the theme of this chapter) it runs through the SVD. Let $\bar{x}_1$ and $\bar{x}_2$ be the column mean vectors of $\mathbf{X}_1$ and $\mathbf{X}_2$, and let $\tilde{\mathbf{X}}_1$ and $\tilde{\mathbf{X}}_2$ be the corresponding data matrices with those means removed. We then take the SVD of $\tilde{\mathbf{X}}_1^T\tilde{\mathbf{X}}_2 = \mathbf{UDV}^T$. The optimal rotation and shift are
 
 $$
 \hat{\mathbf{R}} = \mathbf{UV}^T \\
-\hat{\mu} = \bar{x}_2 - \hat{\mathbf{R}} \bar{x}_1
+\hat{\mu} = \bar{x}_2 - \hat{\mathbf{R}}^T \bar{x}_1
 $$
 
 The first line says the best rotation comes straight from the singular vectors; the second says that once you know how to rotate, the right shift is simply whatever lines the two centers up. We will see this solution reappear inside sparse PCA below.
@@ -275,7 +275,7 @@ $$
 \sum_{i= 1}^n ||x_i -\mathbf{\theta V}^T x_i||^2 + \lambda \sum_{k=1}^K ||v_k||^2_2 + \sum_{k=1}^K \lambda_{1k}||v_k||_1
 $$
 
-subject to $\mathbf{\Theta \Theta}^T = \mathbf{I}_K$, where $\mathbf{V}$ and $\mathbf{\Theta}$ are both $p \times K$ matrices. The three terms have clear jobs: the first measures how well the components reconstruct the features, the second is a ridge ($\ell_2$) penalty that stabilizes the solution, and the third is a lasso ($\ell_1$) penalty that drives loadings to exactly zero. Together the last two terms are exactly an elastic net penalty, with the $\ell_1$ part doing the work of encouraging sparseness.
+subject to $\mathbf{\Theta}^T\mathbf{\Theta} = \mathbf{I}_K$, where $\mathbf{V}$ and $\mathbf{\Theta}$ are both $p \times K$ matrices. The three terms have clear jobs: the first measures how well the components reconstruct the features, the second is a ridge ($\ell_2$) penalty that stabilizes the solution, and the third is a lasso ($\ell_1$) penalty that drives loadings to exactly zero. Together the last two terms are exactly an elastic net penalty, with the $\ell_1$ part doing the work of encouraging sparseness.
 
 What makes this tractable is that the problem decouples nicely. The pair $\mathbf{\Theta}$ and $\mathbf{V}$ can be estimated by alternating between two familiar subproblems:
 

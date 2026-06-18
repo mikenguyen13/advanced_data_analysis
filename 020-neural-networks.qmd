@@ -100,13 +100,13 @@ Here the three ingredients are: $\mathbf{A}_j$, some positive definite matrix th
 
 The matrix $\mathbf{A}_j$ is what distinguishes the classical optimization methods from one another. Intuitively it rescales the raw gradient so that all parameters move together in a sensible way and the model does not overshoot. The catch is that the good choices of $\mathbf{A}_j$ involve second derivatives, which are very expensive to compute when there are millions of parameters. This is exactly why modern deep learning mostly abandons $\mathbf{A}_j$ and tunes the learning rate instead. The classical choices are summarized below.
 
--   Gradient descent sets $\mathbf{A}_j \equiv \mathbf{I}_p$, the identity, so we simply step along the negative gradient.
+-   Gradient descent sets $\mathbf{A}_j \equiv \mathbf{I}_q$, the identity, so we simply step along the negative gradient.
 
--   Gauss-Newton uses $\mathbf{A}_j \equiv [\mathbf{F}( \hat{\theta}^{(j)})' \mathbf{F}( \hat{\theta}^{(j)})]^{-1}$, where $\mathbf{F} (\theta) \equiv \frac{\partial f(\mathbf{x}_i; \mathbf{\theta})}{\partial \theta_j}$ is the $n \times p$ Jacobian matrix.
+-   Gauss-Newton uses $\mathbf{A}_j \equiv [\mathbf{F}( \hat{\theta}^{(j)})' \mathbf{F}( \hat{\theta}^{(j)})]^{-1}$, where $\mathbf{F} (\theta) \equiv \frac{\partial f(\mathbf{x}_i; \mathbf{\theta})}{\partial \theta_j}$ is the $n \times q$ Jacobian matrix.
 
 -   Levenberg-Marquardt adds a ridge term, $\mathbf{A}_j \equiv [\mathbf{F}( \hat{\theta}^{(j)})' \mathbf{F}( \hat{\theta}^{(j)}) + \tau \mathbf{I}]^{-1}$, an $L_2$ regularizer that keeps the step well behaved.
 
--   Newton-Raphson uses the full curvature, $\mathbf{A}_j \equiv [\frac{\partial^2 Q (\hat{\mathbf{\theta}}^{(j)})}{\partial \theta \partial \mathbf{\theta}'}]^{-1}$, the inverse $p \times p$ Hessian matrix.
+-   Newton-Raphson uses the full curvature, $\mathbf{A}_j \equiv [\frac{\partial^2 Q (\hat{\mathbf{\theta}}^{(j)})}{\partial \theta \partial \mathbf{\theta}'}]^{-1}$, the inverse $q \times q$ Hessian matrix.
 
 
 ::: {.callout-note}
@@ -224,9 +224,9 @@ The first condition lets the iterates travel an unbounded distance, so they can 
 
 No matter which optimizer you choose, gradient based training of nonlinear models brings a recurring set of challenges. The loss surface is not convex, so the algorithm can fail to converge or settle into a poor local minimum; the starting values matter; and with many parameters the model will overfit unless we rein it in. Regularization, which shrinks the estimates toward zero, is the standard remedy, and it works exactly as in the regression chapters:
 
--   an $L_2$ penalty ([Ridge regression]) adds $\lambda \sum_{j=1}^q \theta_i^2$ to the objective $Q(\theta)$, and
+-   an $L_2$ penalty ([Ridge regression]) adds $\lambda \sum_{j=1}^q \theta_j^2$ to the objective $Q(\theta)$, and
 
--   an $L_1$ penalty ([Lasso regression]) adds $\lambda \sum_{j=1}^q |\theta_i|$ instead, which can drive some weights exactly to zero.
+-   an $L_1$ penalty ([Lasso regression]) adds $\lambda \sum_{j=1}^q |\theta_j|$ instead, which can drive some weights exactly to zero.
 
 We will return to regularization in much more detail once the network has many layers, because deep models overfit aggressively. For now, keep the big picture in view: a neural network is a multi stage nonlinear regression or classification model that we draw as a network diagram, and we estimate its parameters (the weights) by exactly the gradient based machinery above, just with many more of them and a more efficient way to compute the gradients.
 
@@ -366,7 +366,7 @@ $$
 The hidden layer is unchanged; only the loss differs. For classification the natural objective is cross-entropy loss, which is just the negative binomial log-likelihood (the same loss that drives logistic regression), where $\tilde{y}$ denotes the observed response:
 
 $$
-Q(\mathbf{\alpha}, \mathbf{\beta}, \{ \mathbf{x}_l , \tilde{y}_l \}) = - \sum_l \tilde{y}_l + ( 1 - \tilde{y}_l) \log(1 - y_l)
+Q(\mathbf{\alpha}, \mathbf{\beta}, \{ \mathbf{x}_l , \tilde{y}_l \}) = - \sum_l \big[\, \tilde{y}_l \log(y_l) + ( 1 - \tilde{y}_l) \log(1 - y_l) \,\big]
 $$
 
 #### Multiclass Discrimination
@@ -738,7 +738,7 @@ The convolution itself is computationally expensive. A classic speedup exploits 
 
 $$
 F(f \times g) = F(f)\cdot F(g) \\
-f \times g = F^{-1}(F(g) \cdot F(g))
+f \times g = F^{-1}(F(f) \cdot F(g))
 $$
 
 convolution becomes a simple element-wise multiplication in Fourier space, which is much faster to evaluate.

@@ -103,7 +103,7 @@ We measure success by *regret*: how much total reward we gave up compared to the
 
 $$
 Regret = \underset{\pi \in \Pi}{\operatorname{max}} \sum_{t=1}^T r_t(\pi(x_t)) - \sum_{t=1}^T r_t (a_t)
-$$
+$$ {#eq-contextual-bandits-regret}
 
 The first term is the reward the single best policy would have earned over all $T$ rounds; the second term is the reward we actually earned. Smaller regret means we came closer to acting optimally, so the entire learning problem can be stated as: keep regret small.
 
@@ -176,7 +176,7 @@ The price of unbiasedness is variance. Since $r_t \in [0,1]$, the second moment 
 $$
 \mathbb{E}\!\left[\Big(\tfrac{r_t \mathbf{1}\{\pi(x_t)=a_t\}}{p_t}\Big)^{2}\right]
 \le \mathbb{E}\!\left[\frac{\mathbf{1}\{\pi(x_t)=a_t\}}{p_t^{2}}\right]
-= \mathbb{E}\!\left[\frac{1}{p_t}\,\Big|\,\pi(x_t)=a_t\right]\Pr(\pi(x_t)=a_t),
+= \mathbb{E}\!\left[\frac{1}{p_t^{2}}\,\Big|\,\pi(x_t)=a_t\right]\Pr(\pi(x_t)=a_t),
 $$
 which blows up whenever the target policy puts mass on actions the logger rarely took ($p_t$ small). This is the variance-vs-bias tension of importance sampling: small logging probabilities give large weights and unstable estimates. Two standard fixes are weight clipping (cap $1/p_t$ at a threshold $M$, trading a controlled bias for bounded variance) and self-normalized IPS (divide by $\sum_t \mathbf{1}\{\pi(x_t)=a_t\}/p_t$ instead of $T$, which is consistent and far more stable).
 
@@ -272,7 +272,7 @@ Thompson sampling is often preferred in practice. It needs no explicit confidenc
 
 ## Algorithms IV: policy-class methods and EXP4
 
-The methods above model rewards. An alternative is to compete directly with a fixed policy class $\Pi$, exactly the object in the regret definition @eq-contextual-bandits-meanreward's surrounding text. EXP4 (Exponential weights for Exploration and Exploitation with Experts) treats each policy $\pi \in \Pi$ as an expert giving an action recommendation, maintains weights $w_t(\pi)$, and forms an action distribution by mixing the experts' advice. After observing $r_t$ it builds the IPS reward estimate @eq-contextual-bandits-ips for every action and updates weights multiplicatively,
+The methods above model rewards. An alternative is to compete directly with a fixed policy class $\Pi$, exactly the object in the regret definition @eq-contextual-bandits-regret. EXP4 (Exponential weights for Exploration and Exploitation with Experts) treats each policy $\pi \in \Pi$ as an expert giving an action recommendation, maintains weights $w_t(\pi)$, and forms an action distribution by mixing the experts' advice. After observing $r_t$ it builds the IPS reward estimate @eq-contextual-bandits-ips for every action and updates weights multiplicatively,
 $$
 w_{t+1}(\pi) \;\propto\; w_t(\pi)\,\exp\!\big(\gamma\,\hat r_t(\pi(x_t))\big),
 $$ {#eq-contextual-bandits-exp4}

@@ -297,7 +297,7 @@ Value based methods learn "how good is each action?" and act greedily. Policy ba
 The policy gradient theorem gives an expression for $\nabla_\theta J$ that does not require differentiating through the environment dynamics:
 
 $$
-\nabla_\theta J(\theta) = \mathbb{E}_{\pi_\theta}\!\left[ \sum_{t \ge 0} \nabla_\theta \log \pi_\theta(a_t \mid s_t)\, G_t \right].
+\nabla_\theta J(\theta) = \mathbb{E}_{\pi_\theta}\!\left[ \sum_{t \ge 0} \gamma^t\, \nabla_\theta \log \pi_\theta(a_t \mid s_t)\, G_t \right].
 $$ {#eq-deep-reinforcement-learning-pg}
 
 #### Deriving the policy gradient
@@ -322,12 +322,12 @@ $$
 \nabla_\theta \log p_\theta(\tau) = \nabla_\theta \Big[ \log \rho_0(s_0) + \sum_t \log \pi_\theta(a_t \mid s_t) + \sum_t \log P(s_{t+1}\mid s_t,a_t) \Big] = \sum_t \nabla_\theta \log \pi_\theta(a_t \mid s_t).
 $$
 
-This is why policy gradients are model-free: the gradient never references $P$. Substituting gives $\nabla_\theta J = \mathbb{E}_\tau\big[ (\sum_t \nabla_\theta \log \pi_\theta(a_t\mid s_t))\, R(\tau) \big]$. A further refinement uses causality: an action $a_t$ cannot influence rewards earned before time $t$, so each $\nabla_\theta \log \pi_\theta(a_t \mid s_t)$ may be multiplied by only the return from $t$ onward, $G_t$, rather than the full $R(\tau)$. The discarded cross-terms have expectation zero, leaving @eq-deep-reinforcement-learning-pg.
+This is why policy gradients are model-free: the gradient never references $P$. Substituting gives $\nabla_\theta J = \mathbb{E}_\tau\big[ (\sum_t \nabla_\theta \log \pi_\theta(a_t\mid s_t))\, R(\tau) \big]$. A further refinement uses causality: an action $a_t$ cannot influence rewards earned before time $t$, so each $\nabla_\theta \log \pi_\theta(a_t \mid s_t)$ may be multiplied by only the discounted return from $t$ onward, which is $\gamma^t G_t$, rather than the full $R(\tau)$. The discarded cross-terms have expectation zero, leaving @eq-deep-reinforcement-learning-pg. (Practical REINFORCE often drops the $\gamma^t$ weighting, which biases the gradient but works well in practice.)
 
 The intuition is the log likelihood trick: increase the log probability of actions that led to high return and decrease it for actions that led to low return, weighted by how good the return was. It is reinforcement in the literal sense, make the good actions more likely next time. REINFORCE (Williams, 1992) is the Monte Carlo estimate of this gradient. It runs full episodes, computes the realized return $G_t$ from each step, and takes an ascent step. The estimator is unbiased but high variance, so a state dependent baseline $b(s_t)$ is subtracted (it does not change the expectation):
 
 $$
-\nabla_\theta J(\theta) = \mathbb{E}_{\pi_\theta}\!\left[ \sum_{t \ge 0} \nabla_\theta \log \pi_\theta(a_t \mid s_t)\, \big(G_t - b(s_t)\big) \right].
+\nabla_\theta J(\theta) = \mathbb{E}_{\pi_\theta}\!\left[ \sum_{t \ge 0} \gamma^t\, \nabla_\theta \log \pi_\theta(a_t \mid s_t)\, \big(G_t - b(s_t)\big) \right].
 $$ {#eq-deep-reinforcement-learning-pg-baseline}
 
 #### Why the baseline is unbiased, and why it helps

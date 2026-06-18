@@ -138,7 +138,7 @@ $$
 $$
 where the first equality uses unconfoundedness to drop the conditioning on $W_i = 1$. So regressing $\tilde D_i$ on $X_i$ over the treated units estimates $\tau(x)$, and the symmetric argument over controls (with $\hat\mu_1 = \mu_1$) gives the second estimate $\hat\tau_0(x)$. The benefit over the T-learner is that each cross-estimate uses one fitted nuisance plus the observed outcome of the *other* arm, rather than differencing two independently noisy fits.
 
-The convex combination $\hat\tau_X = g\,\hat\tau_0 + (1 - g)\,\hat\tau_1$ for a weight $g(x) \in [0, 1]$ is then chosen to minimize variance. If $\hat\tau_0$ and $\hat\tau_1$ were independent with variances $v_0(x)$ and $v_1(x)$, the variance-minimizing weight would be the inverse-variance weight $g^\star(x) = v_1(x) / (v_0(x) + v_1(x))$. Where treated units are scarce, $\hat\tau_1$ (built by imputing on the many controls) is the more stable estimate, so we want to put weight on it; @kunzel2019metalearners observe that $g(x) = \hat e(x)$ approximates the inverse-variance weight because the variance of an arm's estimate scales inversely with that arm's local sample fraction. Hence $g = \hat e$ leans on $\hat\tau_1$ exactly when treated units are rare ($\hat e$ small), recovering the stated formula. Using $g \equiv 1/2$ or $g \equiv \hat e$ are both valid; the propensity weight is the default because it adapts to local imbalance.
+The convex combination $\hat\tau_X = g\,\hat\tau_0 + (1 - g)\,\hat\tau_1$ for a weight $g(x) \in [0, 1]$ is then chosen to minimize variance. If $\hat\tau_0$ and $\hat\tau_1$ were independent with variances $v_0(x)$ and $v_1(x)$, the variance-minimizing weight would be the inverse-variance weight $g^\star(x) = v_1(x) / (v_0(x) + v_1(x))$. Where treated units are scarce, $\hat\tau_1$ is estimated over the few treated units but relies on the control regression $\hat\mu_0$, which is accurate precisely because controls are then plentiful; @kunzel2019metalearners recommend $g(x) = \hat e(x)$ for this reason. Hence $g = \hat e$ places weight $(1 - \hat e)$ on $\hat\tau_1$ exactly when treated units are rare ($\hat e$ small), leaning on the imputation that depends on the well-estimated $\hat\mu_0$, and recovering the stated formula. Using $g \equiv 1/2$ or $g \equiv \hat e$ are both valid; the propensity weight is the default because it adapts to local imbalance.
 
 @tbl-causal-machine-learning-estimator-comparison summarizes the trade-offs. Read it as a decision aid: pick the row whose "Use when" column matches your data, then confirm with held-out evaluation.
 
@@ -180,7 +180,8 @@ Honesty enforces that the sample used to choose splits (the $\mathcal{I}$ subsam
 
 It is useful to read the forest as an adaptive kernel. Aggregating over $B$ honest trees, the prediction at $x$ is a weighted arm-difference,
 $$
-\hat\tau(x) = \frac{\sum_i \alpha_i(x)\,W_i\,(Y_i - \bar Y^{(1)})}{\cdots} \quad\text{with}\quad
+\hat\tau(x) = \frac{\sum_i \alpha_i(x)\,W_i\,Y_i}{\sum_i \alpha_i(x)\,W_i}
+- \frac{\sum_i \alpha_i(x)\,(1 - W_i)\,Y_i}{\sum_i \alpha_i(x)\,(1 - W_i)} \quad\text{with}\quad
 \alpha_i(x) = \frac{1}{B}\sum_{b=1}^{B} \frac{\mathbf{1}\{X_i \in L_b(x)\}}{|L_b(x)|},
 $$
 where $L_b(x)$ is the leaf of tree $b$ containing $x$ and $\sum_i \alpha_i(x) = 1$. The weights $\alpha_i(x)$ are a data-adaptive, supervised kernel: they place mass on training points that repeatedly fall in the same leaves as $x$, that is, points the forest judges to have a similar treatment effect. This is the unifying view of @athey2019grf, and it connects causal forests directly to the kernel and local-regression methods of @sec-kernel.

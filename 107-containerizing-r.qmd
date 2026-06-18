@@ -9,7 +9,7 @@ suppressPackageStartupMessages(library(tidyverse))
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 ```
 
-The previous chapter on the [API](#api) showed how to wrap a fitted model behind an HTTP endpoint with `plumber`. That solves the question of *how a model is called*. This chapter answers the next question: *how the serving process runs the same way on your laptop, a colleague's machine, a continuous integration runner, and a production cluster*. The answer in current practice is a container: a packaged, isolated, runnable image that carries the R version, the system libraries, the R packages, and your serving code together.
+The chapter on the [API](#api) shows how to wrap a fitted model behind an HTTP endpoint with `plumber`. That solves the question of *how a model is called*. This chapter answers a companion question: *how the serving process runs the same way on your laptop, a colleague's machine, a continuous integration runner, and a production cluster*. The answer in current practice is a container: a packaged, isolated, runnable image that carries the R version, the system libraries, the R packages, and your serving code together.
 
 This chapter is about reproducible deployment, not a new estimator. It connects to the API chapter (the thing inside the container is usually a `plumber` router) and to the chapters on scaling and parallel computing (the reason you run more than one container).
 
@@ -174,7 +174,7 @@ knitr::kable(
 
 ## What the container serves: a plumber router
 
-We have built and pinned the image; now we open the crate and look at what runs inside. Inside the image, the served object is a `plumber` router: an R object that maps HTTP method and path pairs to handler functions.^[A handler is just an ordinary R function. The router's only job is to decide which handler to call for an incoming request, then hand that function the parsed inputs and serialize whatever it returns. There is no magic; it is a lookup table wrapped around a web server.] The API chapter showed the annotated-comment style (`#* @post /predict`). You can also build the same router programmatically, which is convenient for understanding what the object *is* and for testing it without opening a socket.
+We have built and pinned the image; now we open the crate and look at what runs inside. Inside the image, the served object is a `plumber` router: an R object that maps HTTP method and path pairs to handler functions.^[A handler is just an ordinary R function. The router's only job is to decide which handler to call for an incoming request, then hand that function the parsed inputs and serialize whatever it returns. There is no magic; it is a lookup table wrapped around a web server.] The API chapter covers the annotated-comment style (`#* @post /predict`). You can also build the same router programmatically, which is convenient for understanding what the object *is* and for testing it without opening a socket.
 
 The following chunk is runnable. It constructs a router and registers two routes, then inspects the object. It does not call `pr_run()`, so no server starts and no port is opened; we only build and examine the routing table. The `plumber` package may not be installed in every environment, so the demo is written to degrade to a plain-R stand-in if `plumber` is absent, which keeps the teaching point (a router is a lookup table from routes to handlers) intact.
 

@@ -5,19 +5,34 @@
 suppressPackageStartupMessages(library(tidyverse))
 ```
 
-Almost every interesting question in science, business, and policy comes down to a prediction or an explanation. Will this patient respond to a treatment? Which customers are about to leave? What does this satellite image show? How does class size affect test scores? In each case we have data, some inputs we can observe, and some outcome we care about, and we would like a machine to learn the relationship between them rather than have a person write down the rules by hand. That activity, learning patterns from data so that we can predict or understand outcomes, is what this book is about. It goes by two names that we will treat as interchangeable: machine learning and statistical learning.^[The two communities, computer science and statistics, grew up using different vocabulary for the same ideas. "Features" and "inputs" mean the same thing, as do "weights" and "coefficients," and "supervised learning" and "regression/classification." We will move freely between both vocabularies.]
+Almost every interesting question in science, business, and policy comes down to a prediction or an explanation. Will this patient respond to a treatment? Which customers are about to leave? What does this satellite image show? How does class size affect test scores? In each case we have data, some inputs we can observe, and some outcome we care about, and we would like a machine to learn the relationship between them rather than have a person write down the rules by hand. That activity, learning patterns from data so that we can predict or understand outcomes, is what this book is about. It goes by two names that we will treat as interchangeable: machine learning and statistical learning.[^002-intro-1]
+
+[^002-intro-1]: The two communities, computer science and statistics, grew up using different vocabulary for the same ideas. "Features" and "inputs" mean the same thing, as do "weights" and "coefficients," and "supervised learning" and "regression/classification." We will move freely between both vocabularies.
 
 The reason we hand this job to a machine is that the relationships are usually too complicated, too noisy, or too high-dimensional for a human to write down explicitly. A doctor cannot articulate the exact rule that separates a benign from a malignant tumor on an image, but a model trained on thousands of labeled images can approximate one. The central tension running through every method we study is the same: a model that is flexible enough to capture the true pattern is also flexible enough to memorize the noise, and a model simple enough to avoid the noise may miss the pattern. Learning to navigate that tension, the bias-variance tradeoff, is the single most important skill this book tries to teach.
 
 This chapter lays the conceptual foundation for everything that follows. We begin with the vocabulary and the big picture: the kinds of learning problems, the kinds of data, and what "learning" even means. We then set up the general statistical framework ($Y = f(X) + \epsilon$) that unifies the later chapters, and we use it to derive how prediction error decomposes into reducible and irreducible parts. From there we turn to the practical questions every analyst faces: how do we measure whether a model is any good (model assessment), how do we estimate that quality honestly using cross-validation and the bootstrap, and how do we improve a model when we have too many predictors (subset selection, shrinkage, and dimension reduction). Linear regression appears throughout as the running example, both because it is the simplest model and because almost every advanced method can be understood as a relaxation of it.
 
-> **Tip:** This is a long, reference-style chapter. You do not need to read it front to back. If you are new to the field, read the first three sections (the big picture, the general framework, and model accuracy) carefully, then skim the rest and return as needed. If you are experienced, use the headings to jump to the topic you want; the callouts flag the ideas most worth remembering.
+> **Tip:** This is a reference-style chapter. You do not need to read it front to back. If you are new to the field, read the first three sections (the big picture, the general framework, and model accuracy) carefully, then skim the rest and return as needed. If you are experienced, use the headings to jump to the topic you want; the callouts flag the ideas most worth remembering.
 
-For readers who like a visual map of how the methods relate, [this concept diagram](https://coggle.it/diagram/Yb6sPjXbzAp_60P4/t/machine-learning) lays out the field at a glance. The three textbooks below are the standard references and are cited throughout the book; the first is the most accessible, and the last is the most mathematically complete.
+For readers who like a visual map of how the methods relate, @fig-intro-method-map lays out the field at a glance, and the Overview chapter that follows expands each branch. Two textbooks are the standard references and are cited throughout this book: @james2013 is the most accessible introduction, while @hastie2001a is the most mathematically complete.
 
--   [INTRODUCTION TO MACHINE LEARNING](http://alex.smola.org/drafts/thebook.pdf)
--   [An introduction to Statistical Learning](https://web.stanford.edu/~hastie/ISLRv2_website.pdf)
--   [The Elements of Statistical Learning](https://web.stanford.edu/~hastie/ElemStatLearn/printings/ESLII_print12.pdf)
+```{r}
+#| label: fig-intro-method-map
+#| echo: false
+#| fig-cap: "A concept map of the field. The branches are the major learning types, and the leaves list representative methods developed in this book."
+DiagrammeR::mermaid("
+graph LR
+  ML([Machine Learning])
+  ML --> SUP[Supervised learning]
+  ML --> UNS[Unsupervised learning]
+  ML --> RL[Reinforcement learning]
+  SUP --> REG[Regression and classification:<br/>splines, GAMs, trees, ensembles,<br/>SVM, neural networks]
+  UNS --> CLU[Clustering and structure:<br/>k-means, hierarchical,<br/>PCA, t-SNE, UMAP]
+  RL --> POL[Sequential decisions:<br/>bandits, value and policy methods]
+  REG --> DL[Deep learning:<br/>CNNs, RNNs, Transformers, LLMs]
+")
+```
 
 ## The Big Picture
 
@@ -25,7 +40,7 @@ For readers who like a visual map of how the methods relate, [this concept diagr
 
 The first fork in the road is whether or not your data come with an outcome to predict. In supervised learning we have both inputs and a labeled output, and the goal is to predict or estimate the output from the inputs. In unsupervised learning we have only inputs and no labeled output; the goal is to understand the structure and relationships among the inputs themselves.
 
-> **Key idea:** Supervised learning asks "given these inputs, what is the output?" Unsupervised learning asks "what structure is hidden in these inputs?" Most of this book is about supervised learning, but the two are complementary: unsupervised methods are often used to reduce the number of inputs before a supervised model is fit.
+> **Key idea:** Supervised learning asks "given these inputs, what is the output?" Unsupervised learning asks "what structure is hidden in these inputs?" Much of this book is about supervised learning, but later parts treat unsupervised learning, reinforcement learning, and many further learning paradigms in their own right. The two basic modes are also complementary: unsupervised methods are often used to reduce the number of inputs before a supervised model is fit.
 
 Two quantities recur constantly and deserve names up front. We write $n$ for the sample size (the number of observations) and $p$ for the number of features (the number of input variables). As a rough rule, more observations are almost always better, which is why deep learning practitioners go to such lengths to manufacture extra training examples through data augmentation, and fewer features are usually better, which is one of the main reasons unsupervised dimension-reduction methods exist (they shrink $p$).
 
@@ -87,7 +102,7 @@ This brings us to a foundational caveat. Training is the process of making the m
 
 ### A taxonomy of learning algorithms
 
-We can now place the algorithms on a finer map. Supervised learning works with labeled pairs $\{ X_n \in R^d, y_n \in R\}^N_{n=1}$ and is used for prediction, splitting into classification when the output is a discrete label and regression when it is a real value. Unsupervised learning works with inputs alone, $\{ X_n \in R^d\}^N_{n=1}$, and covers clustering, estimating a probability distribution, finding associations among features, and dimension reduction. Two further paradigms round out the picture: semi-supervised learning, which mixes a small amount of labeled data with a large amount of unlabeled data, and reinforcement learning, in which an agent learns to make a sequence of decisions (as in a robot or a chess engine) from feedback rather than from labeled examples.
+We can now place the algorithms on a finer map. Supervised learning works with labeled pairs $\{ X_n \in R^d, y_n \in R\}^N_{n=1}$ and is used for prediction, splitting into classification when the output is a discrete label and regression when it is a real value. Unsupervised learning works with inputs alone, $\{ X_n \in R^d\}^N_{n=1}$, and covers clustering, estimating a probability distribution, finding associations among features, and dimension reduction. Reinforcement learning is a third basic mode, in which an agent learns to make a sequence of decisions (as in a robot or a chess engine) from feedback rather than from labeled examples. Beyond these, the book devotes an entire part to many further paradigms, among them semi-supervised learning (which mixes a small amount of labeled data with a large amount of unlabeled data), self-supervised, active, weakly-supervised, few-shot and zero-shot, meta-learning, transfer and multi-task, online, federated, continual, and adversarial learning.
 
 <br>
 
@@ -270,11 +285,15 @@ We assume additive independent errors.
 
 Whether the model fits well depends heavily on how the sample size $n$ compares to the number of predictors $p$. The three regimes in Table @tbl-intro-n-vs-p recur throughout the book and explain why "too many predictors" is a real danger:
 
++------------------------------+-------------------------------------------------------------+
 | Relationship between n and p | Result                                                      |
-|------------------------------|-------------------------------------------------------------|
++==============================+=============================================================+
 | $n >>p$                      | low bias, low predictive variance, fit well with test data  |
++------------------------------+-------------------------------------------------------------+
 | $n \approx p$                | substantial variability, overfit, fit poorly with test data |
++------------------------------+-------------------------------------------------------------+
 | $n <p$                       | no unique solution, variance is infinite                    |
++------------------------------+-------------------------------------------------------------+
 
 : How ordinary least squares behaves in the three regimes of the sample size $n$ relative to the number of predictors $p$. {#tbl-intro-n-vs-p}
 

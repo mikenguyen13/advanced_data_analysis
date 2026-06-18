@@ -5,9 +5,9 @@
 suppressPackageStartupMessages(library(tidyverse))
 ```
 
-Before studying any single algorithm, it helps to have a map of the territory. Machine learning is a large field, and the methods it contains can look bewildering when met one at a time. Yet almost every method answers one of just a few basic questions: Do we have labeled examples to learn from? Are we trying to predict something specific, or just to find structure? Do we learn once from a fixed dataset, or do we learn by acting and seeing what happens? Sorting methods by these questions turns a long list of techniques into a small number of families.
+Before studying any single algorithm, it helps to have a map of the territory. Machine learning is a large field, and the methods it contains can look bewildering when met one at a time. Yet, almost every method answers one of just a few basic questions: Do we have labeled examples to learn from? Are we trying to predict something specific, or just to find structure? Do we learn once from a fixed dataset, or do we learn by acting and seeing what happens? Sorting methods by these questions turns a long list of techniques into a small number of families.
 
-This chapter gives that map. It sketches how the four major paradigms, supervised, unsupervised, semi-supervised, and reinforcement learning, differ in what data they assume, what goal they pursue, and what techniques they bring to bear. The aim is intuition and vocabulary, not depth: the detailed chapters elsewhere in the book are where each method gets its full treatment. Reading this overview first means that when you later meet, say, random forests or k-means, you already know which family they belong to and what problem they were built to solve.
+This chapter gives that map. It sketches how the classical paradigms, supervised, unsupervised, and reinforcement learning, differ in what data they assume, what goal they pursue, and what techniques they bring to bear, and it points to the many further paradigms (semi-supervised, self-supervised, active, weakly-supervised, few-shot and zero-shot, meta-learning, transfer and multi-task, online, federated, ensemble, continual, curriculum, imitation and inverse reinforcement, transductive, adversarial, and metric learning) that get their own treatment later in the book. The aim is intuition and vocabulary, not depth: the detailed chapters elsewhere in the book are where each method gets its full treatment. Reading this overview first means that when you later meet, say, random forests or k-means, you already know which family they belong to and what problem they were built to solve.
 
 We spend the most time on supervised learning, because it is the most common setting in practice and because the ideas it introduces (training versus test data, overfitting, cross-validation, performance measures) reappear everywhere else. We then turn to unsupervised learning, where the data carry no labels and the goal shifts to discovering groups, densities, or low-dimensional structure. The chapter closes with brief looks at semi-supervised learning, which mixes labeled and unlabeled data, and reinforcement learning, which learns from interaction over time.
 
@@ -146,7 +146,7 @@ Two very different questions can be asked of it. In an estimation problem the qu
 The two goals are judged by different yardsticks, summarized in Table @tbl-overview-pred-est.
 
 | Aspect | Prediction | Estimation and inference |
-|---|---|---|
+|------------------------|------------------------|------------------------|
 | Target | $\hat Y$ for a new case | $\hat\beta$ and its uncertainty |
 | Yardstick | out-of-sample loss | unbiasedness, consistency, valid intervals |
 | Preferred model | whatever generalizes best | interpretable, identified, well specified |
@@ -206,9 +206,9 @@ Supervised models serve two complementary purposes. The first is *predictive*: g
 
 A model that memorizes the data it was built on tells us nothing about how it will behave on data it has never seen, which is the only thing we actually care about. To guard against this, we partition the available data into three roles, each used for a different job.
 
-- Training set: used to fit the model, that is, to estimate its parameters.
-- Validation set: used to tune hyperparameters (settings the algorithm does not learn on its own, such as how deep a tree may grow).
-- Test set: used once, at the very end, to estimate how the final model will perform on genuinely new data. This estimate is called the *generalization error*.
+-   Training set: used to fit the model, that is, to estimate its parameters.
+-   Validation set: used to tune hyperparameters (settings the algorithm does not learn on its own, such as how deep a tree may grow).
+-   Test set: used once, at the very end, to estimate how the final model will perform on genuinely new data. This estimate is called the *generalization error*.
 
 > **Warning:** The test set is sacred. If you peek at it while choosing or tuning your model, its error estimate becomes optimistic and stops being an honest forecast of future performance. Touch it only once, after all decisions are made.
 
@@ -246,28 +246,28 @@ To use data more efficiently than a single split allows, we turn to cross-valida
 
 The most thorough form is leave-one-out cross validation (LOOCV). It works as follows:
 
-- For $k = 1$ to $N$:
-    - remove the $k$-th object from the learning sample,
-    - learn the model on the remaining objects,
-    - apply the model to get a prediction for the $k$-th object.
-- Report the proportion of mis-classified objects.
+-   For $k = 1$ to $N$:
+    -   remove the $k$-th object from the learning sample,
+    -   learn the model on the remaining objects,
+    -   apply the model to get a prediction for the $k$-th object.
+-   Report the proportion of mis-classified objects.
 
 Its appeal is that it does not waste data: each model is trained on almost the full sample ($N-1$ points), so the estimate reflects nearly the method you would actually deploy. Its drawbacks are that it is computationally intensive (you train $N$ separate models) and that the estimate has high variance, since the $N$ training sets overlap heavily and the held-out predictions are highly correlated.
 
 A practical middle ground is K-fold cross validation, which trades a little of LOOCV's thoroughness for far less computation. The data are randomly partitioned into $k$ subsets, or folds (often $k = 10$). Then:
 
-- For each fold:
-    - choose that fold as a temporary test set,
-    - train on the other $k-1$ folds, and compute performance on the held-out fold.
-- Report the average performance over the $k$ runs.
+-   For each fold:
+    -   choose that fold as a temporary test set,
+    -   train on the other $k-1$ folds, and compute performance on the held-out fold.
+-   Report the average performance over the $k$ runs.
 
 Each observation is held out exactly once, so every point contributes to the estimate without any single model seeing it during its own evaluation. When $k$ equals the number of objects, K-fold cross validation reduces to leave-one-out cross validation.
 
 > **Tip:** A rough rule of thumb for choosing an evaluation strategy by sample size:
 >
-> - Lots of data (more than 1000): a single held-out test set is fine.
-> - Small data (100 to 1000): use 10-fold cross-validation.
-> - Very small data (fewer than 100): use leave-one-out cross-validation.
+> -   Lots of data (more than 1000): a single held-out test set is fine.
+> -   Small data (100 to 1000): use 10-fold cross-validation.
+> -   Very small data (fewer than 100): use leave-one-out cross-validation.
 
 Whatever strategy you use during development, reserve the testing set to estimate the performance of the *final* model, once all tuning is done.
 
@@ -290,7 +290,9 @@ $$
 \text{Precision} = \frac{TP}{TP + FP} \\
 $$
 
-In words: accuracy is the share of all predictions that are correct; recall (sensitivity) is the share of actual positives that we caught; specificity is the share of actual negatives we correctly left alone; and precision is the share of our positive predictions that were right. Which of these matters most depends entirely on the cost of each kind of error in your application.^[For a cancer screen, a missed case (low recall) is far worse than a false alarm, so we tolerate low precision to push recall up. For a spam filter, deleting a real email (low precision) is worse than letting one spam through, so we favor precision.]
+In words: accuracy is the share of all predictions that are correct; recall (sensitivity) is the share of actual positives that we caught; specificity is the share of actual negatives we correctly left alone; and precision is the share of our positive predictions that were right. Which of these matters most depends entirely on the cost of each kind of error in your application.[^003-overview-1]
+
+[^003-overview-1]: For a cancer screen, a missed case (low recall) is far worse than a false alarm, so we tolerate low precision to push recall up. For a spam filter, deleting a real email (low precision) is worse than letting one spam through, so we favor precision.
 
 Most classifiers do not output a hard label directly; they output a score, and we choose a *decision threshold* to convert that score into a positive or negative call. ROC curves and precision/recall curves trace what happens to the performance measures as we sweep this threshold across all its possible values. Each point on the curve corresponds to one threshold, and the curve as a whole, sometimes called a robustness check, shows the trade-offs available. In general you want a large area under the curve, since that indicates good performance across many threshold choices rather than just one lucky setting.
 
@@ -300,9 +302,9 @@ Most classifiers do not output a hard label directly; they output a score, and w
 
 When deciding among methods, accuracy is rarely the only consideration. Three criteria usually compete:
 
-- Accuracy: measured by the generalization error (estimated by cross-validation).
-- Efficiency: computing time and scalability for both learning and prediction.
-- Interpretability: how much the model helps us understand the input-output relationship.
+-   Accuracy: measured by the generalization error (estimated by cross-validation).
+-   Efficiency: computing time and scalability for both learning and prediction.
+-   Interpretability: how much the model helps us understand the input-output relationship.
 
 These goals pull against each other, and the right balance depends on the application. A model that must run on a phone in milliseconds, or whose decisions must be explained to a regulator, may justly lose a little accuracy to gain speed or transparency. Expect to make a trade-off rather than to find one method that wins on all three.
 
@@ -310,11 +312,11 @@ These goals pull against each other, and the right balance depends on the applic
 
 With the evaluation machinery in place, here is a high-level inventory of supervised methods, grouped by the kind of function they fit. You will meet each group in detail later; for now the goal is to recognize the landscape.
 
-- Linear classifiers (numerical functions), which separate classes with a (possibly transformed) linear boundary: the perceptron, logistic regression, support vector machines (SVMs, which extend from linear to nonlinear boundaries through feature transforms and kernel functions), Ada-line, and the multi-layer perceptron (MLP).
-- Parametric, probabilistic models, which assume a probability model for the data: naive Bayes, Gaussian discriminant analysis (GDA), hidden Markov models (HMM), and probabilistic graphical models.
-- Non-parametric, instance-based methods, which make predictions by referring back to nearby training examples: k-nearest neighbors, kernel regression, kernel density estimation, and local regression.
-- Non-metric, symbolic methods, which reason with rules rather than distances: classification and regression trees (CART) and decision trees.
-- Aggregation (ensemble) methods, which combine many models into one: bagging (bootstrap + aggregation), AdaBoost, and random forests.
+-   Linear classifiers (numerical functions), which separate classes with a (possibly transformed) linear boundary: the perceptron, logistic regression, support vector machines (SVMs, which extend from linear to nonlinear boundaries through feature transforms and kernel functions), Ada-line, and the multi-layer perceptron (MLP).
+-   Parametric, probabilistic models, which assume a probability model for the data: naive Bayes, Gaussian discriminant analysis (GDA), hidden Markov models (HMM), and probabilistic graphical models.
+-   Non-parametric, instance-based methods, which make predictions by referring back to nearby training examples: k-nearest neighbors, kernel regression, kernel density estimation, and local regression.
+-   Non-metric, symbolic methods, which reason with rules rather than distances: classification and regression trees (CART) and decision trees.
+-   Aggregation (ensemble) methods, which combine many models into one: bagging (bootstrap + aggregation), AdaBoost, and random forests.
 
 For completeness, the unsupervised side splits into clustering (k-means, spectral clustering), density estimation (Gaussian mixture models, graphical models), and dimensionality reduction (principal component analysis, factor analysis); we return to these later in the chapter. Semi-supervised learning aims to exploit both labeled and unlabeled data to build better models than either alone, for instance through self-training (iteratively labeling some unlabeled examples with a model learned from the previously labeled ones) and active learning. Reinforcement learning is learning from interaction, where the goal is to choose a sequence of actions, called a *policy*, that maximizes the discounted reward $r_0 + \gamma r_1 + \gamma^2r_2 + ...$ with $0 \le \gamma <1$.
 
@@ -338,8 +340,8 @@ $$H(X) = -\sum_{j=1}^{m} p_j log p_j$$
 
 Entropy is highest when outcomes are most unpredictable and lowest when they are nearly certain:
 
-- High entropy means $X$ is close to a uniform distribution: a histogram of its values would look flat, because every value is about equally likely.
-- Low entropy means $X$ is from a varied distribution: a histogram would have many lows and one or two highs, because a few values dominate.
+-   High entropy means $X$ is close to a uniform distribution: a histogram of its values would look flat, because every value is about equally likely.
+-   Low entropy means $X$ is from a varied distribution: a histogram would have many lows and one or two highs, because a few values dominate.
 
 *Information gain* is then the reduction in entropy about $Y$ that we get by knowing $X$:
 
@@ -351,16 +353,16 @@ $$IG(Y|X) = H(Y) - H(Y|X)$$
 
 Splitting forever would just rebuild the original data point by point, so we need rules for when to stop and declare a leaf. Common criteria include:
 
-- When the leaf is "pure," meaning the target variable does not vary much within it: $Var(Y) <$ threshold.
-- When the number of examples in the leaf is too small to split reliably.
-- An information-based criterion can also be used, stopping when further splits would yield little gain.
+-   When the leaf is "pure," meaning the target variable does not vary much within it: $Var(Y) <$ threshold.
+-   When the number of examples in the leaf is too small to split reliably.
+-   An information-based criterion can also be used, stopping when further splits would yield little gain.
 
 #### Find Prediction
 
 Once a node becomes a leaf, it summarizes the examples that landed there into a single prediction. The summary depends on the task:
 
-- Regression: predict the average $y$ of the examples in the leaf.
-- Classification: predict the most common $y$ among the examples in the leaf.
+-   Regression: predict the average $y$ of the examples in the leaf.
+-   Classification: predict the most common $y$ among the examples in the leaf.
 
 ### Random Forest
 
@@ -408,10 +410,10 @@ Output the ensemble of trees.
 
 The defaults for combining and tuning the trees differ between regression and classification, as summarized in Table @tbl-overview-rf-defaults.
 
-|                                       | Regression                                                      | Classification                                                         |
-|---------------------------------------|-----------------------------------------------------------------|------------------------------------------------------------------------|
-| To make a prediction at a new point x | average the results                                             | majority vote                                                          |
-| Tuning                                | The default value for m is $p/3$ and the minimum node size is 5 | The default value for m is $\sqrt{p}$ and the minimum node size is one |
+|   | Regression | Classification |
+|------------------|--------------------------|-----------------------------|
+| To make a prediction at a new point x | average the results | majority vote |
+| Tuning | The default value for m is $p/3$ and the minimum node size is 5 | The default value for m is $\sqrt{p}$ and the minimum node size is one |
 
 : Default rules for combining predictions and tuning random forests, contrasted between regression and classification tasks. {#tbl-overview-rf-defaults}
 
@@ -429,9 +431,9 @@ Unsupervised learning drops the teacher. There are no known outputs, no labels t
 
 The unsupervised techniques fall into three families:
 
-- Clustering, which groups similar objects together: k-means clustering and spectral clustering.
-- Density estimation, which models how the data are distributed: Gaussian mixture models (GMM) and graphical models.
-- Dimensionality reduction, which compresses many attributes into a few: principal component analysis (PCA) and factor analysis.
+-   Clustering, which groups similar objects together: k-means clustering and spectral clustering.
+-   Density estimation, which models how the data are distributed: Gaussian mixture models (GMM) and graphical models.
+-   Dimensionality reduction, which compresses many attributes into a few: principal component analysis (PCA) and factor analysis.
 
 The rest of this section develops clustering in some detail, since it makes the central unsupervised idea, defining and exploiting similarity, very concrete.
 
@@ -469,18 +471,10 @@ $$dist(x_j, x_j) = ((x_{i1} - x_{j1})^h + (x_{i2} - x_{j2})^h + ... + (x_{ir} - 
 
 where $x_i$ and $x_j$ are data points (vectors). Different choices of the exponent $h$ recover familiar distances:
 
-- Euclidean distance ($h = 2$), the ordinary straight-line distance:
-  $$dist(x_j, x_j) = ((x_{i1} - x_{j1})^2 + (x_{i2} - x_{j2})^2 + ... + (x_{ir} - x_{jr})^2)^{\frac{1}{2}}$$
-  Two useful variants are the *weighted* Euclidean distance, which lets some attributes count more than others,
-  $$dist(x_j, x_j) = (w_1(x_{i1} - x_{j1})^2 + w_2(x_{i2} - x_{j2})^2 + ... + w_r(x_{ir} - x_{jr})^2)^{\frac{1}{2}}$$
-  and the *squared* Euclidean distance, which places progressively greater weight on points that are far apart,
-  $$dist(x_j, x_j) = (x_{i1} - x_{j1})^2 + (x_{i2} - x_{j2})^2 + ... + (x_{ir} - x_{jr})^2$$
-- Manhattan distance ($h = 1$), the sum of absolute coordinate differences, as if moving along a city grid:
-  $$dist(x_j, x_j) = |x_{i1} - x_{j1}| + |x_{i2} - x_{j2}| + ... + |x_{ir} - x_{jr}|$$
-- Minkowski distance (for positive integer $h$), the general form above, which interpolates between Manhattan ($h=1$) and Euclidean ($h=2$) and beyond:
-  $$dist(x_j, x_j) = ((x_{i1} - x_{j1})^h + (x_{i2} - x_{j2})^h + ... + (x_{ir} - x_{jr})^h)^{\frac{1}{h}}$$
-- Chebychev distance, which treats two points as "different" if they differ on any single attribute, taking the largest coordinate difference:
-  $$dist(x_j, x_j) = max(|x_{i1} - x_{j1}| + |x_{i2} - x_{j2}| + ... + |x_{ir} - x_{jr}|)$$
+-   Euclidean distance ($h = 2$), the ordinary straight-line distance: $$dist(x_j, x_j) = ((x_{i1} - x_{j1})^2 + (x_{i2} - x_{j2})^2 + ... + (x_{ir} - x_{jr})^2)^{\frac{1}{2}}$$ Two useful variants are the *weighted* Euclidean distance, which lets some attributes count more than others, $$dist(x_j, x_j) = (w_1(x_{i1} - x_{j1})^2 + w_2(x_{i2} - x_{j2})^2 + ... + w_r(x_{ir} - x_{jr})^2)^{\frac{1}{2}}$$ and the *squared* Euclidean distance, which places progressively greater weight on points that are far apart, $$dist(x_j, x_j) = (x_{i1} - x_{j1})^2 + (x_{i2} - x_{j2})^2 + ... + (x_{ir} - x_{jr})^2$$
+-   Manhattan distance ($h = 1$), the sum of absolute coordinate differences, as if moving along a city grid: $$dist(x_j, x_j) = |x_{i1} - x_{j1}| + |x_{i2} - x_{j2}| + ... + |x_{ir} - x_{jr}|$$
+-   Minkowski distance (for positive integer $h$), the general form above, which interpolates between Manhattan ($h=1$) and Euclidean ($h=2$) and beyond: $$dist(x_j, x_j) = ((x_{i1} - x_{j1})^h + (x_{i2} - x_{j2})^h + ... + (x_{ir} - x_{jr})^h)^{\frac{1}{h}}$$
+-   Chebychev distance, which treats two points as "different" if they differ on any single attribute, taking the largest coordinate difference: $$dist(x_j, x_j) = max(|x_{i1} - x_{j1}| + |x_{i2} - x_{j2}| + ... + |x_{ir} - x_{jr}|)$$
 
 Not all attributes are numeric, so we also need distances for binary and nominal attributes. A binary attribute has two values or states with no ordering between them, such as gender. To define distances over binary attributes, we count how the two data points $x_i$ and $x_j$ agree and disagree across all attributes, using the contingency table shown in Table @tbl-overview-binary-counts.
 
@@ -495,10 +489,10 @@ Not all attributes are numeric, so we also need distances for binary and nominal
 
 The four counts have direct meanings:
 
-- $a$: the number of attributes with the value 1 for both data points.
-- $b$: the number of attributes for which $x_{if} = 1$ and $x_{jf}=0$, where $x_{if}$ is the value of attribute $f$ of data point $x_i$.
-- $c$: the number of attributes for which $x_{if}=0$ and $x_{jf} =1$.
-- $d$: the number of attributes with the value 0 for both data points.
+-   $a$: the number of attributes with the value 1 for both data points.
+-   $b$: the number of attributes for which $x_{if} = 1$ and $x_{jf}=0$, where $x_{if}$ is the value of attribute $f$ of data point $x_i$.
+-   $c$: the number of attributes for which $x_{if}=0$ and $x_{jf} =1$.
+-   $d$: the number of attributes with the value 0 for both data points.
 
 How we turn these counts into a distance depends on whether the attribute is symmetric or asymmetric. A binary attribute is symmetric when both states (0 and 1) carry equal importance and weight, as with gender. The natural distance is then the Simple Matching Coefficient, the proportion of mismatched values:
 
@@ -537,8 +531,7 @@ We declare convergence when one of the following holds:
 
 1.  No (or minimal) re-assignments of data points to different clusters,
 2.  No (or minimal) change of centroids, or
-3.  A minimal decrease in the sum of squared error (SSE):
-    $$
+3.  A minimal decrease in the sum of squared error (SSE): $$
     SSE = \sum_{j=1}^{k}\sum_{x\in C_j}dist(x.m_j)^2
     $$
 
@@ -546,17 +539,17 @@ Here $C_j$ is the $j$-th cluster, $m_j$ is its centroid (the mean vector of all 
 
 The method is popular for good reasons:
 
-- Simple: easy to understand and implement.
-- Efficient: time complexity is $O(tkn)$, where $n$ is the number of data points, $k$ the number of clusters, and $t$ the number of iterations.
-- Because both $k$ and $t$ are typically small, k-means is considered a linear-time algorithm in practice.
+-   Simple: easy to understand and implement.
+-   Efficient: time complexity is $O(tkn)$, where $n$ is the number of data points, $k$ the number of clusters, and $t$ the number of iterations.
+-   Because both $k$ and $t$ are typically small, k-means is considered a linear-time algorithm in practice.
 
 It also has real limitations to keep in mind:
 
-- It terminates only at a *local* optimum when SSE is used; the global optimum is hard to find because the problem is computationally hard.
-- It applies only when a mean is defined. For categorical data, the related *k-modes* algorithm is used instead.
-- The user must specify $k$ in advance, which is rarely known.
-- It is sensitive to outliers, which may be recording errors or genuinely unusual points; a single far-flung point can drag a centroid toward it.
-- It is not suitable for discovering clusters that are not roughly hyper-ellipsoids (or hyper-spheres), so it struggles with elongated or oddly shaped groups.
+-   It terminates only at a *local* optimum when SSE is used; the global optimum is hard to find because the problem is computationally hard.
+-   It applies only when a mean is defined. For categorical data, the related *k-modes* algorithm is used instead.
+-   The user must specify $k$ in advance, which is rarely known.
+-   It is sensitive to outliers, which may be recording errors or genuinely unusual points; a single far-flung point can drag a centroid toward it.
+-   It is not suitable for discovering clusters that are not roughly hyper-ellipsoids (or hyper-spheres), so it struggles with elongated or oddly shaped groups.
 
 > **Warning:** Because k-means only finds a local optimum and starts from random seeds, two runs on the same data can give different answers. Run it several times with different seeds and keep the best (lowest-SSE) result rather than trusting a single run.
 
@@ -568,8 +561,8 @@ Labeled data are expensive: someone has to annotate each example by hand. Unlabe
 
 A common strategy is *self-training*, which bootstraps labels from a small labeled seed:
 
-- Iteratively label some of the unlabeled examples using a model learned from the previously labeled examples, then retrain on the enlarged labeled set.
-- *Active learning* takes a complementary route, having the model ask for labels on the specific examples it expects to learn the most from, rather than labeling at random.
+-   Iteratively label some of the unlabeled examples using a model learned from the previously labeled examples, then retrain on the enlarged labeled set.
+-   *Active learning* takes a complementary route, having the model ask for labels on the specific examples it expects to learn the most from, rather than labeling at random.
 
 > **When to use this:** Semi-supervised methods earn their keep when unlabeled data are abundant but labels are scarce or costly, as in medical imaging, speech, or any domain where expert annotation is the bottleneck.
 

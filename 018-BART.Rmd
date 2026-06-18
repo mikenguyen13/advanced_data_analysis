@@ -1,9 +1,5 @@
 # Bayesian Additive Regression Trees
 
-```{r chapter-setup-nocache, include=FALSE, cache=FALSE}
-knitr::opts_chunk$set(cache = FALSE)  # attach()-based chapter: run linearly, no cache
-```
-
 Imagine you want to predict the price of a house from its features (number of rooms, neighborhood income, distance to work, and so on). A single regression tree is easy to read but usually too crude. A forest of many trees predicts well but gives you a single point estimate with no honest sense of how uncertain that estimate is. Bayesian Additive Regression Trees, or BART [@sparapani2021], try to give you the best of both: the flexibility of a sum of many small trees, plus a full probability distribution over the prediction so you can attach uncertainty to every number you report.
 
 This chapter introduces BART from intuition first, then states the algorithm precisely, and finally walks through worked examples in R using the `BART` package. By the end you should understand why BART is often called a "good out-of-the-box" method, how its three main settings (number of trees, number of iterations, and burn-in) work, and how to read its output, including convergence checks, variable importance, and partial dependence plots.
@@ -113,13 +109,12 @@ library(ISLR2)
 library(tree)
 
 set.seed(1)
-attach(Boston)
 
-train <- sample(1:nrow(Boston), nrow(Boston)/2)
-# tree.boston <- tree(medv ~ ., Boston, subset = train)
+train <- sample(1:nrow(ISLR2::Boston), nrow(ISLR2::Boston)/2)
+# tree.boston <- tree(medv ~ ., ISLR2::Boston, subset = train)
 
-x <- Boston[,1:12]
-y <- Boston[,"medv"]
+x <- ISLR2::Boston[,1:12]
+y <- ISLR2::Boston[,"medv"]
 xtrain <- x[train,]
 ytrain <- y[train]
 xtest <- x[-train,]
@@ -152,8 +147,8 @@ Before fitting anything, it pays to look at the raw relationships. Figure \@ref(
 
 ```{r BART-scatter-raw, fig.cap="Scatterplots of the raw Boston data: median home value against average number of rooms (x1=rm), median home value against percent lower status (x2=lstat), and the two predictors against each other."}
 library(MASS)
-x <- Boston[,c(6,13)]
-y <- Boston$medv
+x <- MASS::Boston[,c(6,13)]
+y <- MASS::Boston$medv
 # head(cbind(x,y))
 par(mfrow = c(2,2))
 plot(x[, 1], y, xlab = "x1=rm", ylab = "y=mdev")
@@ -262,7 +257,7 @@ Finally, we look at variable importance in a way that shows not just *whether* a
 The procedure builds a grid of values for `lstat` (the 13th column), replaces that column with each grid value while holding the other columns at their observed combinations, predicts, and averages. In Figure \@ref(fig:BART-partial-dependence), the solid line is the average partial-dependence curve and the dashed lines are pointwise 2.5% and 97.5% posterior quantiles, giving an uncertainty band around the effect.
 
 ```{r BART-partial-dependence, fig.cap="Partial dependence of predicted median home value on the lower-status percentage (lstat). The solid line is the average partial-dependence curve and the dashed lines are pointwise 2.5% and 97.5% posterior quantiles."}
-x.train <- as.matrix(Boston[i,-14])
+x.train <- as.matrix(MASS::Boston[i,-14])
 set.seed(12)
 post4 <- wbart(x.train, y.train)
 H <- length(y.train)

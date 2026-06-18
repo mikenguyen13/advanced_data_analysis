@@ -74,8 +74,8 @@ where $d_{\pi_E}$ is the distribution of states the expert visits and $\mathbf{1
 A classic result of Ross and Bagnell (2010) bounds the cost of this drift. If the per step error is $\epsilon$ and the task lasts $T$ steps, the expected extra cost of the cloned policy relative to the expert grows like
 
 $$
-J(\hat\pi) - J(\pi_E) \; \le \; O\big(T^2 \epsilon\big), {#eq-imitation-inverse-rl-bc-bound}
-$$
+J(\hat\pi) - J(\pi_E) \; \le \; O\big(T^2 \epsilon\big),
+$$ {#eq-imitation-inverse-rl-bc-bound}
 
 where $J(\pi)$ is the total expected cost over a horizon of $T$ steps. The quadratic $T^2$ is the signature of compounding error. Contrast this with the linear $O(T\epsilon)$ you would get if the state distribution did not shift. Over a long horizon, even a tiny supervised error can blow up.
 
@@ -90,16 +90,16 @@ $$
 Assume the supervised step controls the per step disagreement under the expert's own visitation distribution: at every $t$,
 
 $$
-\mathbb{E}_{s \sim d_{\pi_E}^t}\big[\, \mathbf{1}\{\hat\pi(s) \neq \pi_E(s)\} \,\big] \le \epsilon. {#eq-imitation-inverse-rl-bc-assumption}
-$$
+\mathbb{E}_{s \sim d_{\pi_E}^t}\big[\, \mathbf{1}\{\hat\pi(s) \neq \pi_E(s)\} \,\big] \le \epsilon.
+$$ {#eq-imitation-inverse-rl-bc-assumption}
 
 The argument has two parts: bound how fast the learner's state distribution drifts from the expert's, then turn that drift into a cost gap.
 
 Step one, distribution drift. Couple the two trajectories: run the expert and the learner from the same start with shared randomness, and let $p_t$ be the probability that they have made at least one disagreeing action by time $t$. As long as no disagreement has occurred, the two systems occupy identical states, so the chance of a fresh disagreement at step $t$ is at most $\epsilon$ by @eq-imitation-inverse-rl-bc-assumption. Hence $p_t \le p_{t-1} + \epsilon$, and with $p_0 = 0$ we get $p_t \le t\epsilon$. The total variation distance between the two state distributions at time $t$ is bounded by this coupling failure probability,
 
 $$
-\big\| d_{\hat\pi}^t - d_{\pi_E}^t \big\|_1 \le 2\, p_t \le 2 t \epsilon . {#eq-imitation-inverse-rl-bc-tv}
-$$
+\big\| d_{\hat\pi}^t - d_{\pi_E}^t \big\|_1 \le 2\, p_t \le 2 t \epsilon .
+$$ {#eq-imitation-inverse-rl-bc-tv}
 
 Step two, cost gap. Decompose the learner's cost at each step by comparing it to the expert on the expert's distribution, then paying for the distribution shift. Since costs lie in $[0,1]$,
 
@@ -165,8 +165,8 @@ A typical schedule is $\beta_i = p^{i}$ for some $p < 1$, or simply $\beta_1 = 1
 The payoff is a better bound. Under DAgger the performance gap becomes linear in the horizon,
 
 $$
-J(\hat\pi) - J(\pi_E) \; \le \; O(T \epsilon), {#eq-imitation-inverse-rl-dagger-bound}
-$$
+J(\hat\pi) - J(\pi_E) \; \le \; O(T \epsilon),
+$$ {#eq-imitation-inverse-rl-dagger-bound}
 
 removing one factor of $T$ compared with plain cloning. The intuition is that the learner is never tested on states it was not trained on, so a single mistake no longer cascades unboundedly.
 
@@ -175,8 +175,8 @@ removing one factor of $T$ compared with plain cloning. The intuition is that th
 The improvement is not magic, and seeing the mechanism clarifies both what DAgger guarantees and what it assumes. The key change is the distribution under which the supervised error is controlled. Let $\bar d = \frac1T \sum_{t=1}^T d_{\hat\pi}^t$ be the learner's own time averaged state distribution, the distribution DAgger actually trains on once $\beta_i \to 0$. Suppose the aggregated classifier achieves
 
 $$
-\mathbb{E}_{s \sim \bar d}\big[\, \mathbf{1}\{\hat\pi(s) \neq \pi_E(s)\} \,\big] \le \epsilon , {#eq-imitation-inverse-rl-dagger-assumption}
-$$
+\mathbb{E}_{s \sim \bar d}\big[\, \mathbf{1}\{\hat\pi(s) \neq \pi_E(s)\} \,\big] \le \epsilon ,
+$$ {#eq-imitation-inverse-rl-dagger-assumption}
 
 which is exactly the held out error of the final model measured on rollouts of the learner, the quantity DAgger drives down by aggregation. Now decompose the cost gap one step at a time. Write the per step disadvantage of taking the learner's action versus the expert's action and following the expert afterward; because the learner and expert states already coincide in this accounting (both costs are evaluated under $d_{\hat\pi}^t$), there is no second distribution shift term to pay. Each disagreement, occurring on at most an $\epsilon$ fraction of states by @eq-imitation-inverse-rl-dagger-assumption, costs at most $1$ (or a problem dependent constant $u$, the maximum extra cost of a single wrong action). Summing the $T$ steps,
 
@@ -281,8 +281,8 @@ Feature matching guarantees only that $\hat\pi$ matches the expert's value under
 Maximum entropy IRL (Ziebart et al., 2008) resolves the ambiguity differently and more robustly. Among all trajectory distributions that match the expert's feature expectations, it picks the one with maximum entropy, which is the least committed distribution consistent with the evidence. This yields a probabilistic model in which trajectories are exponentially more likely as their return increases:
 
 $$
-p(\tau) \; \propto \; \exp\!\big( w^\top \phi(\tau) \big), {#eq-imitation-inverse-rl-maxent-form}
-$$
+p(\tau) \; \propto \; \exp\!\big( w^\top \phi(\tau) \big),
+$$ {#eq-imitation-inverse-rl-maxent-form}
 
 where $\phi(\tau) = \sum_t \gamma^t \phi(s_t)$ is the trajectory feature count. The weights $w$ are then fit by maximum likelihood on the demonstrated trajectories, which handles suboptimal or noisy experts gracefully because it assigns nonzero probability to imperfect behavior.
 
@@ -322,8 +322,8 @@ $$
 a standard exponential family identity (the log partition function generates the moments). Therefore
 
 $$
-\nabla_w \mathcal{L}(w) = \underbrace{\tfrac1m\textstyle\sum_i \phi(\tau_i)}_{\hat\mu_E} - \underbrace{\mu(\pi_w)}_{\text{model's feature count}} = \hat\mu_E - \mu(\pi_w). {#eq-imitation-inverse-rl-maxent-grad}
-$$
+\nabla_w \mathcal{L}(w) = \underbrace{\tfrac1m\textstyle\sum_i \phi(\tau_i)}_{\hat\mu_E} - \underbrace{\mu(\pi_w)}_{\text{model's feature count}} = \hat\mu_E - \mu(\pi_w).
+$$ {#eq-imitation-inverse-rl-maxent-grad}
 
 This is the defining result of MaxEnt IRL: the likelihood gradient is the difference between the expert's empirical feature expectations and the feature expectations of the current maximum entropy policy. Gradient ascent therefore drives $\mu(\pi_w) \to \hat\mu_E$, recovering feature matching as the stationary condition $\nabla_w\mathcal{L} = 0$, but now derived from a probabilistic likelihood rather than imposed by a margin. Computing $\mu(\pi_w)$ requires the expected state visitation under the current soft optimal policy, obtained by a forward backward dynamic program over the MDP (the soft value iteration that replaces the hard $\max$ with a log sum exp), which is the per iteration cost of the method.
 

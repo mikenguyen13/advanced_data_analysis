@@ -9,7 +9,11 @@ Most supervised methods in this book assume access to a large labeled training s
 
 This chapter covers the conceptual core of meta-learning (optimization-based methods such as MAML and metric-based methods such as prototypical and matching networks), the episodic training protocol, and the $N$-way $K$-shot evaluation setup. The runnable demonstration is a nearest-centroid (prototypical) few-shot classifier implemented in base R, evaluated on simulated episodes, where we measure how accuracy improves as the number of shots per class grows.
 
-> **Intuition:** A standard model learns *what the answer is* for one task. A meta-learner learns *how to find the answer* for a whole family of tasks, so that when a brand new task arrives with only a few labels, it already knows where to look. Think of the difference between memorizing one map and learning to read maps in general.
+
+::: {.callout-tip title="Intuition"}
+A standard model learns *what the answer is* for one task. A meta-learner learns *how to find the answer* for a whole family of tasks, so that when a brand new task arrives with only a few labels, it already knows where to look. Think of the difference between memorizing one map and learning to read maps in general.
+:::
+
 
 ## Where this fits in a modern ML workflow
 
@@ -26,7 +30,11 @@ Collecting thousands of labels per new task is slow or impossible. Meta-learning
 
 Few-shot meta-learning is the explicit, supervised version of the same objective: optimize directly for fast adaptation from few examples.
 
-> **Key idea:** The cost of learning a new task is not eliminated, it is moved. Meta-learning pays a heavy bill once, offline, by training across many tasks, and is repaid with cheap, fast adaptation every time a new task arrives.
+
+::: {.callout-important title="Key idea"}
+The cost of learning a new task is not eliminated, it is moved. Meta-learning pays a heavy bill once, offline, by training across many tasks, and is repaid with cheap, fast adaptation every time a new task arrives.
+:::
+
 
 ### Notation and the task distribution
 
@@ -37,7 +45,11 @@ We assume a distribution over tasks $p(\mathcal{T})$. A task $\mathcal{T}_i$ is 
 
 This is the $N$-way $K$-shot setup: $N$ classes, $K$ labeled examples each.^[The vocabulary is borrowed from card games and learning theory: a "shot" is one labeled example you are allowed to see per class, and "$N$-way" counts how many classes the model must choose among. A 5-way 1-shot task is therefore a five-class problem with a single labeled example per class.] A "5-way 1-shot" task means five classes with a single labeled example per class. The important constraint is that the classes (and often the entire label space) differ between tasks. A model that simply memorizes a fixed set of categories cannot solve held-out tasks; it must learn a transferable adaptation rule.
 
-> **Note:** The split into support and query within a single task is what makes meta-learning more than a renaming of supervised learning. The support set plays the role of "training data the model is allowed to adapt on" and the query set plays the role of "test data," but both live *inside* one task, and we repeat this train/test split thousands of times across tasks.
+
+::: {.callout-note}
+The split into support and query within a single task is what makes meta-learning more than a renaming of supervised learning. The support set plays the role of "training data the model is allowed to adapt on" and the query set plays the role of "test data," but both live *inside* one task, and we repeat this train/test split thousands of times across tasks.
+:::
+
 
 ## Episodic training
 
@@ -52,7 +64,11 @@ where $\theta$ are the meta-parameters, $A(\theta, \mathcal{S})$ is the adaptati
 
 The reason episodic training works is that we never let the model see the query labels during adaptation; we only score on them. The gradient through that score teaches $\theta$ to make adaptation generalize, not to memorize.
 
-> **Intuition:** Train the way you will be tested. If deployment means "adapt from a handful of labels, then predict on new points," then every training episode should rehearse exactly that, adapt on a support set, predict on a held-out query set. The meta-objective rewards adaptation rules that transfer.
+
+::: {.callout-tip title="Intuition"}
+Train the way you will be tested. If deployment means "adapt from a handful of labels, then predict on new points," then every training episode should rehearse exactly that, adapt on a support set, predict on a held-out query set. The meta-objective rewards adaptation rules that transfer.
+:::
+
 
 With the training protocol in place, the families of methods differ only in the choice of the adaptation procedure $A$. We look at two: one that adapts by taking gradient steps, and one that adapts by comparing distances.
 
@@ -82,7 +98,11 @@ The intuition: MAML does not look for parameters that are good on any single tas
 
 MAML is "model-agnostic" because $A$ is just gradient descent, so it applies to any differentiable model. The price is the inner loop: each meta-update requires adapting and backpropagating through adaptation, which is memory-hungry and sensitive to the inner step count and learning rate.
 
-> **Warning:** Differentiating through the inner gradient step is what produces the Hessian term above, and it is the main source of MAML's fragility and cost. If MAML is unstable or too slow, the first thing to try is a first-order variant (FOMAML or Reptile), which drops that second-order term.
+
+::: {.callout-warning}
+Differentiating through the inner gradient step is what produces the Hessian term above, and it is the main source of MAML's fragility and cost. If MAML is unstable or too slow, the first thing to try is a first-order variant (FOMAML or Reptile), which drops that second-order term.
+:::
+
 
 Optimization-based methods adapt by *moving the weights*. The next family adapts without touching the weights at all.
 
@@ -142,7 +162,11 @@ We implement the prototypical idea with the simplest possible encoder, the ident
 
 This isolates the mechanism that prototypical networks rely on: averaging $K$ support points reduces the variance of the prototype estimate, which moves the decision boundary closer to the Bayes-optimal one and raises accuracy. With $K$ independent support points per class, the prototype is the sample mean, whose variance shrinks like $1/K$, so accuracy should rise and then saturate.
 
-> **Key idea:** More shots help because each extra labeled example sharpens the estimate of the class center, not because the model "learns more." The $1/K$ variance reduction of an average is the whole story behind the rising accuracy curve we are about to plot.
+
+::: {.callout-important title="Key idea"}
+More shots help because each extra labeled example sharpens the estimate of the class center, not because the model "learns more." The $1/K$ variance reduction of an average is the whole story behind the rising accuracy curve we are about to plot.
+:::
+
 
 ```{r proto-setup, eval=TRUE}
 set.seed(1301)
@@ -291,13 +315,21 @@ proto_loss <- function(encoder, support_x, support_y, query_x, query_y,
 
 The base-R demo and this sketch share the same prediction rule. The only difference is whether the feature map is fixed (identity) or trained end to end through the episodic loss.
 
-> **Tip:** When you move from this toy to a real prototypical network, the identity encoder is replaced by `make_encoder`, but the loss, the prototypes, and the nearest-prototype decision rule stay exactly as written here. Read the base-R `proto_predict` and the Keras `proto_loss` side by side: they compute the same thing.
+
+::: {.callout-tip}
+When you move from this toy to a real prototypical network, the identity encoder is replaced by `make_encoder`, but the loss, the prototypes, and the nearest-prototype decision rule stay exactly as written here. Read the base-R `proto_predict` and the Keras `proto_loss` side by side: they compute the same thing.
+:::
+
 
 ## Practical guidance, pitfalls, and when to use
 
 The methods above are appealing, but the decision to use meta-learning at all is the one that matters most in practice. The single most common mistake is reaching for a meta-learner when a simpler tool would do better, so we start there.
 
-> **When to use this:** Meta-learning earns its complexity only when two conditions hold at once: you face a *stream of related tasks*, and each new task gives you *very few labels*. If either condition fails, a standard model or a fine-tuned pretrained model is usually the better and simpler choice.
+
+::: {.callout-tip title="When to use this"}
+Meta-learning earns its complexity only when two conditions hold at once: you face a *stream of related tasks*, and each new task gives you *very few labels*. If either condition fails, a standard model or a fine-tuned pretrained model is usually the better and simpler choice.
+:::
+
 
 When to reach for meta-learning.
 
@@ -320,7 +352,11 @@ Pitfalls.
 
 Sanity checks. Compare against a nearest-centroid baseline on raw or pretrained features (exactly the demo above). A learned meta-learner that does not beat this simple baseline is not earning its complexity. Also report the chance level $1/N$ so improvements are interpretable.
 
-> **Warning:** The most damaging error in few-shot work is silent: if a class appears in both meta-training and meta-test, the model has effectively already seen the answer, and reported accuracy is meaningless. Always split by class, not just by example, and state the exact $N$-way $K$-shot configuration alongside every number.
+
+::: {.callout-warning}
+The most damaging error in few-shot work is silent: if a class appears in both meta-training and meta-test, the model has effectively already seen the answer, and reported accuracy is meaningless. Always split by class, not just by example, and state the exact $N$-way $K$-shot configuration alongside every number.
+:::
+
 
 To summarize the chapter: meta-learning trades an expensive offline phase, training across many tasks under the episodic protocol, for cheap adaptation to new tasks from a few labels. Optimization-based methods like MAML adapt by taking gradient steps from a learned initialization, while metric-based methods like prototypical and matching networks adapt by comparing query points to a learned representation of the support set. The runnable demo showed the engine inside the metric-based family in its simplest form: averaging support points to form class prototypes, where accuracy climbs with the number of shots and then saturates as the $1/K$ variance reduction runs out. When you decide whether to use any of this, let the two questions in the callout above, "are the tasks related?" and "are labels truly scarce?", make the call.
 

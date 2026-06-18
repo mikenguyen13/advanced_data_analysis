@@ -15,7 +15,11 @@ This chapter treats `tidymodels` not as a single algorithm but as the plumbing t
 
 If you have spent any time fitting models in base R, you have probably felt the friction this framework removes. Every package speaks its own dialect: `glmnet` wants a matrix and calls its penalty `lambda`, `randomForest` wants a formula and calls its key knob `mtry`, and `xgboost` wants yet another input format. Worse, the safe handling of data (splitting before you compute anything, re-estimating preprocessing inside each resample) is left entirely to your discipline, and a single misplaced line can quietly invalidate every number you report. `tidymodels` exists to take both of those burdens off your shoulders: one vocabulary for all engines, and correct data handling by construction.
 
-> **Intuition:** Think of `tidymodels` as an adapter layer. You describe *what* you want (standardize the predictors, fit an elastic net, tune the penalty by 5-fold cross-validation) and the framework handles *how* each underlying package wants to be called, and *when* each data-dependent quantity may be computed.
+
+::: {.callout-tip title="Intuition"}
+Think of `tidymodels` as an adapter layer. You describe *what* you want (standardize the predictors, fit an elastic net, tune the penalty by 5-fold cross-validation) and the framework handles *how* each underlying package wants to be called, and *when* each data-dependent quantity may be computed.
+:::
+
 
 By the end of the chapter you will be able to read and write a complete modeling pipeline: split the data once, declare preprocessing as a reusable object, specify a model independently of its engine, tune hyperparameters by resampling, and score the result honestly. We will also build a small from-scratch simulation that shows, in numbers, why the framework's "estimate inside every fold" rule is not pedantry but the difference between an honest error estimate and a self-deceiving one.
 
@@ -32,7 +36,11 @@ A predictive modeling project usually has the same skeleton no matter the algori
 
 Done by hand, each of these steps invites mistakes. The most common and most damaging is information leakage: computing a centering mean, a scaling standard deviation, or a category encoding on the full data set before splitting, so that knowledge of the held-out rows quietly enters the model.^[Leakage is any path by which information that would not be available at prediction time sneaks into training. It need not be dramatic. Standardizing the whole data set before splitting leaks the test rows' mean and spread into the training features, and selecting "the most predictive variables" on all the data leaks the labels themselves.] `tidymodels` is built so that every data-dependent transformation is *estimated on the analysis rows only* and then *applied* to the assessment rows. This is the single most important reason to use it.
 
-> **Key idea:** A modeling step is "data-dependent" if it learns a number from the data (a mean, a quantile, a set of retained categories, a PCA rotation). Every such number must be learned from training rows alone and then applied unchanged to held-out rows. The framework makes this the default rather than something you must remember.
+
+::: {.callout-important title="Key idea"}
+A modeling step is "data-dependent" if it learns a number from the data (a mean, a quantile, a set of retained categories, a PCA rotation). Every such number must be learned from training rows alone and then applied unchanged to held-out rows. The framework makes this the default rather than something you must remember.
+:::
+
 
 The framework breaks into focused packages, each owning one job in the skeleton above. @tbl-tidymodels-framework-package-map maps each package to its role and to the `scikit-learn` concept it most resembles, so readers coming from Python have a translation key.
 
@@ -57,7 +65,11 @@ The rest of the chapter walks through these packages in the order you meet them 
 
 A recipe is a description of how to turn raw columns into model-ready features. The single most important property of a recipe is that it separates the *definition* of a step from its *estimation*. You declare "center and scale all numeric predictors," and the actual means and standard deviations are learned later, only from the data you train on. A recipe is therefore more like a written instruction than a transformed data set: it is a plan that can be re-estimated on whatever rows you hand it.
 
-> **Intuition:** A recipe is to your features what a cooking recipe is to a meal. Writing "add salt to taste" does not yet add any salt; the amount is decided when you actually cook, with the ingredients in front of you. Likewise `step_normalize()` does not yet subtract any mean; the mean is computed when the recipe is `prep()`ed on a specific set of training rows.
+
+::: {.callout-tip title="Intuition"}
+A recipe is to your features what a cooking recipe is to a meal. Writing "add salt to taste" does not yet add any salt; the amount is decided when you actually cook, with the ingredients in front of you. Likewise `step_normalize()` does not yet subtract any mean; the mean is computed when the recipe is `prep()`ed on a specific set of training rows.
+:::
+
 
 Formally, suppose a numeric predictor $x$ is to be standardized. Standardization is the map
 
@@ -79,13 +91,21 @@ A recipe is built by chaining `step_*` functions, each one a named transformatio
 
 The order in which you add steps is itself a modeling decision, because each step sees the data as the previous steps left it.
 
-> **Warning:** Impute before you scale, or the scaling statistics will be computed from incomplete columns. Collapse rare levels with `step_other` before `step_dummy`, or each rare level becomes its own near-empty dummy column. Drop zero-variance columns with `step_zv` after creating dummies, since a category present overall can be absent within a single fold and produce an all-zero dummy there.
+
+::: {.callout-warning}
+Impute before you scale, or the scaling statistics will be computed from incomplete columns. Collapse rare levels with `step_other` before `step_dummy`, or each rare level becomes its own near-empty dummy column. Drop zero-variance columns with `step_zv` after creating dummies, since a category present overall can be absent within a single fold and produce an all-zero dummy there.
+:::
+
 
 ### Why estimation-then-application matters numerically
 
 Consider a target encoding, where a categorical level is replaced by the mean response in that level.^[Target encoding (also called effect or mean encoding) is a popular way to turn a high-cardinality category, say a ZIP code with hundreds of values, into a single numeric column. It is also one of the easiest places to leak, precisely because the encoded value is built from the response.] If the encoding is computed on all rows, the encoded value for a row literally contains that row's own response, and cross-validated error becomes optimistic. Estimating the encoding inside each fold removes the row's own contribution from its features and gives an honest error estimate. The recipe interface makes the correct behavior the default rather than something you must remember to code.
 
-> **When to use this:** Whenever a preprocessing step learns anything from the data (an imputation value, a scaling constant, a retained category set, a PCA rotation, an encoding), put it in a recipe rather than running it once on the whole data set. The recipe is the mechanism that guarantees the step is re-estimated per fold.
+
+::: {.callout-tip title="When to use this"}
+Whenever a preprocessing step learns anything from the data (an imputation value, a scaling constant, a retained category set, a PCA rotation, an encoding), put it in a recipe rather than running it once on the whole data set. The recipe is the mechanism that guarantees the step is re-estimated per fold.
+:::
+
 
 ## The model specification: parsnip
 
@@ -110,7 +130,11 @@ $$
 
 `mixture = 1` is the lasso, `mixture = 0` is ridge, and values in between give the elastic net. The point of `parsnip` is that these same two argument names map to whatever the chosen engine calls them internally, so you do not memorize each package's argument conventions.
 
-> **Tip:** Notice that printing a specification does not fit anything; it only shows the plan. A `parsnip` object is fit later, either directly with `fit()` or, more commonly, by placing it in a workflow. Building specifications without fitting them is cheap, which makes it easy to define several model families side by side and compare them on the same resamples.
+
+::: {.callout-tip}
+Notice that printing a specification does not fit anything; it only shows the plan. A `parsnip` object is fit later, either directly with `fit()` or, more commonly, by placing it in a workflow. Building specifications without fitting them is cheap, which makes it easy to define several model families side by side and compare them on the same resamples.
+:::
+
 
 To mark an argument for tuning rather than fixing it, you write `tune()` as a placeholder in place of a value. This says "do not pick a number yet; treat this as something to search over." Later, `dials` supplies a sensible range for that argument and `tune` fills in the candidate values. We will see exactly this pattern in the worked example, where both `penalty` and `mixture` are left as `tune()`.
 
@@ -120,7 +144,11 @@ So far we have a recipe (the preprocessing plan) and a specification (the model 
 
 Fitting the workflow fits the recipe and the model together; predicting on new data automatically bakes the recipe before calling the model. This guarantees that training and prediction use identical preprocessing, which is the second most common source of bugs after leakage.
 
-> **Note:** A common base-R bug is to scale the training data, fit a model, then forget to apply the *same* scaling to new data at prediction time, or to recompute it from the new data. A workflow makes that mistake structurally impossible: the preprocessing travels with the model inside one object.
+
+::: {.callout-note}
+A common base-R bug is to scale the training data, fit a model, then forget to apply the *same* scaling to new data at prediction time, or to recompute it from the new data. A workflow makes that mistake structurally impossible: the preprocessing travels with the model inside one object.
+:::
+
 
 ```{r tmf-workflow-shape, eval=TRUE}
 .libPaths(c("C:/Users/miken/R/library-4.4", .libPaths()))
@@ -151,7 +179,11 @@ where $\hat f_{-v}$ is the model fit without fold $v$. Its standard error across
 
 The choice of resampling scheme is itself a bias-variance tradeoff: a single split is cheap but its estimate jumps around depending on which rows landed in the validation set, while many folds average out that noise at a higher computational cost. @tbl-tidymodels-framework-resampling-schemes summarizes the usual options and when each one earns its keep.
 
-> **Tip:** When in doubt, 10-fold cross-validation is the sensible default for most tabular problems. Reach for the other schemes only when the data structure demands it: grouped CV when rows cluster, time-based resampling when rows are ordered in time.
+
+::: {.callout-tip}
+When in doubt, 10-fold cross-validation is the sensible default for most tabular problems. Reach for the other schemes only when the data structure demands it: grouped CV when rows cluster, time-based resampling when rows are ordered in time.
+:::
+
 
 | Scheme | What it does | Bias | Variance | When to use |
 |---|---|---|---|---|
@@ -176,7 +208,11 @@ estimated by fitting the workflow on every (fold, candidate) pair. Two packages 
 
 The size of the grid is where tuning gets expensive. A regular grid over $d$ parameters with $k$ levels each costs $k^d$ candidates, and that product grows alarmingly: three parameters at five levels is already $125$ settings, each fit $V$ times. Space-filling designs (Latin hypercube, max-entropy) spread a fixed budget of candidates evenly through the space instead of on a rigid lattice, and they are the better choice once $d$ is more than two.^[A space-filling design asks: given that I can afford only, say, 30 candidates, where should I place them so that no large region of the space is left unexplored? The answer is not a grid, which wastes points on the corners, but a scatter chosen to keep candidates far apart.] For an even larger saving, the `finetune` package offers racing, which evaluates all candidates on a few folds, eliminates the clear losers early, and continues only with the survivors, and simulated annealing for guided search.
 
-> **Warning:** Tuning multiplies cost by both the grid size and the number of folds. A 100-candidate grid under 10-fold CV is 1000 model fits. Before launching a large search, sanity-check the arithmetic, and consider racing or a space-filling design to keep it tractable.
+
+::: {.callout-warning}
+Tuning multiplies cost by both the grid size and the number of folds. A 100-candidate grid under 10-fold CV is 1000 model fits. Before launching a large search, sanity-check the arithmetic, and consider racing or a space-filling design to keep it tractable.
+:::
+
 
 ## Scoring: yardstick
 
@@ -188,7 +224,11 @@ $$
 
 mean absolute error, and the coefficient of determination $R^2$. For classification you get accuracy, the area under the ROC curve, log loss, and the Brier score, among others. Because metrics are ordinary functions of a data frame of predictions, the same code path scores resamples, tuning candidates, and the final test set, so a metric set you define once is reused everywhere.
 
-> **Warning:** The metric you optimize is a modeling choice, not a formality. RMSE and MAE answer different questions (RMSE punishes large errors harder), and for imbalanced classification, accuracy is actively misleading: a model that always predicts the majority class can score 95% accuracy while being useless. Prefer ROC AUC, PR AUC, or log loss there.
+
+::: {.callout-warning}
+The metric you optimize is a modeling choice, not a formality. RMSE and MAE answer different questions (RMSE punishes large errors harder), and for imbalanced classification, accuracy is actively misleading: a model that always predicts the majority class can score 95% accuracy while being useless. Prefer ROC AUC, PR AUC, or log loss there.
+:::
+
 
 ## A full pipeline: cross-validated tuning on Ames housing
 
@@ -299,7 +339,11 @@ ggplot(cv_results,
 
 Tuning told us which hyperparameters are best, but every number so far came from the training data's folds. The honest verdict comes from the test set, which we have not touched since the split. Three functions close the loop. `finalize_workflow()` plugs the winning hyperparameters back into the workflow (replacing the `tune()` placeholders with concrete values), `last_fit()` trains on the full training set and scores the test set in a single leakage-safe call, and `collect_metrics()` returns the resulting test performance.
 
-> **Warning:** Call `last_fit()` exactly once, at the very end. If you peek at the test set, tune against it, and refit, you have turned your test set into another validation set and lost your one unbiased estimate of generalization.
+
+::: {.callout-warning}
+Call `last_fit()` exactly once, at the very end. If you peek at the test set, tune against it, and refit, you have turned your test set into another validation set and lost your one unbiased estimate of generalization.
+:::
+
 
 ```{r tmf-finalize, eval=TRUE}
 .libPaths(c("C:/Users/miken/R/library-4.4", .libPaths()))
@@ -396,7 +440,11 @@ abline(h = 0, lty = 2)
 
 The leaky version reports a healthy-looking positive cross-validated $R^2$ even though the response is independent of every feature, purely because the feature selection peeked at the held-out rows. The honest version, which reselects inside each fold, hovers around (and often below) zero, which is the truth for noise. This is the whole argument for the framework in one picture: a `tidymodels` recipe placed inside `tune_grid` reproduces the honest behavior automatically, because any selection or estimation step it contains is refit per fold without you having to remember to do so.
 
-> **Key idea:** The danger of leakage is not that it makes a model fail loudly; it is that it makes a worthless model look good. The leaky curve in this experiment is the trap, and the only defense is to keep every data-dependent step inside the resampling loop.
+
+::: {.callout-important title="Key idea"}
+The danger of leakage is not that it makes a model fail loudly; it is that it makes a worthless model look good. The leaky curve in this experiment is the trap, and the only defense is to keep every data-dependent step inside the resampling loop.
+:::
+
 
 ## Comparison with alternatives
 
@@ -484,7 +532,11 @@ The framework removes a great deal of room for error, but it cannot make every d
 - Watch the metric you optimize. RMSE and MAE answer different questions, and for imbalanced classification, accuracy is misleading while ROC AUC, PR AUC, or log loss are usually better targets.
 - For tiny data sets the framework's overhead can exceed a direct call; `tidymodels` shines as soon as you have multiple models, real preprocessing, or tuning.
 
-> **Tip:** If you remember only one rule from this chapter, make it this: anything that learns a number from the data goes inside the recipe, and the recipe goes inside the resampling loop. Almost every leakage bug is a violation of that one sentence.
+
+::: {.callout-tip}
+If you remember only one rule from this chapter, make it this: anything that learns a number from the data goes inside the recipe, and the recipe goes inside the resampling loop. Almost every leakage bug is a violation of that one sentence.
+:::
+
 
 ### When to use it
 

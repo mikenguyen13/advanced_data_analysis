@@ -9,7 +9,11 @@ Ask a single expert a hard question and you get one answer, shaped by that exper
 
 The appeal is practical. In applied work the gap between a good single model and a careful ensemble is frequently the gap between a respectable result and a winning one. Nearly every winning entry in predictive modeling competitions over the last two decades has been an ensemble of some kind, and the same techniques quietly power production systems where a fraction of a percent of accuracy translates into real money. The reason this works is not magic, and it is not "more models are always better." It rests on a precise statistical argument about how errors combine, which this chapter develops from scratch.
 
-> **Intuition:** Combining models helps for the same reason that averaging repeated noisy measurements helps. If each measurement is unbiased but noisy, the average is still unbiased but less noisy. The catch, and the entire art of ensembles, is that model errors are usually correlated, so they do not cancel as cleanly as independent measurements would. Most of the engineering goes into making the members disagree in useful ways.
+
+::: {.callout-tip title="Intuition"}
+Combining models helps for the same reason that averaging repeated noisy measurements helps. If each measurement is unbiased but noisy, the average is still unbiased but less noisy. The catch, and the entire art of ensembles, is that model errors are usually correlated, so they do not cancel as cleanly as independent measurements would. Most of the engineering goes into making the members disagree in useful ways.
+:::
+
 
 This book already covers the three workhorse ensemble families in their own chapters: bagging (@sec-bagging), which builds many models on bootstrap resamples and averages them; boosting (@sec-boosting), which builds models in sequence so each one corrects its predecessor; and stacking (@sec-model-stacking), which trains a meta-model to learn how to weight a set of base learners. Random forests (@sec-random-forest) are a specialized, decorrelated form of bagging. This chapter steps back from any single recipe and gives the unifying view: why combining works at all, what "diversity" means mathematically, and how the simplest combiners (voting and averaging) already capture most of the intuition. Read it as the conceptual glue that ties those other chapters together.
 
@@ -40,7 +44,11 @@ This compact formula is the heart of ensemble theory, so it is worth reading slo
 - If the members were perfectly correlated ($\rho = 1$), the variance stays at $v$ no matter how many you add. Combining identical models buys nothing.
 - If the members were uncorrelated ($\rho = 0$), the variance shrinks to $v / M$. With enough independent members the variance can be driven toward zero.
 
-> **Key idea:** Averaging leaves bias unchanged and drives variance from $v$ down toward $\rho v$. The leftover floor is set by the *correlation between members*, not by how many you have. This is why every successful ensemble method is, at bottom, a scheme for making its members less correlated while keeping each one reasonably accurate.
+
+::: {.callout-important title="Key idea"}
+Averaging leaves bias unchanged and drives variance from $v$ down toward $\rho v$. The leftover floor is set by the *correlation between members*, not by how many you have. This is why every successful ensemble method is, at bottom, a scheme for making its members less correlated while keeping each one reasonably accurate.
+:::
+
 
 The term $\rho v$ is why you cannot just train the same logistic regression a thousand times and call it an ensemble: those thousand models are nearly identical, $\rho \approx 1$, and you have gained nothing. Bagging lowers $\rho$ by training on different resamples; random forests push $\rho$ lower still by randomizing the features each split may use; using altogether different model families (a tree, a linear model, a nearest-neighbor rule) lowers $\rho$ because the models make structurally different mistakes.
 
@@ -52,7 +60,11 @@ P(\text{majority correct}) = \sum_{k = \lfloor M/2 \rfloor + 1}^{M} \binom{M}{k}
 $$
 The theorem says that if each voter is better than a coin flip ($p > 1/2$), then this probability increases with $M$ and tends to $1$ as $M \to \infty$. If each voter is worse than a coin flip ($p < 1/2$), the majority is worse than any individual and tends to $0$. The boundary case $p = 1/2$ leaves the majority at a coin flip.
 
-> **Intuition:** A committee of mediocre-but-better-than-chance jurors who think independently will, by majority vote, approach certainty as the committee grows. The same arithmetic that makes a jury reliable makes a voting ensemble of weak classifiers strong. This is exactly the promise that boosting cashes in, turning many "weak learners" into one strong one (@sec-boosting).
+
+::: {.callout-tip title="Intuition"}
+A committee of mediocre-but-better-than-chance jurors who think independently will, by majority vote, approach certainty as the committee grows. The same arithmetic that makes a jury reliable makes a voting ensemble of weak classifiers strong. This is exactly the promise that boosting cashes in, turning many "weak learners" into one strong one (@sec-boosting).
+:::
+
 
 The two pillars, the variance formula for regression and the Condorcet theorem for classification, share one assumption that does all the work: independence, or at least low correlation, between members. Real models are never independent, because they learn from the same data and often the same signal. Everything practical about ensembles is a negotiation with that fact.
 
@@ -64,7 +76,11 @@ $$
 $$
 This is the ambiguity decomposition of Krogh and Vedelsby (1995). The first term is the average error of the members. The second term, the ambiguity or diversity, measures how much the members disagree with the ensemble. Because it is subtracted, *more disagreement lowers the ensemble error*, provided it does not come at the cost of making the individual members much worse. This is the formal statement of the tension every ensemble navigates: you want members that are individually accurate (small first term) yet collectively diverse (large second term). Pushing on one tends to hurt the other.
 
-> **Note:** Diversity is not a free parameter you can crank to infinity. Random predictions are maximally diverse and useless. The useful kind of diversity comes from models that are each competent but err in different regions of the input space.
+
+::: {.callout-note}
+Diversity is not a free parameter you can crank to infinity. Random predictions are maximally diverse and useless. The useful kind of diversity comes from models that are each competent but err in different regions of the input space.
+:::
+
 
 ## Ways to combine
 
@@ -261,17 +277,33 @@ par(op)
 
 The theory tells you exactly when to expect a gain and when not to.
 
-> **When to use this:** Reach for an ensemble when (1) you have several models that are each better than chance, (2) they make *different* mistakes (low correlation), and (3) a small, stable accuracy gain is worth extra compute and reduced interpretability. If any of these fails, the ensemble may not help.
+
+::: {.callout-tip title="When to use this"}
+Reach for an ensemble when (1) you have several models that are each better than chance, (2) they make *different* mistakes (low correlation), and (3) a small, stable accuracy gain is worth extra compute and reduced interpretability. If any of these fails, the ensemble may not help.
+:::
+
 
 The strongest practical lever is diversity. You manufacture it by varying the data (bagging, random subspaces), varying the algorithm (mixing model families, as in the demo above), or varying the sequence (boosting). Combining ten tuned gradient-boosted models that were all trained the same way gives far less than combining a boosted model, a random forest, a regularized linear model, and a neural net, because the latter set disagrees more. (See @sec-gradient-boosting for gradient boosting, @sec-random-forest for random forests, and @sec-neural-networks for neural nets.)
 
 A few pitfalls recur often enough to call out.
 
-> **Warning:** Averaging strongly correlated members buys almost nothing. The variance floor is $\rho v$; if $\rho$ is near $1$, you have paid for $M$ models and kept the variance of one.
 
-> **Warning:** A bad member can drag down a plain average. Voting and averaging assume members are at least better than chance (the $p > 1/2$ condition in Condorcet). Including a member that is worse than random, or one that is systematically biased in the same direction as the others, can move the ensemble the wrong way. Use weighting or stacking to suppress weak members, and validate the combination, not just the members.
+::: {.callout-warning}
+Averaging strongly correlated members buys almost nothing. The variance floor is $\rho v$; if $\rho$ is near $1$, you have paid for $M$ models and kept the variance of one.
+:::
 
-> **Warning:** Fitting combination weights (or a stacking meta-learner) on the same data used to train the members leaks information and overfits. Always weight or stack on held-out or out-of-fold predictions. This is the single most common ensemble mistake.
+
+
+::: {.callout-warning}
+A bad member can drag down a plain average. Voting and averaging assume members are at least better than chance (the $p > 1/2$ condition in Condorcet). Including a member that is worse than random, or one that is systematically biased in the same direction as the others, can move the ensemble the wrong way. Use weighting or stacking to suppress weak members, and validate the combination, not just the members.
+:::
+
+
+
+::: {.callout-warning}
+Fitting combination weights (or a stacking meta-learner) on the same data used to train the members leaks information and overfits. Always weight or stack on held-out or out-of-fold predictions. This is the single most common ensemble mistake.
+:::
+
 
 Two further considerations are operational rather than statistical. Ensembles cost more at training and inference time, since you must run every member, which can matter for latency-sensitive deployment. And they are harder to explain: a stakeholder can follow one decision tree but not a weighted blend of four models, so plan for interpretability tooling (@sec-interpretable-machine-learning) if explanations are required. None of these is a reason to avoid ensembles, but each is a reason to be deliberate.
 

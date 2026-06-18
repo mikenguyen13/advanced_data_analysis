@@ -29,10 +29,14 @@ model gets adapted to a specific task. The small n-gram model at the end makes
 all of this concrete: it is a complete language model you can read line by line,
 and it behaves, in miniature, exactly like the giants.
 
-> **Intuition:** If you can estimate "given what came before, what comes next?"
-> then prediction, classification, fill-in-the-blank, and generation are all the
-> same machine used in different ways. Everything in this chapter is a variation
-> on that single estimate.
+
+::: {.callout-tip title="Intuition"}
+If you can estimate "given what came before, what comes next?"
+then prediction, classification, fill-in-the-blank, and generation are all the
+same machine used in different ways. Everything in this chapter is a variation
+on that single estimate.
+:::
+
 
 ## What a Language Model Is
 
@@ -54,10 +58,14 @@ tokens it has already seen.^[A token is the unit a model reads and predicts.
 For now you can think of it as roughly a word; the section on tokenization below
 explains why real models use subword pieces instead.]
 
-> **Key idea:** The chain rule turns the impossible-looking task of modeling whole
-> documents into a sequence of ordinary one-step prediction problems. Estimate
-> $p(x_t \mid x_{<t})$ well at every position and you have, by construction, a
-> model of the entire sequence.
+
+::: {.callout-important title="Key idea"}
+The chain rule turns the impossible-looking task of modeling whole
+documents into a sequence of ordinary one-step prediction problems. Estimate
+$p(x_t \mid x_{<t})$ well at every position and you have, by construction, a
+model of the entire sequence.
+:::
+
 
 ### Next-Token Prediction
 
@@ -68,10 +76,14 @@ is what makes it possible to train on enormous corpora. The model outputs a
 probability distribution over the vocabulary $V$ at each position, and we want
 that distribution to place high probability on the token that actually came next.
 
-> **Note:** This is why LLMs train on text scraped from the open web, books, and
-> code without paying for labels. The "label" for each position is simply the
-> word that already follows it. Self-supervision of this kind is what makes
-> training on trillions of tokens possible.
+
+::: {.callout-note}
+This is why LLMs train on text scraped from the open web, books, and
+code without paying for labels. The "label" for each position is simply the
+word that already follows it. Self-supervision of this kind is what makes
+training on trillions of tokens possible.
+:::
+
 
 ### Cross-Entropy Loss
 
@@ -107,16 +119,24 @@ a perplexity equal to the vocabulary size means the model learned nothing beyond
 a uniform guess. Lower is better. Because perplexity is a deterministic function
 of cross-entropy, reducing the loss and reducing perplexity are the same goal.
 
-> **Intuition:** Read perplexity as an "effective number of guesses." A perplexity
-> of 5 means the model is about as confused as someone flipping fairly between 5
-> options at each word. Cutting perplexity in half means the model has genuinely
-> narrowed down its choices.
 
-> **Warning:** Perplexity is only comparable across models that share the same
-> tokenization and vocabulary. A model that splits text into more, smaller tokens
-> faces an easier per-token prediction and can post a lower perplexity without
-> being a better model. Never compare perplexity numbers across different
-> tokenizers.
+::: {.callout-tip title="Intuition"}
+Read perplexity as an "effective number of guesses." A perplexity
+of 5 means the model is about as confused as someone flipping fairly between 5
+options at each word. Cutting perplexity in half means the model has genuinely
+narrowed down its choices.
+:::
+
+
+
+::: {.callout-warning}
+Perplexity is only comparable across models that share the same
+tokenization and vocabulary. A model that splits text into more, smaller tokens
+faces an easier per-token prediction and can post a lower perplexity without
+being a better model. Never compare perplexity numbers across different
+tokenizers.
+:::
+
 
 ## From N-grams to Transformer Decoders
 
@@ -161,9 +181,13 @@ fixed-window limit. Recurrent models struggle with very long dependencies and ar
 hard to parallelize across positions, because each step must wait for the
 previous one to finish.
 
-> **Key idea:** Neural models replace counting with learning. Similar contexts
-> map to similar vectors, so the model can generalize to histories it never saw,
-> the exact weakness that sinks n-grams.
+
+::: {.callout-important title="Key idea"}
+Neural models replace counting with learning. Similar contexts
+map to similar vectors, so the model can generalize to histories it never saw,
+the exact weakness that sinks n-grams.
+:::
+
 
 ### Transformer Decoders
 
@@ -179,10 +203,14 @@ covered in the attention and Transformers chapter (@sec-transformers) and in the
 chapter on BERT (@sec-bert), which uses the encoder half of the same architecture. The decoder used by LLMs is
 that architecture with causal masking and a next-token objective.
 
-> **Intuition:** Self-attention lets every word "look back" at every earlier word
-> in one step and decide which ones matter, instead of squeezing all of history
-> through a single running hidden state. Because the lookups happen in parallel,
-> these models train efficiently on the huge corpora that scaling demands.
+
+::: {.callout-tip title="Intuition"}
+Self-attention lets every word "look back" at every earlier word
+in one step and decide which ones matter, instead of squeezing all of history
+through a single running hidden state. Because the lookups happen in parallel,
+these models train efficiently on the huge corpora that scaling demands.
+:::
+
 
 ### Tokenization
 
@@ -203,12 +231,16 @@ a general-purpose foundation model. It is then adapted, cheaply, to many
 downstream tasks. The cost of learning language is paid once and amortized across
 every later use.
 
-> **When to use this:** The foundation-model pattern pays off whenever you have a
-> task with limited labeled data but plenty of related unlabeled text. Instead of
-> training from scratch, you start from a model that already understands language
-> and nudge it toward your task. This is the text analogue of the transfer
-> learning idea (@sec-transfer-multitask-learning) used with pretrained image
-> networks.
+
+::: {.callout-tip title="When to use this"}
+The foundation-model pattern pays off whenever you have a
+task with limited labeled data but plenty of related unlabeled text. Instead of
+training from scratch, you start from a model that already understands language
+and nudge it toward your task. This is the text analogue of the transfer
+learning idea (@sec-transfer-multitask-learning) used with pretrained image
+networks.
+:::
+
 
 ### Scaling Laws
 
@@ -231,9 +263,13 @@ so many models of that era were undertrained: smaller models trained on more dat
 matched or beat larger models trained on less. The practical lesson is that data
 and model size must be balanced, not just made big.
 
-> **Tip:** If you ever have a fixed compute budget for training a model from
-> scratch, the Chinchilla finding is the rule to remember: spend it on a smaller
-> model fed more data rather than a giant model that never sees enough text.
+
+::: {.callout-tip}
+If you ever have a fixed compute budget for training a model from
+scratch, the Chinchilla finding is the rule to remember: spend it on a smaller
+model fed more data rather than a giant model that never sees enough text.
+:::
+
 
 ### Emergent In-Context Learning
 
@@ -271,10 +307,14 @@ trainable parameters drops by orders of magnitude while accuracy stays close to
 full fine-tuning. PEFT makes it feasible to maintain many task-specific
 adaptations of one shared base model.
 
-> **When to use this:** Reach for PEFT (LoRA in particular) when you want
-> fine-tuned quality but cannot afford to store or serve a full model copy per
-> task. You keep one frozen base model and a tiny set of swappable adapters, one
-> per task.
+
+::: {.callout-tip title="When to use this"}
+Reach for PEFT (LoRA in particular) when you want
+fine-tuned quality but cannot afford to store or serve a full model copy per
+task. You keep one frozen base model and a tiny set of swappable adapters, one
+per task.
+:::
+
 
 ### Prompting and Few-Shot Learning
 
@@ -308,10 +348,14 @@ procedure can make a smaller aligned model more helpful than a much larger
 unaligned one. The takeaway is that alignment to preferences, not just scale,
 drives perceived quality.
 
-> **Note:** Instruction tuning and RLHF are why a chat assistant feels so
-> different from a raw pretrained model. The base model only predicts plausible
-> text; these two steps teach it to predict text that a person actually asked for
-> and would rate highly.
+
+::: {.callout-note}
+Instruction tuning and RLHF are why a chat assistant feels so
+different from a raw pretrained model. The base model only predicts plausible
+text; these two steps teach it to predict text that a person actually asked for
+and would rate highly.
+:::
+
 
 ## Retrieval, Context, and Risks for Prediction
 
@@ -332,10 +376,14 @@ from reasoning (in the model), which makes facts easier to update and to cite. T
 retrieval-augmented generation chapter (@sec-retrieval-augmented-generation)
 develops this pattern in depth.
 
-> **When to use this:** RAG is the standard answer when a model must work with
-> information it could not have memorized: documents written after training,
-> private internal data, or facts that change often. You update the document
-> store, not the model weights.
+
+::: {.callout-tip title="When to use this"}
+RAG is the standard answer when a model must work with
+information it could not have memorized: documents written after training,
+private internal data, or facts that change often. You update the document
+store, not the model weights.
+:::
+
 
 ### Context Windows
 
@@ -355,10 +403,14 @@ ground truth, so fluency is not evidence of accuracy. For any prediction task
 where correctness matters, outputs must be verified, and grounding the model with
 retrieval reduces but does not eliminate the problem.
 
-> **Warning:** Confidence and correctness are independent in an LLM. A smooth,
-> assured-sounding answer can be entirely wrong. Never treat fluency as a proxy
-> for truth, and build a verification step into any pipeline where mistakes have
-> consequences.
+
+::: {.callout-warning}
+Confidence and correctness are independent in an LLM. A smooth,
+assured-sounding answer can be entirely wrong. Never treat fluency as a proxy
+for truth, and build a verification step into any pipeline where mistakes have
+consequences.
+:::
+
 
 ### Calibration and Evaluation
 
@@ -389,11 +441,15 @@ short sample, and compute perplexity on held-out text. This is the same machiner
 as a large model in miniature: estimate $p(x_t \mid x_{<t})$, then use it to
 score and to sample.
 
-> **Key idea:** Watch for one thread running through every chunk below. We first
-> estimate the conditional next-token distribution, then reuse that same estimate
-> two ways: sampling from it to generate text, and reading off its value on real
-> text to compute perplexity. A trillion-parameter model does nothing different in
-> kind; it only estimates that distribution far more accurately.
+
+::: {.callout-important title="Key idea"}
+Watch for one thread running through every chunk below. We first
+estimate the conditional next-token distribution, then reuse that same estimate
+two ways: sampling from it to generate text, and reading off its value on real
+text to compute perplexity. A trillion-parameter model does nothing different in
+kind; it only estimates that distribution far more accurately.
+:::
+
 
 ```{r ngram-setup}
 set.seed(123)

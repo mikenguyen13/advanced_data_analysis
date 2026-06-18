@@ -22,9 +22,13 @@ more than classify. You can draw new samples that look like the training data,
 score how likely a point is, fill in missing parts of an input, and compress
 data into a compact code.
 
-> **Intuition:** A discriminative model learns where to draw the line between
-> categories. A generative model learns the whole landscape the data live on, so
-> it can walk around and produce new points anywhere on that landscape.
+
+::: {.callout-tip title="Intuition"}
+A discriminative model learns where to draw the line between
+categories. A generative model learns the whole landscape the data live on, so
+it can walk around and produce new points anywhere on that landscape.
+:::
+
 
 This chapter covers three families that dominate modern generative modeling:
 variational autoencoders (VAEs), generative adversarial networks (GANs), and
@@ -75,9 +79,13 @@ you:
 - learn a useful low dimensional representation,
 - augment a small training set with synthetic examples.
 
-> **Note:** None of the three families below require the labels $y$. They learn
-> the shape of $p(x)$ from inputs alone, which is why they are usually trained on
-> unlabeled data, of which the world has far more than labeled data.
+
+::: {.callout-note}
+None of the three families below require the labels $y$. They learn
+the shape of $p(x)$ from inputs alone, which is why they are usually trained on
+unlabeled data, of which the world has far more than labeled data.
+:::
+
 
 The three families take different routes to a model you can sample from. We start
 with the one closest to ideas already in this book, the autoencoder.
@@ -110,10 +118,14 @@ VAE keeps the encoder and decoder shape but makes both stochastic, which lets us
 sample new $x$ by drawing $z \sim \mathcal{N}(0, I)$ and passing it through the
 decoder.
 
-> **Key idea:** A plain autoencoder compresses and reconstructs. A VAE turns that
-> same architecture into a generator by insisting the codes follow a known
-> distribution, the standard normal, so you can sample a fresh code and decode it
-> into a new, plausible $x$.
+
+::: {.callout-important title="Key idea"}
+A plain autoencoder compresses and reconstructs. A VAE turns that
+same architecture into a generator by insisting the codes follow a known
+distribution, the standard normal, so you can sample a fresh code and decode it
+into a new, plausible $x$.
+:::
+
 
 ### The problem with the integral
 
@@ -166,10 +178,14 @@ region of latent space, which would reconstruct well but leave gaps that decode
 to nothing. The penalty keeps the latent space packed near the prior so that
 random draws decode into plausible samples.
 
-> **Intuition:** Picture the reconstruction term as "remember the data" and the
-> KL term as "stay tidy". Pull only on the first and the model memorizes inputs
-> into scattered, unusable codes. Pull only on the second and every input
-> collapses to the same blurry average. The ELBO balances the two.
+
+::: {.callout-tip title="Intuition"}
+Picture the reconstruction term as "remember the data" and the
+KL term as "stay tidy". Pull only on the first and the model memorizes inputs
+into scattered, unusable codes. Pull only on the second and every input
+collapses to the same blurry average. The ELBO balances the two.
+:::
+
 
 When both $q_\phi(z \mid x)$ and $p(z)$ are Gaussian the KL term has a closed
 form, so there is nothing to estimate by sampling. For a $d$ dimensional diagonal Gaussian,
@@ -196,10 +212,14 @@ $\epsilon$, which does not depend on $\phi$, and the path from $\phi$ to $z$ is
 differentiable. The Monte Carlo estimate of the ELBO using one or a few draws of
 $\epsilon$ then has a well defined gradient.
 
-> **Key idea:** You cannot differentiate through "draw a random sample", but you
-> can differentiate through "scale and shift a fixed random sample". The
-> reparameterization trick is exactly that move, and it is what makes the VAE
-> trainable by ordinary backpropagation.
+
+::: {.callout-important title="Key idea"}
+You cannot differentiate through "draw a random sample", but you
+can differentiate through "scale and shift a fixed random sample". The
+reparameterization trick is exactly that move, and it is what makes the VAE
+trainable by ordinary backpropagation.
+:::
+
 
 The next block sketches a VAE in Keras. It is shown for reference and is marked
 `eval = FALSE` because it needs the Keras/TensorFlow backend, which is not
@@ -266,9 +286,13 @@ $\min_G \max_D$ notation reads literally: the inner $\max_D$ trains the best
 detective it can, and the outer $\min_G$ trains the forger to defeat that best
 detective.
 
-> **Note:** A GAN never writes down or evaluates $p(x)$. It is an *implicit*
-> generative model: it can hand you samples but cannot tell you how likely any
-> particular point is. That is the price of skipping the likelihood.
+
+::: {.callout-note}
+A GAN never writes down or evaluates $p(x)$. It is an *implicit*
+generative model: it can hand you samples but cannot tell you how likely any
+particular point is. That is the price of skipping the likelihood.
+:::
+
 
 ### The optimal discriminator
 
@@ -303,10 +327,14 @@ JS divergence is zero only when $p_g = p_{\mathrm{data}}$, the generator that
 wins the game matches the data distribution exactly, with the value reaching its
 minimum of $-\log 4$.
 
-> **Key idea:** Underneath the forger-versus-detective story, the GAN is
-> secretly minimizing a divergence between the fake and real distributions. The
-> adversarial game is just a clever, sample-only way to estimate and descend that
-> divergence without ever computing a density.
+
+::: {.callout-important title="Key idea"}
+Underneath the forger-versus-detective story, the GAN is
+secretly minimizing a divergence between the fake and real distributions. The
+adversarial game is just a clever, sample-only way to estimate and descend that
+divergence without ever computing a density.
+:::
+
 
 The demonstration below evaluates $D^*(x)$ for two Gaussians so the density ratio
 result is visible as a concrete curve.
@@ -330,10 +358,14 @@ instead, which gives stronger gradients early in training. Balancing the two
 networks, tuning learning rates, and choosing alternative losses such as the
 Wasserstein objective are all standard parts of getting a GAN to converge.
 
-> **Warning:** Unlike the VAE loss, a GAN loss curve does not tell you much. The
-> generator and discriminator losses can stay flat while sample quality improves
-> or collapses. Judge a GAN by looking at its samples, not by watching the loss
-> go down.
+
+::: {.callout-warning}
+Unlike the VAE loss, a GAN loss curve does not tell you much. The
+generator and discriminator losses can stay flat while sample quality improves
+or collapses. Judge a GAN by looking at its samples, not by watching the loss
+go down.
+:::
+
 
 A minimal GAN training loop in Keras follows. It is marked `eval = FALSE` because
 it needs the Keras/TensorFlow backend.
@@ -377,9 +409,13 @@ destroys structure in the data by adding Gaussian noise over $T$ steps. The
 reverse process, learned by a network, removes noise one step at a time, turning
 pure noise back into a sample.
 
-> **Intuition:** Noising is trivial and requires no model. The model only has to
-> learn the *reverse*, and because each reverse step undoes just a sliver of
-> noise, it is a much easier task than producing a whole image in one shot.
+
+::: {.callout-tip title="Intuition"}
+Noising is trivial and requires no model. The model only has to
+learn the *reverse*, and because each reverse step undoes just a sliver of
+noise, it is a much easier task than producing a whole image in one shot.
+:::
+
 
 ### Forward noising process
 
@@ -416,9 +452,13 @@ $$
 As $t$ grows, $\bar{\alpha}_t \to 0$, so the signal $\sqrt{\bar{\alpha}_t}\, x_0$
 fades and the noise term takes over.
 
-> **Tip:** This closed form is also what makes the runnable demonstration cheap.
-> To show data dissolving at step $t$, we never simulate $t$ separate noising
-> steps. We apply the one formula above once.
+
+::: {.callout-tip}
+This closed form is also what makes the runnable demonstration cheap.
+To show data dissolving at step $t$, we never simulate $t$ separate noising
+steps. We apply the one formula above once.
+:::
+
 
 The simulation later in the chapter uses exactly this closed form to push two
 dimensional data toward noise.
@@ -448,10 +488,14 @@ its only job is to guess the noise that was mixed in. Sampling then alternates a
 denoising step using $\epsilon_\theta$ with a small injection of fresh noise,
 from $t = T$ down to $t = 1$.
 
-> **Key idea:** The forbidding-looking diffusion objective is, in the end, plain
-> regression: predict the noise with mean squared error. That stability is a big
-> part of why diffusion models train more reliably than GANs, which have no
-> single well-behaved loss to descend.
+
+::: {.callout-important title="Key idea"}
+The forbidding-looking diffusion objective is, in the end, plain
+regression: predict the noise with mean squared error. That stability is a big
+part of why diffusion models train more reliably than GANs, which have no
+single well-behaved loss to descend.
+:::
+
 
 A sketch of the noise prediction loss in Keras follows. It is marked
 `eval = FALSE` because it depends on the Keras backend.
@@ -485,10 +529,14 @@ Second it evaluates the optimal GAN discriminator for two one dimensional
 Gaussians and confirms the density ratio formula $D^*(x) = p_{\mathrm{data}} /
 (p_{\mathrm{data}} + p_g)$.
 
-> **When to use this:** Treat the demonstration as a sanity check on the theory,
-> not as a recipe for generating images. It isolates the math, the noising
-> schedule and the optimal discriminator, in a setting small enough to verify by
-> eye and by number.
+
+::: {.callout-tip title="When to use this"}
+Treat the demonstration as a sanity check on the theory,
+not as a recipe for generating images. It isolates the math, the noising
+schedule and the optimal discriminator, in a setting small enough to verify by
+eye and by number.
+:::
+
 
 ```{r gm-setup}
 library(ggplot2)
@@ -719,12 +767,16 @@ softer samples; GANs give sharp samples at the cost of fragile training; and
 diffusion models give the best samples with stable training but pay for it at
 sampling time because every sample needs many sequential steps.
 
-> **When to use this:** Reach for a VAE when you want a smooth, interpretable
-> latent space or a likelihood-style score (anomaly detection, representation
-> learning). Reach for a GAN when sharp samples matter more than coverage or
-> stability. Reach for a diffusion model when sample quality is the priority and
-> you can afford slower generation. These trade-offs shift as the field moves, so
-> treat the table as a snapshot rather than a verdict.
+
+::: {.callout-tip title="When to use this"}
+Reach for a VAE when you want a smooth, interpretable
+latent space or a likelihood-style score (anomaly detection, representation
+learning). Reach for a GAN when sharp samples matter more than coverage or
+stability. Reach for a diffusion model when sample quality is the priority and
+you can afford slower generation. These trade-offs shift as the field moves, so
+treat the table as a snapshot rather than a verdict.
+:::
+
 
 ## Further Reading
 

@@ -15,7 +15,11 @@ kNN is one of the most fundamental predictive methods. It is the most direct emb
 
 k-Nearest Neighbors (kNN) is one of the simplest predictive methods, and it is a useful reference point for understanding more elaborate models. The idea is direct: to predict the response at a query point $x$, look at the $k$ training points closest to $x$ and let them vote (for classification) or average their responses (for regression).
 
-> **Intuition:** A prediction is just a poll of the neighbors. For classification the neighbors vote on a class; for regression they report a number and you take the average. Everything else in this chapter is about who counts as a neighbor and how many to ask.
+
+::: {.callout-tip title="Intuition"}
+A prediction is just a poll of the neighbors. For classification the neighbors vote on a class; for regression they report a number and you take the average. Everything else in this chapter is about who counts as a neighbor and how many to ask.
+:::
+
 
 kNN sits in a particular corner of the prediction landscape:
 
@@ -25,7 +29,11 @@ kNN sits in a particular corner of the prediction landscape:
 
 Because it makes few assumptions, kNN can approximate very irregular decision boundaries. The price is that it needs enough data to populate the neighborhood of every query point, and it is sensitive to the scale of the features and to the number of features. Those tradeoffs are the subject of the rest of this chapter.
 
-> **When to use this:** kNN is a strong choice when you have a moderate number of features, plenty of training examples relative to the number of features, and a decision boundary that may be irregular. It is a poor choice when features are high-dimensional, when predictions must be very fast on a large training set, or when many features are irrelevant (they add noise to the distance).
+
+::: {.callout-tip title="When to use this"}
+kNN is a strong choice when you have a moderate number of features, plenty of training examples relative to the number of features, and a decision boundary that may be irregular. It is a poor choice when features are high-dimensional, when predictions must be very fast on a large training set, or when many features are irrelevant (they add noise to the distance).
+:::
+
 
 ## The kNN Estimator
 
@@ -53,7 +61,11 @@ In words, the estimated probability that $x$ belongs to class $c$ is simply the 
 
 This is a plug-in approximation to the Bayes classifier, which assigns $x$ to $\arg\max_c p(y = c \mid x)$.^[The Bayes classifier is the best any method could do if the true conditional probabilities were known exactly. Its error rate, the Bayes error, is the irreducible floor set by the overlap between classes. kNN tries to estimate those conditional probabilities from local frequencies.] As $n \to \infty$ and $k \to \infty$ with $k/n \to 0$, the kNN classifier is consistent, and its error rate converges to the Bayes rate under mild conditions. The classic finite-$k$ result of Cover and Hart (1967) shows that the asymptotic error of the $1$-NN rule is at most twice the Bayes error.
 
-> **Key idea:** Even the crudest version of kNN (a single nearest neighbor) is never more than twice as bad as the theoretical optimum in the large-sample limit. That is a remarkable guarantee for such a simple rule, and it explains why kNN remains a respected baseline.
+
+::: {.callout-important title="Key idea"}
+Even the crudest version of kNN (a single nearest neighbor) is never more than twice as bad as the theoretical optimum in the large-sample limit. That is a remarkable guarantee for such a simple rule, and it explains why kNN remains a respected baseline.
+:::
+
 
 ### Regression
 
@@ -65,7 +77,11 @@ $$
 
 This is a locally constant estimate: within any neighborhood, the fit is a flat line at the local average. It can be viewed as a kernel-weighted average with a uniform weight over the $k$ nearest points and zero weight elsewhere, which connects kNN to the kernel smoothing methods covered earlier in the book (@sec-kernel). The neighborhood is defined by a fixed count $k$ rather than a fixed bandwidth in distance, so the effective window adapts to local data density: it shrinks where data are dense and widens where data are sparse.
 
-> **Note:** Kernel smoothing fixes a window width (a bandwidth $h$) and averages whatever falls inside. kNN fixes a count $k$ and lets the window width float. The two are mirror images of the same locally-weighted-averaging idea, and which one behaves better depends on how evenly your data are spread.
+
+::: {.callout-note}
+Kernel smoothing fixes a window width (a bandwidth $h$) and averages whatever falls inside. kNN fixes a count $k$ and lets the window width float. The two are mirror images of the same locally-weighted-averaging idea, and which one behaves better depends on how evenly your data are spread.
+:::
+
 
 ### Distance metrics
 
@@ -100,7 +116,11 @@ With $k = 1$, the prediction at any training point is that point's own label, so
 
 With large $k$, the prediction averages over a wide region. The boundary smooths out and becomes more stable across training sets, but it can miss real local structure. This is high bias and low variance. In the limit $k = n$, every query receives the same prediction (the overall majority class or the global mean), which is the most biased and least variable estimate possible.
 
-> **Warning:** A training error of zero (which $k = 1$ always achieves) is not a sign of a good model. It means the model has memorized the training set, including its noise. The quantity to watch is error on held-out data, not training error.
+
+::: {.callout-warning}
+A training error of zero (which $k = 1$ always achieves) is not a sign of a good model. It means the model has memorized the training set, including its noise. The quantity to watch is error on held-out data, not training error.
+:::
+
 
 ### A regression derivation
 
@@ -123,7 +143,11 @@ $$
 
 The variance term $\sigma^2 / k$ falls as $k$ grows: averaging more points reduces the noise. The squared bias term tends to grow with $k$, because larger neighborhoods reach farther from $x$, where $f(x_i)$ can differ from $f(x)$. The sum of these two terms is the familiar U-shaped curve in $k$, and the best $k$ balances them. In practice $k$ is chosen by cross-validation.^[Cross-validation splits the training data into folds, fits with each candidate $k$ on all-but-one fold, and measures error on the held-out fold, averaging over folds. The $k$ with the lowest average held-out error is selected. This estimates generalization error without touching the test set.] The effective number of parameters of a kNN fit is often described as roughly $n / k$, which makes the role of $k$ as a complexity control explicit.
 
-> **Tip:** Read $n/k$ as the model's complexity. Small $k$ means many effective parameters (a flexible, wiggly fit); large $k$ means few (a rigid, smooth fit). This is the same dial as the degrees of freedom in a spline or the depth of a tree, just expressed through the neighborhood size.
+
+::: {.callout-tip}
+Read $n/k$ as the model's complexity. Small $k$ means many effective parameters (a flexible, wiggly fit); large $k$ means few (a rigid, smooth fit). This is the same dial as the degrees of freedom in a spline or the depth of a tree, just expressed through the neighborhood size.
+:::
+
 
 ### The curse of dimensionality
 
@@ -145,7 +169,11 @@ $$
 
 When the nearest and farthest neighbors of a query are almost the same distance away, the ranking that kNN depends on carries little information. This is why kNN often performs poorly in high dimensions unless the data lie on a low-dimensional structure or the features are reduced first.
 
-> **Key idea:** In high dimensions, "near" and "far" stop meaning much. The neighborhood needed to gather enough points spans almost the whole feature range, and all points sit at roughly the same distance. kNN's core assumption (nearby points are similar) quietly fails, so reduce dimensionality or drop irrelevant features before reaching for kNN.
+
+::: {.callout-important title="Key idea"}
+In high dimensions, "near" and "far" stop meaning much. The neighborhood needed to gather enough points spans almost the whole feature range, and all points sit at roughly the same distance. kNN's core assumption (nearby points are similar) quietly fails, so reduce dimensionality or drop irrelevant features before reaching for kNN.
+:::
+
 
 Having seen how kNN behaves in theory, we turn to the choices that decide whether it works in practice.
 
@@ -155,7 +183,11 @@ Having seen how kNN behaves in theory, we turn to the choices that decide whethe
 
 Because distance mixes all features together, a feature measured on a large numeric scale dominates the distance and crowds out the others. A variable in dollars (range in the thousands) will swamp a variable that is a proportion (range $0$ to $1$). Standardizing each feature to zero mean and unit variance (or scaling to a common range) puts the features on comparable footing before computing distances. This step is essential for kNN, not optional. The Mahalanobis distance addresses the same issue internally by dividing out the covariance.
 
-> **Warning:** Compute the standardization (the means and standard deviations) on the training set only, then apply those same values to the test set. Standardizing the full dataset before splitting leaks information from the test set into training and inflates your performance estimate. The simulation below follows the correct order.
+
+::: {.callout-warning}
+Compute the standardization (the means and standard deviations) on the training set only, then apply those same values to the test set. Standardizing the full dataset before splitting leaks information from the test set into training and inflates your performance estimate. The simulation below follows the correct order.
+:::
+
 
 ### Ties
 

@@ -9,9 +9,17 @@ Probabilistic programming is a way of writing statistical models as code. You de
 
 This chapter explains the idea, the sampling machinery (Markov chain Monte Carlo, Hamiltonian Monte Carlo, and the No-U-Turn Sampler), how priors and posteriors fit together, how to check a fitted model with posterior predictive checks, and how the formula interface in `brms` and `rstanarm` maps to Stan code. Because Stan and `brms` are not installed in this environment, those code chunks are shown with `eval=FALSE` but are written so a reader can run them directly. The runnable demonstration is a small Metropolis-Hastings sampler written in base R, which exposes the core mechanics that Stan automates.
 
-> **Intuition:** A traditional model hands you a single best guess for each parameter. A probabilistic model hands you the full set of guesses that are still plausible after seeing the data, weighted by how plausible each one is. Everything in this chapter is machinery for producing and inspecting that weighted set of guesses, called the posterior.
 
-> **When to use this:** Reach for probabilistic programming when the deliverable is uncertainty itself, a credible interval, a calibrated forecast, or a probability statement a decision-maker can act on, rather than a single number. If all you need is the most accurate point prediction on a large dataset, a method from earlier chapters will usually be faster.
+::: {.callout-tip title="Intuition"}
+A traditional model hands you a single best guess for each parameter. A probabilistic model hands you the full set of guesses that are still plausible after seeing the data, weighted by how plausible each one is. Everything in this chapter is machinery for producing and inspecting that weighted set of guesses, called the posterior.
+:::
+
+
+
+::: {.callout-tip title="When to use this"}
+Reach for probabilistic programming when the deliverable is uncertainty itself, a credible interval, a calibrated forecast, or a probability statement a decision-maker can act on, rather than a single number. If all you need is the most accurate point prediction on a large dataset, a method from earlier chapters will usually be faster.
+:::
+
 
 ## Where this fits in a modern ML and AI workflow
 
@@ -49,7 +57,11 @@ $$
 
 an algorithm that only needs the posterior up to a constant can ignore $p(y)$ entirely. Markov chain Monte Carlo (MCMC) is exactly such an algorithm: it produces a sequence of parameter draws whose stationary distribution is the posterior, using only the unnormalized product $p(y \mid \theta) \, p(\theta)$.
 
-> **Key idea:** Because the posterior is proportional to likelihood times prior, and the only missing piece, $p(y)$, is a constant that does not depend on $\theta$, any sampler that works with ratios or gradients of the posterior can skip the hard integral entirely. This single observation is what makes Bayesian computation practical.
+
+::: {.callout-important title="Key idea"}
+Because the posterior is proportional to likelihood times prior, and the only missing piece, $p(y)$, is a constant that does not depend on $\theta$, any sampler that works with ratios or gradients of the posterior can skip the hard integral entirely. This single observation is what makes Bayesian computation practical.
+:::
+
 
 A probabilistic programming language separates the model from the inference. You write the model (priors and likelihood), and the system compiles it and runs a general-purpose sampler. Stan compiles your model to C++ and runs an adaptive Hamiltonian Monte Carlo sampler. You do not derive update equations by hand.^[This separation is the same design principle that makes SQL useful (@sec-databases-sql-r): you declare what you want, and an engine figures out how to compute it. Here you declare the generative model, and the sampler figures out how to explore the posterior.]
 
@@ -69,7 +81,11 @@ $$
 
 If the proposal is symmetric, meaning $q(\theta^* \mid \theta) = q(\theta \mid \theta^*)$ (a Gaussian centered at the current point is the usual choice), the ratio simplifies to $\alpha = \min(1, \pi(\theta^*)/\pi(\theta))$. Notice that the normalizing constant $p(y)$ cancels in the ratio, so only the unnormalized posterior appears. After many steps and a burn-in period,^[Burn-in (also called warmup) is the initial stretch of draws produced before the chain settles into the posterior. Those early draws still reflect the arbitrary starting point, so we discard them.] the retained draws behave like samples from $p(\theta \mid y)$.
 
-> **Intuition:** Think of MH as exploring a hilly landscape in the dark, where height is posterior probability. From where you stand you take a random step. If it leads uphill you always take it; if it leads downhill you take it only sometimes, more often for a gentle slope than a cliff. Over time you spend the most time where the landscape is highest, which is exactly the posterior.
+
+::: {.callout-tip title="Intuition"}
+Think of MH as exploring a hilly landscape in the dark, where height is posterior probability. From where you stand you take a random step. If it leads uphill you always take it; if it leads downhill you take it only sometimes, more often for a gentle slope than a cliff. Over time you spend the most time where the landscape is highest, which is exactly the posterior.
+:::
+
 
 MH is simple but can be slow. If the proposal steps are too small the chain explores slowly; if too large most proposals are rejected. In high dimensions a random-walk proposal wanders inefficiently, and the number of steps needed to get an effectively independent sample grows quickly.
 
@@ -83,13 +99,21 @@ $$
 
 Here $U(\theta)$ is the potential energy (the negative log posterior) and the quadratic term in $r$ is the kinetic energy with mass matrix $M$. HMC simulates the physics of a particle moving across the posterior surface by integrating Hamilton's equations, usually with the leapfrog integrator, for a number of steps, then proposes the endpoint. Because the trajectory follows the gradient of the log posterior, proposals can travel far across the distribution while still being accepted with high probability. This is why HMC needs the gradient $\nabla_\theta \log p(\theta \mid y)$, which Stan computes automatically by reverse-mode automatic differentiation.^[Automatic differentiation, the same technique that powers backpropagation in neural networks (@sec-neural-networks), computes exact gradients of the log posterior from the model code without you writing any derivatives by hand.]
 
-> **Intuition:** Instead of taking blind random steps, HMC gives the explorer a sense of the local slope and a push of momentum, so it skis along the contours of the landscape. One trajectory can cross to a far corner of the posterior in a single proposal, which is why HMC mixes so much faster than random-walk MH in high dimensions.
+
+::: {.callout-tip title="Intuition"}
+Instead of taking blind random steps, HMC gives the explorer a sense of the local slope and a push of momentum, so it skis along the contours of the landscape. One trajectory can cross to a far corner of the posterior in a single proposal, which is why HMC mixes so much faster than random-walk MH in high dimensions.
+:::
+
 
 ### The No-U-Turn Sampler
 
 HMC has two tuning parameters: the leapfrog step size $\epsilon$ and the number of steps $L$. Choosing $L$ by hand is awkward: too few steps and the sampler behaves like a random walk, too many and it wastes computation by looping back on itself. The No-U-Turn Sampler (NUTS) automatically chooses the trajectory length by extending the path until it starts to double back (a "U-turn"), and Stan adapts $\epsilon$ during warmup. NUTS is the default sampler in Stan, `brms`, and `rstanarm`, which is why these tools usually work well with little manual tuning.
 
-> **Tip:** In day-to-day work you almost never tune the sampler by hand. The payoff of NUTS is that you can focus on the model (the priors and likelihood) and trust the defaults for inference, stepping in only when the diagnostics later in the chapter flag a problem.
+
+::: {.callout-tip}
+In day-to-day work you almost never tune the sampler by hand. The payoff of NUTS is that you can focus on the model (the priors and likelihood) and trust the defaults for inference, stepping in only when the diagnostics later in the chapter flag a problem.
+:::
+
 
 @tbl-probabilistic-programming-sampler-comparison contrasts the three samplers.
 
@@ -123,7 +147,11 @@ $$
 
 The posterior mean is a precision-weighted average of the prior mean $\mu_0$ and the data mean $\bar{y}$, where precision is the reciprocal of variance. As $n$ grows, the data term $n/\sigma^2$ dominates and the posterior concentrates near $\bar{y}$. This closed form is the exception; for general models we sample instead, which is the subject of the demo below.
 
-> **Note:** A 95 percent credible interval, the central 95 percent of the posterior, says there is a 95 percent probability the parameter lies in that range given the model and data. That is a direct probability statement about the parameter, which is not what a frequentist confidence interval claims. The distinction is worth keeping straight when you report results.
+
+::: {.callout-note}
+A 95 percent credible interval, the central 95 percent of the posterior, says there is a 95 percent probability the parameter lies in that range given the model and data. That is a direct probability statement about the parameter, which is not what a frequentist confidence interval claims. The distinction is worth keeping straight when you report results.
+:::
+
 
 ## A runnable Metropolis-Hastings demo in base R
 
@@ -218,7 +246,11 @@ par(op)
 
 Reading the output in words: @fig-probabilistic-programming-mh-sampler shows the trace plots, which should look like stationary noise with no drift, a sign the chain has converged and is mixing. In the same figure the posterior histograms concentrate around the true coefficients (the red lines), and the 2.5 and 97.5 percent quantiles give a 95 percent credible interval for each parameter. A random-walk sampler typically mixes best with an acceptance rate somewhere between about 0.2 and 0.5; if the rate is very high the steps are too small and the chain crawls, and if very low most proposals are wasted, so in either case you would retune `proposal_sd`. Stan replaces this manual tuning with adaptive NUTS, but the underlying logic (propose, compare unnormalized posteriors, accept or reject) is the same.
 
-> **Warning:** This base R sampler is for teaching, not production. It uses a single chain, a fixed proposal scale, and no automatic warmup adaptation. For any real analysis use Stan through `brms` or `rstanarm`, which run multiple chains, adapt the sampler, and report the diagnostics covered later in this chapter.
+
+::: {.callout-warning}
+This base R sampler is for teaching, not production. It uses a single chain, a fixed proposal scale, and no automatic warmup adaptation. For any real analysis use Stan through `brms` or `rstanarm`, which run multiple chains, adapt the sampler, and report the diagnostics covered later in this chapter.
+:::
+
 
 As a quick sanity check, the posterior means should sit close to the maximum likelihood fit, since the prior here is weak relative to 400 observations.
 
@@ -231,7 +263,11 @@ round(coef(glm_fit), 3)        # compare with posterior means above
 
 Fitting a model is not the same as trusting it. A posterior predictive check (PPC) asks whether data simulated from the fitted model look like the data you actually observed.
 
-> **Key idea:** A model that fits well should be able to regenerate data that resembles what you saw. If you simulate fake datasets from the fitted model and they look systematically different from the real one, the model is missing something, no matter how clean the parameter estimates look.
+
+::: {.callout-important title="Key idea"}
+A model that fits well should be able to regenerate data that resembles what you saw. If you simulate fake datasets from the fitted model and they look systematically different from the real one, the model is missing something, no matter how clean the parameter estimates look.
+:::
+
 
 The posterior predictive distribution is
 
@@ -274,7 +310,11 @@ A posterior predictive p-value near 0.5 means the observed statistic sits in the
 
 Now that you have seen the mechanics from the inside, here is how you would do all of this in practice without writing a sampler at all. Writing Stan by hand is flexible but verbose. `brms` and `rstanarm` let you specify common models with R formulas and generate the Stan code for you. They differ in approach: `rstanarm` ships precompiled Stan models for standard families (faster to start, fixed menu), while `brms` writes and compiles fresh Stan code for each model (slower first run, far more flexible, supports custom families, nonlinear terms, multivariate responses, and distributional regression).
 
-> **When to use this:** Start with `rstanarm` if your model fits its menu of standard families, because it skips compilation and runs immediately. Reach for `brms` when you need something beyond that menu: a custom likelihood, a nonlinear formula, several response variables at once, or a model of the variance itself.
+
+::: {.callout-tip title="When to use this"}
+Start with `rstanarm` if your model fits its menu of standard families, because it skips compilation and runs immediately. Reach for `brms` when you need something beyond that menu: a custom likelihood, a nonlinear formula, several response variables at once, or a model of the variance itself.
+:::
+
 
 The next chunk shows the same logistic regression as the demo, fit with `brms`. It is `eval=FALSE` because `brms` and its Stan toolchain are not installed here, but the code is correct and current.
 
@@ -372,7 +412,11 @@ generated quantities {
 
 After sampling, never read the posterior summaries without first checking that the sampler worked. A beautiful-looking posterior mean from a chain that never converged is worse than useless, because it looks authoritative while being wrong. The standard diagnostics are summarized in @tbl-probabilistic-programming-diagnostics.
 
-> **Warning:** Treat the diagnostics as a gate, not an afterthought. If $\hat{R}$ is high or there are divergent transitions, the numbers in your summary table are not estimates of the posterior, and no amount of careful interpretation will fix that. Diagnose and refit first.
+
+::: {.callout-warning}
+Treat the diagnostics as a gate, not an afterthought. If $\hat{R}$ is high or there are divergent transitions, the numbers in your summary table are not estimates of the posterior, and no amount of careful interpretation will fix that. Diagnose and refit first.
+:::
+
 
 | Diagnostic | What it measures | Healthy value | What a bad value means |
 |---|---|---|---|
@@ -411,7 +455,11 @@ Finally, a handful of mistakes account for most of the trouble newcomers run int
 -   Reading credible intervals as confidence intervals. A 95 percent credible interval is a direct probability statement about the parameter given the model and data, which is a different (and usually more intuitive) object than a frequentist confidence interval.
 -   Overfitting model complexity. Use leave-one-out cross-validation (`loo`) or WAIC to compare models rather than chasing the lowest in-sample error.
 
-> **Tip:** A reasonable default recipe for a new analysis: standardize predictors, start from `rstanarm` or `brms` defaults with weakly informative priors, run 4 chains, check $\hat{R}$, ESS, and divergences, run `pp_check`, then refine priors and structure and compare with `loo`. Treat this loop, fit, check, refine, as the normal workflow rather than a one-shot fit.
+
+::: {.callout-tip}
+A reasonable default recipe for a new analysis: standardize predictors, start from `rstanarm` or `brms` defaults with weakly informative priors, run 4 chains, check $\hat{R}$, ESS, and divergences, run `pp_check`, then refine priors and structure and compare with `loo`. Treat this loop, fit, check, refine, as the normal workflow rather than a one-shot fit.
+:::
+
 
 To sum up, probabilistic programming lets you write a generative model as code and get back a full posterior, with the hard inference handled by an adaptive sampler you rarely have to tune. The cost is computation and the discipline of checking diagnostics and predictive fit; the payoff is calibrated uncertainty and the ability to make direct probability statements about the quantities you care about.
 

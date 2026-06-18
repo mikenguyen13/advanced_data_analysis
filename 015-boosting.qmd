@@ -13,7 +13,11 @@ The phrase you will hear in the literature is that boosting "learns slowly." Rat
 
 In this chapter you will build up boosting from its conceptual core to its modern, production-grade implementations. We start with the intuition (gradient descent and slow learning), then give the precise algorithms for regression and classification, work through the original AdaBoost, generalize to gradient boosting, and finish with the libraries you will actually use in practice (`gbm`, `xgboost`, `lightgbm`, and `h2o`), along with the interpretation tools (variable importance, partial dependence, and LIME) that make a boosted model explainable.
 
-> **Key idea:** Boosting combines many "weak" learners (models that are only slightly better than guessing) into one strong "committee," by training each new learner to fix the mistakes of the current ensemble.
+
+::: {.callout-important title="Key idea"}
+Boosting combines many "weak" learners (models that are only slightly better than guessing) into one strong "committee," by training each new learner to fix the mistakes of the current ensemble.
+:::
+
 
 A few facts worth keeping in mind from the start. Boosting was originally designed for classification (the classic algorithm is AdaBoost.M1 [@freund1997b], and it is sometimes called hypothesis boosting), but it extends naturally to regression. It is widely regarded as one of the best off-the-shelf predictors available.^[Gradient boosted trees routinely win tabular-data competitions and serve as strong baselines in industry precisely because they require little preprocessing and tune to high accuracy.]
 
@@ -55,7 +59,11 @@ The reasons this framing matters:
 
 -   It works for any differentiable loss function, which is what lets us swap in losses suited to regression, classification, or ranking.
 
-> **Intuition:** If the loss is a hill you want to walk down, the gradient points uphill. Boosting reads off the (negative) gradient at the current model, fits a tree to it, and takes a small downhill step scaled by the learning rate.
+
+::: {.callout-tip title="Intuition"}
+If the loss is a hill you want to walk down, the gradient points uphill. Boosting reads off the (negative) gradient at the current model, fits a tree to it, and takes a small downhill step scaled by the learning rate.
+:::
+
 
 If you would like a careful walk-through of the underlying optimization, you can refer to the first book for [more detail](https://bookdown.org/mike/data_analysis/non-linear-regression.html?q=gradient%20d#steepest-descent).
 
@@ -99,7 +107,11 @@ This algorithm has three tuning parameters, and understanding how they interact 
 2.  $\lambda$: the shrinkage parameter, which controls the rate at which boosting learns. Typical values are 0.01 or 0.001 (the best choice depends on the data at hand). The smaller the $\lambda$, the larger $B$ must be to achieve good performance.
 3.  $d$: the number of splits in each tree. Surprisingly, $d = 1$ often works well, in which case we call the tree a "stump." With $d = 1$, the boosted ensemble is fitting an additive model, since each term involves only one variable. More generally, $d$ is the interaction depth and controls the interaction order of the boosted model (since $d$ splits can involve at most $d$ variables).
 
-> **Note:** The inverse relationship between $\lambda$ and $B$ is the single most important thing to internalize. Halving the learning rate roughly doubles the number of trees you need. Slow learners are more accurate but more expensive.
+
+::: {.callout-note}
+The inverse relationship between $\lambda$ and $B$ is the single most important thing to internalize. Halving the learning rate roughly doubles the number of trees you need. Slow learners are more accurate but more expensive.
+:::
+
 
 <br>
 
@@ -127,7 +139,11 @@ The other half of the mechanism is reweighting the *data*. At each boosting step
 
 After each iteration, the weights are updated: observations that classifier $G_{m-1}(x)$ got wrong have their weights increased, and those it got right have their weights decreased. As the iterations continue, observations that are hard to classify accumulate ever more influence, so each successive classifier is forced to concentrate on the cases its predecessors kept missing.
 
-> **Intuition:** Boosting is like a study group where, after every quiz, you spend more time on the questions the group keeps getting wrong, and you trust the answers of whoever has been most reliable so far.
+
+::: {.callout-tip title="Intuition"}
+Boosting is like a study group where, after every quiz, you spend more time on the questions the group keeps getting wrong, and you trust the answers of whoever has been most reliable so far.
+:::
+
 
 <br>
 
@@ -216,7 +232,11 @@ $$
 
 which is the "exponential loss." This loss is closely related to the binomial negative log-likelihood (deviance), although the two behave differently with finite, real-world data. The exponential loss is attractive mainly because it makes the computation in step 2 fall out cleanly.
 
-> **Note:** AdaBoost did not start from "let's minimize exponential loss." It was designed first and only later understood as stagewise minimization of that loss. This after-the-fact view is what opened the door to generalizing it.
+
+::: {.callout-note}
+AdaBoost did not start from "let's minimize exponential loss." It was designed first and only later understood as stagewise minimization of that loss. This after-the-fact view is what opened the door to generalizing it.
+:::
+
 
 There are, of course, many other loss functions. We typically choose one because
 
@@ -246,7 +266,11 @@ A few orienting points before the algorithm:
 
 It helps to contrast gradient boosting with AdaBoost directly. Gradient boosting starts with a single leaf, an initial guess shared by all samples. As in AdaBoost, each new tree is built from the previous trees' errors, and the trees are scaled before being added. But there are two differences: gradient boosting scales every tree by the same amount (the learning rate), and each tree can be larger than a stump.
 
-> **Intuition:** Scaling each tree by the learning rate means taking a small, deliberate step in the right direction rather than a giant leap. Many small steps reach a better place than a few large ones.
+
+::: {.callout-tip title="Intuition"}
+Scaling each tree by the learning rate means taking a small, deliberate step in the right direction rather than a giant leap. Many small steps reach a better place than a few large ones.
+:::
+
 
 <br>
 
@@ -626,7 +650,11 @@ predict_model.gbm <- function(x, newdata, ...) {
 }
 ```
 
-> **Tip:** Below we call `lime::lime()` and `lime::explain()` with their package prefixes. The name `explain` is also defined by `dplyr`, so prefixing avoids a masking conflict that would otherwise break the call when both packages are loaded.
+
+::: {.callout-tip}
+Below we call `lime::lime()` and `lime::explain()` with their package prefixes. The name `explain` is also defined by `dplyr`, so prefixing avoids a masking conflict that would otherwise break the call when both packages are loaded.
+:::
+
 
 ```{r fig-boosting-gbm-lime, warning=FALSE, fig.cap="LIME local explanations for two test observations under the final gbm model, showing the features that most influenced each individual prediction."}
 # get a few observations to perform local interpretation on
@@ -689,7 +717,11 @@ Two common forms of subsampling are:
 
 -   subsample columns before each split.
 
-> **Tip:** Setting the row subsample fraction below 1 (the `bag.fraction` argument in `gbm`) is a cheap and reliable regularizer. It is one of the first knobs to try when a boosted model overfits.
+
+::: {.callout-tip}
+Setting the row subsample fraction below 1 (the `bag.fraction` argument in `gbm`) is a cheap and reliable regularizer. It is one of the first knobs to try when a boosted model overfits.
+:::
+
 
 ## Penalized Gradient Boosting
 
@@ -734,7 +766,11 @@ model <- lgb.cv(
 
 The next example, from GeeksforGeeks^[<https://www.geeksforgeeks.org/lightgbm-light-gradient-boosting-machine/>], is in Python and compares XGBoost against LightGBM on the adult-income data set (data link^[<https://www.kaggle.com/lbronchal/breast-cancer-dataset-analysis?select=data.csv>]).
 
-> **Note:** The Python comparison below is set to `eval = FALSE`. It depends on a Python environment with `lightgbm`, `xgboost`, `pandas`, and `scikit-learn` installed (via `reticulate`) and on a local copy of the `images/adult.data` file, which are not guaranteed in the build environment. The code is correct and idiomatic; run it locally after installing those packages.
+
+::: {.callout-note}
+The Python comparison below is set to `eval = FALSE`. It depends on a Python environment with `lightgbm`, `xgboost`, `pandas`, and `scikit-learn` installed (via `reticulate`) and on a local copy of the `images/adult.data` file, which are not guaranteed in the build environment. The code is correct and idiomatic; run it locally after installing those packages.
+:::
+
 
 ```{r}
 # library(reticulate)
@@ -1114,7 +1150,11 @@ hyper_grid <- expand.grid(
 nrow(hyper_grid)
 ```
 
-> **Warning:** This grid has hundreds of combinations, and a full search over it can take roughly six hours. The loop below is therefore set to `eval = FALSE`. In practice, start with a coarse grid and refine.
+
+::: {.callout-warning}
+This grid has hundreds of combinations, and a full search over it can take roughly six hours. The loop below is therefore set to `eval = FALSE`. In practice, start with a coarse grid and refine.
+:::
+
 
 ```{r, eval=FALSE}
 # grid search
@@ -1270,7 +1310,11 @@ The `h2o` package is a Java-based platform aimed at scaling gradient boosting to
 
 -   unlimited factor levels.
 
-> **Note:** Every `h2o` chunk in this section is set to `eval = FALSE`. They require a running H2O cluster started by `h2o.init()` (a separate Java process), which is an external dependency that the book build does not assume. The code is correct and idiomatic; start the cluster locally with `h2o.init()` to run it. The `## ` lines show representative output from a prior run.
+
+::: {.callout-note}
+Every `h2o` chunk in this section is set to `eval = FALSE`. They require a running H2O cluster started by `h2o.init()` (a separate Java process), which is an external dependency that the book build does not assume. The code is correct and idiomatic; start the cluster locally with `h2o.init()` to run it. The `## ` lines show representative output from a prior run.
+:::
+
 
 To use `h2o` you first start a local cluster.
 
@@ -1651,7 +1695,11 @@ A few points about interpreting this estimate:
 
 -   You cannot read it as the effect of $X_S$ on $f(X)$ while *ignoring* $X_C$, unless $X_S$ and $X_C$ are independent ($X_S \perp X_C$).
 
-> **Warning:** PDPs can mislead when the variable of interest is correlated with, or interacts with, the variables being averaged out. ICE curves and accumulated local effects (ALE) plots are useful complements when that is a concern.
+
+::: {.callout-warning}
+PDPs can mislead when the variable of interest is correlated with, or interacts with, the variables being averaged out. ICE curves and accumulated local effects (ALE) plots are useful complements when that is a concern.
+:::
+
 
 To make this concrete, @fig-boosting-boston-pdp shows the PDPs for the two most important variables from our `gbm` Boston model, giving each variable's marginal effect on the response after integrating out the others.
 

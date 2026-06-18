@@ -9,9 +9,17 @@ Most models in this book assume that observations are independent rows in a tabl
 
 Graph Neural Networks (GNNs) are models that learn from data structured as a graph: a set of nodes (entities) connected by edges (relationships).^[A graph here is the mathematical object from graph theory, a collection of points and the links between them, not a chart or plot. The points are called nodes (or vertices) and the links are called edges.] The core idea is that a node's representation should be built from its own features plus information gathered from its neighbors. Stack a few rounds of this neighbor gathering and each node sees a widening region of the graph. This chapter develops the math of message passing, walks through the three architectures a practitioner meets first (GCN, GraphSAGE, GAT), implements one graph convolution layer in base R so the mechanics are concrete, and gives practical guidance including the over-smoothing failure mode.
 
-> **Intuition:** Picture each node passing notes to its neighbors. In one round, you learn what your immediate friends know. In a second round, your friends have already absorbed what *their* friends know, so a piece of that reaches you too. A GNN is just this rumor-spreading process made differentiable, so the rules for what to pass and how to combine it can be learned from data.
 
-> **What you will learn:** how to represent a graph as matrices, the single message-passing template that nearly every GNN layer follows, how GCN, GraphSAGE, and GAT each fill in that template, how to build a graph convolution by hand in base R, and the practical traps (over-smoothing, heterophily, scale) that separate a working GNN from a broken one.
+::: {.callout-tip title="Intuition"}
+Picture each node passing notes to its neighbors. In one round, you learn what your immediate friends know. In a second round, your friends have already absorbed what *their* friends know, so a piece of that reaches you too. A GNN is just this rumor-spreading process made differentiable, so the rules for what to pass and how to combine it can be learned from data.
+:::
+
+
+
+::: {.callout-note title="What you will learn"}
+how to represent a graph as matrices, the single message-passing template that nearly every GNN layer follows, how GCN, GraphSAGE, and GAT each fill in that template, how to build a graph convolution by hand in base R, and the practical traps (over-smoothing, heterophily, scale) that separate a working GNN from a broken one.
+:::
+
 
 ## Where GNNs Fit in a Modern Workflow
 
@@ -25,7 +33,11 @@ In an applied ML or AI pipeline, GNNs occupy the slot you reach for when the rel
 
 A reasonable rule of thumb: if you can draw your data as nodes and edges and you believe a node's label depends on its neighborhood, a GNN is worth trying. If the relationships are weak or absent, a plain tabular model (gradient boosting (@sec-gradient-boosting), a feedforward network (@sec-neural-networks)) is usually simpler and stronger. GNNs are not a replacement for those models; they are the relational extension of them.
 
-> **When to use this:** reach for a GNN when the edges carry signal you would otherwise have to engineer by hand (counts of suspicious neighbors, average rating of co-purchased items, and so on). The GNN learns those neighborhood summaries for you. When the edges are noise or convenience, skip it.
+
+::: {.callout-tip title="When to use this"}
+reach for a GNN when the edges carry signal you would otherwise have to engineer by hand (counts of suspicious neighbors, average rating of co-purchased items, and so on). The GNN learns those neighborhood summaries for you. When the edges are noise or convenience, skip it.
+:::
+
 
 ## Graphs and Adjacency
 
@@ -57,7 +69,11 @@ $$
 
 The Laplacian measures how much a signal on the graph varies between connected nodes, and it is the bridge between GNNs and classical spectral graph theory.^[Concretely, the quadratic form $f^\top L f = \tfrac{1}{2}\sum_{i,j} A_{ij}(f_i - f_j)^2$ is small when the signal $f$ takes similar values on connected nodes. The normalization in $L_{\text{sym}}$ rescales this so that high-degree and low-degree nodes are compared on equal footing.]
 
-> **Note:** You do not need spectral graph theory to use a GNN, but it explains *why* the normalization in the GCN layer below looks the way it does. We flag the connection and move on; the message-passing view in the next section is self-contained.
+
+::: {.callout-note}
+You do not need spectral graph theory to use a GNN, but it explains *why* the normalization in the GCN layer below looks the way it does. We flag the connection and move on; the message-passing view in the next section is self-contained.
+:::
+
 
 Before choosing an architecture, decide what you are predicting. Tasks on graphs come in three flavors, and the distinction drives everything downstream, from how you split the data to what the final layer outputs. @tbl-graph-neural-networks-task-levels summarizes the three task levels and what each one produces.
 
@@ -83,7 +99,11 @@ $$
 
 Here $\phi$ builds a message from a node and one of its neighbors, AGGREGATE is a permutation-invariant pooling function (sum, mean, or max, because neighbors have no inherent order), and UPDATE merges the pooled message with the node's prior state, usually through a learned linear map and a nonlinearity.
 
-> **Key idea:** AGGREGATE must be permutation invariant, meaning the answer cannot depend on the order you list the neighbors in. A node's neighbors form a set, not a sequence, so the only legal operations are ones like sum, mean, and max that ignore order. This single constraint is what distinguishes a GNN from feeding a node's neighbor list into an ordinary network.
+
+::: {.callout-important title="Key idea"}
+AGGREGATE must be permutation invariant, meaning the answer cannot depend on the order you list the neighbors in. A node's neighbors form a set, not a sequence, so the only legal operations are ones like sum, mean, and max that ignore order. This single constraint is what distinguishes a GNN from feeding a node's neighbor list into an ordinary network.
+:::
+
 
 The depth $k$ controls the receptive field. After $k$ layers, node $i$'s representation depends on every node within $k$ hops. This is the graph analogue of a convolutional network's growing receptive field over an image. The architectures below differ only in their choices of $\phi$, AGGREGATE, and UPDATE, so once you have this template the differences between GCN, GraphSAGE, and GAT are small and easy to keep straight.
 
@@ -111,7 +131,11 @@ $$
 
 Why this normalization? The product $\tilde{A} H$ alone is a sum over neighbors, so high-degree nodes would accumulate large magnitudes and dominate. Dividing by degrees rebalances this. The symmetric form $\tilde{D}^{-1/2} \tilde{A} \tilde{D}^{-1/2}$ scales entry $(i,j)$ by $1 / \sqrt{\deg(i)\,\deg(j)}$, which keeps the operator's spectrum bounded and stabilizes training. In message-passing terms, GCN uses a degree-weighted mean as AGGREGATE, a shared linear map as the message and update, and folds the node's own state in through the self-loop.
 
-> **Warning:** If you forget the self-loop in $\tilde{A} = A + I$, each node throws away its own features and is described purely by its neighbors. This silently degrades accuracy and is one of the most common GNN implementation bugs. Always add self-loops before normalizing.
+
+::: {.callout-warning}
+If you forget the self-loop in $\tilde{A} = A + I$, each node throws away its own features and is described purely by its neighbors. This silently degrades accuracy and is one of the most common GNN implementation bugs. Always add self-loops before normalizing.
+:::
+
 
 GCN is simple and fast, but the same weight matrix $W^{(k)}$ and the fixed normalization apply everywhere, so the model cannot weight some neighbors more than others, and it needs the whole adjacency matrix at training time (it is transductive in its basic form).^[Transductive means the model is trained on one fixed graph and can only score nodes that were present during training. The opposite, inductive, means the model can produce predictions for brand-new nodes or even entirely new graphs. GraphSAGE, below, is the inductive answer.]
 
@@ -119,7 +143,11 @@ GCN is simple and fast, but the same weight matrix $W^{(k)}$ and the fixed norma
 
 The propagation rule reduces to three matrix multiplications, so we can implement and inspect one layer with nothing but base R. No deep learning framework is needed to see the mechanism. We build a tiny 6-node graph with two communities loosely linked by a bridge, run one untrained GCN layer, and look at the resulting node embeddings.
 
-> **Tip:** Reading code that uses random, untrained weights can feel pointless, but it is the cleanest way to see what the *architecture* does on its own, before any learning. Whatever structure shows up here (such as neighbors landing close together) comes purely from the graph operator, not from fitting.
+
+::: {.callout-tip}
+Reading code that uses random, untrained weights can feel pointless, but it is the cleanest way to see what the *architecture* does on its own, before any learning. Whatever structure shows up here (such as neighbors landing close together) comes purely from the graph operator, not from fitting.
+:::
+
 
 ```{r gcn-base-r, eval=TRUE, message=FALSE}
 set.seed(1)
@@ -254,13 +282,21 @@ where $\mathcal{S}(i) \subseteq \mathcal{N}(i)$ is a sampled neighbor subset, $\
 
 The payoff is inductive learning: because the model learns aggregation functions rather than a fixed embedding per node, it can produce embeddings for nodes that did not exist at training time. The neighbor sampling also bounds per-batch computation, which is what makes GraphSAGE practical on graphs with millions of nodes.
 
-> **When to use this:** choose GraphSAGE when new nodes keep arriving (new users, new products, new transactions) so retraining the whole model for every newcomer is not an option, or when the graph is simply too large to hold in memory at once. Sampling a fixed number of neighbors caps the cost per node no matter how large the graph grows.
+
+::: {.callout-tip title="When to use this"}
+choose GraphSAGE when new nodes keep arriving (new users, new products, new transactions) so retraining the whole model for every newcomer is not an option, or when the graph is simply too large to hold in memory at once. Sampling a fixed number of neighbors caps the cost per node no matter how large the graph grows.
+:::
+
 
 ## Graph Attention Network (GAT)
 
 GCN and GraphSAGE weight neighbors by degree or treat them uniformly. GAT (Velickovic et al., 2018) lets the model learn how much attention to pay to each neighbor.
 
-> **Intuition:** Not all neighbors are equally informative. In a citation network, a paper's most relevant citation may matter more than a passing reference; in a social graph, a close collaborator should outweigh a one-time contact. Attention lets the model decide, per edge, how much each neighbor contributes, instead of fixing those weights in advance by degree.
+
+::: {.callout-tip title="Intuition"}
+Not all neighbors are equally informative. In a citation network, a paper's most relevant citation may matter more than a passing reference; in a social graph, a close collaborator should outweigh a one-time contact. Attention lets the model decide, per edge, how much each neighbor contributes, instead of fixing those weights in advance by degree.
+:::
+
 
 For a layer, first project all nodes with a shared weight $W$, then compute an unnormalized attention score for each edge $(i, j)$:
 
@@ -304,7 +340,11 @@ No GNN survives contact with real data without running into at least one of the 
 
 @fig-graph-neural-networks-depth showed embeddings collapsing as depth grows. This is over-smoothing: repeated neighbor averaging acts like a low-pass filter on the graph, and in the limit every connected node converges to the same vector, erasing the distinctions a classifier needs. The practical consequence is that deep GNNs often perform worse than shallow ones, which is the opposite of the intuition from image CNNs. Most GNNs use only two to four layers.
 
-> **Warning:** Adding layers to a GNN is not like adding layers to a CNN. Beyond a handful of layers, accuracy usually drops rather than improves. If your deep GNN underperforms a shallow one, suspect over-smoothing before anything else.
+
+::: {.callout-warning}
+Adding layers to a GNN is not like adding layers to a CNN. Beyond a handful of layers, accuracy usually drops rather than improves. If your deep GNN underperforms a shallow one, suspect over-smoothing before anything else.
+:::
+
 
 Several mitigations work in practice, and they can be combined:
 
@@ -421,7 +461,11 @@ Pulling the chapter together, here is the short checklist worth keeping next to 
 - Watch for over-smoothing and over-squashing as you scale depth or graph size, and validate with the embedding-distance diagnostic shown above.
 - Mind compute. Use neighbor or subgraph sampling for large graphs, and reserve GAT's per-edge attention for cases where you have evidence that neighbors differ in relevance.
 
-> **Key idea:** Every GNN layer is the same three-step recipe (gather messages from neighbors, aggregate them with an order-blind pooling, combine with the node's own state). GCN, GraphSAGE, and GAT differ only in how they fill those three slots. If you remember the recipe, you can read any new GNN paper as a variation on a theme rather than a fresh idea.
+
+::: {.callout-important title="Key idea"}
+Every GNN layer is the same three-step recipe (gather messages from neighbors, aggregate them with an order-blind pooling, combine with the node's own state). GCN, GraphSAGE, and GAT differ only in how they fill those three slots. If you remember the recipe, you can read any new GNN paper as a variation on a theme rather than a fresh idea.
+:::
+
 
 ## Further Reading
 

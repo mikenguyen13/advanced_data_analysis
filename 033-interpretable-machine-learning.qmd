@@ -9,7 +9,11 @@ A model that predicts well is useful. A model you can also explain is trustworth
 
 The motivation is practical, not philosophical. A bank that denies a loan must, by law in many jurisdictions, give a reason. A doctor will not act on a risk score without understanding what drives it. A data scientist debugging a model needs to know whether it learned something real or just memorized an artifact of the training data.^[A classic cautionary tale, reported by Caruana and colleagues (2015): a pneumonia risk model learned that asthmatic patients had *lower* risk of dying, because in the training hospital asthmatics were admitted straight to intensive care and treated aggressively. The pattern was real in the data but exactly backwards as a basis for triage. An interpretability check would have caught it; a pure accuracy check did not.] In all of these settings, the prediction alone is not enough. We need an account of *how the model got there*.
 
-> **Key idea:** Interpretability is not a single technique but a goal, and there are two broad routes to it. We can use models that are transparent by construction (linear regression, a short decision tree (@sec-regression-trees), a generalized additive model (@sec-gam)), or we can fit a flexible black-box model and then apply *post-hoc* explanation methods on top of it. This chapter focuses on the second route, because that is where the interesting tooling lives, but the first route is always worth considering first.
+
+::: {.callout-important title="Key idea"}
+Interpretability is not a single technique but a goal, and there are two broad routes to it. We can use models that are transparent by construction (linear regression, a short decision tree (@sec-regression-trees), a generalized additive model (@sec-gam)), or we can fit a flexible black-box model and then apply *post-hoc* explanation methods on top of it. This chapter focuses on the second route, because that is where the interesting tooling lives, but the first route is always worth considering first.
+:::
+
 
 It helps to separate two words that are often used interchangeably. *Interpretability* usually refers to models that are understandable in themselves: you can read the coefficients or trace the tree. *Explainability* usually refers to producing human-readable accounts of an otherwise opaque model after the fact.^[The distinction is discussed at length in the survey by Barredo Arrieta and colleagues (2020) and in the popular write-up at <https://towardsdatascience.com/interperable-vs-explainable-machine-learning-1fa525e12f48>. Different authors draw the line differently, so do not over-invest in the terminology; what matters is the question you are trying to answer.] A second useful split is *global* versus *local* explanations. A global explanation describes the model's behavior across the whole data distribution ("income is the most important feature overall"). A local explanation describes a single prediction ("for *this* applicant, the low credit score pushed the decision toward denial"). Most methods in this chapter come in both flavors, and we will be explicit about which is which.
 
@@ -17,7 +21,11 @@ By the end of the chapter you will be able to rank features by importance, visua
 
 We will work throughout with one running example so that the methods are directly comparable.
 
-> **When to use this:** Reach for post-hoc interpretation whenever you have a model that is too complex to read directly but whose behavior you still need to justify, audit, or debug. If a simple transparent model fits about as well, prefer it and skip most of this chapter.
+
+::: {.callout-tip title="When to use this"}
+Reach for post-hoc interpretation whenever you have a model that is too complex to read directly but whose behavior you still need to justify, audit, or debug. If a simple transparent model fits about as well, prefer it and skip most of this chapter.
+:::
+
 
 ## A running example
 
@@ -60,7 +68,11 @@ lm_fit <- lm(Sale_Price ~ ., data = train)
 round(coef(lm_fit))
 ```
 
-> **Intuition:** The linear model is its own explanation: each coefficient says "holding everything else fixed, one more unit of this feature changes the predicted price by this many dollars." Every method below is, in one way or another, an attempt to recover that kind of plain-language statement from a model that does not hand it to us for free.
+
+::: {.callout-tip title="Intuition"}
+The linear model is its own explanation: each coefficient says "holding everything else fixed, one more unit of this feature changes the predicted price by this many dollars." Every method below is, in one way or another, an attempt to recover that kind of plain-language statement from a model that does not hand it to us for free.
+:::
+
 
 ## Feature importance
 
@@ -70,7 +82,11 @@ There are two common ways to measure it, and they answer slightly different ques
 
 The second method, *permutation importance*, is model-agnostic and more trustworthy. The idea is disarmingly simple. Measure the model's error on held-out data. Then take one feature, shuffle its values across the rows (which destroys any relationship between that feature and the target while keeping its marginal distribution intact), and measure the error again. If the error jumps, the model was relying on that feature; if it barely moves, the feature was not doing much. The increase in error is the feature's importance.
 
-> **Intuition:** Permutation importance asks, "if I scramble this column, how much worse does the model get?" A feature the model truly depends on, when scrambled, wrecks the predictions. An irrelevant feature can be scrambled with no effect.
+
+::: {.callout-tip title="Intuition"}
+Permutation importance asks, "if I scramble this column, how much worse does the model get?" A feature the model truly depends on, when scrambled, wrecks the predictions. An irrelevant feature can be scrambled with no effect.
+:::
+
 
 The `vip` package computes both kinds (Greenwell and Boehmke, 2020). We start with the impurity-based version, which random forest already stored for us; @fig-interpretable-machine-learning-vip-impurity shows the result.
 
@@ -99,9 +115,17 @@ vip(
 
 Read these plots (@fig-interpretable-machine-learning-vip-impurity and @fig-interpretable-machine-learning-vip-perm) from the top down: the longest bars are the features the model leans on most. For Ames, overall quality and above-ground living area dominate in both methods, which matches intuition about what drives house prices and matches the large coefficients in our linear model. When the two importance methods agree, you can be fairly confident in the ranking. When they disagree, the disagreement is itself informative, often pointing to the cardinality bias of the impurity measure.
 
-> **Warning:** Importance tells you *how much* a feature matters, not *which direction* it pushes predictions or *what shape* its effect has. A feature can be highly important and have a U-shaped effect that a single number cannot convey. For direction and shape, we need the effect plots in the next section.
 
-> **Tip:** Permutation importance is computed many times with different random shuffles (`nsim` above) because a single shuffle is noisy. Report the average, and if decisions ride on the ranking, look at the variability across shuffles too.
+::: {.callout-warning}
+Importance tells you *how much* a feature matters, not *which direction* it pushes predictions or *what shape* its effect has. A feature can be highly important and have a U-shaped effect that a single number cannot convey. For direction and shape, we need the effect plots in the next section.
+:::
+
+
+
+::: {.callout-tip}
+Permutation importance is computed many times with different random shuffles (`nsim` above) because a single shuffle is noisy. Report the average, and if decisions ride on the ranking, look at the variability across shuffles too.
+:::
+
 
 ## Effect plots: partial dependence and ICE
 
@@ -109,7 +133,11 @@ Importance ranks features; *effect plots* show the relationship between a featur
 
 Mechanically, to draw the partial dependence of price on living area, we do the following. Pick a grid of living-area values. For each grid value, overwrite the living-area column of *every* row in the data with that one value, leaving all other columns untouched, and ask the model to predict. Average those predictions. That average is the partial dependence at that grid point. Plotting the averages across the grid traces out the marginal effect of living area on the model's output.
 
-> **Key idea:** A PDP marginalizes over the other features by brute force. It literally asks the model, "if this one feature were *x*, what would you predict on average across the population?" The result isolates the feature's effect from the others, as long as the features are not strongly correlated.
+
+::: {.callout-important title="Key idea"}
+A PDP marginalizes over the other features by brute force. It literally asks the model, "if this one feature were *x*, what would you predict on average across the population?" The result isolates the feature's effect from the others, as long as the features are not strongly correlated.
+:::
+
 
 The `pdp` package implements this directly (Greenwell, 2017), and @fig-interpretable-machine-learning-pdp-single shows the partial dependence of price on living area.
 
@@ -132,7 +160,11 @@ plotPartial(pd_two, main = "Living area x overall quality")
 
 The PDP has one important blind spot. Because it averages over the population, it can hide the fact that the feature behaves differently for different subgroups. If living area pushes prices up for large lots but is flat for tiny lots, the average can look like a mild slope and you would never know the two stories existed. The *individual conditional expectation* (ICE) plot fixes this (Goldstein et al., 2015). Instead of averaging, it draws one line per observation: each line shows how that single house's prediction would change as we sweep its living area across the grid. The PDP is simply the average of all the ICE lines.
 
-> **Intuition:** A PDP is the chorus; ICE plots are the individual voices. If every voice sings the same melody, the chorus represents them faithfully. If the voices split into groups singing different tunes, the average is misleading and the ICE plot reveals it.
+
+::: {.callout-tip title="Intuition"}
+A PDP is the chorus; ICE plots are the individual voices. If every voice sings the same melody, the chorus represents them faithfully. If the voices split into groups singing different tunes, the average is misleading and the ICE plot reveals it.
+:::
+
 
 @fig-interpretable-machine-learning-ice draws the centered ICE curves for living area together with their average.
 
@@ -145,7 +177,11 @@ plotPartial(ice_area, alpha = 0.05, plot.pdp = TRUE,
 
 We *centered* the curves so they all start at zero on the left, which makes their *shapes* comparable regardless of each house's baseline price. Reading the plot: if the thin lines fan out and cross, different houses respond differently to size, an interaction the PDP alone would have hidden. If they move in near-parallel, the average curve tells the whole story.
 
-> **Warning:** Both PDP and ICE rely on overwriting one feature while holding the others fixed, which can create *impossible* combinations: a 4000-square-foot house on a 1000-square-foot lot, for instance. When features are strongly correlated, the model is asked to predict on inputs it never saw in training, and the plots can mislead. Accumulated local effects (ALE) plots are a more robust alternative in that case; see Molnar (2022).
+
+::: {.callout-warning}
+Both PDP and ICE rely on overwriting one feature while holding the others fixed, which can create *impossible* combinations: a 4000-square-foot house on a 1000-square-foot lot, for instance. When features are strongly correlated, the model is asked to predict on inputs it never saw in training, and the plots can mislead. Accumulated local effects (ALE) plots are a more robust alternative in that case; see Molnar (2022).
+:::
+
 
 To summarize the global picture so far: importance tells you which features matter, PDPs tell you the average shape of each feature's effect, and ICE plots warn you when that average hides subgroup differences. Together they give a reasonably complete description of the model's *global* behavior. We turn next to explaining single predictions.
 
@@ -166,7 +202,11 @@ The recipe is:
 5. Fit a simple, interpretable model (a weighted sparse linear regression) to those weighted predictions.
 6. Report that simple model's coefficients as the local explanation.
 
-> **Intuition:** LIME does not try to understand the whole model. It only builds a tiny, faithful caricature that is accurate right around the one prediction you care about, and trusts that caricature exactly that far and no further.
+
+::: {.callout-tip title="Intuition"}
+LIME does not try to understand the whole model. It only builds a tiny, faithful caricature that is accurate right around the one prediction you care about, and trusts that caricature exactly that far and no further.
+:::
+
 
 The `lime` package implements this for R (Pedersen and Benesty, 2021). We explain the model's predictions for two specific houses from the test set, and @fig-interpretable-machine-learning-lime shows the result.
 
@@ -197,7 +237,11 @@ plot_features(explanation)
 
 Each panel explains one house. A bar to the right (supporting) means that feature, at its value for this house, pushed the prediction up; a bar to the left (contradicting) means it pushed the prediction down. The length is how strongly. So you can now make a per-house statement like "this prediction is high mainly because of high overall quality and large living area, partly offset by the small lot," which is precisely the kind of account a global plot cannot give.
 
-> **Warning:** LIME's explanations depend on choices that are easy to overlook: how perturbations are generated, the neighborhood width (the kernel), and how many features the simple model is allowed to keep. Change these and the explanation can change. Treat a single LIME output as a hypothesis about the prediction, not as ground truth, and check that it is stable before relying on it.
+
+::: {.callout-warning}
+LIME's explanations depend on choices that are easy to overlook: how perturbations are generated, the neighborhood width (the kernel), and how many features the simple model is allowed to keep. Change these and the explanation can change. Treat a single LIME output as a hypothesis about the prediction, not as ground truth, and check that it is stable before relying on it.
+:::
+
 
 ### Shapley values and SHAP
 
@@ -205,7 +249,11 @@ LIME is fast and intuitive but, as just noted, somewhat ad hoc. Shapley values c
 
 Concretely, the Shapley value of a feature is its *average marginal contribution* across every possible ordering in which the features could be added to the model. To see what feature *j* contributes, you look at how much the prediction changes when *j* joins a coalition of features already present, and you average that change over all coalitions. Computing this exactly is exponential in the number of features, so in practice we approximate it by sampling coalitions.
 
-> **Key idea:** A Shapley explanation has a property the others lack: the feature contributions *add up exactly* to the gap between the prediction and the average prediction. Nothing is left unexplained and nothing is double-counted. This additivity is what makes Shapley values uniquely consistent.
+
+::: {.callout-important title="Key idea"}
+A Shapley explanation has a property the others lack: the feature contributions *add up exactly* to the gap between the prediction and the average prediction. Nothing is left unexplained and nothing is double-counted. This additivity is what makes Shapley values uniquely consistent.
+:::
+
 
 SHAP (*SHapley Additive exPlanations*) is the popular framework, due to @lundberg2017unified, that makes Shapley values computable for modern models and ties them to a unifying view of LIME and related methods. The reference implementation is the Python `shap` library at <https://github.com/slundberg/shap>, with accessible introductions at <https://meichenlu.com/2018-11-10-SHAP-explainable-machine-learning/> and <https://bjlkeng.github.io/posts/model-explanability-with-shapley-additive-explanations-shap/>. SHAP is especially efficient for tree ensembles through the TreeSHAP algorithm [@lundberg2018consistent], which exploits tree structure to compute exact Shapley values quickly.
 
@@ -245,7 +293,11 @@ ggplot(shap_df, aes(x = contribution, y = feature, fill = contribution > 0)) +
 
 Read the bars exactly as with LIME (right pushes the prediction up, left pushes it down), but with the guarantee that they sum to the difference between this house's prediction and the average prediction. Averaging the *absolute* SHAP values of a feature over many observations also yields a global importance measure, giving a single coherent framework that spans local and global explanation. That unification is the main reason SHAP became the de facto standard.
 
-> **When to use this:** Use LIME when you need a fast, intuitive local explanation and approximate fidelity is acceptable. Use SHAP when you need consistency and additivity, when explanations must withstand scrutiny (regulatory or scientific), or when you want local and global explanations from one coherent method. For tree ensembles specifically, TreeSHAP makes the principled choice also the practical one.
+
+::: {.callout-tip title="When to use this"}
+Use LIME when you need a fast, intuitive local explanation and approximate fidelity is acceptable. Use SHAP when you need consistency and additivity, when explanations must withstand scrutiny (regulatory or scientific), or when you want local and global explanations from one coherent method. For tree ensembles specifically, TreeSHAP makes the principled choice also the practical one.
+:::
+
 
 ## Other tools and the broader landscape
 
@@ -263,7 +315,11 @@ Google's PAIR (People + AI Research) group has built several interactive tools t
 
 The PAIR group's broader work is at <https://research.google/teams/brain/pair/>, and a wider survey of interpretability research is collected at <https://arxiv.org/pdf/1905.08883.pdf> and <https://arxiv.org/abs/2004.14545>.
 
-> **Note:** The image- and concept-level tools above (TCAV, the What-If Tool, the Embedding Projector) live in the Python and TensorFlow ecosystem and require a trained deep model and its backend, so we do not run them here. They are listed because the *ideas* (concept-based explanation, interactive what-if probing, embedding visualization) are part of every practitioner's toolkit, even when the implementation lives outside R.
+
+::: {.callout-note}
+The image- and concept-level tools above (TCAV, the What-If Tool, the Embedding Projector) live in the Python and TensorFlow ecosystem and require a trained deep model and its backend, so we do not run them here. They are listed because the *ideas* (concept-based explanation, interactive what-if probing, embedding visualization) are part of every practitioner's toolkit, even when the implementation lives outside R.
+:::
+
 
 ### Two extended applications
 
@@ -282,4 +338,8 @@ The chapter introduced a small, powerful toolkit for opening up a fitted model. 
 * Among local methods, LIME is fast and intuitive but sensitive to its settings, while SHAP is principled, additive, and consistent, and is efficient for tree models through TreeSHAP. When explanations must hold up to scrutiny, prefer SHAP.
 * Every method has assumptions. Importance ignores direction; PDP and ICE can fabricate impossible feature combinations under correlation; LIME depends on neighborhood and perturbation choices. Read explanations as evidence to be checked, not as final truth.
 
-> **Tip:** The single most useful habit is to compute two different explanations and see whether they agree. When permutation and impurity importance, or LIME and SHAP, tell the same story, trust it. When they disagree, you have learned something about either your model or your data, and that is exactly when interpretation earns its keep.
+
+::: {.callout-tip}
+The single most useful habit is to compute two different explanations and see whether they agree. When permutation and impurity importance, or LIME and SHAP, tell the same story, trust it. When they disagree, you have learned something about either your model or your data, and that is exactly when interpretation earns its keep.
+:::
+

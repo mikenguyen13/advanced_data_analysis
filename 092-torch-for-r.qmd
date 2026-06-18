@@ -11,7 +11,11 @@ The `torch` package brings the LibTorch C++ library (the engine behind PyTorch) 
 
 By the end of this chapter you should understand three things: where `torch` sits among the fitting engines you already know, why gradient descent and automatic differentiation (the math underneath every `torch` program) actually work, and how a `torch` script is structured in practice (tensors, autograd, `nn_module`, optimizers, datasets, and dataloaders). Because `torch` is often not installed on a given machine, all `torch` code here is shown with `eval=FALSE`; it is correct and idiomatic, just not executed during the build. To teach the core mechanics in a way you can run immediately, the chapter ends with a worked example that implements gradient descent for linear regression in plain base R with hand derived gradients. That demo mirrors the `torch` training loop line for line, so once you see it work you will know exactly what the `torch` version is doing under the hood.
 
-> **Key idea:** `torch` is not a model. It is a toolkit for building and training any model you can write as a differentiable function of its parameters. The loss, the architecture, and the update rule are all yours to specify.
+
+::: {.callout-important title="Key idea"}
+`torch` is not a model. It is a toolkit for building and training any model you can write as a differentiable function of its parameters. The loss, the architecture, and the update rule are all yours to specify.
+:::
+
 
 Readings:
 
@@ -27,7 +31,11 @@ The way to think about it is that a `torch` program has three layers, and you, n
 
 This same three layer recipe describes linear regression, logistic regression, deep neural networks, and large language models alike; only the model and the loss change. That generality is the whole point. Once you understand the loop, you can fit custom losses (quantile, as in quantile regression (@sec-quantile-reg), Huber, ranking), custom architectures (embeddings, attention as in the transformers chapter (@sec-transformers), convolutions), and models that simply do not exist as off the shelf packages, all in R, on CPU or GPU.
 
-> **When to use this:** Reach for `torch` when you need a model that no R package provides, or a custom loss or constraint; when you want GPU acceleration for large tensor computations; or when you are prototyping deep learning in a pure R stack and want fine control of the training loop.
+
+::: {.callout-tip title="When to use this"}
+Reach for `torch` when you need a model that no R package provides, or a custom loss or constraint; when you want GPU acceleration for large tensor computations; or when you are prototyping deep learning in a pure R stack and want fine control of the training loop.
+:::
+
 
 The flip side matters just as much, because `torch` is easy to overuse. If a linear model, a GAM, or gradient boosted trees already solves your problem, prefer them: they are faster to fit, easier to tune, and on tabular data they are often more accurate than a neural network you would have to babysit. And if your goal is maximum performance on very large models with a mature surrounding ecosystem, that work still mostly lives in Python. `torch` is the right tool for custom modeling and learning in R, not a reason to abandon the simpler methods that win on structured data.
 
@@ -51,7 +59,11 @@ $$
 
 where $\eta > 0$ is the learning rate, the size of the step we take each iteration. Stochastic gradient descent (SGD) replaces the full sum with the gradient computed on a small randomly chosen batch of examples, which is cheaper per step and, perhaps surprisingly, the noise it injects often helps the optimizer escape poor regions of the landscape.
 
-> **Intuition:** Picture the loss as a hilly surface and $\boldsymbol{\theta}$ as your position on it. The gradient points uphill, so the update rule above takes a step in the opposite direction, downhill. The learning rate $\eta$ sets how far each step goes: too small and you inch along forever, too large and you overshoot the valley and bounce around (or fly off to infinity).
+
+::: {.callout-tip title="Intuition"}
+Picture the loss as a hilly surface and $\boldsymbol{\theta}$ as your position on it. The gradient points uphill, so the update rule above takes a step in the opposite direction, downhill. The learning rate $\eta$ sets how far each step goes: too small and you inch along forever, too large and you overshoot the valley and bounce around (or fly off to infinity).
+:::
+
 
 ### Linear regression gradient
 
@@ -87,7 +99,11 @@ The mechanism is easier than it sounds. As you compute the loss, `torch` watches
 
 There are really only two phases to keep straight. In the forward pass you compute the loss as usual, and `torch` quietly records the operations. In the backward pass, the single call `loss$backward()` fills each parameter's `$grad` field with $\partial L / \partial \theta$, ready for the optimizer to use.
 
-> **Key idea:** Reverse mode autograd computes the derivative of one scalar output (the loss) with respect to all of the parameters in a single backward pass, at roughly the cost of one forward pass. That efficiency, independent of how many parameters there are, is precisely why training models with millions of parameters is feasible at all.
+
+::: {.callout-important title="Key idea"}
+Reverse mode autograd computes the derivative of one scalar output (the loss) with respect to all of the parameters in a single backward pass, at roughly the cost of one forward pass. That efficiency, independent of how many parameters there are, is precisely why training models with millions of parameters is feasible at all.
+:::
+
 
 ## A torch program, end to end
 
@@ -203,7 +219,11 @@ model$parameters$fc.bias
 
 The four steps inside that loop, clear the old gradients, run the forward pass to get the loss, call `backward` to fill in the gradients, then `step` to update the parameters, are the universal `torch` rhythm. Memorize them in that order and you can train almost anything.
 
-> **Warning:** `optimizer$zero_grad()` is not optional. `torch` adds new gradients to whatever is already in `$grad` rather than replacing them, a design that is useful for some advanced techniques but means that if you forget to clear, your gradients accumulate across steps and training quietly goes wrong. This is the single most common beginner bug.
+
+::: {.callout-warning}
+`optimizer$zero_grad()` is not optional. `torch` adds new gradients to whatever is already in `$grad` rather than replacing them, a design that is useful for some advanced techniques but means that if you forget to clear, your gradients accumulate across steps and training quietly goes wrong. This is the single most common beginner bug.
+:::
+
 
 ### Datasets and dataloaders
 
@@ -269,7 +289,11 @@ Within a `torch` loop you also choose an optimizer, the rule that turns gradient
 
 Everything so far has been `eval=FALSE`, so to make the ideas concrete here is a version you can run today. This demo reproduces the `torch` training loop with no `torch`, no autograd, and the manual gradients we derived earlier. Because it uses only base R, it executes during the build, and because it solves the same linear regression problem two ways (gradient descent and the closed form), you can check that the loop really converges to the right answer.
 
-> **Tip:** As you read the demo, keep the `torch` loop in mind. The base R `pred` plays the role of `model(x)`, the mean of `r^2` is `nnf_mse_loss`, the two `grad_*` lines are what `loss$backward()` would compute for you, and the subtraction step is `optimizer$step()`. Seeing them side by side is the fastest way to demystify `torch`.
+
+::: {.callout-tip}
+As you read the demo, keep the `torch` loop in mind. The base R `pred` plays the role of `model(x)`, the mean of `r^2` is `nnf_mse_loss`, the two `grad_*` lines are what `loss$backward()` would compute for you, and the subtraction step is `optimizer$step()`. Seeing them side by side is the fastest way to demystify `torch`.
+:::
+
 
 We begin by simulating data from a known linear model and computing the closed form least squares fit, which serves as the target the iterative method should reach.
 
@@ -366,11 +390,19 @@ The examples above run cleanly because they are small and well scaled. Real `tor
 
 Convergence problems almost always trace back to two causes, and both are easy to fix. Unscaled inputs are the first: gradient descent is sensitive to feature scale, so center and scale your columns before training, exactly the advice you saw for `glmnet`. The learning rate is the second, and it is the first knob to tune. Too large and the loss diverges to `NaN`; too small and it crawls. A sensible starting point is `optim_adam(lr = 0.01)`, adjusted up or down by factors of about three. If the loss turns into `NaN`, suspect a learning rate that is too high, unscaled inputs, or a logarithm of a non positive number inside a custom loss.
 
-> **Warning:** `torch` keeps its own random number stream. Setting R's `set.seed()` does not make `torch` reproducible. Use `torch_manual_seed()` as well to fix the initialization and the shuffling order.
+
+::: {.callout-warning}
+`torch` keeps its own random number stream. Setting R's `set.seed()` does not make `torch` reproducible. Use `torch_manual_seed()` as well to fix the initialization and the shuffling order.
+:::
+
 
 A few habits round out good practice. At prediction time, put the model in evaluation mode with `model$eval()` and wrap the call in `with_no_grad()`, so layers like dropout and batch normalization behave correctly and you do not build a backward graph you will never use. Before committing to a neural network on tabular data, benchmark against gradient boosted trees (@sec-gradient-boosting) or a generalized additive model (@sec-gam), which frequently win on structured data with far less tuning. And remember that GPU acceleration pays off only when tensors are large; for small tabular problems the cost of moving data to the GPU outweighs the speedup, and the CPU is faster.
 
-> **When to use this:** In short, default to the simpler model, reach for `torch` when the problem genuinely needs a custom architecture or loss, scale your inputs, tune the learning rate first, and seed `torch` separately. Follow those and most training problems disappear.
+
+::: {.callout-tip title="When to use this"}
+In short, default to the simpler model, reach for `torch` when the problem genuinely needs a custom architecture or loss, scale your inputs, tune the learning rate first, and seed `torch` separately. Follow those and most training problems disappear.
+:::
+
 
 ## Further reading
 

@@ -9,7 +9,11 @@ A data analysis is rarely a single script run once. It is a graph of steps: read
 
 By the end of this chapter you will be able to think of an analysis as a dependency graph, decide when a step is genuinely out of date, write a `targets` pipeline that rebuilds only what changed, scale it across many inputs with branching, and run it in parallel. We start with intuition, then make the rebuild rule precise with a little notation, then show both a real `targets` pipeline and a tiny base R engine that demonstrates the same mechanism on code you can run yourself.
 
-> **Intuition:** Think of a recipe. If you change the frosting, you re-frost the cake; you do not re-bake it. A pipeline tool figures out the equivalent of "re-frost, do not re-bake" automatically, for every step, every time.
+
+::: {.callout-tip title="Intuition"}
+Think of a recipe. If you change the frosting, you re-frost the cake; you do not re-bake it. A pipeline tool figures out the equivalent of "re-frost, do not re-bake" automatically, for every step, every time.
+:::
+
 
 Because `targets` is probably not installed in your environment, the `targets` specific chunks are marked `eval=FALSE`. They are written to be correct and current so you can paste them into a session that has `targets` installed. To teach the core idea with code that actually runs, the chapter includes a base R pipeline engine that tracks dependencies with content hashes^[A *hash* is a function that maps any input to a short, fixed length string of characters (its *digest*), with the property that even a one character change in the input produces a completely different digest. We define a small one in the runnable demo below.] and skips up to date steps, which is the same mechanism `targets` uses under the hood.
 
@@ -21,7 +25,11 @@ The idea is borrowed from software build systems. `make` reads a set of rules of
 
 In an ML or AI engineering setting this matters because the expensive steps, fitting a gradient boosting model (@sec-gradient-boosting), computing embeddings (@sec-embeddings-vector-search), running a cross validated tuning grid (@sec-hyperparameter-optimization), are exactly the ones you do not want to repeat unnecessarily. A pipeline lets you change a plot label and rebuild in seconds, while still guaranteeing that if you change the feature engineering, every downstream model and metric refits.
 
-> **When to use this:** Reach for a pipeline tool once an end to end rerun is slow enough to break your concentration, or once you have lost confidence that the report on disk reflects the current code. Below that threshold, a single tidy script is fine.
+
+::: {.callout-tip title="When to use this"}
+Reach for a pipeline tool once an end to end rerun is slow enough to break your concentration, or once you have lost confidence that the report on disk reflects the current code. Below that threshold, a single tidy script is fine.
+:::
+
 
 ## The dependency graph
 
@@ -39,14 +47,22 @@ $$
 
 The pipeline stores $s(v)$ from the last successful run. On the next run it recomputes $s(v)$ and rebuilds $v$ if and only if the new signature differs from the stored one (or no stored value exists). Because each signature folds in the signatures of its dependencies, a change anywhere upstream propagates downstream: if you edit the code of target $u$, then $s(u)$ changes, which changes $s(v)$ for every $v$ that depends on $u$, and the whole affected subgraph rebuilds while everything else is skipped.
 
-> **Key idea:** The signature folds in the signatures of its dependencies. That single recursive choice is what makes a change "ripple downstream" automatically: nothing has to track the ripple by hand, because the arithmetic of the hashes does it for you.
+
+::: {.callout-important title="Key idea"}
+The signature folds in the signatures of its dependencies. That single recursive choice is what makes a change "ripple downstream" automatically: nothing has to track the ripple by hand, because the arithmetic of the hashes does it for you.
+:::
+
 
 Two designs for the signature are worth distinguishing, and they differ in what question they ask about a target's inputs.
 
 - Timestamps ask whether a target is older than any prerequisite. This is what `make` uses on files. It is cheap but fragile: touching a file without changing its contents forces a rebuild, and a clock skew across machines can give wrong answers.
 - Content hashes ask whether the actual contents changed. This is what `targets` uses. It is robust to timestamp noise and to moving files between machines, at the cost of reading and hashing content.
 
-> **Warning:** Timestamps lie in two directions. A file can be newer than its output yet have identical contents (a needless rebuild), or, after a clumsy file copy, be older than its output despite having changed (a missed rebuild). Content hashes avoid both failure modes, which is why modern tools prefer them.
+
+::: {.callout-warning}
+Timestamps lie in two directions. A file can be newer than its output yet have identical contents (a needless rebuild), or, after a clumsy file copy, be older than its output despite having changed (a missed rebuild). Content hashes avoid both failure modes, which is why modern tools prefer them.
+:::
+
 
 The demo later in the chapter uses content hashing so the difference is concrete and runnable.
 
@@ -54,7 +70,11 @@ The demo later in the chapter uses content hashing so the difference is concrete
 
 With the rebuild rule in hand, we can look at how a real pipeline is written. A `targets` pipeline is defined in a single file named `_targets.R` at the project root. It loads the package, sources your functions, sets options (such as which packages each target needs), and returns a list of target objects built with `tar_target()`. Each `tar_target(name, expression)` declares a node: `name` is the target's name and `expression` is the R code that produces it. The edges are not something you write down. `targets` discovers them automatically by static analysis of the expressions: if the expression for `model` mentions the symbol `features`, then `model` depends on `features`. You do not draw the graph by hand.
 
-> **Note:** Inferring edges from code is what keeps the graph honest. A hand maintained list of dependencies drifts out of date the moment someone edits a function and forgets to update the list. Reading the dependencies straight from the code means the graph cannot disagree with what the code actually does.
+
+::: {.callout-note}
+Inferring edges from code is what keeps the graph honest. A hand maintained list of dependencies drifts out of date the moment someone edits a function and forgets to update the list. Reading the dependencies straight from the code means the graph cannot disagree with what the code actually does.
+:::
+
 
 ```{r targets-script, eval=FALSE}
 # _targets.R  (lives at the project root)
@@ -127,13 +147,21 @@ tar_outdated()        # which targets would run on the next tar_make()
 
 The first `tar_make()` runs every target and records each signature. If you then change only `plot_metrics()`, the next `tar_make()` reports that `clean`, `features`, `model`, and `metrics` are skipped and only `plot` runs. If instead you change `build_features()`, then `features` and everything downstream of it rebuilds, while `clean` is skipped. This is the staleness rule of the previous section in action.
 
-> **Tip:** Run `tar_visnetwork()` before `tar_make()`. It draws the graph with each node colored by whether it is up to date, so you can confirm that the dependencies you intended are the ones `targets` inferred, and see exactly what the next build will touch, before spending any compute.
+
+::: {.callout-tip}
+Run `tar_visnetwork()` before `tar_make()`. It draws the graph with each node colored by whether it is up to date, so you can confirm that the dependencies you intended are the ones `targets` inferred, and see exactly what the next build will touch, before spending any compute.
+:::
+
 
 ## A runnable base R pipeline that skips up-to-date steps
 
 Reading about hashes and signatures is one thing; watching them skip steps is another. The following chunk runs. It implements a tiny pipeline engine in base R that does what `targets` does: it stores a signature for each step, and on rerun it executes a step only if its code or any upstream signature changed. The signature of a step folds in the hashes of its dependencies, so a change propagates downstream automatically.
 
-> **Note:** This engine is a teaching model, not a replacement for `targets`. It keeps everything in memory, hashes deparsed code rather than using a cryptographic digest, and ignores parallelism. The point is to make the rebuild rule tangible in code you can step through, not to ship a build system.
+
+::: {.callout-note}
+This engine is a teaching model, not a replacement for `targets`. It keeps everything in memory, hashes deparsed code rather than using a cryptographic digest, and ignores parallelism. The point is to make the rebuild rule tangible in code you can step through, not to ship a build system.
+:::
+
 
 ```{r base-pipeline}
 set.seed(1)
@@ -310,7 +338,11 @@ list(
 
 The mathematics of branching is just an index set. If `files` has elements indexed by $i \in \{1, \dots, m\}$ and `model_types` by $j \in \{1, \dots, r\}$, then `map(files)` produces targets indexed by $i$, and `cross(cleaned, model_types)` produces targets indexed by the product set $\{(i, j)\}$, of size $m r$. Each branch has its own signature, so editing one input file rebuilds only the branches that read it, not the whole sweep.
 
-> **Warning:** `cross()` multiplies. Two factors give $m r$ branches; a third gives $m r s$, and so on. A cross of three modest grids can quietly produce thousands of branches, each with its own metadata to track. Use `cross()` only over the dimensions you genuinely need to vary together.
+
+::: {.callout-warning}
+`cross()` multiplies. Two factors give $m r$ branches; a third gives $m r s$, and so on. A cross of three modest grids can quietly produce thousands of branches, each with its own metadata to track. Use `cross()` only over the dimensions you genuinely need to vary together.
+:::
+
 
 ## Scaling: parallel and distributed builds
 
@@ -337,7 +369,11 @@ $$
 
 No amount of parallelism beats the critical path $T_\infty$, because each step on it must wait for its predecessor. Branching helps precisely because it creates many independent targets, widening the graph so more work can proceed in parallel and $T_1 / p$ becomes the binding term rather than $T_\infty$.
 
-> **Intuition:** A deep, narrow pipeline (one long chain) cannot be sped up much by adding workers, because every step waits on the one before it. A wide pipeline (many independent branches) can. If parallelism is not helping, the graph is probably too chain like, and the cure is to find work that can be split into independent branches.
+
+::: {.callout-tip title="Intuition"}
+A deep, narrow pipeline (one long chain) cannot be sped up much by adding workers, because every step waits on the one before it. A wide pipeline (many independent branches) can. If parallelism is not helping, the graph is probably too chain like, and the cure is to find work that can be split into independent branches.
+:::
+
 
 ## Comparison: targets, drake, make, and a plain script
 

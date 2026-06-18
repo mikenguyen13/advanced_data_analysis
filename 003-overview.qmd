@@ -11,7 +11,11 @@ This chapter gives that map. It sketches how the classical paradigms, supervised
 
 We spend the most time on supervised learning, because it is the most common setting in practice and because the ideas it introduces (training versus test data, overfitting, cross-validation, performance measures) reappear everywhere else. We then turn to unsupervised learning, where the data carry no labels and the goal shifts to discovering groups, densities, or low-dimensional structure. The chapter closes with brief looks at semi-supervised learning (@sec-semi-supervised-learning), which mixes labeled and unlabeled data, and reinforcement learning (@sec-rl-foundations), which learns from interaction over time.
 
-> **Key idea:** The paradigm is decided by the data and the goal, not by the algorithm. Ask "what am I given, and what am I trying to produce?" first; the choice of method follows.
+
+::: {.callout-important title="Key idea"}
+The paradigm is decided by the data and the goal, not by the algorithm. Ask "what am I given, and what am I trying to produce?" first; the choice of method follows.
+:::
+
 
 ## A Visual Map of the Field
 
@@ -156,7 +160,11 @@ The two goals are judged by different yardsticks, summarized in @tbl-overview-pr
 
 Why do the goals conflict? The short answer is the bias-variance tradeoff. Regularized and flexible methods deliberately bias the coefficients toward zero, or toward each other, to cut variance, which usually lowers out-of-sample error even though the individual coefficients are no longer unbiased. The deeper reason appears when predictors are correlated or numerous: many different coefficient vectors then produce almost the same predictions, so the data can pin down $\hat Y$ well while leaving $\beta$ poorly identified.
 
-> **Intuition:** You can predict a sum accurately without knowing its parts. If two predictors move together, the model can tell what their combined effect on $Y$ is, and predict well, while being unsure how to split the credit between them.
+
+::: {.callout-tip title="Intuition"}
+You can predict a sum accurately without knowing its parts. If two predictors move together, the model can tell what their combined effect on $Y$ is, and predict well, while being unsure how to split the credit between them.
+:::
+
 
 A short simulation makes this concrete. We generate two highly correlated predictors whose true coefficients both equal one, fit ordinary least squares on many bootstrap resamples, and watch how the estimated coefficients move. @fig-overview-pred-est-coef shows the result.
 
@@ -210,13 +218,21 @@ A model that memorizes the data it was built on tells us nothing about how it wi
 -   Validation set: used to tune hyperparameters (settings the algorithm does not learn on its own, such as how deep a tree may grow).
 -   Test set: used once, at the very end, to estimate how the final model will perform on genuinely new data. This estimate is called the *generalization error*.
 
-> **Warning:** The test set is sacred. If you peek at it while choosing or tuning your model, its error estimate becomes optimistic and stops being an honest forecast of future performance. Touch it only once, after all decisions are made.
+
+::: {.callout-warning}
+The test set is sacred. If you peek at it while choosing or tuning your model, its error estimate becomes optimistic and stops being an honest forecast of future performance. Touch it only once, after all decisions are made.
+:::
+
 
 ### What a learning algorithm actually is
 
 It is easy to treat a learning algorithm as a black box, but three ingredients define every one of them. First, a *hypothesis space* $H$, the family of candidate models the algorithm is allowed to consider (for example, all straight lines, or all decision trees of a given size). Second, a *quality measure* that scores how good any particular model is. Third, an *optimization strategy* that searches the hypothesis space for a high-scoring model. Given a learning sample, the algorithm returns the function $h$ in $H$ of maximum quality.
 
-> **Intuition:** Learning is search. The hypothesis space says what is on the menu, the quality measure says what "good" means, and the optimization strategy is how we hunt for the best item on the menu.
+
+::: {.callout-tip title="Intuition"}
+Learning is search. The hypothesis space says what is on the menu, the quality measure says what "good" means, and the optimization strategy is how we hunt for the best item on the menu.
+:::
+
 
 ### Model selection and the problem of generalization
 
@@ -295,11 +311,15 @@ A practical middle ground is K-fold cross validation, which trades a little of L
 
 Each observation is held out exactly once, so every point contributes to the estimate without any single model seeing it during its own evaluation. When $k$ equals the number of objects, K-fold cross validation reduces to leave-one-out cross validation.
 
-> **Tip:** A rough rule of thumb for choosing an evaluation strategy by sample size:
->
-> -   Lots of data (more than 1000): a single held-out test set is fine.
-> -   Small data (100 to 1000): use 10-fold cross-validation.
-> -   Very small data (fewer than 100): use leave-one-out cross-validation.
+
+::: {.callout-tip}
+A rough rule of thumb for choosing an evaluation strategy by sample size:
+
+-   Lots of data (more than 1000): a single held-out test set is fine.
+-   Small data (100 to 1000): use 10-fold cross-validation.
+-   Very small data (fewer than 100): use leave-one-out cross-validation.
+:::
+
 
 Whatever strategy you use during development, reserve the testing set to estimate the performance of the *final* model, once all tuning is done.
 
@@ -332,7 +352,11 @@ In words: accuracy is the share of all predictions that are correct; recall (sen
 
 Most classifiers do not output a hard label directly; they output a score, and we choose a *decision threshold* to convert that score into a positive or negative call. ROC curves and precision/recall curves trace what happens to the performance measures as we sweep this threshold across all its possible values. Each point on the curve corresponds to one threshold, and the curve as a whole, sometimes called a robustness check, shows the trade-offs available. In general you want a large area under the curve, since that indicates good performance across many threshold choices rather than just one lucky setting.
 
-> **When to use this:** Reach for ROC and precision/recall curves whenever the classes are imbalanced or the costs of false positives and false negatives differ, which is to say, most real problems. A single accuracy number hides exactly the trade-off these curves reveal.
+
+::: {.callout-tip title="When to use this"}
+Reach for ROC and precision/recall curves whenever the classes are imbalanced or the costs of false positives and false negatives differ, which is to say, most real problems. A single accuracy number hides exactly the trade-off these curves reveal.
+:::
+
 
 ### Comparing learning models
 
@@ -383,7 +407,11 @@ Entropy is highest when outcomes are most unpredictable and lowest when they are
 
 $$IG(Y|X) = H(Y) - H(Y|X)$$
 
-> **Intuition:** Imagine you must transmit the value of $Y$ over a wire. Information gain answers: how many bits, on average, would it save you if both ends of the line already knew $X$? An attribute with high information gain is one whose value resolves a lot of the uncertainty about the class, which is exactly what makes it a good split.
+
+::: {.callout-tip title="Intuition"}
+Imagine you must transmit the value of $Y$ over a wire. Information gain answers: how many bits, on average, would it save you if both ends of the line already knew $X$? An attribute with high information gain is one whose value resolves a lot of the uncertainty about the class, which is exactly what makes it a good split.
+:::
+
 
 #### Stopping Criteria
 
@@ -404,7 +432,11 @@ Once a node becomes a leaf, it summarizes the examples that landed there into a 
 
 A single decision tree is fast and easy to read, but on its own it usually does not predict very well. Its problem is instability: split the data slightly differently and the tree can change a lot, which is another way of saying it has high *variance*. The question that motivates ensembles is natural: if one tree is shaky, what if we learn many trees and combine them?
 
-> **Key idea:** Averaging many noisy-but-unbiased predictions cancels out their individual errors. The ensemble keeps the trees' low bias while shrinking their variance, which is why a forest beats a lone tree.
+
+::: {.callout-important title="Key idea"}
+Averaging many noisy-but-unbiased predictions cancels out their individual errors. The ensemble keeps the trees' low bias while shrinking their variance, which is why a forest beats a lone tree.
+:::
+
 
 The starting point is bagging (@sec-bagging), short for bootstrap aggregating, a general recipe for turning a high-variance method into a low-variance one. The logic is this: if we had many independent realizations of the data, we could fit the model to each and average the results, and averaging many noisy estimates produces a less uncertain one. Concretely, if for each sample $b$ we compute $f^b(x)$, the bagged prediction is
 
@@ -420,7 +452,11 @@ $$\rho \sigma^2 + \frac{1-\rho}{B} \sigma^2$$
 
 As $B$ grows the second term vanishes, but the first term, $\rho \sigma^2$, remains. So correlation between the trees sets a floor on how much averaging can help.
 
-> **Key idea:** Adding more trees only attacks the second term. To reduce variance further, you must reduce the correlation $\rho$ between the trees. That single insight is what separates random forests from plain bagging.
+
+::: {.callout-important title="Key idea"}
+Adding more trees only attacks the second term. To reduce variance further, you must reduce the correlation $\rho$ between the trees. That single insight is what separates random forests from plain bagging.
+:::
+
 
 Why are bagged trees correlated in the first place? Suppose one predictor is very strong and the rest are only moderately useful. Every tree will tend to split on that strong predictor near the top, so all the trees end up looking alike, and similar trees are correlated. We would like the trees to behave more like independent draws (so the bias stays the same while the variance falls further), and the way to get there is to stop every tree from always reaching for the same strong predictor. Several remedies share this spirit: penalize a split by how often a predictor has already been chosen, restrict how many times a predictor may be used, or allow only a limited set of predictors at each split.
 
@@ -455,11 +491,19 @@ The defaults for combining and tuning the trees differ between regression and cl
 
 One situation deserves a caution. When the number of variables is large but only a few are relevant, random forests can perform poorly if $m$ is small, because at each split the chance of even offering a relevant variable as a candidate is low. For example, with 3 relevant and 100 not-so-relevant variables, the probability that any of the relevant variables is selected at a given split is only about 0.25.
 
-> **Note:** Random forests "cannot overfit" in the sense that adding more trees ($B$ larger) does not increase the model's flexibility, so more trees never hurt generalization. This is different from saying a forest can never be too complex; it is the number of trees, specifically, that is safe to increase.
+
+::: {.callout-note}
+Random forests "cannot overfit" in the sense that adding more trees ($B$ larger) does not increase the model's flexibility, so more trees never hurt generalization. This is different from saying a forest can never be too complex; it is the number of trees, specifically, that is safe to increase.
+:::
+
 
 As a practical default, it is hard to go wrong by always trying a random forest (an ensemble) and XGBoost (which works in the spirit of bagging and boosting). A support vector machine (SVM) is an alternative, but it is used less often here for computational reasons and because it is only a single model rather than an ensemble.
 
-> **Takeaways for supervised learning:** Learn on training data, tune on validation data, and judge once on test data. Watch for overfitting and choose an evaluation strategy that fits your sample size. Look past accuracy to the confusion matrix and threshold curves when errors carry different costs. And when in doubt, ensembles like random forests turn weak, high-variance trees into strong, stable predictors by averaging decorrelated models.
+
+::: {.callout-important title="Takeaways for supervised learning"}
+Learn on training data, tune on validation data, and judge once on test data. Watch for overfitting and choose an evaluation strategy that fits your sample size. Look past accuracy to the confusion matrix and threshold curves when errors carry different costs. And when in doubt, ensembles like random forests turn weak, high-variance trees into strong, stable predictors by averaging decorrelated models.
+:::
+
 
 ## Unsupervised Learning
 
@@ -479,7 +523,11 @@ Clustering finds similar groups in data, called *clusters*. The defining feature
 
 Clustering algorithms come in two broad styles. *Partitional* clustering divides the data into a flat set of non-overlapping groups in one pass. *Hierarchical* clustering instead builds a nested tree of clusters, which can be cut at different levels to yield finer or coarser groupings. Either way, the algorithm needs a way to measure how alike two objects are, supplied by a distance (similarity or dissimilarity) function.
 
-> **Intuition:** Every clustering method rests on a notion of "close." Change the distance function and you change what counts as a cluster. The algorithm only groups; *you* decide what similarity means.
+
+::: {.callout-tip title="Intuition"}
+Every clustering method rests on a notion of "close." Change the distance function and you change what counts as a cluster. The algorithm only groups; *you* decide what similarity means.
+:::
+
 
 What makes a clustering good? The guiding principle is simple: objects within a cluster should be similar, and objects in different clusters should not. Stated as quantities, we want inter-cluster distance maximized and intra-cluster distance minimized. These two goals give us ways to judge clustering quality, which split into internal and external criteria.
 
@@ -561,7 +609,11 @@ The algorithm alternates between assigning points to centers and recomputing tho
 3.  Re-compute the centroids using the current cluster memberships.
 4.  If a convergence criterion is not met, go back to step 2.
 
-> **Intuition:** Step 2 says "everyone joins their nearest center," and step 3 says "each center moves to the middle of its new members." Repeating these two moves slides the centers into the dense regions of the data until they stop moving.
+
+::: {.callout-tip title="Intuition"}
+Step 2 says "everyone joins their nearest center," and step 3 says "each center moves to the middle of its new members." Repeating these two moves slides the centers into the dense regions of the data until they stop moving.
+:::
+
 
 We declare convergence when one of the following holds:
 
@@ -587,7 +639,11 @@ It also has real limitations to keep in mind:
 -   It is sensitive to outliers, which may be recording errors or genuinely unusual points; a single far-flung point can drag a centroid toward it.
 -   It is not suitable for discovering clusters that are not roughly hyper-ellipsoids (or hyper-spheres), so it struggles with elongated or oddly shaped groups.
 
-> **Warning:** Because k-means only finds a local optimum and starts from random seeds, two runs on the same data can give different answers. Run it several times with different seeds and keep the best (lowest-SSE) result rather than trusting a single run.
+
+::: {.callout-warning}
+Because k-means only finds a local optimum and starts from random seeds, two runs on the same data can give different answers. Run it several times with different seeds and keep the best (lowest-SSE) result rather than trusting a single run.
+:::
+
 
 Two of these issues have standard remedies. To handle outliers, you can remove points that sit much farther from the centroids than the rest, or use random sampling: by clustering on a small subset, the chance of even picking up an outlier is small. To handle the sensitivity to initialization, run the algorithm with several different seeds, as noted above.
 
@@ -600,7 +656,11 @@ A common strategy is *self-training*, which bootstraps labels from a small label
 -   Iteratively label some of the unlabeled examples using a model learned from the previously labeled examples, then retrain on the enlarged labeled set.
 -   *Active learning* takes a complementary route, having the model ask for labels on the specific examples it expects to learn the most from, rather than labeling at random.
 
-> **When to use this:** Semi-supervised methods earn their keep when unlabeled data are abundant but labels are scarce or costly, as in medical imaging, speech, or any domain where expert annotation is the bottleneck.
+
+::: {.callout-tip title="When to use this"}
+Semi-supervised methods earn their keep when unlabeled data are abundant but labels are scarce or costly, as in medical imaging, speech, or any domain where expert annotation is the bottleneck.
+:::
+
 
 ## Reinforcement Learning
 
@@ -610,4 +670,8 @@ $$r_0 + \gamma r_1 + \gamma^2r_2 + ...$$
 
 The discount factor $\gamma$, with $0 \le \gamma < 1$, makes rewards that arrive sooner count for more than rewards far in the future, which both reflects real preferences and keeps the infinite sum finite.
 
-> **Key idea:** Where supervised learning is told the right answer for each example, reinforcement learning is only told, sometimes much later, whether the actions it chose led to good outcomes. Learning from delayed, evaluative feedback rather than direct instruction is what makes it a distinct paradigm, and what makes it well suited to sequential decision problems like games, robotics, and control.
+
+::: {.callout-important title="Key idea"}
+Where supervised learning is told the right answer for each example, reinforcement learning is only told, sometimes much later, whether the actions it chose led to good outcomes. Learning from delayed, evaluative feedback rather than direct instruction is what makes it a distinct paradigm, and what makes it well suited to sequential decision problems like games, robotics, and control.
+:::
+

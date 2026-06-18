@@ -22,11 +22,15 @@ the set of packages we run live here, all Shiny code is shown with `eval=FALSE`.
 The reactive idea itself, which is the part most worth understanding, is
 demonstrated with a small runnable observer pattern in base R.
 
-> **Key idea:** Shiny lets you declare *relationships* between values rather than
-> writing a script that runs once from top to bottom. You say "this output
-> depends on that input," and the framework figures out what to recompute when
-> something changes. Holding that one idea in mind makes everything else in this
-> chapter fall into place.
+
+::: {.callout-important title="Key idea"}
+Shiny lets you declare *relationships* between values rather than
+writing a script that runs once from top to bottom. You say "this output
+depends on that input," and the framework figures out what to recompute when
+something changes. Holding that one idea in mind makes everything else in this
+chapter fall into place.
+:::
+
 
 By the end you will be able to read and reason about a Shiny app, explain why its
 reactive engine is a natural fit for serving a model interactively, wrap an LLM
@@ -70,11 +74,15 @@ heavy inference logic separate from the UI, lets the two scale independently, an
 means the same model endpoint can serve a Shiny app, a scheduled job, and an
 external consumer at once.
 
-> **When to use this:** Choose Shiny when a human sits in the loop and the
-> session needs memory, a chat assistant, a labeling tool, a what-if dashboard.
-> Choose `plumber` or `vetiver` when the consumer is another program and each
-> call is independent. Choose Quarto when the deliverable is a fixed report. The
-> three are complementary, not competitors.
+
+::: {.callout-tip title="When to use this"}
+Choose Shiny when a human sits in the loop and the
+session needs memory, a chat assistant, a labeling tool, a what-if dashboard.
+Choose `plumber` or `vetiver` when the consumer is another program and each
+call is independent. Choose Quarto when the deliverable is a fixed report. The
+three are complementary, not competitors.
+:::
+
 
 ## Shiny Architecture
 
@@ -117,11 +125,15 @@ You do not write code that runs top to bottom once. You declare relationships
 between values, and Shiny re-runs the minimum amount of code needed when inputs
 change.
 
-> **Intuition:** Think of a spreadsheet. When you change a cell, every formula
-> that refers to it updates automatically, and nothing else recalculates. Shiny
-> works the same way: inputs are the cells you type into, outputs are the
-> formula cells, and the framework tracks which depends on which so it only
-> recomputes what is affected.
+
+::: {.callout-tip title="Intuition"}
+Think of a spreadsheet. When you change a cell, every formula
+that refers to it updates automatically, and nothing else recalculates. Shiny
+works the same way: inputs are the cells you type into, outputs are the
+formula cells, and the framework tracks which depends on which so it only
+recomputes what is affected.
+:::
+
 
 There are three kinds of reactive objects:
 
@@ -147,11 +159,15 @@ when either changes, and you never write the wiring by hand. The cost is that yo
 have to think in terms of dependencies rather than control flow, which is the
 main conceptual hurdle for newcomers.
 
-> **Note:** The dependency edges are discovered at runtime, not declared in
-> advance. Shiny watches which reactive values a block actually reads while it
-> executes, so a branch that is not taken creates no dependency. This is what
-> makes the graph adapt as inputs change, but it also means a value you read
-> only inside an `if` will not trigger a re-run until that branch runs.
+
+::: {.callout-note}
+The dependency edges are discovered at runtime, not declared in
+advance. Shiny watches which reactive values a block actually reads while it
+executes, so a branch that is not taken creates no dependency. This is what
+makes the graph adapt as inputs change, but it also means a value you read
+only inside an `if` will not trigger a re-run until that branch runs.
+:::
+
 
 ### Reactive Expressions Versus Observers
 
@@ -163,10 +179,14 @@ whenever its dependencies invalidate. Use a reactive to compute model inputs or
 predictions you will display in several places; use an observer to write to a log,
 call an API for its effect, or update a stored state value.
 
-> **Warning:** Do not put a side effect, an API call, a file write, a database
-> update, inside a `reactive()`. Because reactives are lazy and cached, the side
-> effect would fire at unpredictable times and possibly not at all. Values belong
-> in `reactive()`; actions belong in `observe()`.
+
+::: {.callout-warning}
+Do not put a side effect, an API call, a file write, a database
+update, inside a `reactive()`. Because reactives are lazy and cached, the side
+effect would fire at unpredictable times and possibly not at all. Values belong
+in `reactive()`; actions belong in `observe()`.
+:::
+
 
 ```{r shiny-reactive, eval=FALSE}
 server <- function(input, output, session) {
@@ -304,10 +324,14 @@ either a hosted API (such as the Anthropic or OpenAI endpoints) or a model you
 run yourself behind an HTTP server. The R side is a thin client: build a request,
 send it, parse the response.
 
-> **Intuition:** The LLM is just another remote service, like a weather API or a
-> payment gateway. Strip away the hype and the R code is the same shape you would
-> write for any web service: assemble some JSON, send it, read the JSON that comes
-> back. Everything model-specific lives on the server you are calling.
+
+::: {.callout-tip title="Intuition"}
+The LLM is just another remote service, like a weather API or a
+payment gateway. Strip away the hype and the R code is the same shape you would
+write for any web service: assemble some JSON, send it, read the JSON that comes
+back. Everything model-specific lives on the server you are calling.
+:::
+
 
 The cleanest way to do this in current R is the `ellmer` package, which wraps the
 major chat APIs behind one interface and handles message formatting,
@@ -382,9 +406,13 @@ $$
 because every earlier message is resent on every later turn. A long session
 resends its early messages many times.
 
-> **Warning:** That quadratic growth is easy to miss because each individual call
-> looks cheap. A fifty-turn conversation can bill the first message fifty times.
-> On a public app this is exactly how a small demo runs up a surprising invoice.
+
+::: {.callout-warning}
+That quadratic growth is easy to miss because each individual call
+looks cheap. A fifty-turn conversation can bill the first message fifty times.
+On a public app this is exactly how a small demo runs up a surprising invoice.
+:::
+
 
 Two standard mitigations are truncation (drop or summarize old turns once the
 running token count exceeds a budget $B$) and prompt caching (have the
@@ -487,9 +515,13 @@ other control until the model finishes. `ExtendedTask` plus `promises` moves the
 wait off the reactive thread so the interface stays live, the stop button still
 works, and partial text keeps flowing.
 
-> **Tip:** If you only have one thing to add to a plain chat app, make it
-> non-blocking. Streaming text is a nice touch, but a frozen interface during a
-> multi-second model call is the difference users notice first.
+
+::: {.callout-tip}
+If you only have one thing to add to a plain chat app, make it
+non-blocking. Streaming text is a nice touch, but a frozen interface during a
+multi-second model call is the difference users notice first.
+:::
+
 
 ### Chat UI
 
@@ -548,11 +580,15 @@ LLM call can take seconds. Size the number of worker processes for the expected
 number of simultaneous users, and prefer the non-blocking `ExtendedTask` pattern
 so one slow call does not stall a worker that is serving several sessions.
 
-> **Warning:** The single most common security mistake in AI apps is committing
-> an API key to source control. Once a key is in git history it is compromised
-> even after you delete the line, treat it as leaked and rotate it. Keep keys in
-> `.Renviron` (git-ignored) locally and in the platform secret store in
-> production.
+
+::: {.callout-warning}
+The single most common security mistake in AI apps is committing
+an API key to source control. Once a key is in git history it is compromised
+even after you delete the line, treat it as leaked and rotate it. Keep keys in
+`.Renviron` (git-ignored) locally and in the platform secret store in
+production.
+:::
+
 
 A container definition makes the runtime reproducible and is the usual unit of
 deployment on cloud platforms.

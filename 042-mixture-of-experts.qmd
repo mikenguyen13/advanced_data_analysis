@@ -11,7 +11,11 @@ More precisely, a mixture of experts (MoE) splits a prediction problem into piec
 
 This chapter builds the idea from the ground up. We start with the intuition and the probabilistic model, derive the Expectation-Maximization (EM) algorithm that fits it, then show how the same machinery scales up to the *sparse* mixture of experts layers that power today's largest language models. Along the way you will fit a working two-expert mixture in base R and see it recover a regime change that a single line cannot. By the end you should understand both the classical model and why MoE has become a standard tool for scaling modern AI.
 
-> **Key idea:** A mixture of experts is an ensemble whose combination weights depend on the input. The gate decides *who answers*, and that decision changes from one input to the next.
+
+::: {.callout-important title="Key idea"}
+A mixture of experts is an ensemble whose combination weights depend on the input. The gate decides *who answers*, and that decision changes from one input to the next.
+:::
+
 
 The idea goes back to @jacobs1991 and @jordan1994, who framed it as a probabilistic model fit with an EM-like procedure. The same idea now powers some of the largest neural networks in production, where it appears as the *sparse* mixture of experts layer inside transformers (@sec-transformers) [@shazeer2017; @fedus2022]. The modern motivation is *conditional computation*, the practice of activating only part of a model for each input: a model can hold a very large number of parameters but only switch on a small fraction of them per input, so the compute cost per token stays roughly fixed while capacity grows.
 
@@ -27,7 +31,11 @@ For a data scientist or ML engineer, MoE shows up in three practical situations.
 
 The core distinction from a standard ensemble is that the mixture weights depend on $x$. A stacked ensemble (see the model stacking chapter, @sec-model-stacking) learns fixed blend weights; a mixture of experts learns weights $g_k(x)$ that change with the input.
 
-> **Intuition:** Stacking asks "what is the best fixed recipe for blending these models everywhere?" A mixture of experts asks "given *this* input, who should I trust right now?" The second question is harder, but it is the right one when no single model is good across the whole input space.
+
+::: {.callout-tip title="Intuition"}
+Stacking asks "what is the best fixed recipe for blending these models everywhere?" A mixture of experts asks "given *this* input, who should I trust right now?" The second question is harder, but it is the right one when no single model is good across the whole input space.
+:::
+
 
 With that motivation in place, we now write the model down precisely.
 
@@ -107,7 +115,11 @@ $$
 
 Notice the gate gradient has the same form you see in logistic regression: the prediction error $r_{ik} - g_k(x_i)$ times the input. The gate is simply being trained to match the responsibilities the E-step produced.
 
-> **Note:** EM increases the log-likelihood at every iteration and converges to a *local* optimum, never guaranteed to be the global one. Because experts are interchangeable, different starts can land on different (but equally good) solutions, so running several random restarts and keeping the best log-likelihood is standard practice.
+
+::: {.callout-note}
+EM increases the log-likelihood at every iteration and converges to a *local* optimum, never guaranteed to be the global one. Because experts are interchangeable, different starts can land on different (but equally good) solutions, so running several random restarts and keeping the best log-likelihood is standard practice.
+:::
+
 
 We will watch this monotone increase happen in the demo below.
 
@@ -125,7 +137,11 @@ $$
 
 Only the selected experts run, so per-input compute depends on $k$, not on $K$. Adding more experts increases capacity (total parameters) without increasing per-input FLOPs. This is the conditional computation property that makes trillion-parameter language models feasible [@fedus2022].
 
-> **Key idea:** Sparsity decouples capacity from cost. A dense model that doubles its parameters doubles its compute per input. A sparse MoE can multiply its parameters many times over while the work done per input barely moves, because each input still only touches $k$ experts.
+
+::: {.callout-important title="Key idea"}
+Sparsity decouples capacity from cost. A dense model that doubles its parameters doubles its compute per input. A sparse MoE can multiply its parameters many times over while the work done per input barely moves, because each input still only touches $k$ experts.
+:::
+
 
 ### Load balancing
 
@@ -137,7 +153,11 @@ $$
 
 which is minimized when routing is uniform. Other practical devices include a per-expert capacity limit (drop or overflow tokens beyond a cap) and adding noise to the gating logits during training to encourage exploration.
 
-> **Warning:** If you train a sparse MoE without a load-balancing term, expect a few experts to win all the traffic while the rest stay at their random initialization. The auxiliary loss is not optional in practice.
+
+::: {.callout-warning}
+If you train a sparse MoE without a load-balancing term, expect a few experts to win all the traffic while the rest stay at their random initialization. The auxiliary loss is not optional in practice.
+:::
+
 
 ### Dense vs sparse mixture
 
@@ -175,7 +195,11 @@ Enough theory. Let us watch the EM algorithm actually discover a hidden partitio
 
 We simulate data where the slope of $y$ in $x$ flips sign at $x = 0$. A single linear regression is hopeless here, because the best single line through a V-shaped cloud is roughly flat, but two linear experts plus a softmax gate can recover the two regimes. We fit with the EM updates derived above, all in base R so nothing is hidden inside a package.
 
-> **When to use this:** A worked-from-scratch fit like this one is exactly the case MoE was designed for, a relationship whose shape changes across regions of the input. If your relationship is globally smooth, reach for a GAM or boosted trees instead (see the guidance section at the end).
+
+::: {.callout-tip title="When to use this"}
+A worked-from-scratch fit like this one is exactly the case MoE was designed for, a relationship whose shape changes across regions of the input. If your relationship is globally smooth, reach for a GAM or boosted trees instead (see the guidance section at the end).
+:::
+
 
 ```{r moe-setup}
 set.seed(1301)
@@ -355,7 +379,11 @@ Here the load is close to a 50/50 split, which is what we want. In a real sparse
 
 In a transformer (@sec-transformers), the experts are feed-forward sub-networks and the gate is a small linear layer applied per token. The code below is the idiomatic Keras shape of a single sparse MoE feed-forward layer. It is kept `eval=FALSE` because it needs a configured deep learning backend (Keras and its TensorFlow backend), but it is correct, runnable code.
 
-> **Tip:** Even in the deep learning version, the two moving parts are the same ones we derived classically: a gate that scores experts and a weighted combination of expert outputs. The novelty is engineering (sparsity, capacity, distributing experts across devices), not a new statistical idea.
+
+::: {.callout-tip}
+Even in the deep learning version, the two moving parts are the same ones we derived classically: a gate that scores experts and a weighted combination of expert outputs. The novelty is engineering (sparsity, capacity, distributing experts across devices), not a new statistical idea.
+:::
+
 
 ```{r moe-keras, eval=FALSE}
 library(keras)

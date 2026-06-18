@@ -9,7 +9,11 @@ Two photographs of the same person, taken years apart under different lighting, 
 
 Metric and similarity learning is the discipline of fitting the ruler to the task. Instead of accepting the ordinary Euclidean distance between raw features, we learn a distance function, or equivalently an embedding, from examples of what should be near and what should be far. The training signal is rarely a class label in the usual sense. It is a set of relationships: this pair matches, that pair does not, this anchor is more like its positive than its negative. From those relationships we recover a geometry in which the downstream tasks become easy.
 
-> **Intuition:** A good metric collapses the directions that do not matter and stretches the directions that do. If you learn that horizontal lighting gradients never distinguish two faces, the metric should shrink that axis to nothing. If the bridge of the nose is highly discriminative, the metric should magnify it. Everything in this chapter is a way of estimating which directions to shrink and which to stretch, from supervision about pairs.
+
+::: {.callout-tip title="Intuition"}
+A good metric collapses the directions that do not matter and stretches the directions that do. If you learn that horizontal lighting gradients never distinguish two faces, the metric should shrink that axis to nothing. If the bridge of the nose is highly discriminative, the metric should magnify it. Everything in this chapter is a way of estimating which directions to shrink and which to stretch, from supervision about pairs.
+:::
+
 
 This framing pays off in two settings where ordinary classification struggles. The first is verification: deciding whether two inputs are the same entity, when the set of entities is open-ended and was never fully seen in training. A face unlock model cannot have a softmax output for every human; it must instead decide whether a new face is close enough to an enrolled one. The second is retrieval: given a query, return the nearest items from a large gallery, ranked by similarity. Search by image, "find me more like this," and deduplication are all nearest-neighbor problems in a learned space. In both cases the model never needs a fixed label set. It needs a space where distance means what we want it to mean.
 
@@ -34,7 +38,11 @@ $$
 d^2_M(x_i, x_j) = (x_i - x_j)^\top L^\top L (x_i - x_j) = \lVert L x_i - L x_j \rVert_2^2 .
 $$
 
-> **Key idea:** Learning a Mahalanobis metric $M$ is exactly the same as learning a linear transformation $L$ and then using ordinary Euclidean distance in the transformed space $z = Lx$. A metric on the input space is an embedding into a new space. This equivalence is the bridge from the linear theory to deep embeddings: replace the linear map $L$ with a neural network $f_\theta$ and you have moved from Mahalanobis metric learning to deep metric learning, with everything else unchanged.
+
+::: {.callout-important title="Key idea"}
+Learning a Mahalanobis metric $M$ is exactly the same as learning a linear transformation $L$ and then using ordinary Euclidean distance in the transformed space $z = Lx$. A metric on the input space is an embedding into a new space. This equivalence is the bridge from the linear theory to deep embeddings: replace the linear map $L$ with a neural network $f_\theta$ and you have moved from Mahalanobis metric learning to deep metric learning, with everything else unchanged.
+:::
+
 
 The rank $k$ of $L$ controls the dimension of the embedding. If $k < d$, the map $z = Lx$ is a dimension reduction, and distances are computed in the smaller space, which is what makes learned metrics useful for fast retrieval. If $k = d$, the metric is full rank and merely reshapes the space without discarding dimensions.
 
@@ -57,7 +65,11 @@ J(L) = \sum_{(i,j)\in\mathcal{S}} \lVert L x_i - L x_j \rVert^2 \;-\; \lambda \s
 $$
 and minimize it over $L$ with a norm constraint so the trivial solution $L \to \infty$ on dissimilar pairs is ruled out. Minimizing the first term pulls similar points together; the second term, with weight $\lambda > 0$, rewards spreading dissimilar points apart. This is the contrastive idea in its barest linear form, and it has a closed-form eigenvector solution that we exploit in the code.
 
-> **Note:** The pair and triplet objectives never require a closed label set. They only need a verdict on each pair or triplet. That is precisely why metric learning suits open-set verification: at test time a brand-new identity that appeared in no training pair still lands in a sensible place, because the geometry, not a per-class output unit, does the work.
+
+::: {.callout-note}
+The pair and triplet objectives never require a closed label set. They only need a verdict on each pair or triplet. That is precisely why metric learning suits open-set verification: at test time a brand-new identity that appeared in no training pair still lands in a sensible place, because the geometry, not a per-class output unit, does the work.
+:::
+
 
 ## Contrastive and triplet losses
 
@@ -75,7 +87,11 @@ $$
 $$
 The loss is zero precisely when $D_{an}^2 \ge D_{ap}^2 + m$: the negative is already comfortably farther than the positive. It is positive, and produces a gradient, only for triplets that violate the margin.
 
-> **Intuition:** Contrastive loss judges pairs against an absolute yardstick (be within zero, or be beyond $m$). Triplet loss judges a relative ordering (the positive must beat the negative by $m$), which is often what we actually care about in retrieval, where only the ranking matters. The triplet formulation tends to be more robust to global scale and is the workhorse of modern embedding systems.
+
+::: {.callout-tip title="Intuition"}
+Contrastive loss judges pairs against an absolute yardstick (be within zero, or be beyond $m$). Triplet loss judges a relative ordering (the positive must beat the negative by $m$), which is often what we actually care about in retrieval, where only the ranking matters. The triplet formulation tends to be more robust to global scale and is the workhorse of modern embedding systems.
+:::
+
 
 The practical difficulty with triplet loss is mining. Once training is underway, the vast majority of randomly drawn triplets already satisfy the margin and contribute a zero gradient. Training stalls unless you actively select informative triplets: *hard* negatives (the closest wrong-class point to the anchor) or *semi-hard* negatives (farther than the positive but still inside the margin). Semi-hard mining, introduced in the FaceNet work, is the usual sweet spot, since the hardest negatives are often mislabeled or anomalous and can destabilize training.
 
@@ -97,7 +113,11 @@ A siamese network is the architectural pattern for all of the above. Two (or thr
 
 Weight sharing is what makes the two towers comparable: because both inputs are mapped by the identical function, the distance between their outputs is a well-defined distance in one common space. A two-tower siamese network paired with contrastive loss is the classic verification model; a three-tower (triplet) network is its retrieval-oriented cousin. The towers can be any architecture appropriate to the data, a convolutional network for images, a transformer for text, a small multilayer perceptron for tabular features. The embedding function changes; the metric-learning machinery around it does not.
 
-> **When to use this:** Reach for a siamese or triplet model, rather than an ordinary classifier, when the label set is open or enormous (faces, products, speakers), when you have very few examples per class (one-shot and few-shot problems), or when the deliverable is a ranking or a "same or different?" decision rather than a category. If you have a small, fixed set of classes with plenty of examples each, a plain classifier is simpler and usually better.
+
+::: {.callout-tip title="When to use this"}
+Reach for a siamese or triplet model, rather than an ordinary classifier, when the label set is open or enormous (faces, products, speakers), when you have very few examples per class (one-shot and few-shot problems), or when the deliverable is a ranking or a "same or different?" decision rather than a category. If you have a small, fixed set of classes with plenty of examples each, a plain classifier is simpler and usually better.
+:::
+
 
 ## A runnable Mahalanobis demonstration
 
@@ -271,11 +291,19 @@ The single most common mistake is information leakage through pairs. If you spli
 
 The second is collapse. A degenerate embedding that maps every input to the same point makes all similar pairs perfectly close and costs nothing on them. Contrastive and triplet losses guard against this with their margin term, which penalizes negatives that are too close, but a margin set too small or negatives that are too easy can still let the embedding drift toward collapse. Watch the spread of your embeddings during training, not just the loss.
 
-> **Warning:** With triplet loss, naive random sampling of negatives will stall training within a few epochs, because almost every random triplet already satisfies the margin and contributes no gradient. Budget engineering effort for semi-hard negative mining from the start; it is not an optional refinement but the difference between a model that learns and one that does not.
+
+::: {.callout-warning}
+With triplet loss, naive random sampling of negatives will stall training within a few epochs, because almost every random triplet already satisfies the margin and contributes no gradient. Budget engineering effort for semi-hard negative mining from the start; it is not an optional refinement but the difference between a model that learns and one that does not.
+:::
+
 
 A few more field notes. Normalize or standardize raw features before learning a metric, since the whole exercise is about scale and an unstandardized feature will dominate the optimization for the wrong reason. Choose the embedding dimension $k$ deliberately: smaller embeddings are faster to index and less prone to overfitting, but too small a $k$ throws away discriminative structure. Calibrate the verification threshold on data that matches deployment conditions, because the right $\tau$ depends on the base rate of genuine versus impostor pairs you will actually see. And remember that a learned metric inherits every bias in its training pairs: if certain groups are underrepresented in the "similar" pairs, the metric will serve them worse, which matters acutely for biometric verification.
 
-> **When to use this:** If a nearest-neighbor or clustering method underperforms and you suspect the distance is the problem (irrelevant features, mismatched scales, correlated inputs), a learned linear metric is a cheap, interpretable first move. Escalate to a deep siamese or triplet model when the geometry is genuinely nonlinear, the label set is open or huge, or you have only a handful of examples per class.
+
+::: {.callout-tip title="When to use this"}
+If a nearest-neighbor or clustering method underperforms and you suspect the distance is the problem (irrelevant features, mismatched scales, correlated inputs), a learned linear metric is a cheap, interpretable first move. Escalate to a deep siamese or triplet model when the geometry is genuinely nonlinear, the label set is open or huge, or you have only a handful of examples per class.
+:::
+
 
 ## Connections
 

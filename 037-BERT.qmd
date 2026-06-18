@@ -28,9 +28,13 @@ downstream classifier or regressor, *or* fine-tune the whole network end-to-end
 for your specific task. Either way, you inherit knowledge learned from a massive
 text corpus without having to train a language model yourself.
 
-> **Key idea:** BERT is a reusable "text-to-numbers" engine. Someone else paid
-> the enormous cost of teaching it language; you reuse the result, either as
-> off-the-shelf features or as a starting point you nudge toward your own task.
+
+::: {.callout-important title="Key idea"}
+BERT is a reusable "text-to-numbers" engine. Someone else paid
+the enormous cost of teaching it language; you reuse the result, either as
+off-the-shelf features or as a starting point you nudge toward your own task.
+:::
+
 
 By the end of this chapter you will understand what makes BERT's representations
 "contextual," the core mechanics of the Transformer encoder it is built from, how
@@ -56,12 +60,16 @@ left-to-right language models) read text in one direction. BERT conditions each
 token's representation on words to both its left and its right
 simultaneously, giving a fuller picture of context.
 
-> **Intuition:** To guess the missing word in "I deposited my check at the
-> \_\_\_," reading only left-to-right ("I deposited my check at the") already
-> points strongly toward "bank." But for "the \_\_\_ overflowed after three days
-> of rain," you need the words *after* the blank to tell that this is a river,
-> not a vault. Seeing both sides at once is what lets BERT resolve meaning that a
-> one-directional reader would miss.
+
+::: {.callout-tip title="Intuition"}
+To guess the missing word in "I deposited my check at the
+\_\_\_," reading only left-to-right ("I deposited my check at the") already
+points strongly toward "bank." But for "the \_\_\_ overflowed after three days
+of rain," you need the words *after* the blank to tell that this is a river,
+not a vault. Seeing both sides at once is what lets BERT resolve meaning that a
+one-directional reader would miss.
+:::
+
 
 Now that we know *what* BERT produces, let us look at the machinery that produces
 it.
@@ -91,13 +99,17 @@ correspondingly weighted average of the values. The practical effect: a token ca
 pull in information from any other token in the sentence, no matter how far away,
 in a single step.
 
-> **Intuition:** A useful mental model is a small lookup or search. Each token
-> issues a query ("which other words should I be paying attention to?"), every
-> token advertises a key ("here is what I am about"), and the dot product between
-> query and key measures how well they match. The softmax converts those match
-> scores into weights that sum to one, and the token then collects a weighted mix
-> of the values. The word "it" can thereby reach back and grab information from
-> the noun it refers to, even if that noun sat ten words earlier.
+
+::: {.callout-tip title="Intuition"}
+A useful mental model is a small lookup or search. Each token
+issues a query ("which other words should I be paying attention to?"), every
+token advertises a key ("here is what I am about"), and the dot product between
+query and key measures how well they match. The softmax converts those match
+scores into weights that sum to one, and the token then collects a weighted mix
+of the values. The word "it" can thereby reach back and grab information from
+the noun it refers to, even if that noun sat ten words earlier.
+:::
+
 
 ### Multi-Head Attention and Positional Encodings
 
@@ -117,10 +129,14 @@ Stacking many such attention-plus-feed-forward layers (12 layers in BERT-base, 2
 in BERT-large) yields a deep network whose hidden states are the contextual
 representations we use downstream.
 
-> **Note:** You do not have to memorize these mechanics to use BERT effectively.
-> What matters for practice is the consequence: every token's output vector is a
-> context-aware summary that has already had the chance to look at every other
-> token in the input.
+
+::: {.callout-note}
+You do not have to memorize these mechanics to use BERT effectively.
+What matters for practice is the consequence: every token's output vector is a
+context-aware summary that has already had the chance to look at every other
+token in the input.
+:::
+
 
 ## Pretraining Objectives
 
@@ -130,10 +146,14 @@ Wikipedia and the BooksCorpus) using two self-supervised objectives
 (@sec-self-supervised-learning). "Self-supervised" means the labels come from the
 text itself, so no manual annotation is required.
 
-> **Why this matters:** Labeled text is expensive, but raw text is essentially
-> free and almost unlimited. Self-supervision lets BERT learn from billions of
-> words without anyone hand-labeling a single one, which is precisely why the
-> pretrained model carries so much general linguistic knowledge.
+
+::: {.callout-important title="Why this matters"}
+Labeled text is expensive, but raw text is essentially
+free and almost unlimited. Self-supervision lets BERT learn from billions of
+words without anyone hand-labeling a single one, which is precisely why the
+pretrained model carries so much general linguistic knowledge.
+:::
+
 
 ### Masked Language Modeling (MLM)
 
@@ -167,10 +187,14 @@ will see referenced constantly in code and tutorials:
 - `[SEP]` separates segments (e.g., the two sentences in a pair, or a question
   and a passage).
 
-> **Tip:** When you see code grab "index 0" of the hidden states (as in the
-> Python example below), that is the `[CLS]` vector being used as a single
-> fixed-length summary of the whole input. It is the most common way to reduce a
-> variable-length sentence to one feature vector.
+
+::: {.callout-tip}
+When you see code grab "index 0" of the hidden states (as in the
+Python example below), that is the `[CLS]` vector being used as a single
+fixed-length summary of the whole input. It is the most common way to reduce a
+variable-length sentence to one feature vector.
+:::
+
 
 ## Pretrain then Fine-Tune
 
@@ -190,11 +214,15 @@ original pretraining ran for days on many specialized accelerators. Fine-tuning 
 task-specific head, by contrast, is often a matter of minutes to a few hours on a
 single GPU, and sometimes feasible on a CPU for small datasets.]
 
-> **When to use this:** Reach for the pretrain-then-fine-tune recipe when you
-> have a text-prediction task and only a modest labeled dataset (say, a few
-> hundred to a few tens of thousands of examples). If you have so little labeled
-> data that even fine-tuning overfits, fall back to using BERT purely as a frozen
-> feature extractor and train a simple model on top.
+
+::: {.callout-tip title="When to use this"}
+Reach for the pretrain-then-fine-tune recipe when you
+have a text-prediction task and only a modest labeled dataset (say, a few
+hundred to a few tens of thousands of examples). If you have so little labeled
+data that even fine-tuning overfits, fall back to using BERT purely as a frozen
+feature extractor and train a simple model on top.
+:::
+
 
 ## Downstream Tasks and Why BERT Transfers Well
 
@@ -224,11 +252,15 @@ pretrained weights and tokenizers for BERT and its many variants. In R, the
 reticulate, which bridges R and Python) so you can obtain embeddings or
 predictions without leaving R.
 
-> **Warning:** The chunks below are shown with `eval = FALSE` because they
-> require a Python backend (transformers and PyTorch) and download large model
-> weights on first use. To run them yourself, install the backend once with
-> `text::textrpp_install()` in R, or `pip install transformers torch` for the
-> Python version, and expect the first call to fetch several hundred megabytes.
+
+::: {.callout-warning}
+The chunks below are shown with `eval = FALSE` because they
+require a Python backend (transformers and PyTorch) and download large model
+weights on first use. To run them yourself, install the backend once with
+`text::textrpp_install()` in R, or `pip install transformers torch` for the
+Python version, and expect the first call to fetch several hundred megabytes.
+:::
+
 
 A minimal R sketch using the `text` package to obtain contextual embeddings:
 

@@ -11,7 +11,11 @@ Density estimation sits quietly underneath a surprising amount of data science. 
 
 This chapter builds up the main tools in order of sophistication. We start with the humble histogram, expose its weaknesses, and fix them with kernel density estimation (KDE), where the central practical problem turns out to be choosing a bandwidth. We then move from these *nonparametric* methods, which let the data speak with few assumptions, to a *parametric* model, the Gaussian mixture, fitted with the expectation-maximization (EM) algorithm. Finally we sketch normalizing flows, the modern neural approach that scales density estimation to high dimensions. Throughout, $p(x)$ is the unknown density we want, and $\hat{p}(x)$ is our estimate of it.
 
-> **Note:** This chapter connects closely to two others. The generative view of density (sampling from $\hat{p}$, scoring likelihoods) is developed further in the generative models chapter (@sec-generative-models), where variational autoencoders, GANs, and diffusion models all turn out to be density estimators in disguise. The use of $\hat{p}(x)$ to flag rare points underlies the anomaly and outlier detection chapter (@sec-anomaly-detection).
+
+::: {.callout-note}
+This chapter connects closely to two others. The generative view of density (sampling from $\hat{p}$, scoring likelihoods) is developed further in the generative models chapter (@sec-generative-models), where variational autoencoders, GANs, and diffusion models all turn out to be density estimators in disguise. The use of $\hat{p}(x)$ to flag rare points underlies the anomaly and outlier detection chapter (@sec-anomaly-detection).
+:::
+
 
 ## What we are estimating, and why it is hard {#density-estimation-setup}
 
@@ -31,7 +35,11 @@ which, like any squared-error criterion, decomposes into a bias term and a varia
 
 Density estimation is genuinely harder than regression, and the reason is the curse of dimensionality. To estimate $p(x)$ at a point you need samples *near* that point, and in high dimensions almost no two points are near each other. The volume of a neighborhood grows exponentially with the dimension $d$, so the number of samples needed to fill space grows exponentially too. The best achievable error of a nonparametric estimator degrades from roughly $n^{-2/5}$ in one dimension to $n^{-2/(4+d)}$ in $d$ dimensions, which becomes useless well before $d$ reaches double digits.^[This is why the histogram and KDE in this chapter are presented in one dimension, the parametric Gaussian mixture is the workhorse in moderate dimensions, and normalizing flows are the tool of choice when $d$ is in the hundreds or thousands, as for images.]
 
-> **Key idea:** Density estimation always trades bias against variance, controlled by a single smoothing knob. Too little smoothing tracks noise; too much erases real structure. The art is choosing the knob, and most of this chapter is about how.
+
+::: {.callout-important title="Key idea"}
+Density estimation always trades bias against variance, controlled by a single smoothing knob. Too little smoothing tracks noise; too much erases real structure. The art is choosing the knob, and most of this chapter is about how.
+:::
+
 
 ## Histograms {#density-estimation-histogram}
 
@@ -47,7 +55,11 @@ The histogram has two flaws that motivate everything after it. First, it is disc
 
 The bin width $h$ is the smoothing knob. Wide bins give a blocky, low-variance, high-bias picture; narrow bins give a spiky, high-variance, low-bias one. A common automatic choice is Scott's rule, $h = 3.49\,\hat{\sigma}\,n^{-1/3}$, which minimizes the asymptotic integrated squared error for roughly Gaussian data, where $\hat{\sigma}$ is the sample standard deviation.
 
-> **Intuition:** A histogram answers "how many points landed in this bucket?" The two problems are that the buckets have hard walls (discontinuity) and that someone had to decide where the first wall goes (bin-edge dependence). Kernel density estimation removes both by letting every point carry its own smooth, centered bump.
+
+::: {.callout-tip title="Intuition"}
+A histogram answers "how many points landed in this bucket?" The two problems are that the buckets have hard walls (discontinuity) and that someone had to decide where the first wall goes (bin-edge dependence). Kernel density estimation removes both by letting every point carry its own smooth, centered bump.
+:::
+
 
 ## Kernel density estimation {#density-estimation-kde}
 
@@ -89,7 +101,11 @@ $$
 
 so the best bandwidth shrinks slowly with sample size and the resulting error decays like $n^{-4/5}$ in MISE (equivalently $n^{-2/5}$ in root terms). The catch is that $h_{\text{opt}}$ depends on $\int p''^2$, a feature of the unknown density itself, which is why bandwidth selection is a real problem rather than a formula.
 
-> **Warning:** The single most consequential decision in KDE is the bandwidth, not the kernel. A Gaussian and an Epanechnikov kernel at sensible bandwidths give nearly identical estimates; the same kernel at half versus double the bandwidth gives two completely different pictures. Spend your attention on $h$.
+
+::: {.callout-warning}
+The single most consequential decision in KDE is the bandwidth, not the kernel. A Gaussian and an Epanechnikov kernel at sensible bandwidths give nearly identical estimates; the same kernel at half versus double the bandwidth gives two completely different pictures. Spend your attention on $h$.
+:::
+
 
 ### Selecting the bandwidth in practice {#density-estimation-bandwidth}
 
@@ -127,9 +143,17 @@ $$
 
 Iterating E and M is guaranteed to never decrease the log-likelihood, because each EM step maximizes a lower bound (the *expected complete-data log-likelihood*) that touches the true log-likelihood at the current parameters. It converges to a local maximum, not necessarily the global one, so multiple random restarts and a sensible initialization (commonly from k-means, see the cluster analysis chapter, @sec-cluster) matter in practice. The number of components $K$ is chosen by an information criterion such as the BIC, which balances fit against the parameter count.
 
-> **Intuition:** EM is soft k-means. Hard k-means assigns each point to its nearest center; EM assigns each point fractionally to every component in proportion to how well that component explains it, then moves each component toward the points it is most responsible for. As the model sharpens, the soft assignments harden.
 
-> **Warning:** A Gaussian component can collapse onto a single point, driving its variance to zero and the likelihood to infinity. This is a genuine singularity of the GMM likelihood, not a bug. Guard against it by adding a small ridge to each covariance, capping the minimum variance, or using a Bayesian prior.
+::: {.callout-tip title="Intuition"}
+EM is soft k-means. Hard k-means assigns each point to its nearest center; EM assigns each point fractionally to every component in proportion to how well that component explains it, then moves each component toward the points it is most responsible for. As the model sharpens, the soft assignments harden.
+:::
+
+
+
+::: {.callout-warning}
+A Gaussian component can collapse onto a single point, driving its variance to zero and the likelihood to infinity. This is a genuine singularity of the GMM likelihood, not a bug. Guard against it by adding a small ridge to each covariance, capping the minimum variance, or using a Bayesian prior.
+:::
+
 
 ## Normalizing flows, conceptually {#density-estimation-flows}
 
@@ -143,7 +167,11 @@ where the Jacobian determinant accounts for how $f$ stretches and compresses vol
 
 The engineering challenge is designing layers that are simultaneously expressive, invertible, and have a cheap Jacobian determinant, since a general $d \times d$ determinant costs $O(d^3)$. Architectures such as RealNVP and Glow use *coupling layers* that transform half the coordinates as a function of the other half, producing a triangular Jacobian whose determinant is just the product of its diagonal. We treat flows only conceptually here; the generative models chapter (@sec-generative-models) places them alongside VAEs, GANs, and diffusion models, which trade exact likelihood for other advantages.
 
-> **When to use this:** Use histograms and KDE for one or two dimensions and quick exploration. Use Gaussian mixtures when you want a compact, interpretable density in up to perhaps a few dozen dimensions, or soft clustering as a byproduct. Reach for normalizing flows (or the other deep generative models) only when the dimension is high and you have the data and compute to train a neural network.
+
+::: {.callout-tip title="When to use this"}
+Use histograms and KDE for one or two dimensions and quick exploration. Use Gaussian mixtures when you want a compact, interpretable density in up to perhaps a few dozen dimensions, or soft clustering as a byproduct. Reach for normalizing flows (or the other deep generative models) only when the dimension is high and you have the data and compute to train a neural network.
+:::
+
 
 ## Demonstration: histogram, KDE, and a fitted mixture {#density-estimation-demo}
 

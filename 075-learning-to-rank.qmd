@@ -9,7 +9,11 @@ Imagine you type a query into a search box. The system holds millions of documen
 
 This is the ranking problem, and it is genuinely different from the regression and classification problems that fill most of this book. In ordinary supervised learning we score each example on its own and we are graded on per-example accuracy. In ranking we are graded on the quality of a *sorted list*, and the grade is dominated by the top of that list. The field that studies how to train models for this objective is called learning to rank (LTR).
 
-> **Key idea:** In ranking, the unit of evaluation is an ordered list (typically the list of documents retrieved for a single query), and errors near the top of the list cost far more than errors near the bottom. Good ranking models optimize for that asymmetry directly.
+
+::: {.callout-important title="Key idea"}
+In ranking, the unit of evaluation is an ordered list (typically the list of documents retrieved for a single query), and errors near the top of the list cost far more than errors near the bottom. Good ranking models optimize for that asymmetry directly.
+:::
+
 
 Three pieces of vocabulary will recur. A *query* $q$ is the context: a search string, a user, a session. For each query we have a set of *candidate items* (often called documents) $d_1, \dots, d_n$. Each query-document pair has a *relevance label* $y$, which may be binary (relevant or not) or graded (for example $0, 1, 2, 3, 4$ from "useless" to "perfect"). The model learns a scoring function $f(\mathbf{x})$ where $\mathbf{x}$ is a feature vector describing one query-document pair, and the final ranking for a query is produced by sorting its candidates by their scores in descending order.
 
@@ -21,7 +25,11 @@ A natural first instinct is to treat ranking as regression: predict each item's 
 
 First, it spends equal effort everywhere. Squared error cares just as much about getting a document at rank 500 right as one at rank 2, even though no user will ever scroll to rank 500. Second, ranking only depends on the *relative order* of scores, not their absolute values. A model that predicts relevances $(3.0, 2.0, 1.0)$ and one that predicts $(0.31, 0.30, 0.29)$ produce the identical ranking, yet squared-error training treats them very differently and may waste capacity matching label magnitudes that have no effect on the output.
 
-> **Intuition:** The output of a ranker is invariant to any order-preserving (monotone) transformation of its scores. The loss we train with should respect that invariance: it should reward getting pairs in the right order and getting the top of the list right, not getting numeric labels exactly.
+
+::: {.callout-tip title="Intuition"}
+The output of a ranker is invariant to any order-preserving (monotone) transformation of its scores. The loss we train with should respect that invariance: it should reward getting pairs in the right order and getting the top of the list right, not getting numeric labels exactly.
+:::
+
 
 This mismatch between an easy-to-optimize surrogate loss (squared error, log loss) and the true objective (a list-quality metric like NDCG) is the central tension in learning to rank, and every method below is a different way of managing it.
 
@@ -63,7 +71,11 @@ $$
 \text{MAP} = \frac{1}{|Q|} \sum_{q \in Q} \text{AP}_q .
 $$
 
-> **Intuition:** AP is high when relevant items are clustered near the top. Each relevant item is scored by the precision of the list *up to and including its own position*, so a relevant item that appears after a lot of junk earns a low precision and drags the average down.
+
+::: {.callout-tip title="Intuition"}
+AP is high when relevant items are clustered near the top. Each relevant item is scored by the precision of the list *up to and including its own position*, so a relevant item that appears after a lot of junk earns a low precision and drags the average down.
+:::
+
 
 ### Normalized discounted cumulative gain (NDCG)
 
@@ -85,7 +97,11 @@ $$
 
 NDCG@k lies in $[0, 1]$, equals $1$ for the ideal ordering, and averages cleanly over queries. It is the metric most LTR systems report and, indirectly, the metric LambdaMART tries to optimize.
 
-> **Note:** There are two slightly different DCG conventions in the literature. The one above (with the $2^{\text{rel}}-1$ gain) is the form used by most modern toolkits and competitions; an older form uses $\text{rel}_i$ directly in the numerator. They agree for binary relevance up to scaling. We use the exponential-gain form throughout.
+
+::: {.callout-note}
+There are two slightly different DCG conventions in the literature. The one above (with the $2^{\text{rel}}-1$ gain) is the form used by most modern toolkits and competitions; an older form uses $\text{rel}_i$ directly in the numerator. They agree for binary relevance up to scaling. We use the exponential-gain form throughout.
+:::
+
 
 @tbl-learning-to-rank-metric-summary summarizes when each metric is the right choice.
 
@@ -120,7 +136,11 @@ Pairwise. Look at *pairs* of documents within the same query and learn to get th
 
 Listwise. Define a loss over the *entire ranked list* for a query at once, ideally a smooth surrogate for the actual metric (NDCG). This is the most direct but also the most complex. ListNet, ListMLE, and the NDCG-aware variant of LambdaMART live here.
 
-> **When to use this:** Start pointwise for a baseline and when labels are reliable cardinal values. Move to pairwise (the usual sweet spot) when you have many items per query and care about order. Reach for listwise when you are squeezing out the last few points of NDCG and can afford the complexity. In practice, gradient-boosted pairwise/listwise rankers (LambdaMART) are the default production choice for tabular ranking features.
+
+::: {.callout-tip title="When to use this"}
+Start pointwise for a baseline and when labels are reliable cardinal values. Move to pairwise (the usual sweet spot) when you have many items per query and care about order. Reach for listwise when you are squeezing out the last few points of NDCG and can afford the complexity. In practice, gradient-boosted pairwise/listwise rankers (LambdaMART) are the default production choice for tabular ranking features.
+:::
+
 
 @tbl-learning-to-rank-approaches lays out the tradeoffs.
 
@@ -173,7 +193,11 @@ $$
 
 For a pair where $i$ truly outranks $j$ ($\bar{P}_{ij} = 1$), this simplifies to $C_{ij} = \log\!\big(1 + e^{-\sigma(s_i - s_j)}\big)$, a smooth, convex penalty that is near zero when $s_i \gg s_j$ and grows linearly when the order is badly wrong. This is exactly a logistic loss applied to score *differences* rather than raw scores. We sum $C_{ij}$ over all pairs whose order we know and minimize by gradient descent.
 
-> **Note:** Because the loss depends only on $s_i - s_j$, RankNet learns relative order and is naturally invariant to adding a constant to every score. That is the order-invariance property we wanted from a ranking loss.
+
+::: {.callout-note}
+Because the loss depends only on $s_i - s_j$, RankNet learns relative order and is naturally invariant to adding a constant to every score. That is the order-invariance property we wanted from a ranking loss.
+:::
+
 
 The gradient of $C_{ij}$ with respect to the score difference has the clean form
 
@@ -200,7 +224,11 @@ LambdaMART [@burges2010ranknet] is LambdaRank's gradient signal plugged into gra
 - Sum the lambdas per document to get a target gradient.
 - Fit one regression tree to those targets and add it to the ensemble.
 
-> **Key idea:** LambdaMART never optimizes a differentiable copy of NDCG. It hand-defines gradients that point in the direction NDCG improves, weighting each document-pair by the metric gain from fixing it, and feeds those gradients to gradient boosting.
+
+::: {.callout-important title="Key idea"}
+LambdaMART never optimizes a differentiable copy of NDCG. It hand-defines gradients that point in the direction NDCG improves, weighting each document-pair by the metric gain from fixing it, and feeds those gradients to gradient boosting.
+:::
+
 
 Both `xgboost` (objective `rank:pairwise`, `rank:ndcg`) and `lightgbm` (objective `lambdarank`) implement this family, and they are what you will actually run in practice; for the mechanics of tuning these boosted models, see @sec-gradient-boosting.
 
@@ -490,7 +518,11 @@ Mind the gain and discount conventions. As noted, two NDCG formulas circulate. I
 
 Calibrate cutoffs to the surface. A search results page shows ten links; a mobile carousel shows three. Optimize and report NDCG@k for the $k$ that matches where users actually look. Reporting NDCG over all candidates can hide failures right where they hurt.
 
-> **Warning:** Graded-relevance labels are expensive and noisy. Human judges disagree, and "relevance" drifts with intent and time. Before investing in a listwise model, make sure your labels are good enough that the metric differences you are chasing are real and not label noise.
+
+::: {.callout-warning}
+Graded-relevance labels are expensive and noisy. Human judges disagree, and "relevance" drifts with intent and time. Before investing in a listwise model, make sure your labels are good enough that the metric differences you are chasing are real and not label noise.
+:::
+
 
 Pairwise count can explode. A query with $n$ candidates generates up to $O(n^2)$ pairs. With long candidate lists this dominates training time. Sampling pairs, capping candidates, or using listwise losses that avoid explicit pair enumeration are the usual remedies.
 

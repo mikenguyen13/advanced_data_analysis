@@ -11,7 +11,11 @@ This is the multi-armed bandit problem, and it is the cleanest setting in which 
 
 The reason this toy problem matters is that the same structure appears everywhere a system makes repeated choices and learns only from the choice it made. Which of five ad creatives to show. Which headline to put on an article. Which dosage to try next in an adaptive experiment. In each case you commit to one option, observe a noisy reward, and never see the counterfactual. By the end of this chapter you will understand how to measure how well an algorithm handles this, and you will have three concrete strategies, epsilon-greedy, Upper Confidence Bound, and Thompson sampling, with a runnable simulation that pits them against each other.
 
-> **Intuition:** If you always exploit, you may lock onto an arm that looked good early by luck and never discover the truly best one. If you always explore, you waste pulls on arms you already know are bad. Good bandit algorithms explore aggressively when they are uncertain and taper off as evidence accumulates.
+
+::: {.callout-tip title="Intuition"}
+If you always exploit, you may lock onto an arm that looked good early by luck and never discover the truly best one. If you always explore, you waste pulls on arms you already know are bad. Good bandit algorithms explore aggressively when they are uncertain and taper off as evidence accumulates.
+:::
+
 
 This chapter treats the stochastic, context-free bandit: the arms' reward distributions are fixed and do not depend on any side information. When each round comes with features that should shape the choice, you have a contextual bandit, covered in the contextual bandits chapter (@sec-contextual-bandits). The methods here are the building blocks that the contextual version generalizes.
 
@@ -35,7 +39,11 @@ Q_{n+1} = Q_n + \frac{1}{n+1}\bigl(R_{n+1} - Q_n\bigr).
 $$
 This "old estimate plus a step toward the new observation" form is the same shape as the update rules used throughout reinforcement learning.
 
-> **Note:** We will run our demos with **Bernoulli arms**, where each reward is $0$ or $1$ and $q_*(a)$ is simply the probability that arm $a$ returns a $1$. This is the model for click-through rates, conversion rates, and any success/failure outcome. The estimate $Q_t(a)$ is then just the observed success rate of arm $a$.
+
+::: {.callout-note}
+We will run our demos with **Bernoulli arms**, where each reward is $0$ or $1$ and $q_*(a)$ is simply the probability that arm $a$ returns a $1$. This is the model for click-through rates, conversion rates, and any success/failure outcome. The estimate $Q_t(a)$ is then just the observed success rate of arm $a$.
+:::
+
 
 ## Regret: how we keep score
 
@@ -55,7 +63,11 @@ $$
 $$
 This decomposition says something important: regret comes entirely from pulling suboptimal arms, weighted by how bad each one is. To keep regret low you must pull a poor arm only a small number of times, and the worse it is (large $\Delta_a$), the fewer pulls you can afford.
 
-> **Key idea:** A good algorithm has regret that grows **sublinearly** in $T$, meaning $\mathcal{R}(T)/T \to 0$. Linear regret means a fixed fraction of every round is wasted forever, which is what happens if you keep exploring at a constant rate. Sublinear regret means the per-round penalty shrinks as you learn.
+
+::: {.callout-important title="Key idea"}
+A good algorithm has regret that grows **sublinearly** in $T$, meaning $\mathcal{R}(T)/T \to 0$. Linear regret means a fixed fraction of every round is wasted forever, which is what happens if you keep exploring at a constant rate. Sublinear regret means the per-round penalty shrinks as you learn.
+:::
+
 
 Lai and Robbins (1985) proved that no algorithm can beat regret of order $\log T$ for this problem: any reasonable strategy must pull each suboptimal arm at least about $\log T$ times to be statistically sure it is suboptimal. The good algorithms below achieve this logarithmic rate; the naive one does not.
 
@@ -71,7 +83,11 @@ $$
 
 The appeal is that it is trivial to implement and it never stops exploring, so it cannot get permanently stuck on a wrong arm. The drawback follows from the same fact: with a fixed $\varepsilon$, the algorithm wastes a fraction $\varepsilon$ of its pulls on random arms forever, even long after it has identified the best one. That gives regret of order $\varepsilon T$, which is linear. You pay a constant tax per round.
 
-> **Warning:** A fixed $\varepsilon$ guarantees linear regret. To recover the logarithmic rate you must let $\varepsilon$ decay over time, for example $\varepsilon_t \propto 1/t$. In practice a small constant such as $\varepsilon = 0.1$ is a common, reasonable default when the horizon is short or when you expect arm values to drift, because it keeps a steady trickle of exploration.
+
+::: {.callout-warning}
+A fixed $\varepsilon$ guarantees linear regret. To recover the logarithmic rate you must let $\varepsilon$ decay over time, for example $\varepsilon_t \propto 1/t$. In practice a small constant such as $\varepsilon = 0.1$ is a common, reasonable default when the horizon is short or when you expect arm values to drift, because it keeps a steady trickle of exploration.
+:::
+
 
 A second weakness of epsilon-greedy is that its exploration is undirected: when it explores, it picks uniformly among all arms, including ones it already knows are terrible. It does not focus its exploration on the arms it is most uncertain about. The next two methods fix exactly this.
 
@@ -79,7 +95,11 @@ A second weakness of epsilon-greedy is that its exploration is undirected: when 
 
 Before adding more machinery, there is a cheap trick worth knowing. Optimistic initialization seeds every arm's estimate with a value higher than any plausible true value, for Bernoulli arms you might set $Q_1(a) = 1$ for all $a$. Then run a purely greedy policy (no random exploration). Because every untried arm looks fantastic, the greedy rule is forced to try each arm at least once, and each disappointing reward pulls that arm's estimate down toward reality. Exploration happens automatically as a side effect of optimism, then fades as the estimates settle.
 
-> **Intuition:** Optimism in the face of uncertainty: assume an arm is great until it proves otherwise. This single idea, "act as if the unknown is good," is the seed of the UCB algorithm below, which makes the optimism precise and time-aware rather than a one-time initialization.
+
+::: {.callout-tip title="Intuition"}
+Optimism in the face of uncertainty: assume an arm is great until it proves otherwise. This single idea, "act as if the unknown is good," is the seed of the UCB algorithm below, which makes the optimism precise and time-aware rather than a one-time initialization.
+:::
+
 
 The limitation is that optimistic initialization only drives early exploration. Once the inflated initial values wash out, the policy is greedy and will not revisit a discarded arm, so it is fragile if rewards are nonstationary. It is best seen as a complement to other ideas rather than a standalone solution.
 
@@ -103,7 +123,11 @@ with the constant $c = \sqrt{2}$ recovering the derivation above (any $c > 0$ is
 
 Read the formula as two competing terms. The first, $Q_t(a)$, is the exploitation term: it favors arms that have paid well. The second, the square-root exploration bonus, is large when $N_t(a)$ is small (we have barely tried this arm) and shrinks as we pull it more; the $\log t$ in the numerator slowly revives the bonus over time so that a long-neglected arm eventually gets reconsidered. An arm is selected either because it looks good or because we are unsure about it, and the bonus quantifies exactly how unsure.
 
-> **Key idea:** UCB needs no random coin flips. Its exploration is **directed**: the bonus channels pulls toward arms whose value is genuinely uncertain, not uniformly across all arms. This is why UCB achieves regret of order $\log T$, matching the Lai-Robbins lower bound, while fixed epsilon-greedy does not.
+
+::: {.callout-important title="Key idea"}
+UCB needs no random coin flips. Its exploration is **directed**: the bonus channels pulls toward arms whose value is genuinely uncertain, not uniformly across all arms. This is why UCB achieves regret of order $\log T$, matching the Lai-Robbins lower bound, while fixed epsilon-greedy does not.
+:::
+
 
 A practical detail: the bonus is infinite when $N_t(a) = 0$, so UCB1 begins by pulling each arm once to initialize. After that the formula takes over.
 
@@ -120,7 +144,11 @@ $$
 \theta_a \sim \text{Beta}(\alpha_a, \beta_a) \;\text{ for each } a, \qquad A_t = \arg\max_a \theta_a.
 $$
 
-> **Intuition:** Thompson sampling plays each arm in proportion to the posterior probability that it is the best arm. This is sometimes called probability matching. It is a remarkably natural rule: act in proportion to how likely you think each option is to be optimal.
+
+::: {.callout-tip title="Intuition"}
+Thompson sampling plays each arm in proportion to the posterior probability that it is the best arm. This is sometimes called probability matching. It is a remarkably natural rule: act in proportion to how likely you think each option is to be optimal.
+:::
+
 
 Thompson sampling also achieves logarithmic regret (Agrawal and Goyal 2012), is trivial to implement for Bernoulli arms, and tends to perform very well empirically, often beating UCB in practice. It extends cleanly to other reward models by swapping in the appropriate conjugate pair (for example, Gaussian rewards with a Gaussian prior).
 
@@ -330,7 +358,11 @@ The choice among these methods is rarely about asymptotic regret bounds, since U
 
 Several traps catch people moving from the textbook to a real system.
 
-> **Warning:** A fixed $\varepsilon$ gives linear regret. If you use epsilon-greedy for a long-running system, decay $\varepsilon$ over time (for example $\varepsilon_t = \min(1, c/t)$) or accept that you are paying a permanent exploration tax.
+
+::: {.callout-warning}
+A fixed $\varepsilon$ gives linear regret. If you use epsilon-greedy for a long-running system, decay $\varepsilon$ over time (for example $\varepsilon_t = \min(1, c/t)$) or accept that you are paying a permanent exploration tax.
+:::
+
 
 The first trap is nonstationarity. All the regret guarantees here assume arm values are fixed. Real click-through rates drift with the season, the news cycle, and the user population. A sample mean $Q_t(a)$ that averages over all of history responds ever more sluggishly to change, since each new reward moves it by only $1/N_t(a)$. The fix is to forget the distant past: use a constant step size, $Q_{n+1} = Q_n + \beta(R_{n+1} - Q_n)$ with fixed $\beta \in (0,1)$, or a sliding window. For Thompson sampling, apply a small decay to the Beta counts each round so old evidence fades.
 

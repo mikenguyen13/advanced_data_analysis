@@ -9,9 +9,17 @@ Self-supervised learning trains a model to predict some part of its input from a
 
 This chapter covers the main families of self-supervised methods used in practice: pretext tasks, contrastive learning with the InfoNCE objective, the SimCLR and MoCo training recipes, the non-contrastive BYOL approach, and masked modeling as used by BERT and masked autoencoders. The recurring question is why a representation learned without labels transfers to tasks that have labels. We work through the InfoNCE loss in detail and give a runnable base-R demonstration that shows exactly how positive and negative pairs move the loss.
 
-> **Key idea:** Self-supervised learning does not solve your task directly. It learns a *representation*, a reusable map from raw input to a vector, and a small labeled step turns that representation into the model you need. Keep the two stages separate in your mind: learning the map, then using the map.
 
-> **Note:** "Self-supervised" and "unsupervised" are often used loosely, but they are not the same. Unsupervised learning (clustering, covered in @sec-cluster, and density estimation, covered in @sec-density-estimation) has no target at all. Self-supervised learning invents a target from the input, so the machinery of supervised training (a loss, gradients, a prediction) still applies; only the labels are free.
+::: {.callout-important title="Key idea"}
+Self-supervised learning does not solve your task directly. It learns a *representation*, a reusable map from raw input to a vector, and a small labeled step turns that representation into the model you need. Keep the two stages separate in your mind: learning the map, then using the map.
+:::
+
+
+
+::: {.callout-note}
+"Self-supervised" and "unsupervised" are often used loosely, but they are not the same. Unsupervised learning (clustering, covered in @sec-cluster, and density estimation, covered in @sec-density-estimation) has no target at all. Self-supervised learning invents a target from the input, so the machinery of supervised training (a loss, gradients, a prediction) still applies; only the labels are free.
+:::
+
 
 ## Where This Fits in a Modern Workflow
 
@@ -25,7 +33,11 @@ A typical pipeline has three stages.
 
 3.  Fine-tune. If labels are plentiful enough, unfreeze the encoder and train the whole stack at a low learning rate so the representation adapts to the task.
 
-> **Tip:** Most practitioners never run stage 1. The expensive pretraining is done once by a well-resourced lab and released as a public checkpoint, so your day-to-day work is stages 2 and 3 on top of someone else's encoder. Knowing how the encoder was trained still matters, because it tells you what the representation is invariant to and therefore what it will quietly ignore.
+
+::: {.callout-tip}
+Most practitioners never run stage 1. The expensive pretraining is done once by a well-resourced lab and released as a public checkpoint, so your day-to-day work is stages 2 and 3 on top of someone else's encoder. Knowing how the encoder was trained still matters, because it tells you what the representation is invariant to and therefore what it will quietly ignore.
+:::
+
 
 This is the same shape as the transfer-learning workflow (@sec-transfer-multitask-learning) behind BERT (@sec-bert) for text and pretrained vision backbones for images. The difference from supervised pretraining is only the source of the training signal: the structure of the data instead of external labels.
 
@@ -45,7 +57,11 @@ Examples that shaped the field:
 
 The weakness of hand-designed pretext tasks is that the model can exploit shortcuts.^[A *shortcut* is a low-level cue that solves the pretext task without requiring the semantic understanding you were hoping to induce. Chromatic aberration at image edges, for instance, can reveal a patch's original position and let a jigsaw solver cheat.] A rotation predictor might key on watermarks or sky-at-top cues rather than object structure. Contrastive and masked methods, covered next, are more robust because the supervision is harder to game.
 
-> **Intuition:** A pretext task is a teacher who sets a puzzle hoping the student learns something general while solving it. The risk is the same as in a classroom: the student may find a trick that aces the puzzle and teaches nothing. The methods that follow design puzzles where the only winning strategy is to actually understand the content.
+
+::: {.callout-tip title="Intuition"}
+A pretext task is a teacher who sets a puzzle hoping the student learns something general while solving it. The risk is the same as in a classroom: the student may find a trick that aces the puzzle and teaches nothing. The methods that follow design puzzles where the only winning strategy is to actually understand the content.
+:::
+
 
 ## Contrastive Learning and the InfoNCE Objective
 
@@ -71,7 +87,11 @@ $$
 
 The temperature $\tau > 0$ scales the similarities before the softmax. Read the fraction as a classification problem: among the $K+1$ candidates (one positive and $K$ negatives), which one is the true match for $z$? The loss is the cross-entropy of a softmax classifier that has to pick the positive. Minimizing it pushes $z^\top z^{+}$ up and pushes each $z^\top z^{-}_k$ down.
 
-> **Intuition:** Picture a lineup. The query $z$ is shown a row of candidates, exactly one of which is its partner view. InfoNCE rewards the encoder for confidently fingering the right partner. To win this game across many lineups, the encoder has no choice but to place each item's two views near each other and away from everyone else.
+
+::: {.callout-tip title="Intuition"}
+Picture a lineup. The query $z$ is shown a row of candidates, exactly one of which is its partner view. InfoNCE rewards the encoder for confidently fingering the right partner. To win this game across many lineups, the encoder has no choice but to place each item's two views near each other and away from everyone else.
+:::
+
 
 The temperature controls how sharply the loss focuses on the hardest negatives. Small $\tau$ makes the softmax sharp, so negatives with high similarity to the query dominate the gradient. Large $\tau$ flattens the distribution and treats all negatives more equally. In practice $\tau$ is a sensitive hyperparameter, often near $0.1$.
 
@@ -87,7 +107,11 @@ The bound says the loss is a budget: pushing $\mathcal{L}_{\text{InfoNCE}}$ down
 
 A second, more geometric view comes from decomposing the loss. Writing it out, InfoNCE pushes for *alignment* (positives close) and *uniformity* (representations spread over the sphere so they stay distinguishable). The negatives supply the uniformity pressure. Without them, the encoder could map every input to the same point, drive all positive similarities to one, and make the loss small while learning nothing. This failure is called *representation collapse*, and avoiding it is the central design problem for the methods below.
 
-> **Warning:** Collapse is the recurring villain of self-supervised learning. Watch for it whenever a method has alignment pressure but weak or no uniformity pressure. The two terms are in tension: alignment alone wants to crush everything together, uniformity alone wants to scatter it, and a good representation is the balance between them.
+
+::: {.callout-warning}
+Collapse is the recurring villain of self-supervised learning. Watch for it whenever a method has alignment pressure but weak or no uniformity pressure. The two terms are in tension: alignment alone wants to crush everything together, uniformity alone wants to scatter it, and a good representation is the balance between them.
+:::
+
 
 ## SimCLR and MoCo: Two Ways to Get Negatives
 
@@ -103,7 +127,11 @@ $$
 
 The slow-moving key encoder keeps the queued representations consistent over time, which matters because they were computed by slightly older weights.
 
-> **When to use this:** Choose SimCLR when you can afford large batches and want the simplest pipeline. Choose MoCo when GPU memory caps your batch size but you still want many negatives; its queue lets a small batch see thousands of negatives accumulated over recent steps.
+
+::: {.callout-tip title="When to use this"}
+Choose SimCLR when you can afford large batches and want the simplest pipeline. Choose MoCo when GPU memory caps your batch size but you still want many negatives; its queue lets a small batch see thousands of negatives accumulated over recent steps.
+:::
+
 
 ## BYOL: Contrastive Without Negatives
 
@@ -125,7 +153,11 @@ Masked modeling is the dominant self-supervised approach for text and a strong o
 
 -   Masked image modeling, used by the masked autoencoder (MAE), splits an image into patches, hides a large fraction (often 75 percent), and reconstructs the missing pixels from the visible patches. The high mask ratio forces the model to learn global structure rather than copy nearby pixels.
 
-> **Intuition:** Masked modeling is fill-in-the-blank. To guess the word hidden in "the cat sat on the ___," you need to understand the sentence, not just memorize letter frequencies. The reconstruction target is the original input itself, so there is nothing to collapse onto and no negatives to mine; the difficulty of the blanks does all the work.
+
+::: {.callout-tip title="Intuition"}
+Masked modeling is fill-in-the-blank. To guess the word hidden in "the cat sat on the ___," you need to understand the sentence, not just memorize letter frequencies. The reconstruction target is the original input itself, so there is nothing to collapse onto and no negatives to mine; the difficulty of the blanks does all the work.
+:::
+
 
 Masked modeling and contrastive learning sit at two ends of a spectrum. Contrastive methods compare whole-item representations and need carefully designed views and negatives. Masked methods predict missing parts and need a good masking scheme but no negatives and no paired augmentations. Both produce representations that transfer; which works better depends on the modality and the downstream task.
 
@@ -148,7 +180,11 @@ Masked modeling and contrastive learning sit at two ends of a spectrum. Contrast
 
 The demonstration builds the InfoNCE loss from scratch on small vectors so the mechanics are visible. We create a few items, make two noisy views of each, normalize, and compute the loss. We then show how the loss responds when the positive is made more similar and when a hard negative is introduced. Everything runs in base R.
 
-> **Note:** The point here is not to train a useful model on toy data; it is to watch the loss react to changes you control, so the abstract claims above become concrete numbers. Treat each chunk as a small experiment with a prediction attached.
+
+::: {.callout-note}
+The point here is not to train a useful model on toy data; it is to watch the loss react to changes you control, so the abstract claims above become concrete numbers. Treat each chunk as a small experiment with a prediction attached.
+:::
+
 
 ```{r infonce-setup}
 set.seed(1)
@@ -308,7 +344,11 @@ Augmentations are the design surface for contrastive methods. The representation
 
 Watch for collapse. If all representations drift to one point, contrastive loss falls but the features are useless. Symptoms include very low loss with near-zero variance across a batch and a linear probe that performs at chance. Monitor the standard deviation of representations and the rank of their covariance, not just the loss.
 
-> **Warning:** A falling loss is not proof of progress. The cheapest way for any of these methods to lower the loss is to collapse, and a collapsed encoder reports a beautiful loss curve right up until you measure the linear probe and find it at chance. Always track a representation-diversity metric alongside the loss.
+
+::: {.callout-warning}
+A falling loss is not proof of progress. The cheapest way for any of these methods to lower the loss is to collapse, and a collapsed encoder reports a beautiful loss curve right up until you measure the linear probe and find it at chance. Always track a representation-diversity metric alongside the loss.
+:::
+
 
 Negatives and batch size interact. SimCLR needs large batches for enough negatives; if you cannot afford that memory, use MoCo's queue or a non-contrastive method like BYOL or SimSiam. Beware of *false negatives*: two different items that are genuinely similar get pushed apart, which can hurt.
 

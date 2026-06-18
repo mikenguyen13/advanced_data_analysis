@@ -11,7 +11,11 @@ This chapter covers the practical core of Bayesian deep learning and UQ for data
 
 By the end you will be able to name and motivate the two kinds of uncertainty, read the one formula that ties them together (the law of total variance), pick a UQ method that fits your constraints, and run a small ensemble in plain R that produces calibrated predictive intervals. The chapter builds on the Bayesian regression and Gaussian process material from earlier and connects forward to any model where a prediction alone is not enough.
 
-> **Intuition:** A point prediction is a confident assertion with no escape hatch. UQ turns "the answer is 7" into "the answer is probably between 5 and 9, and I am especially unsure out here because I have never seen inputs like this." The second statement is far more useful for any decision that has a cost attached to being wrong.
+
+::: {.callout-tip title="Intuition"}
+A point prediction is a confident assertion with no escape hatch. UQ turns "the answer is 7" into "the answer is probably between 5 and 9, and I am especially unsure out here because I have never seen inputs like this." The second statement is far more useful for any decision that has a cost attached to being wrong.
+:::
+
 
 ## Where this fits in a modern ML workflow
 
@@ -22,7 +26,11 @@ A standard supervised pipeline produces a function $f_\theta(x)$ trained by mini
 
 Downstream consumers use this in concrete ways. Active learning (@sec-active-learning) queries the points where epistemic uncertainty is highest. Out-of-distribution detection, closely related to anomaly detection (@sec-anomaly-detection), flags inputs where the model is uncertain because they look unlike anything in training. Risk-sensitive decisions (medical triage, autonomous control, pricing) use the predictive variance directly in an expected-cost calculation. Selective prediction abstains when uncertainty exceeds a threshold and routes the case to a human.^[Selective prediction is sometimes called "reject option" classification. The model is allowed to say "I don't know" for the hardest cases, trading coverage (the fraction of inputs it answers) for higher accuracy on the cases it does answer.]
 
-> **When to use this:** Reach for UQ whenever a wrong prediction has a cost that depends on how wrong it is, whenever you need to decide where to collect more data, or whenever the model will face inputs that may not resemble its training set. If every prediction is cheap and the data is stationary, a point estimate may be all you need.
+
+::: {.callout-tip title="When to use this"}
+Reach for UQ whenever a wrong prediction has a cost that depends on how wrong it is, whenever you need to decide where to collect more data, or whenever the model will face inputs that may not resemble its training set. If every prediction is cheap and the data is stationary, a point estimate may be all you need.
+:::
+
 
 ## Two kinds of uncertainty
 
@@ -38,7 +46,11 @@ the term $\sigma^2(x)$ is the aleatoric variance. When it depends on $x$ it is c
 
 Epistemic uncertainty is uncertainty about the model itself: which parameters $\theta$, or even which function $f$, generated the data. It is large where you have little data and shrinks toward zero as data accumulates. In the Bayesian view, epistemic uncertainty is encoded in the posterior over parameters $p(\theta \mid \mathcal{D})$, where $\mathcal{D} = \{(x_i, y_i)\}_{i=1}^n$ is the training set.
 
-> **Key idea:** Aleatoric is noise in the world and will not go away with more data; epistemic is doubt in the model and shrinks as data accumulates. A useful one-word test: if collecting more samples at this input would tighten the prediction, the uncertainty is epistemic; if it would not, it is aleatoric.
+
+::: {.callout-important title="Key idea"}
+Aleatoric is noise in the world and will not go away with more data; epistemic is doubt in the model and shrinks as data accumulates. A useful one-word test: if collecting more samples at this input would tighten the prediction, the uncertainty is epistemic; if it would not, it is aleatoric.
+:::
+
 
 The Bayesian predictive distribution makes the decomposition explicit. The posterior predictive for a new input $x_*$ is
 
@@ -56,7 +68,11 @@ $$
 
 The first term averages the noise variance over the posterior; the second measures how much the mean prediction moves as $\theta$ varies. This formula is the practical workhorse of the chapter: every method below is, in effect, a recipe for sampling or approximating $p(\theta \mid \mathcal{D})$ so that you can estimate these two terms.
 
-> **Note:** If you remember one equation from this chapter, make it the law-of-total-variance split above. Once you can sample plausible parameter settings $\theta$ from (an approximation of) the posterior, the rest is bookkeeping: average each member's noise for the aleatoric piece, and measure the scatter of the members' means for the epistemic piece.
+
+::: {.callout-note}
+If you remember one equation from this chapter, make it the law-of-total-variance split above. Once you can sample plausible parameter settings $\theta$ from (an approximation of) the posterior, the rest is bookkeeping: average each member's noise for the aleatoric piece, and measure the scatter of the members' means for the epistemic piece.
+:::
+
 
 ## The four practical methods
 
@@ -74,7 +90,11 @@ $$
 
 If each network also outputs a variance $\sigma^2_{\theta^{(m)}}(x_*)$, add its mean to get total variance. Ensembles are simple, embarrassingly parallel, and tend to give the best-calibrated uncertainty in benchmarks. The cost is $M$ times the training and storage.
 
-> **Tip:** Because the $M$ fits are independent, you can train them on separate machines or GPUs at the same time. That makes ensembles the easiest UQ method to scale when you have hardware but not much patience for new code.
+
+::: {.callout-tip}
+Because the $M$ fits are independent, you can train them on separate machines or GPUs at the same time. That makes ensembles the easiest UQ method to scale when you have hardware but not much patience for new code.
+:::
+
 
 ### MC dropout
 
@@ -86,7 +106,11 @@ $$
 
 where $z_t$ is the random dropout mask on pass $t$. This is almost free to add to an existing dropout network: no retraining, just turning off the usual "eval mode" deactivation of dropout. The catch is that the implied posterior is tied to the dropout rate and is often poorly calibrated unless the rate is tuned.
 
-> **Warning:** MC dropout is cheap precisely because it reuses one set of weights, so its uncertainty does not necessarily shrink to zero even with unlimited data. Treat it as a useful rough signal, not a calibrated posterior, unless you have validated the dropout rate against held-out coverage.
+
+::: {.callout-warning}
+MC dropout is cheap precisely because it reuses one set of weights, so its uncertainty does not necessarily shrink to zero even with unlimited data. Treat it as a useful rough signal, not a calibrated posterior, unless you have validated the dropout rate against held-out coverage.
+:::
+
 
 ### Laplace approximation
 
@@ -138,7 +162,11 @@ The cleanest way to see the aleatoric/epistemic split without a GPU is a bootstr
 
 To make both kinds of uncertainty visible at once, we rig the data deliberately. The noise grows with $x$ (heteroscedastic), so the aleatoric part should widen to the right regardless of how much data we have. And we make the data sparse beyond $x = 2.5$, so the epistemic part should widen on the right because the members disagree where they have few points to anchor them. A good UQ method should pick up both effects.
 
-> **Intuition:** Bootstrapping is a poor person's posterior. We cannot enumerate every plausible model, so we perturb the data and refit many times; the wobble in the resulting predictions stands in for our uncertainty about which model is right.
+
+::: {.callout-tip title="Intuition"}
+Bootstrapping is a poor person's posterior. We cannot enumerate every plausible model, so we perturb the data and refit many times; the wobble in the resulting predictions stands in for our uncertainty about which model is right.
+:::
+
 
 ```{r, message=FALSE, warning=FALSE}
 set.seed(42)
@@ -234,7 +262,11 @@ round(coverage, 3)   # target is about 0.95
 
 The observed coverage lands somewhat below the nominal 95%, which is itself instructive. The aleatoric variance here is estimated by smoothing squared residuals, a deliberately rough plug-in that tends to undershoot the true noise, so the bands come out a little too narrow. This is exactly why the calibration check matters: a plausible-looking figure can still be overconfident, and only held-out coverage reveals it.
 
-> **Warning:** Never judge an uncertainty method by how tight its bands look. Tight and wrong is worse than wide and honest. Always pair a figure with a numeric coverage or scoring-rule check on data the model did not see.
+
+::: {.callout-warning}
+Never judge an uncertainty method by how tight its bands look. Tight and wrong is worse than wide and honest. Always pair a figure with a numeric coverage or scoring-rule check on data the model did not see.
+:::
+
 
 ## Runnable demo: Bayesian linear regression posterior predictive
 
@@ -260,7 +292,11 @@ $$
 
 The two variance terms are exactly the decomposition from the law of total variance, with the epistemic term shrinking as $X^\top X$ grows with more data. The aleatoric term $\sigma^2$ is constant here because we assumed homoscedastic noise. We use a polynomial basis so the mean function can curve.
 
-> **Key idea:** This closed-form model is the reference standard the deep methods are imitating. The bootstrap ensemble above approximated $x_*^\top \Sigma_n x_*$ by resampling; here we compute it exactly. Seeing the exact answer once makes it clear what the approximations are reaching for.
+
+::: {.callout-important title="Key idea"}
+This closed-form model is the reference standard the deep methods are imitating. The bootstrap ensemble above approximated $x_*^\top \Sigma_n x_*$ by resampling; here we compute it exactly. Seeing the exact answer once makes it clear what the approximations are reaching for.
+:::
+
 
 ```{r fig-bayesian-deep-learning-bayes-poly, message=FALSE, warning=FALSE, fig.width=7, fig.height=4.5, fig.cap="Closed-form Bayesian polynomial regression. The narrow band is the credible interval on the mean function (epistemic); the wide band is the posterior predictive interval that also includes observation noise (aleatoric)."}
 set.seed(123)

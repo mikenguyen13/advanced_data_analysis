@@ -28,7 +28,11 @@ A few framing points are worth keeping in mind as we go.
 -   We can cluster the observations to find subgroups of observations, or transpose the problem and cluster the features to find subgroups of features. The machinery is the same; only what plays the role of "object" changes.
 -   Critical to all clustering approaches is the choice of distance, proximity, or dissimilarity measure between two objects. Change that measure and you can change the answer, so we treat it first and treat it carefully.
 
-> **Key idea:** Clustering does not find the "true" groups in some objective sense. It finds the groups implied by the similarity measure and algorithm you chose. The honest question is never "what are the clusters?" but "what are the clusters *under these assumptions*?"
+
+::: {.callout-important title="Key idea"}
+Clustering does not find the "true" groups in some objective sense. It finds the groups implied by the similarity measure and algorithm you chose. The honest question is never "what are the clusters?" but "what are the clusters *under these assumptions*?"
+:::
+
 
 ## Proximity Matrices
 
@@ -44,7 +48,11 @@ In words, dissimilarities are never negative, two objects are at distance zero e
 
 Once we have a dissimilarity measure, we apply it to every pair of observations and collect the results. We typically form the $n \times n$ proximity matrix, $\mathbf{D}$, which in the case of a dissimilarity measure has $(i,j)$th element given by $d_{ij}$. This single matrix is the input that most clustering algorithms actually consume, which is a useful thing to notice: the algorithms never see your raw data directly, only the pairwise dissimilarities you computed from it.
 
-> **Note:** Because algorithms operate on $\mathbf{D}$ rather than on the raw features, two completely different datasets that happen to produce the same proximity matrix will be clustered identically. All of your modeling choices about what "similar" means get baked into $\mathbf{D}$ before any clustering begins.
+
+::: {.callout-note}
+Because algorithms operate on $\mathbf{D}$ rather than on the raw features, two completely different datasets that happen to produce the same proximity matrix will be clustered identically. All of your modeling choices about what "similar" means get baked into $\mathbf{D}$ before any clustering begins.
+:::
+
 
 ### Dissimilarities based on Attributes
 
@@ -92,7 +100,11 @@ $$
 
 gives all attributes equal influence. The twist is that equal influence is not always what you want, since the attribute that happens to vary the most may be precisely the one that carries the signal about the subgroups.
 
-> **Warning:** Standardizing or equalizing the influence of variables is a modeling decision, not a cleanup step. Forcing every feature to contribute equally can wash out the very feature that distinguishes the groups. Decide based on what you know about the problem, not by reflex.
+
+::: {.callout-warning}
+Standardizing or equalizing the influence of variables is a modeling decision, not a cleanup step. Forcing every feature to contribute equally can wash out the very feature that distinguishes the groups. Decide based on what you know about the problem, not by reflex.
+:::
+
 
 ## Combinatorial Cluster Algorithms
 
@@ -122,7 +134,11 @@ which is constant given the data, independent of the cluster assignment, since i
 
 This decomposition has a tidy consequence. Because $T$ is fixed, pushing $W(C)$ down automatically pulls $B(C)$ up: minimizing $W(C)$ is equivalent to maximizing $B(C)$. We only ever have to optimize one of them.
 
-> **Intuition:** The total amount of "spread" in your data is a fixed budget. Clustering does not reduce that spread; it only decides how much of it sits *inside* groups versus *between* them. Good clusters keep the within-group share small, which is the same as keeping the between-group share large.
+
+::: {.callout-tip title="Intuition"}
+The total amount of "spread" in your data is a fixed budget. Clustering does not reduce that spread; it only decides how much of it sits *inside* groups versus *between* them. Good clusters keep the within-group share small, which is the same as keeping the between-group share large.
+:::
+
 
 In principle, one could solve this optimization problem exactly by considering every possible combination of observations and cluster assignments, then keeping the best. But the number of ways to partition $n$ points into $K$ groups grows astronomically, so such combinatorial algorithms are computationally prohibitive for most real-world datasets.^[The count is given by the Stirling numbers of the second kind, which explode so fast that even a few dozen observations put exhaustive search out of reach.] In practice we settle for less: iterative descent algorithms that start from some assignment and improve it step by step, converging to a local optimum rather than the global one. The next two sections are exactly such algorithms.
 
@@ -160,7 +176,11 @@ Each pass makes the within-cluster scatter no worse, which is why the procedure 
 -   The number of clusters $K$ is yours to choose, and it genuinely matters: ask for three clusters and you get three, whether or not three is meaningful. The algorithm will not warn you that a different $K$ tells a cleaner story.
 -   Although the K-means algorithm is guaranteed to converge, it is not guaranteed to converge to the global minimum. Because it finds a local minimum that depends on the random starting assignment, we should run the algorithm several times from different initial cluster assignments and keep the best result, meaning the one with the smallest value of the objective function $W(C)$.
 
-> **Tip:** Always run K-means with multiple random starts and report the best. A single run can land in a poor local optimum that looks fine until you compare it against a few others. Most software exposes this as an `nstart`-style argument; set it to a number like 20 or 50 rather than leaving it at 1.
+
+::: {.callout-tip}
+Always run K-means with multiple random starts and report the best. A single run can land in a poor local optimum that looks fine until you compare it against a few others. Most software exposes this as an `nstart`-style argument; set it to a number like 20 or 50 rather than leaving it at 1.
+:::
+
 
 ### K-Medoids Clustering
 
@@ -184,7 +204,11 @@ $$
 
 3.  Iterate steps 1 and 2 until the assignments do not change.
 
-> **When to use this:** Reach for K-medoids instead of K-means when your dissimilarity is not Euclidean (for example, you only have a precomputed distance matrix), when outliers would distort an arithmetic mean, or when you want each cluster represented by a real, interpretable example rather than an average point. The cost is more computation, since finding the medoid means searching within each cluster.
+
+::: {.callout-tip title="When to use this"}
+Reach for K-medoids instead of K-means when your dissimilarity is not Euclidean (for example, you only have a precomputed distance matrix), when outliers would distort an arithmetic mean, or when you want each cluster represented by a real, interpretable example rather than an average point. The cost is more computation, since finding the medoid means searching within each cluster.
+:::
+
 
 ### Hierarchical Clustering
 
@@ -197,7 +221,11 @@ There are two directions you can build this hierarchy.
 
 We focus on the agglomerative methods, which are by far the more common. A pleasant feature of these methods is that they possess a monotonicity property, so the dissimilarity between merged clusters is monotone increasing with the level of the merge. This is what makes the output interpretable: for any two observations, we look for the point in the tree where the branches containing those two observations are first fused, and the height of that fusion indicates how different the two observations are. The resulting tree plot is called a dendrogram.
 
-> **Intuition:** Read a dendrogram from the bottom up. Points that join near the floor are very similar; points whose branches do not merge until near the ceiling are very different. To get $k$ clusters, draw a horizontal line across the tree and count the branches it crosses, then slide the line up or down to get fewer or more clusters. The whole point is that you make that cut *after* seeing the structure, not before.
+
+::: {.callout-tip title="Intuition"}
+Read a dendrogram from the bottom up. Points that join near the floor are very similar; points whose branches do not merge until near the ceiling are very different. To get $k$ clusters, draw a horizontal line across the tree and count the branches it crosses, then slide the line up or down to get fewer or more clusters. The whole point is that you make that cut *after* seeing the structure, not before.
+:::
+
 
 The agglomerative procedure itself is short [@james2013, Alg 12.3]:
 
@@ -237,4 +265,8 @@ Several further decisions follow, and most of them do not have a purely objectiv
 
 Finally, everything above treats clustering as a purely geometric, "hard assignment" exercise, but there is another route. We can approach the problem from a model-based, probabilistic perspective by assuming the data are drawn from a mixture of several distributions, often Gaussians though they need not be. Such mixture models are also the basis of model-based density estimation (@sec-density-estimation). The E-M algorithm is an efficient way to estimate such mixtures [@hastie2001a, 8.5], and as described in [@hastie2001a, 14.3.7], the mixture-of-Gaussians approach is essentially a "soft" version of K-means, in which each point gets a probability of belonging to each cluster rather than an all-or-nothing label.
 
-> **Takeaways:** Clustering finds the groups implied by your choices, not some objective truth. The choices that matter most are the dissimilarity measure, whether and how you scale or weight features, the algorithm and (for hierarchical methods) the linkage, and the number of clusters. Use multiple random starts for K-means, prefer K-medoids when you need a non-Euclidean dissimilarity or robustness to outliers, read dendrograms from the bottom up and cut them after seeing the structure, and always sanity-check that your clusters survive small perturbations before you trust them.
+
+::: {.callout-important title="Takeaways"}
+Clustering finds the groups implied by your choices, not some objective truth. The choices that matter most are the dissimilarity measure, whether and how you scale or weight features, the algorithm and (for hierarchical methods) the linkage, and the number of clusters. Use multiple random starts for K-means, prefer K-medoids when you need a non-Euclidean dissimilarity or robustness to outliers, read dendrograms from the bottom up and cut them after seeing the structure, and always sanity-check that your clusters survive small perturbations before you trust them.
+:::
+

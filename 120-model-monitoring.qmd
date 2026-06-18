@@ -9,7 +9,11 @@ Imagine you spend weeks building a churn model. It scores beautifully on the tes
 
 The instinct of a newcomer is to think of a deployed model as finished software: it passed its tests, so it is done. The right mental model is closer to a measuring instrument that slowly falls out of calibration. The instrument is fine; the thing it measures keeps changing. Our job in this chapter is to build the gauges that tell us when recalibration is due, before anyone notices the revenue dip.
 
-> **Intuition:** Training accuracy answers "did the model learn the past well?" Monitoring answers "is the present still like the past?" Those are different questions, and only the second one can warn you in time.
+
+::: {.callout-tip title="Intuition"}
+Training accuracy answers "did the model learn the past well?" Monitoring answers "is the present still like the past?" Those are different questions, and only the second one can warn you in time.
+:::
+
 
 This chapter treats monitoring as a statistical problem. We define the two kinds of distribution change that matter (data drift and concept drift), derive the two metrics practitioners reach for most often (the population stability index and the Kolmogorov-Smirnov statistic[^mm-ks-names]), connect distribution monitoring to performance monitoring, and then build a small runnable system in base R that computes both metrics on a reference and a shifted sample, flags drift against thresholds, and plots the distributions. By the end you should be able to read a drift dashboard, explain why an alert fired, and decide whether it actually warrants retraining.
 
@@ -19,7 +23,11 @@ This chapter treats monitoring as a statistical problem. We define the two kinds
 
 A typical lifecycle has four stages that repeat: collect and label data, train and validate a model, deploy it behind a scoring service, and monitor it in production. Monitoring closes the loop. It is the signal that triggers the next training cycle. Without it, retraining is either calendar-driven (retrain every month whether or not anything changed) or incident-driven (retrain after someone notices revenue dropped). Both are worse than retraining when the data says you should: the calendar wastes effort when nothing moved and reacts too slowly when something did, and the incident always arrives after the damage.
 
-> **Key idea:** Monitoring is the feedback signal that turns a static "train once, deploy forever" pipeline into a loop that retrains on evidence.
+
+::: {.callout-important title="Key idea"}
+Monitoring is the feedback signal that turns a static "train once, deploy forever" pipeline into a loop that retrains on evidence.
+:::
+
 
 Monitoring runs at several layers, ordered here from cheapest and fastest to most informative but slowest. Each layer answers a different question, and a complete program runs all of them:
 
@@ -30,7 +38,11 @@ Monitoring runs at several layers, ordered here from cheapest and fastest to mos
 
 The label delay is the central practical tension. If you could measure accuracy in real time you would just watch accuracy. Because labels lag (a loan default is known months later, a churn label needs a renewal window to close), input and output drift act as early proxies. They answer "the data changed" before you can answer "the model got worse."
 
-> **Note:** The first two layers (operational health and input drift) need no labels, so they are available the instant a prediction is made. Performance is the question you actually care about, but it is the one you can answer last. Most of this chapter is about what to watch while you wait for the labels.
+
+::: {.callout-note}
+The first two layers (operational health and input drift) need no labels, so they are available the instant a prediction is made. Performance is the question you actually care about, but it is the one you can answer last. Most of this chapter is about what to watch while you wait for the labels.
+:::
+
 
 ## Data Drift Versus Concept Drift
 
@@ -46,13 +58,21 @@ A model approximates $P(Y \mid X)$, the conditional rule that maps inputs to a t
 
 Data drift (also called covariate shift) is a change in $P(X)$ while the relationship $P(Y \mid X)$ stays fixed. The inputs move into regions the model saw less often, or in proportions it did not expect. A well-specified model can still be correct on each individual case, but its average error can rise because it now spends more mass where it was always weaker, and its calibration on aggregate metrics can drift.
 
-> **Intuition:** Data drift is when the same exam shows up but the mix of students taking it changed. Concept drift is when the answer key itself changed. The first can still leave each individual graded correctly; the second makes the model's answers wrong even on familiar inputs.
+
+::: {.callout-tip title="Intuition"}
+Data drift is when the same exam shows up but the mix of students taking it changed. Concept drift is when the answer key itself changed. The first can still leave each individual graded correctly; the second makes the model's answers wrong even on familiar inputs.
+:::
+
 
 Concept drift is a change in $P(Y \mid X)$ itself: the same inputs now map to a different target distribution. The rule the model learned is no longer the rule the world follows. Fraud patterns adapting to a detector, prices responding to a new tax, user intent changing after a product redesign: these break the learned mapping regardless of whether $P(X)$ moved.
 
 A useful decomposition: the prediction-error change after deployment can be attributed partly to mass moving across the input space ($P(X)$ change) and partly to the target rule changing at fixed inputs ($P(Y\mid X)$ change). Label-free drift metrics see only $P(X)$ (or the induced $P(\hat Y)$). They cannot, by themselves, distinguish covariate shift from concept drift, because concept drift can occur with $P(X)$ unchanged. That is the fundamental limit of monitoring without labels, and it is why a complete program pairs distribution metrics with delayed performance metrics.
 
-> **Warning:** No label-free metric can detect pure concept drift. If $P(X)$ holds steady while the answer key quietly changes, every input-distribution gauge stays green while the model rots. This is not a flaw in any particular metric; it is information that simply is not present in the inputs. The only cure is labels.
+
+::: {.callout-warning}
+No label-free metric can detect pure concept drift. If $P(X)$ holds steady while the answer key quietly changes, every input-distribution gauge stays green while the model rots. This is not a flaw in any particular metric; it is information that simply is not present in the inputs. The only cure is labels.
+:::
+
 
 @tbl-model-monitoring-drift-types summarizes the distinction and the response.
 
@@ -73,7 +93,11 @@ The population stability index (PSI) measures how much a distribution has moved 
 
 The idea is almost embarrassingly simple before we write any math. Chop the variable's range into bins. In the reference sample, count what fraction of cases fall in each bin. Do the same in the current sample. If the two sets of fractions match, the distribution has not moved and PSI is zero. The more they disagree, the larger PSI grows. Everything below is just a careful way of turning "how much do the fractions disagree" into a single number with good properties.
 
-> **Intuition:** PSI is a weighted tally of how the histogram bars shifted. A bar that grew or shrank a lot, especially one that started small, contributes the most.
+
+::: {.callout-tip title="Intuition"}
+PSI is a weighted tally of how the histogram bars shifted. A bar that grew or shrank a lot, especially one that started small, contributes the most.
+:::
+
 
 PSI is a symmetrized, binned relative-entropy quantity.[^mm-relent] Partition the variable's range into $B$ bins.
 
@@ -102,7 +126,11 @@ which is the Pearson chi-square divergence between the two binned distributions.
 
 Two implementation points matter, and both will reappear in the code. First, an empty current bin makes $\log(q_b/p_b) = -\infty$, so bins are floored with a small $\epsilon$ (a common choice replaces zero counts with a tiny proportion). Second, the bin edges are fixed from the reference distribution, usually as reference quantiles (equal-frequency binning), so that under no drift each reference bin holds roughly equal mass and the metric is comparable across features.
 
-> **Tip:** Always derive the bin edges from the reference sample, never recompute them from the current sample. If you re-bin every period, the bins themselves move with the data and PSI can read near zero even under real drift. Fixed edges are what make today's PSI comparable to last week's.
+
+::: {.callout-tip}
+Always derive the bin edges from the reference sample, never recompute them from the current sample. If you re-bin every period, the bins themselves move with the data and PSI can read near zero even under real drift. Fixed edges are what make today's PSI comparable to last week's.
+:::
+
 
 Conventional thresholds, which originate in retail credit scorecard practice (Siddiqi, 2006), are heuristics, not test statistics. @tbl-model-monitoring-psi-thresholds lists the bands and the action each one suggests.
 
@@ -136,7 +164,11 @@ $$
 
 Because both ECDFs are step functions, the supremum is attained at one of the observed data points, so it is computed exactly by sorting the pooled sample and scanning. $D_{n,m}$ lies in $[0, 1]$: zero when the two empirical distributions coincide, near one when they are nearly disjoint.
 
-> **Intuition:** Draw both cumulative curves on the same axes. KS is just the single widest vertical gap between them. It does not care where that gap is, only how big it gets, which is why KS is good at catching a shift hiding anywhere along the range.
+
+::: {.callout-tip title="Intuition"}
+Draw both cumulative curves on the same axes. KS is just the single widest vertical gap between them. It does not care where that gap is, only how big it gets, which is why KS is good at catching a shift hiding anywhere along the range.
+:::
+
 
 Unlike PSI, KS comes with a sampling distribution and a p-value. Under the null that both samples come from the same continuous distribution, the rescaled statistic converges to the Kolmogorov distribution:
 
@@ -154,7 +186,11 @@ $$
 
 So with large $n$ and $m$ the critical gap shrinks, and KS becomes very sensitive: at production sample sizes almost any real shift is "significant." That is the main caveat. A KS p-value answers "is there any difference at all," which at scale is almost always yes; the statistic $D_{n,m}$ itself, as an effect size, is the more useful monitoring quantity. KS also applies only to univariate continuous variables; for categorical features use a chi-square test or PSI on the category proportions.
 
-> **Warning:** With millions of production rows the KS p-value is essentially always below 0.05, because the test detects shifts far too small to matter. Do not page an on-call engineer because $p < 0.05$. Threshold on the gap $D_{n,m}$, an effect size that stays interpretable at any sample size, or compare on a fixed downsampled size each period.
+
+::: {.callout-warning}
+With millions of production rows the KS p-value is essentially always below 0.05, because the test detects shifts far too small to matter. Do not page an on-call engineer because $p < 0.05$. Threshold on the gap $D_{n,m}$, an effect size that stays interpretable at any sample size, or compare on a fixed downsampled size each period.
+:::
+
 
 @tbl-model-monitoring-psi-ks contrasts the two metrics.
 
@@ -174,7 +210,11 @@ So with large $n$ and $m$ the critical gap shrinks, and KS becomes very sensitiv
 
 With the theory in hand, we now build the whole pipeline from scratch so nothing is hidden behind a library. The following demonstration is pure base R. It simulates a reference sample and a shifted current sample, implements PSI from first principles with reference-quantile bins and an $\epsilon$ floor, implements the KS statistic by scanning the pooled ECDFs, flags drift against thresholds, and plots the two distributions with their ECDFs. Set a seed so the numbers are reproducible.
 
-> **When to use this:** Reach for these two metrics whenever labels are slow or expensive, which describes most production systems. They cost almost nothing to compute at scoring time and give you the earliest possible warning that the data has moved.
+
+::: {.callout-tip title="When to use this"}
+Reach for these two metrics whenever labels are slow or expensive, which describes most production systems. They cost almost nothing to compute at scoring time and give you the earliest possible warning that the data has moved.
+:::
+
 
 We start by simulating the two samples. The current sample is deliberately shifted both in location (mean) and scale (standard deviation), so it stands in for a textbook case of data drift.
 
@@ -335,7 +375,11 @@ Two patterns for windowing, from simplest to most robust:
 - Sliding window: compute the metric over the most recent $w$ scored-and-labeled cases and compare to the validation baseline. Simple, but a single threshold gives no notion of expected fluctuation.
 - Control chart: treat the metric as a process and alert when it leaves control limits. If the baseline metric has mean $\mu_0$ and standard error $\sigma_0$ (estimated by bootstrapping the validation set or from the window size), alert when the windowed metric $\theta_t$ satisfies $|\theta_t - \mu_0| > k\,\sigma_0$, with $k = 3$ a common choice. This separates real degradation from sampling noise.
 
-> **Key idea:** A single metric crossing a line is not a decision; it might just be noise. The control-chart view asks the better question, "is this change larger than the metric's normal week-to-week wobble?", and only then does it alert.
+
+::: {.callout-important title="Key idea"}
+A single metric crossing a line is not a decision; it might just be noise. The control-chart view asks the better question, "is this change larger than the metric's normal week-to-week wobble?", and only then does it alert.
+:::
+
 
 A retraining trigger should combine signals rather than fire on any single metric. A sensible trigger requires several of the following to hold together:
 
@@ -344,7 +388,11 @@ A retraining trigger should combine signals rather than fire on any single metri
 3. Output drift: the predicted-score distribution shifts materially, which often precedes a measured performance drop.
 4. Enough fresh labeled data exists to retrain on, and the cost of retraining is justified by the expected gain.
 
-> **Warning:** An alert with no owner and no runbook is worse than no alert. People learn to ignore a channel that cries wolf, and then the one alert that mattered gets ignored too. Every threshold you set should answer "who gets paged, and what do they do first?"
+
+::: {.callout-warning}
+An alert with no owner and no runbook is worse than no alert. People learn to ignore a channel that cries wolf, and then the one alert that mattered gets ignored too. Every threshold you set should answer "who gets paged, and what do they do first?"
+:::
+
 
 Tie the alert to an action and an owner, otherwise alerts become noise that people learn to ignore. The cleanest design routes alerts into the same incident system used for service health, with a runbook: confirm the drift is real (not a pipeline bug or a labeling delay), decide between recalibration and full retraining, and record the decision so the threshold itself can be tuned over time.
 
@@ -362,7 +410,11 @@ The errors below are the ones that bite teams most often. Each is easy to make a
 - Label delay creates blind spots. While labels are pending you are flying on proxies. Document the delay explicitly and size your alerting around it.
 - Categorical features need their own treatment. KS is for continuous variables; use PSI on category shares or a chi-square test, and handle new categories that never appeared in the reference.
 
-> **Tip:** The single most useful upgrade to per-feature monitoring is the classifier two-sample test. Pool the reference and current samples, label them by which sample they came from, train any classifier to tell them apart, and read its AUC. An AUC near 0.5 means the two samples are indistinguishable (no drift); an AUC near 1.0 means they are easy to separate (strong, possibly multivariate drift). This catches joint shifts that every marginal misses.
+
+::: {.callout-tip}
+The single most useful upgrade to per-feature monitoring is the classifier two-sample test. Pool the reference and current samples, label them by which sample they came from, train any classifier to tell them apart, and read its AUC. An AUC near 0.5 means the two samples are indistinguishable (no drift); an AUC near 1.0 means they are easy to separate (strong, possibly multivariate drift). This catches joint shifts that every marginal misses.
+:::
+
 
 To pull the whole chapter together, here is a reasonable default program: operational health always on; per-feature PSI and KS computed on a daily or weekly batch against a fixed reference, with thresholds calibrated from your own history; score-distribution drift as a single summary; performance metrics on a control chart once labels close; and a combined trigger that requires both a sustained performance signal and corroborating input drift before retraining. The recurring theme is restraint: measure cheaply and often, but act only when independent signals agree.
 

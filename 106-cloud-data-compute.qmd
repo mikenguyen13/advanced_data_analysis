@@ -19,7 +19,11 @@ A typical workflow has three layers that used to live on one machine and now liv
 
 The single most important habit is to move computation toward the data. Pulling a 200 GB table into R to compute a group mean wastes network, memory, and money. Issuing a `GROUP BY` to the warehouse and pulling back a few hundred rows is the same answer for a tiny fraction of the cost. The rest of this chapter is variations on that theme.
 
-> **Key idea:** Push the reduction to where the data lives, and transport only the small result back to R. Almost every recommendation in this chapter follows from that one sentence.
+
+::: {.callout-important title="Key idea"}
+Push the reduction to where the data lives, and transport only the small result back to R. Almost every recommendation in this chapter follows from that one sentence.
+:::
+
 
 ### The cost model you are actually optimizing
 
@@ -49,13 +53,21 @@ $$
 
 where $p_q$ is a per-terabyte-scanned price and $B_{\text{scan}}$ is bytes the engine read to answer the query.^[Not every warehouse bills this way. BigQuery's on-demand mode bills bytes scanned, but provisioned systems like Redshift bill node-hours and Snowflake bills compute-seconds (credits). The bytes-scanned model is the cleanest one to reason about, and the design lessons below carry over: reading less data is always cheaper, whatever the meter.] Two design choices fall straight out of these equations. First, columnar formats and partition pruning shrink $B_{\text{scan}}$, so they cut the dominant term for analytics. Second, keeping storage and compute in the same region drives $B_{\text{out}}$ toward zero, because in-region reads are usually free. A surprising fraction of real cloud bills is egress and request count, not storage.
 
-> **Warning:** The term that surprises people on their first cloud bill is usually $C_{\text{transfer}}$, not $C_{\text{store}}$. Storing a terabyte for a month is cheap; reading it back across a region boundary or out to the public internet can cost more than storing it for a year. When a bill looks wrong, check egress first.
+
+::: {.callout-warning}
+The term that surprises people on their first cloud bill is usually $C_{\text{transfer}}$, not $C_{\text{store}}$. Storing a terabyte for a month is cheap; reading it back across a region boundary or out to the public internet can cost more than storing it for a year. When a bill looks wrong, check egress first.
+:::
+
 
 ## Object storage from R
 
 Object storage exposes a flat namespace: a bucket holds objects, each addressed by a key (a string that may contain slashes so it looks like a path). There are no real directories. Listing "a folder" is really listing all keys with a common prefix. The core operations are small: put an object, get an object, list keys under a prefix, delete an object, and check existence.
 
-> **Intuition:** Think of a bucket as one giant hash map from string keys to blobs of bytes, not as a tree of folders. The slashes in `datasets/2025/events.parquet` are just characters in the key. The console draws them as folders for your comfort, but the storage layer never moves up or down a directory because there is no directory to move through.
+
+::: {.callout-tip title="Intuition"}
+Think of a bucket as one giant hash map from string keys to blobs of bytes, not as a tree of folders. The slashes in `datasets/2025/events.parquet` are just characters in the key. The console draws them as folders for your comfort, but the storage layer never moves up or down a directory because there is no directory to move through.
+:::
+
 
 The main R interfaces are `paws` (a generated AWS SDK covering S3 and much else), `googleCloudStorageR` for GCS, and `AzureStor` for Azure Blob. Below is idiomatic `paws` code for the five core operations. It will not run here because there are no credentials, but it is the shape you will use.
 
@@ -132,7 +144,11 @@ delete_storage_file(cont, "datasets/mtcars.rds")                        # DELETE
 
 Across all three providers the interface is the same five verbs over a key-value store. Once you internalize that, switching clouds is mostly renaming functions.
 
-> **Note:** The body of an S3 object comes back as a raw byte vector, which is why the `paws` example writes it to a temporary file before `readRDS()`. The higher-level GCS and Azure helpers hide that step behind a `saveToDisk`/`dest` argument, but underneath they are doing the same thing.
+
+::: {.callout-note}
+The body of an S3 object comes back as a raw byte vector, which is why the `paws` example writes it to a temporary file before `readRDS()`. The higher-level GCS and Azure helpers hide that step behind a `saveToDisk`/`dest` argument, but underneath they are doing the same thing.
+:::
+
 
 ### File formats matter more than the SDK
 
@@ -174,7 +190,11 @@ result <- ds |>
 
 A warehouse is a managed SQL engine that separates storage from compute and scales the compute elastically. From R, the standard route is the `DBI` interface plus a driver package, so the same R code talks to BigQuery, Redshift, Snowflake, or a local SQLite by swapping the connection object.
 
-> **Intuition:** `DBI` is to databases what a wall socket is to appliances. Your R code (the appliance) plugs into a standard interface; the driver package (the plug) handles whatever the specific warehouse expects behind the wall. Change the warehouse and you change the plug, not the appliance.
+
+::: {.callout-tip title="Intuition"}
+`DBI` is to databases what a wall socket is to appliances. Your R code (the appliance) plugs into a standard interface; the driver package (the plug) handles whatever the specific warehouse expects behind the wall. Change the warehouse and you change the plug, not the appliance.
+:::
+
 
 ```{r dbi-bq, eval=FALSE}
 library(DBI)
@@ -242,7 +262,11 @@ local_result <- collect(summary_tbl)  # execute remotely, fetch the small result
 
 The discipline is identical to object storage: do the reduction remotely, transport the small thing.
 
-> **Tip:** The lazy reference `events` looks like a data frame but holds no rows. Nothing runs until `collect()`. Get in the habit of calling `show_query()` before `collect()` so you can confirm the filter and the `GROUP BY` were pushed to the warehouse, not quietly applied in R after a full download.
+
+::: {.callout-tip}
+The lazy reference `events` looks like a data frame but holds no rows. Nothing runs until `collect()`. Get in the habit of calling `show_query()` before `collect()` so you can confirm the filter and the `GROUP BY` were pushed to the warehouse, not quietly applied in R after a full download.
+:::
+
 
 ## Comparison of the main options
 
@@ -288,7 +312,11 @@ aws_key <- get_required_env("AWS_ACCESS_KEY_ID")
 
 For local development, the `.Renviron` file holds variables outside the script, and the `keyring` package stores secrets in the operating system credential store. Whatever you do, add credential files to `.gitignore` and prefer attached identity in production so there is no long-lived key to rotate or lose.
 
-> **Warning:** A secret committed to git is compromised the moment the commit is pushed, and deleting it later does not help because it lives forever in the repository history. Treat any key that touches version control as already leaked: rotate it immediately rather than hoping nobody noticed.
+
+::: {.callout-warning}
+A secret committed to git is compromised the moment the commit is pushed, and deleting it later does not help because it lives forever in the repository history. Treat any key that touches version control as already leaked: rotate it immediately rather than hoping nobody noticed.
+:::
+
 
 ## Remote compute
 
@@ -339,7 +367,11 @@ $$
 
 which approaches $1/s$ as $k \to \infty$. The practical reading: distributing only pays when the serial fraction $s$ is small and the per-task overhead is much smaller than the per-task work. Many "embarrassingly parallel" jobs (scoring rows, fitting independent models per group) have $s$ near zero and scale almost linearly; iterative algorithms with a synchronization barrier each step do not.
 
-> **When to use this:** Reach for a distributed engine like Spark only after a single large instance is genuinely too small. A 64-core machine with a few hundred gigabytes of RAM handles a lot, and it has no network shuffle, no cluster to babysit, and no serial-fraction penalty. Scale up first; scale out when up runs out.
+
+::: {.callout-tip title="When to use this"}
+Reach for a distributed engine like Spark only after a single large instance is genuinely too small. A 64-core machine with a few hundred gigabytes of RAM handles a lot, and it has no network shuffle, no cluster to babysit, and no serial-fraction penalty. Scale up first; scale out when up runs out.
+:::
+
 
 ## A runnable demo: a local store that mirrors an object-store interface
 

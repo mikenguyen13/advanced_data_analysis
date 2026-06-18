@@ -13,7 +13,11 @@ Consider a few concrete shapes of that narrow question. A genomics lab has seque
 
 Transductive learning is the discipline of exploiting exactly that situation. Instead of learning a general function $f$ and then evaluating it at the test points, it predicts the labels of the specific test points directly, using their features as part of the fitting process. The unlabeled test inputs are not held back, they are placed on the table alongside the labeled examples and allowed to shape the answer.
 
-> **Key idea:** Inductive learning answers "what is the rule for any future point?" Transductive learning answers "what are the labels of these particular points I already hold?" The second is a smaller question, and you should not solve a harder problem than the one you have.
+
+::: {.callout-important title="Key idea"}
+Inductive learning answers "what is the rule for any future point?" Transductive learning answers "what are the labels of these particular points I already hold?" The second is a smaller question, and you should not solve a harder problem than the one you have.
+:::
+
 
 That last sentence is Vapnik's principle, and it is the philosophical engine of this chapter. Vapnik (1998) put it sharply: when solving a problem of interest, do not solve a more general problem as an intermediate step. Estimating a function over the whole input space, only to read off its values at a handful of points, is a detour. If you know the points in advance, aim straight at them.
 
@@ -25,13 +29,21 @@ We observe a labeled set $L = \{(x_1, y_1), \dots, (x_l, y_l)\}$ and an unlabele
 
 The two learning modes differ in what they produce.
 
-> **Note:** Inductive learning produces a function $\hat f : \mathbb{R}^p \to \{1, \dots, C\}$ defined on the whole input space, then sets $\hat y_i = \hat f(x_i)$ for any point of interest, seen or unseen. Transductive learning produces only the vector of labels on $U$. There is no $\hat f$ to carry forward.
+
+::: {.callout-note}
+Inductive learning produces a function $\hat f : \mathbb{R}^p \to \{1, \dots, C\}$ defined on the whole input space, then sets $\hat y_i = \hat f(x_i)$ for any point of interest, seen or unseen. Transductive learning produces only the vector of labels on $U$. There is no $\hat f$ to carry forward.
+:::
+
 
 The gap matters statistically. Inductive learning controls the risk of $\hat f$ over the entire distribution $p(x)$, a uniform guarantee across all possible inputs. Transduction needs only that the labeling be good on the finite set $U$, which is a weaker requirement and, by Vapnik's argument, can be met with tighter sample-dependent bounds. Vapnik (1998) and Vapnik (2006) derive transductive generalization bounds that depend on the actual configuration of the $n$ points rather than on the capacity of a function class over all of $\mathbb{R}^p$.
 
 A small but important subtlety: a transductive method can always be turned into an inductive one after the fact. Once $U$ has been labeled, the now fully-labeled set $L \cup U$ can train an ordinary supervised model, or you can attach an out-of-sample extension that maps a new point to a prediction by its similarity to the labeled batch. The reverse is cheap too: any inductive $\hat f$ yields transductive labels by evaluation at $U$. The distinction is therefore about what the method optimizes and what guarantees it carries, not an impassable wall.
 
-> **Intuition:** Picture a connect-the-dots puzzle. Induction is drawing the full underlying curve so you could place a dot anywhere. Transduction is filling in only the numbered dots you were given. If all you need are those dots, drawing the entire curve first is wasted effort, and worse, you might draw the curve badly in regions you were never asked about and let that error leak back into the dots you cared about.
+
+::: {.callout-tip title="Intuition"}
+Picture a connect-the-dots puzzle. Induction is drawing the full underlying curve so you could place a dot anywhere. Transduction is filling in only the numbered dots you were given. If all you need are those dots, drawing the entire curve first is wasted effort, and worse, you might draw the curve badly in regions you were never asked about and let that error leak back into the dots you cared about.
+:::
+
 
 ## Transductive Support Vector Machines
 
@@ -67,11 +79,19 @@ $$
 
 The new term $C^* \sum_j \xi^*_j$ penalizes unlabeled points that land inside the margin, so the optimizer prefers a hyperplane that keeps the whole unlabeled cloud clear of the boundary. The penalty weight $C^*$ governs how much the test points are allowed to bend the solution.
 
-> **Intuition:** A plain SVM positions a fence using only the flagged animals on each side. A TSVM also sees the unflagged herd milling around and refuses to run the fence straight through the middle of a tight group, because a good boundary should sit in the empty corridor between herds, not split one in two.
+
+::: {.callout-tip title="Intuition"}
+A plain SVM positions a fence using only the flagged animals on each side. A TSVM also sees the unflagged herd milling around and refuses to run the fence straight through the middle of a tight group, because a good boundary should sit in the empty corridor between herds, not split one in two.
+:::
+
 
 The catch is that the labels $y^*_j$ are discrete unknowns, so the problem is no longer a convex quadratic program; it is a mixed-integer, non-convex optimization, NP-hard in general. Joachims (1999) gives a label-switching heuristic ($\mathrm{SVM}^{light}$): start from the labels an inductive SVM would assign, anneal $C^*$ upward from a small value, and iteratively flip pairs of unlabeled labels whenever doing so lowers the objective. Other approaches relax the integer labels continuously (Chapelle, Sindhwani, and Keerthi, 2008). All of them inherit sensitivity to initialization and to the assumed class balance on $U$.
 
-> **Warning:** TSVMs are notoriously fiddly. The non-convex objective has many local minima, and if the cluster assumption fails (classes overlap heavily, or the test cloud is not cleanly separable) the unlabeled term can drag the boundary into a worse place than the labeled-only SVM. Treat $C^*$ and the assumed positive fraction on $U$ as hyperparameters to validate, not constants to trust.
+
+::: {.callout-warning}
+TSVMs are notoriously fiddly. The non-convex objective has many local minima, and if the cluster assumption fails (classes overlap heavily, or the test cloud is not cleanly separable) the unlabeled term can drag the boundary into a worse place than the labeled-only SVM. Treat $C^*$ and the assumed positive fraction on $U$ as hyperparameters to validate, not constants to trust.
+:::
+
 
 We do not run a TSVM in the demo below because the off-the-shelf R tooling for it is thin and the optimization is finicky; instead we use graph-based propagation, which is convex, transparent, and easy to implement in base R. The TSVM remains worth knowing as the canonical low-density-separation transductive method.
 
@@ -120,7 +140,11 @@ $$
 
 This is the *harmonic* solution of Zhu, Ghahramani, and Lafferty (2003): the propagated label scores are a harmonic function on the graph, minimizing the energy $\tfrac{1}{2} \sum_{i,j} W_{ij} (F_i - F_j)^2$ subject to matching the labeled values. Smoothness over the graph and fixed seeds together pin down a unique answer.
 
-> **Intuition:** Drop ink (the labeled colors) into a few cups of a tray of connected water cells; thicker tubes (larger $W_{ij}$) between cells let color flow faster. Keep re-inking the source cups every round so they never fade. After things settle, each cell's tint is a weighted blend of the sources reachable through the tubing, and the dominant tint is its predicted label.
+
+::: {.callout-tip title="Intuition"}
+Drop ink (the labeled colors) into a few cups of a tray of connected water cells; thicker tubes (larger $W_{ij}$) between cells let color flow faster. Keep re-inking the source cups every round so they never fade. After things settle, each cell's tint is a weighted blend of the sources reachable through the tubing, and the dominant tint is its predicted label.
+:::
+
 
 ### Label spreading
 
@@ -142,7 +166,11 @@ $$
 F^* = (1 - \alpha)\,(I - \alpha S)^{-1} Y .
 $$
 
-> **Note:** The two methods differ in two knobs. Propagation uses the random-walk normalization $P = D^{-1}W$ and clamps seeds exactly; spreading uses the symmetric normalization $S = D^{-1/2} W D^{-1/2}$ and only pulls toward seeds with strength $1 - \alpha$. When labels are clean and few, propagation is the natural default; when some seed labels may be wrong, spreading's soft clamping is safer.
+
+::: {.callout-note}
+The two methods differ in two knobs. Propagation uses the random-walk normalization $P = D^{-1}W$ and clamps seeds exactly; spreading uses the symmetric normalization $S = D^{-1/2} W D^{-1/2}$ and only pulls toward seeds with strength $1 - \alpha$. When labels are clean and few, propagation is the natural default; when some seed labels may be wrong, spreading's soft clamping is safer.
+:::
+
 
 Both methods are inherently transductive: they return labels for the $n$ nodes that were in the graph and nothing else. A point that arrives after the graph is built has no row in $F$. To label it you must either rebuild the graph with the new point included and re-solve (back to transduction on a larger batch) or add an out-of-sample extension, for example a Nadaraya-Watson average of neighbor labels (@sec-kernel) using the same kernel.
 
@@ -152,7 +180,11 @@ Transduction and semi-supervised learning (SSL) overlap heavily but are not iden
 
 SSL (@sec-semi-supervised-learning) is defined by its *data*: a little labeled, a lot unlabeled. Transduction versus induction is a distinction about the *goal*: label this fixed batch, or learn a reusable rule. Every transductive method is doing semi-supervised learning, since it uses unlabeled points during fitting. But not every SSL method is transductive: self-training and co-training (covered in the SSL chapter) produce a reusable inductive classifier, while label propagation and TSVMs produce a batch labeling.
 
-> **Key idea:** SSL describes the data regime (few labels, many unlabeled). Transduction describes the target (a fixed set of points to label, no model for the future). They co-occur because the cheapest way to exploit unlabeled data is often to label it directly, which is exactly transduction. The two assumptions that make SSL work, the cluster assumption and the manifold assumption, are the same two assumptions that justify TSVMs and graph propagation respectively.
+
+::: {.callout-important title="Key idea"}
+SSL describes the data regime (few labels, many unlabeled). Transduction describes the target (a fixed set of points to label, no model for the future). They co-occur because the cheapest way to exploit unlabeled data is often to label it directly, which is exactly transduction. The two assumptions that make SSL work, the cluster assumption and the manifold assumption, are the same two assumptions that justify TSVMs and graph propagation respectively.
+:::
+
 
 The practical upshot: if your unlabeled data *is* the test set and you will never see those exact points again as a population worth modeling, reach for a transductive method and skip the detour of fitting a general $\hat f$. If you need to score a stream of future points, you want induction, and SSL's inductive methods (or a transductive method followed by retraining a supervised model on the filled-in labels) are the right tools.
 
@@ -240,7 +272,11 @@ cat("Converged in", iter, "iterations.",
     round(acc_prop, 3), "\n")
 ```
 
-> **Note:** The bandwidth $\sigma$ is the one knob that matters most here. Too small and the graph fragments into disconnected pieces that the seeds cannot reach (those points keep their initial all-zero rows and get labeled arbitrarily); too large and the two moons fuse into one blob and labels bleed across the gap. We use $\sigma = 0.30$, which connects each crescent internally while keeping the crescents weakly linked.
+
+::: {.callout-note}
+The bandwidth $\sigma$ is the one knob that matters most here. Too small and the graph fragments into disconnected pieces that the seeds cannot reach (those points keep their initial all-zero rows and get labeled arbitrarily); too large and the two moons fuse into one blob and labels bleed across the gap. We use $\sigma = 0.30$, which connects each crescent internally while keeping the crescents weakly linked.
+:::
+
 
 ### Baseline comparison
 
@@ -307,7 +343,11 @@ The lesson the figure makes concrete: with four labels and no geometry, you cann
 
 A few things decide whether transduction helps or quietly hurts.
 
-> **When to use this:** Reach for a transductive method when (1) the points you must label are fixed and known at training time, (2) labels are scarce while unlabeled inputs are plentiful, and (3) you have reason to believe the cluster or manifold assumption holds, that is, the classes form coherent groups or lie along smooth low-dimensional structure. The two-moons demo satisfies all three.
+
+::: {.callout-tip title="When to use this"}
+Reach for a transductive method when (1) the points you must label are fixed and known at training time, (2) labels are scarce while unlabeled inputs are plentiful, and (3) you have reason to believe the cluster or manifold assumption holds, that is, the classes form coherent groups or lie along smooth low-dimensional structure. The two-moons demo satisfies all three.
+:::
+
 
 The single biggest failure mode is the assumption itself. If the classes overlap heavily, or the manifold structure does not align with the labels, the unlabeled points pull predictions toward structure in $p(x)$ that has nothing to do with $y$. Then label propagation smears labels across the true boundary and a TSVM parks its hyperplane in the wrong corridor. Always sanity-check against a supervised baseline trained on the same labeled points; if the transductive method does not beat it, the assumption is probably violated.
 
@@ -315,7 +355,11 @@ Graph construction is the part that most repays care. The bandwidth $\sigma$ (or
 
 Class balance matters too. Label propagation has no notion of prior class frequencies, so if the seeds are wildly unrepresentative the propagated proportions can drift. Some implementations add a class-mass normalization step (Zhu, Ghahramani, and Lafferty, 2003) that rescales the columns of $F$ to match a target class distribution; if you know roughly how the batch splits across classes, use it.
 
-> **Warning:** The defining limitation is structural, not a tuning issue. A purely transductive method gives you labels for the batch in hand and no model for genuinely new points. If tomorrow's data arrives as a fresh batch, you must rebuild the graph (or rerun the TSVM) on the new points, or you must add an explicit out-of-sample extension or retrain a supervised model on the filled-in labels. Do not promise stakeholders a deployable scoring service from a transductive fit alone.
+
+::: {.callout-warning}
+The defining limitation is structural, not a tuning issue. A purely transductive method gives you labels for the batch in hand and no model for genuinely new points. If tomorrow's data arrives as a fresh batch, you must rebuild the graph (or rerun the TSVM) on the new points, or you must add an explicit out-of-sample extension or retrain a supervised model on the filled-in labels. Do not promise stakeholders a deployable scoring service from a transductive fit alone.
+:::
+
 
 Finally, watch the cost. The harmonic closed form $F_u = (I - P_{uu})^{-1} P_{u\ell} Y_\ell$ inverts a $u \times u$ matrix, which is $O(u^3)$ and infeasible for large $u$. The iterative propagate-and-clamp loop is far cheaper per sweep, especially on a sparse $k$-NN graph where each sweep costs $O(\text{edges})$, and it is what scales to large unlabeled batches.
 

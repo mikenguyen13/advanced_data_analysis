@@ -13,11 +13,19 @@ Imagine you have a dataset too big to load into R, and you want a strong predict
 
 `h2o` is an open source, distributed in-memory machine learning platform written in Java with a thin R client. The key idea to hold onto is that the R package `h2o` does not run the algorithms inside R. Instead it starts (or connects to) a separate Java process called the H2O cluster, ships data and instructions to it, and reads results back. This split matters because it is what lets the same R code train a generalized linear model on a laptop and a gradient boosting machine on a multi-node cluster against data that never fits in R's memory.
 
-> **Intuition:** Think of R as a remote control and the H2O cluster as the machine doing the work. Your R session holds only small pointers (the names of datasets and models); the heavy data and computation live in the Java process, possibly on another server entirely.
+
+::: {.callout-tip title="Intuition"}
+Think of R as a remote control and the H2O cluster as the machine doing the work. Your R session holds only small pointers (the names of datasets and models); the heavy data and computation live in the Java process, possibly on another server entirely.
+:::
+
 
 This chapter treats `h2o` as a production-oriented modeling engine. By the end you will know how to start and manage the cluster, move data into it as an `H2OFrame`, fit the four model families that cover most tabular work (generalized linear models, gradient boosting machines, random forests, and feed-forward deep learning), run the AutoML routine that searches and stacks those families automatically, and read the explainability tools that ship with the package. The algorithms themselves are covered in earlier chapters; here the emphasis is how they are exposed, scaled, and combined. A short base-R demonstration near the end makes the leaderboard-and-stacking idea concrete without needing a cluster at all.
 
-> **Note:** Because the algorithms in this chapter run inside a Java cluster started by `h2o.init()`, the `h2o` code chunks here are shown for reference and are not executed when the book is built (they need a live cluster). The one fully runnable example, the base-R leaderboard, deliberately uses only base packages so you can run it yourself.
+
+::: {.callout-note}
+Because the algorithms in this chapter run inside a Java cluster started by `h2o.init()`, the `h2o` code chunks here are shown for reference and are not executed when the book is built (they need a live cluster). The one fully runnable example, the base-R leaderboard, deliberately uses only base packages so you can run it yourself.
+:::
+
 
 ## Where this fits in a modern ML workflow
 
@@ -42,7 +50,11 @@ Most predictive work on tabular data follows the same loop: import, clean, split
 
 The rows that distinguish `h2o` are larger-than-RAM data, a single API across model families, one-call AutoML, and exportable scoring artifacts (MOJO/POJO)^[A MOJO (Model Object, Optimized) or POJO (Plain Old Java Object) is a self-contained file that encodes a trained model so it can score new rows on any machine with a Java runtime, with no R, no Python, and no H2O cluster required. This is what makes `h2o` models easy to embed in production services.] that run wherever a JVM runs without R.
 
-> **When to use this:** Skim the table above first. If your data fits comfortably in memory and you want fine-grained control of the modeling pipeline, the `tidymodels` workflow (@sec-tidymodels-framework) is usually a better fit. Reach for `h2o` when the data is large, when you want a strong baseline from a single call, or when you need a portable scoring artifact.
+
+::: {.callout-tip title="When to use this"}
+Skim the table above first. If your data fits comfortably in memory and you want fine-grained control of the modeling pipeline, the `tidymodels` workflow (@sec-tidymodels-framework) is usually a better fit. Reach for `h2o` when the data is large, when you want a strong baseline from a single call, or when you need a portable scoring artifact.
+:::
+
 
 ## Starting and managing the cluster
 
@@ -62,7 +74,11 @@ h2o.clusterInfo()   # cores, memory, version, node count
 
 Two housekeeping habits prevent the most common problems. First, the cluster's memory is separate from R's, so frames and models accumulate in the JVM until you remove them with `h2o.rm()` or `h2o.removeAll()`. Second, the R client version and the running cluster version must match exactly; a mismatch is the usual cause of cryptic connection errors.
 
-> **Warning:** Removing an R object that points at a frame (for example with `rm()` in R) does not free the frame in the cluster. The data is still occupying JVM heap until you call `h2o.rm()` on it. Over a long session this is the most common way to run the cluster out of memory.
+
+::: {.callout-warning}
+Removing an R object that points at a frame (for example with `rm()` in R) does not free the frame in the cluster. The data is still occupying JVM heap until you call `h2o.rm()` on it. Over a long session this is the most common way to run the cluster out of memory.
+:::
+
 
 ### The H2OFrame
 
@@ -84,7 +100,11 @@ y <- "y"                                  # response name
 
 Specifying a model in `h2o` uses the names `x` (predictor columns) and `y` (response column) plus a `training_frame`, rather than an R formula. This is deliberate: passing column names instead of a formula avoids building a dense model matrix in memory, which is what makes wide, high-cardinality data feasible.^[An R formula like `y ~ .` forces R to expand every factor into dummy columns up front, producing a dense design matrix. With thousands of categories that matrix can be larger than the original data. The column-name interface lets the cluster handle factors lazily and sparsely instead.]
 
-> **Key idea:** From here on, every model call follows the same template, supply `x`, `y`, and `training_frame`, then add the hyperparameters specific to that family. That uniformity is what makes the families easy to swap and what AutoML exploits when it searches over them.
+
+::: {.callout-important title="Key idea"}
+From here on, every model call follows the same template, supply `x`, `y`, and `training_frame`, then add the hyperparameters specific to that family. That uniformity is what makes the families easy to swap and what AutoML exploits when it searches over them.
+:::
+
 
 ## The four core model families
 
@@ -101,7 +121,11 @@ $$
 
 where $\ell$ is the log-likelihood contribution for the chosen `family` (Gaussian, binomial, Poisson, gamma, and others), $\lambda \ge 0$ is the overall penalty strength, and $\alpha \in [0,1]$ mixes the lasso ($\alpha = 1$) and ridge ($\alpha = 0$) penalties. This is the elastic net penalty, solved here by a distributed iteratively reweighted least squares with coordinate descent. Setting `lambda_search = TRUE` traces the whole regularization path and picks $\lambda$ by cross-validation.
 
-> **Intuition:** The penalty term is what keeps a linear model honest when there are many predictors. Ridge ($\alpha = 0$) shrinks coefficients smoothly toward zero; lasso ($\alpha = 1$) can set some exactly to zero and so performs variable selection. The elastic net mix lets you blend the two.
+
+::: {.callout-tip title="Intuition"}
+The penalty term is what keeps a linear model honest when there are many predictors. Ridge ($\alpha = 0$) shrinks coefficients smoothly toward zero; lasso ($\alpha = 1$) can set some exactly to zero and so performs variable selection. The elastic net mix lets you blend the two.
+:::
+
 
 ```{r h2o-glm, eval=FALSE}
 glm_fit <- h2o.glm(
@@ -131,7 +155,11 @@ $$
 
 The knobs that control the bias-variance trade-off are `ntrees` (number of stages $m$), `learn_rate` ($\nu$), `max_depth` (tree complexity), and the sampling rates `sample_rate` (rows) and `col_sample_rate` (columns), which inject the stochasticity that improves generalization.
 
-> **Tip:** A small learning rate with many trees almost always generalizes better than a large learning rate with few trees, at the cost of training time. Pair a small `learn_rate` with early stopping (`stopping_rounds`, shown in the code below) so the model stops adding trees once validation performance stops improving, which spends the budget without overfitting.
+
+::: {.callout-tip}
+A small learning rate with many trees almost always generalizes better than a large learning rate with few trees, at the cost of training time. Pair a small `learn_rate` with early stopping (`stopping_rounds`, shown in the code below) so the model stops adding trees once validation performance stops improving, which spends the budget without overfitting.
+:::
+
 
 ```{r h2o-gbm, eval=FALSE}
 gbm_fit <- h2o.gbm(
@@ -165,7 +193,11 @@ rf_fit <- h2o.randomForest(
 
 `h2o.deeplearning()` fits a fully connected feed-forward network. With weight matrices $W^{(\ell)}$, bias vectors $b^{(\ell)}$, and an activation $\sigma$, layer $\ell$ computes $a^{(\ell)} = \sigma\!\big(W^{(\ell)} a^{(\ell-1)} + b^{(\ell)}\big)$ with $a^{(0)} = \mathbf{x}$. The H2O implementation is tuned for tabular data: it trains with the adaptive learning rate ADADELTA by default, uses dropout for regularization, and runs a distributed variant of stochastic gradient descent (HOGWILD!). It is not a substitute for the neural network architectures covered elsewhere, such as the transformer models (@sec-transformers); it is the dense-tabular network you reach for when trees underfit smooth interactions.
 
-> **Note:** On most tabular problems the tree ensembles (GBM and random forest) are hard to beat, and they need far less tuning than a neural network. Treat `h2o.deeplearning()` as a complement worth adding to the AutoML search rather than a default first choice for tables.
+
+::: {.callout-note}
+On most tabular problems the tree ensembles (GBM and random forest) are hard to beat, and they need far less tuning than a neural network. Treat `h2o.deeplearning()` as a complement worth adding to the AutoML search rather than a default first choice for tables.
+:::
+
 
 ```{r h2o-dl, eval=FALSE}
 dl_fit <- h2o.deeplearning(
@@ -192,7 +224,11 @@ $$
 
 Using out-of-fold predictions to fit $g$ is what keeps the metalearner honest: it never sees a base model's prediction on a row that base model trained on, so the combination weights are estimated without leakage.^[If you fit the metalearner on in-sample predictions instead, a model that memorized the training data would look brilliant and get a large weight, then fail on new data. The out-of-fold trick is the whole reason stacking generalizes.] The result is ranked on a leaderboard, sorted by a default metric (AUC for binary classification, deviance or RMSE for regression).
 
-> **Key idea:** AutoML's two outputs are a leaderboard (every model it trained, ranked) and a leader (usually a stacked ensemble). The leaderboard is for understanding the landscape; the leader is the model you would deploy, subject to the serving-cost caveat below.
+
+::: {.callout-important title="Key idea"}
+AutoML's two outputs are a leaderboard (every model it trained, ranked) and a leader (usually a stacked ensemble). The leaderboard is for understanding the landscape; the leader is the model you would deploy, subject to the serving-cost caveat below.
+:::
+
 
 ```{r h2o-automl, eval=FALSE}
 aml <- h2o.automl(
@@ -224,7 +260,11 @@ $$
 
 which holds the feature of interest fixed while sweeping the others over their observed values. This is the same partial dependence defined in the interpretable machine learning chapter (@sec-interpretable-machine-learning); `h2o` just computes it in the cluster.
 
-> **Intuition:** A partial dependence plot answers the question "as this one predictor changes, how does the model's average prediction move, with everything else held at its typical mix?" It is the model's marginal story about that feature.
+
+::: {.callout-tip title="Intuition"}
+A partial dependence plot answers the question "as this one predictor changes, how does the model's average prediction move, with everything else held at its typical mix?" It is the model's marginal story about that feature.
+:::
+
 
 ```{r h2o-explain, eval=FALSE}
 h2o.explain(aml, test_h2o)            # full panel for the whole leaderboard

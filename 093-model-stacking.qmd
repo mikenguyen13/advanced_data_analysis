@@ -40,11 +40,19 @@ Suppose you have trained several different models on the same problem: a random 
 
 Stacking (also called stacked generalization, introduced by @wolpert1992stacked and given its statistical footing by @breiman1996stacked) is an ensemble method (@sec-ensemble-learning) that does exactly this. The idea is to train a collection of *base learners* (the candidate models) and then train one more model, the *meta-learner*, whose job is to learn how to best weight and combine the base learners' predictions. The meta-learner does not see the original predictors directly; it sees only what the base models predicted, and it figures out how much to trust each one.
 
-> **Intuition:** Think of stacking as assembling a panel of experts. Each expert (base model) gives an opinion, and a coordinator (the meta-learner) learns from past cases which experts to believe in which situations. A confident, usually-right expert gets a large weight; an expert who merely echoes another gets a small one or none at all.
+
+::: {.callout-tip title="Intuition"}
+Think of stacking as assembling a panel of experts. Each expert (base model) gives an opinion, and a coordinator (the meta-learner) learns from past cases which experts to believe in which situations. A confident, usually-right expert gets a large weight; an expert who merely echoes another gets a small one or none at all.
+:::
+
 
 The one subtlety that makes stacking work (rather than overfit) is *where the meta-learner's training data comes from*. If we trained the meta-learner on predictions the base models made on the same data they were fit on, the base models would look artificially accurate and the meta-learner would learn the wrong lesson. Stacking avoids this by feeding the meta-learner *out-of-sample* predictions, the predictions each base model makes on held-out folds during cross-validation. Those held-out predictions are an honest estimate of how each model behaves on data it has never seen.
 
-> **Key idea:** The meta-learner is trained on out-of-sample (cross-validated) predictions of the base models, not on their in-sample fits. This is what keeps a stack honest.
+
+::: {.callout-important title="Key idea"}
+The meta-learner is trained on out-of-sample (cross-validated) predictions of the base models, not on their in-sample fits. This is what keeps a stack honest.
+:::
+
 
 In this chapter we use the `stacks` package from the `tidymodels` family, which plugs directly into the tuning machinery you have already seen. By the end you will be able to assemble candidate models from tuning results, blend them into a single stacked model, inspect which members survived and with what weights, and evaluate the result on test data. The code below follows the `stacks` package vignette^[<https://cran.r-project.org/web/packages/stacks/vignettes/basics.html>]; the full source code^[<https://github.com/tidymodels/stacks>] is on GitHub.
 
@@ -57,7 +65,11 @@ The workflow in `stacks` always follows the same six steps. We list them once he
 5.  Refit the surviving members (those with nonzero stacking coefficients) on the full training data with `fit_members()`.
 6.  `predict()` on new data.
 
-> **Note:** Steps 1 and 3 are where the "ensemble" lives: every tuning configuration you pass in becomes a *candidate* member. Step 4 is where the meta-learner runs. Under the hood `blend_predictions()` fits a penalized (LASSO) regression on the candidates' out-of-sample predictions, so many candidates are shrunk to a coefficient of exactly zero and drop out. The stack keeps only the few that genuinely add value.^[Because the blending model is a LASSO, stacking doubles as automatic model selection: you can throw in dozens of candidates and let the penalty decide which ones earn their place. The penalty strength is itself tuned, which is why you will see a penalty axis when you plot the stack later.]
+
+::: {.callout-note}
+Steps 1 and 3 are where the "ensemble" lives: every tuning configuration you pass in becomes a *candidate* member. Step 4 is where the meta-learner runs. Under the hood `blend_predictions()` fits a penalized (LASSO) regression on the candidates' out-of-sample predictions, so many candidates are shrunk to a coefficient of exactly zero and drop out. The stack keeps only the few that genuinely add value.^[Because the blending model is a LASSO, stacking doubles as automatic model selection: you can throw in dozens of candidates and let the penalty decide which ones earn their place. The penalty strength is itself tuned, which is why you will see a penalty axis when you plot the stack later.]
+:::
+
 
 We start by loading the packages. The `stacks` functions extend the standard `tidymodels` workflow, so we load both.
 
@@ -97,7 +109,11 @@ The plots show that age, treatment, and reflex stage are related but not perfect
 
 With the data in hand we set up the usual `tidymodels` scaffolding: a train/test split, cross-validation folds, and a preprocessing recipe. Three details matter for stacking specifically. First, we hold out a genuine test set so that our final evaluation is untouched by any tuning. Second, the cross-validation `folds` are not just for tuning here; they are the source of the out-of-sample predictions the meta-learner will eventually train on. Third, the two control objects, `control_stack_grid()` and `control_stack_resamples()`, tell the tuning functions to *save* those out-of-sample predictions so the stack can use them later.
 
-> **Warning:** Stacking only works if you pass a stack-aware control object (`control_stack_grid()` for `tune_grid()`, or `control_stack_resamples()` for `fit_resamples()`) when you tune each candidate. The default tuning controls discard the per-fold predictions to save memory, and without them `add_candidates()` has nothing to learn from. The control object you choose must match how you tuned the model.
+
+::: {.callout-warning}
+Stacking only works if you pass a stack-aware control object (`control_stack_grid()` for `tune_grid()`, or `control_stack_resamples()` for `fit_resamples()`) when you tune each candidate. The default tuning controls discard the per-fold predictions to save memory, and without them `add_candidates()` has nothing to learn from. The control object you choose must match how you tuned the model.
+:::
+
 
 The recipe below creates dummy variables for the categorical predictors (leaving the outcome `reflex` alone) and removes any predictor with zero variance, which would carry no information.
 
@@ -152,7 +168,11 @@ rand_forest_res <-
 
 Our second family is a single-hidden-layer neural network, fit with the `nnet` engine. Here we tune the number of `hidden_units`, the weight `penalty` (regularization), and the number of training `epochs`. Unlike the random forest, a neural network *is* sensitive to predictor scale, so we extend the recipe with `step_normalize()` to center and scale the predictors before fitting.
 
-> **Tip:** A good stack benefits from candidates that are genuinely *different* in how they reason about the data, not ten flavors of the same model. A random forest (axis-aligned splits) and a neural network (smooth nonlinear boundaries) make complementary errors, which is exactly what gives the meta-learner something useful to combine.
+
+::: {.callout-tip}
+A good stack benefits from candidates that are genuinely *different* in how they reason about the data, not ten flavors of the same model. A random forest (axis-aligned splits) and a neural network (smooth nonlinear boundaries) make complementary errors, which is exactly what gives the meta-learner something useful to combine.
+:::
+
 
 ```{r}
 nnet_spec <-
@@ -239,7 +259,11 @@ yardstick::roc_auc(tree_frogs_pred,
                    contains(".pred_"))
 ```
 
-> **Note:** AUC near 0.5 means random-quality ranking, while values close to 1 mean near-perfect ranking. For a multiclass outcome, `yardstick` uses the Hand-Till generalization of AUC, averaging the pairwise class comparisons. Use it as a relative yardstick for comparing models rather than an absolute grade.
+
+::: {.callout-note}
+AUC near 0.5 means random-quality ranking, while values close to 1 mean near-perfect ranking. For a multiclass outcome, `yardstick` uses the Hand-Till generalization of AUC, averaging the pairwise class comparisons. Use it as a relative yardstick for comparing models rather than an absolute grade.
+:::
+
 
 The real test of stacking is whether the ensemble beats its own members. To check that, we ask for *member* predictions: `predict(..., members = TRUE)` returns the stack's prediction alongside each surviving member's prediction. Here we request class predictions (the default `type`) so we can compute a simple accuracy for each.
 
@@ -264,7 +288,11 @@ map_dfr(
 
 The row named `.pred_class` is the stacked ensemble; the rows whose names carry a `rand_forest` or `nnet` suffix are the individual members. The hope is that the ensemble sits at or near the top of this table: by learning how much to trust each member, it tends to match or beat the best single model without our having to know in advance which model that would be. On a small dataset like this one the exact ordering will wobble from run to run, so the honest reading is that stacking buys *robustness*, a predictor that is rarely much worse than the best member and never depends on guessing the winner ahead of time, rather than a guaranteed jump in accuracy.
 
-> **When to use this:** Reach for stacking when you have several reasonable but different models and no clear reason to prefer one, and when a small accuracy gain is worth extra fitting and prediction time. If one model already dominates the others, or if you need a simple, fast, easily explained predictor, a single tuned model is usually the better choice. Stacking trades interpretability and speed for robustness.
+
+::: {.callout-tip title="When to use this"}
+Reach for stacking when you have several reasonable but different models and no clear reason to prefer one, and when a small accuracy gain is worth extra fitting and prediction time. If one model already dominates the others, or if you need a simple, fast, easily explained predictor, a single tuned model is usually the better choice. Stacking trades interpretability and speed for robustness.
+:::
+
 
 To summarize the workflow: tune a diverse set of candidate models while saving their out-of-sample predictions, pour those candidates into a stack, let `blend_predictions()` learn a sparse weighting via a LASSO meta-learner, refit the survivors on all the data, and predict. The payoff is an ensemble that hedges across models instead of betting everything on one.
 

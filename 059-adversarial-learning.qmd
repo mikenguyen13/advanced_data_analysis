@@ -30,10 +30,14 @@ maximizing player is an attacker perturbing inputs; in the GAN story it is a
 discriminator trying to expose fakes. Once you see the minimax skeleton, attacks,
 defenses, and generative training all read as instances of the same game.
 
-> **Intuition:** A model that is accurate on average can still have a decision
-> boundary that passes very close to many test points. "Close" is measured in input
-> space, where a human's notion of similarity and the model's notion can diverge
-> sharply. Adversarial examples live in that gap.
+
+::: {.callout-tip title="Intuition"}
+A model that is accurate on average can still have a decision
+boundary that passes very close to many test points. "Close" is measured in input
+space, where a human's notion of similarity and the model's notion can diverge
+sharply. Adversarial examples live in that gap.
+:::
+
 
 ## Adversarial examples and the geometry of brittleness
 
@@ -65,9 +69,13 @@ $d$, so even a microscopic per-feature change $\epsilon$ accumulates into a larg
 in the score. Brittleness is partly a consequence of dimensionality, not just of
 model pathology.
 
-> **Key idea:** Many tiny coordinated nudges, each below the threshold of notice,
-> sum to a large movement of the model's score. The attacker spends a small budget per
-> feature and is repaid in proportion to the dimension.
+
+::: {.callout-important title="Key idea"}
+Many tiny coordinated nudges, each below the threshold of notice,
+sum to a large movement of the model's score. The attacker spends a small budget per
+feature and is repaid in proportion to the dimension.
+:::
+
 
 ### The fast gradient sign method
 
@@ -107,11 +115,15 @@ a random point inside the ball, which helps escape flat regions. PGD with enough
 is treated as a strong first-order attack: if a defense survives PGD, it has cleared a
 meaningful bar, though not a proof of security.
 
-> **Warning:** A defense that lowers the gradient signal without changing the decision
-> boundary can defeat FGSM and PGD by *gradient masking*, giving a false sense of
-> safety. Such defenses fall to attacks that estimate gradients differently or transfer
-> examples from a substitute model (@athalye2018obfuscated). Always report the attack
-> used and its budget.
+
+::: {.callout-warning}
+A defense that lowers the gradient signal without changing the decision
+boundary can defeat FGSM and PGD by *gradient masking*, giving a false sense of
+safety. Such defenses fall to attacks that estimate gradients differently or transfer
+examples from a substitute model (@athalye2018obfuscated). Always report the attack
+used and its budget.
+:::
+
 
 ## Adversarial training as a defense
 
@@ -135,10 +147,14 @@ tradeoff* analyzed by @tsipras2019robustness. Robust models also tend to need mo
 and more capacity. The right operating point depends on the threat: a fraud model facing
 adaptive adversaries may accept a clean-accuracy hit that a benign recommender would not.
 
-> **When to use this:** Reach for adversarial training when inputs come from a party who
-> gains by fooling the model, or when a wrong prediction on a perturbed input is costly
-> (security, safety, finance). For ordinary i.i.d. deployment with no adversary, the
-> clean-accuracy cost is usually not worth paying.
+
+::: {.callout-tip title="When to use this"}
+Reach for adversarial training when inputs come from a party who
+gains by fooling the model, or when a wrong prediction on a perturbed input is costly
+(security, safety, finance). For ordinary i.i.d. deployment with no adversary, the
+clean-accuracy cost is usually not worth paying.
+:::
+
 
 ## A runnable demo: attacking and defending a linear classifier
 
@@ -327,10 +343,14 @@ discriminator and the outer $\min$ is over the generator. Same skeleton, differe
 players. @goodfellow2014gan show that at the global optimum the generator reproduces the
 data distribution and the discriminator is reduced to guessing, $D \equiv \tfrac{1}{2}$.
 
-> **Note:** The shared minimax form is more than an analogy. Both settings inherit the
-> same difficulties: the inner problem is rarely solved exactly, the outer updates chase
-> a moving target, and naive alternation can oscillate instead of converging. Techniques
-> that stabilize one game often inform the other.
+
+::: {.callout-note}
+The shared minimax form is more than an analogy. Both settings inherit the
+same difficulties: the inner problem is rarely solved exactly, the outer updates chase
+a moving target, and naive alternation can oscillate instead of converging. Techniques
+that stabilize one game often inform the other.
+:::
+
 
 ### Domain-adversarial training
 

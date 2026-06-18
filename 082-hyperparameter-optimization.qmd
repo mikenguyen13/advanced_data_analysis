@@ -9,7 +9,11 @@ Almost every model you fit in this book has two kinds of knobs. The first kind, 
 
 The reason this matters is that the gap between a poorly tuned model and a well tuned one is often larger than the gap between two different model families. A gradient boosting machine with a learning rate that is ten times too large can look worse than a plain linear regression, and the same machine tuned well can be the best thing on the table. So we need a principled way to search the space of hyperparameter settings, and we need to do it without fooling ourselves about how good the result really is.
 
-> **Intuition:** Think of hyperparameter optimization as a function you cannot write down. You feed it a setting, it hands back a validation score, and you have no formula and no gradient, only the ability to evaluate it (expensively, because each evaluation means fitting a model). The whole game is to find a good input using as few of these costly evaluations as possible.
+
+::: {.callout-tip title="Intuition"}
+Think of hyperparameter optimization as a function you cannot write down. You feed it a setting, it hands back a validation score, and you have no formula and no gradient, only the ability to evaluate it (expensively, because each evaluation means fitting a model). The whole game is to find a good input using as few of these costly evaluations as possible.
+:::
+
 
 Formally, let $\boldsymbol{\lambda}$ denote a vector of hyperparameters living in a configuration space $\Lambda$. For a setting $\boldsymbol{\lambda}$ we train a model on a training set, then measure its quality on held-out data. Write the resulting (true, expected) generalization loss as a function
 $$
@@ -29,7 +33,11 @@ Before choosing a search method it helps to picture what we are searching over. 
 
 Some hyperparameters are continuous, such as a learning rate or a penalty $\lambda$. These almost always matter most on a logarithmic scale: the difference between $\lambda = 0.001$ and $\lambda = 0.01$ is large, while the difference between $\lambda = 10.001$ and $\lambda = 10.01$ is nil. So we search $\log \lambda$ on a uniform grid or with a uniform random draw, not $\lambda$ itself. Some hyperparameters are integer-valued (number of trees, $k$ in $k$-NN, tree depth). Some are categorical (which kernel, which split criterion). And some are conditional: the kernel width $\gamma$ only exists if the kernel is radial-basis, so it is meaningless when the kernel is linear. A configuration space with conditional structure is a tree, not a box, which already rules out a naive product grid.
 
-> **Key idea:** Not all hyperparameters matter equally, and which ones matter is usually unknown in advance. This single empirical fact, the **low effective dimensionality** of most tuning problems, is the reason random search outperforms grid search, and it shapes everything that follows.
+
+::: {.callout-important title="Key idea"}
+Not all hyperparameters matter equally, and which ones matter is usually unknown in advance. This single empirical fact, the **low effective dimensionality** of most tuning problems, is the reason random search outperforms grid search, and it shapes everything that follows.
+:::
+
 
 The function $f(\boldsymbol{\lambda})$ is typically smooth in the continuous hyperparameters (small changes in $\lambda$ give small changes in validation error) but it is noisy, because we estimate it by cross-validation on a finite sample. It can also be multimodal and have long flat regions. We have no gradient because the path from $\boldsymbol{\lambda}$ to the score runs through a full model-fitting procedure. These features (smoothness, noise, no gradient, expensive evaluations) are exactly the regime that Bayesian optimization was built for, but the simpler methods are worth understanding first.
 
@@ -41,7 +49,11 @@ Grid search has real virtues. It is trivial to implement, embarrassingly paralle
 
 Its fatal flaw is the curse of dimensionality. The number of evaluations grows as the product of the per-axis resolutions. With $d$ hyperparameters and $m$ values each you face $m^d$ fits. At $m = 10$ and $d = 5$ that is $100{,}000$ model fits, which is hopeless if each fit takes a minute. Worse, the grid spends its budget uniformly across all axes even though, as noted above, only one or two axes usually matter. If you put ten grid values on an axis that turns out to be irrelevant, you have tried the same ten useful settings ten times over while wasting nine-tenths of your budget distinguishing values that do not affect the score.
 
-> **Warning:** Grid search couples your resolution on the important axes to your budget on the unimportant ones. Doubling resolution on every axis multiplies cost by $2^d$. Beyond two or three hyperparameters, grid search is almost never the right tool.
+
+::: {.callout-warning}
+Grid search couples your resolution on the important axes to your budget on the unimportant ones. Doubling resolution on every axis multiplies cost by $2^d$. Beyond two or three hyperparameters, grid search is almost never the right tool.
+:::
+
 
 ## Random search
 
@@ -59,7 +71,11 @@ n \ \ge\ \frac{\log \delta}{\log(1 - p)}.
 $$
 For example, to have a $95\%$ chance ($\delta = 0.05$) of landing in the top $5\%$ ($p = 0.05$) of configurations, we need $n \ge \log(0.05)/\log(0.95) \approx 58.4$, so $59$ random evaluations suffice. Strikingly, this bound does not depend on the dimension $d$ at all. It depends only on how large the good region is relative to the whole space.
 
-> **Note:** This guarantee is about hitting the good *region* of the space, not about finding the single best point. Random search is excellent at quickly getting you somewhere good and terrible at the last bit of polishing. That is exactly the gap Bayesian optimization fills.
+
+::: {.callout-note}
+This guarantee is about hitting the good *region* of the space, not about finding the single best point. Random search is excellent at quickly getting you somewhere good and terrible at the last bit of polishing. That is exactly the gap Bayesian optimization fills.
+:::
+
 
 ## Bayesian optimization
 
@@ -108,7 +124,11 @@ $$
 $$
 and we minimize it. The constant $\kappa > 0$ dials exploration: large $\kappa$ chases uncertain regions, small $\kappa$ exploits the mean. This form connects directly to the bandit ideas of @sec-multi-armed-bandits: "optimism in the face of uncertainty" applied to a continuous search space.
 
-> **Intuition:** Expected improvement asks, "If I sample here, how much do I expect to improve on my best score so far?" It is large where the mean is good (likely improvement) and also where the variance is large (a small chance of a big improvement). That is the whole exploration/exploitation balance in one formula.
+
+::: {.callout-tip title="Intuition"}
+Expected improvement asks, "If I sample here, how much do I expect to improve on my best score so far?" It is large where the mean is good (likely improvement) and also where the variance is large (a small chance of a big improvement). That is the whole exploration/exploitation balance in one formula.
+:::
+
 
 Bayesian optimization shines when evaluations are genuinely expensive (minutes to hours per fit), because fitting and maximizing the surrogate is cheap relative to one real evaluation. Its weaknesses are that the Gaussian process scales as $O(t^3)$ in the number of evaluations $t$, it struggles in very high dimensions, and it handles categorical and conditional spaces awkwardly. For those cases practitioners often switch the surrogate to a tree-structured Parzen estimator (Bergstra et al. 2011) or a random forest (Hutter, Hoos, and Leyton-Brown 2011).
 
@@ -122,7 +142,11 @@ The catch is a built-in trade-off governed by $n$ for a fixed total budget $B$: 
 
 Hyperband (Li et al. 2017) removes the guesswork by running successive halving as a subroutine across several values of the starting trade-off, called brackets. One bracket starts with very many configurations at a tiny budget (maximally aggressive). The next starts with fewer at a larger budget. The last bracket starts with a handful run to full budget, which is just random search with no early stopping at all. By hedging across brackets, Hyperband is robust: if early stopping helps, the aggressive brackets win; if it hurts, the conservative brackets cover you. The price is a small constant-factor overhead relative to the single best bracket you would have chosen with hindsight.
 
-> **When to use this:** Reach for successive halving and Hyperband when training cost scales with a tunable resource and when cheap, low-fidelity evaluations correlate with full-fidelity performance (true for most iterative learners, boosting and neural nets especially). They compose well with random sampling and, in modern systems, with Bayesian optimization choosing the configurations that each bracket starts from (the BOHB approach of Falkner, Klein, and Hutter 2018).
+
+::: {.callout-tip title="When to use this"}
+Reach for successive halving and Hyperband when training cost scales with a tunable resource and when cheap, low-fidelity evaluations correlate with full-fidelity performance (true for most iterative learners, boosting and neural nets especially). They compose well with random sampling and, in modern systems, with Bayesian optimization choosing the configurations that each bracket starts from (the BOHB approach of Falkner, Klein, and Hutter 2018).
+:::
+
 
 @tbl-hyperparameter-optimization-methods summarizes how the four families compare on the dimensions that drive the choice in practice.
 
@@ -268,13 +292,21 @@ legend("topright",
 
 @fig-hyperparameter-optimization-curve shows what the theory predicts. With only two hyperparameters the advantage of random search is modest, because a $6 \times 6$ grid already resolves both axes reasonably. The gap widens dramatically as dimension grows, since the grid's resolution per important axis collapses while random search keeps drawing fresh values on every axis. The shaded band also makes the cost of randomness visible: any single random run can be lucky or unlucky, which is why averaging (or simply using a generous budget) matters.
 
-> **Note:** This demo hand-rolls a penalized regression to stay in base R. In real work you would tune a proper model: `glmnet` for the elastic net, `xgboost` for boosting (@sec-gradient-boosting), `e1071::svm` for a support vector machine (@sec-svm), wrapped in a cross-validation loop or a framework such as `tidymodels` (@sec-tidymodels-framework). The search logic (objective returns a CV score, track best-so-far) is identical.
+
+::: {.callout-note}
+This demo hand-rolls a penalized regression to stay in base R. In real work you would tune a proper model: `glmnet` for the elastic net, `xgboost` for boosting (@sec-gradient-boosting), `e1071::svm` for a support vector machine (@sec-svm), wrapped in a cross-validation loop or a framework such as `tidymodels` (@sec-tidymodels-framework). The search logic (objective returns a CV score, track best-so-far) is identical.
+:::
+
 
 ## Nested cross-validation: not fooling yourself
 
 There is a subtle and very common mistake hiding in everything above. Suppose you run a search, pick the configuration with the best cross-validation score, and then report that best score as your model's performance. That number is optimistically biased. By searching over many configurations and reporting the best one, you have let the validation folds influence model selection, so the selected score has been partly fitted to the validation data. The more configurations you try, the worse the bias, by the same logic as the maximum of many noisy estimates exceeding their common mean.
 
-> **Warning:** The cross-validation score of the configuration you selected is **not** an unbiased estimate of how that configuration will perform on new data. Reporting it as your final performance number is one of the most common errors in applied machine learning, and it inflates results in proportion to how hard you searched.
+
+::: {.callout-warning}
+The cross-validation score of the configuration you selected is **not** an unbiased estimate of how that configuration will perform on new data. Reporting it as your final performance number is one of the most common errors in applied machine learning, and it inflates results in proportion to how hard you searched.
+:::
+
 
 The fix is nested cross-validation. Use two nested loops. The outer loop splits the data into folds purely for *evaluation*. For each outer fold, hold it out, and on the remaining data run a *complete inner* cross-validation to select hyperparameters. Then fit the selected configuration on all of the outer-training data and score it once on the held-out outer fold. The outer fold was never seen by the hyperparameter search, so its score is an honest estimate of the whole tuning-plus-fitting procedure. Average the outer-fold scores to report performance.
 
@@ -353,7 +385,11 @@ A workable default workflow looks like this. Start with random search over sensi
 
 Several traps catch people.
 
-> **Warning:** Search ranges matter more than the search algorithm. A clever optimizer over a badly chosen range loses to random search over a good one. Set ranges on the right scale (log for penalties and learning rates) and wide enough to bracket the optimum, then check that the winner does not sit on a boundary, which signals the range was too narrow.
+
+::: {.callout-warning}
+Search ranges matter more than the search algorithm. A clever optimizer over a badly chosen range loses to random search over a good one. Set ranges on the right scale (log for penalties and learning rates) and wide enough to bracket the optimum, then check that the winner does not sit on a boundary, which signals the range was too narrow.
+:::
+
 
 The first trap is leaking the test set into tuning. Any preprocessing fitted on the full data (scaling, feature selection, imputation) before the cross-validation split leaks information from validation folds into training. Fit all preprocessing *inside* the cross-validation loop, on training folds only.
 

@@ -9,7 +9,11 @@ Imagine you have spent a week tuning a model. The code is clean, the cross-valid
 
 This is the everyday reality that makes data validation worth a chapter of its own. Models are only as trustworthy as the data feeding them. A model can be correct in every line of code and still produce nonsense if a column silently changed type, a join duplicated rows, or an upstream sensor started emitting `-999` for missing readings.^[A *sentinel value* is a special in-band code that stands in for "no measurement," such as `-999`, `9999`, or an empty string. It is dangerous precisely because it is a valid number: arithmetic and type checks accept it, so it slips past naive checks while corrupting every average and model that touches it.] Data validation is the practice of stating what you expect about a dataset, checking those expectations automatically, and stopping (or alerting) when reality disagrees.
 
-> **Intuition:** Think of validation as a contract you make a dataset sign before you trust it. You write down, in code, what a "good" dataset looks like (which columns, which types, which value ranges), and you refuse to proceed until the data demonstrates that it complies. The point is not to fix bad data automatically; it is to *notice* bad data before it does damage.
+
+::: {.callout-tip title="Intuition"}
+Think of validation as a contract you make a dataset sign before you trust it. You write down, in code, what a "good" dataset looks like (which columns, which types, which value ranges), and you refuse to proceed until the data demonstrates that it complies. The point is not to fix bad data automatically; it is to *notice* bad data before it does damage.
+:::
+
 
 This chapter treats validation as a first-class part of the modeling pipeline, not an afterthought. By the end you will be able to tell a schema check from a constraint check, read any validation report as the same small table of pass/fail counts, write a data contract and enforce it, and choose between the main R tools for the job. We cover schema and constraint checks, the idea of a data contract, the R packages `pointblank` and `validate`, and the principle of failing loudly. We close with a runnable base-R validation engine you can drop into any project, plus a small simulation that shows how the choice of tolerance trades sensitivity against false alarms.
 
@@ -25,7 +29,11 @@ ingest -> validate -> clean/transform -> feature engineering -> train -> evaluat
 
 Validation belongs at the boundary between stages, especially right after ingestion and right before training or scoring. The reason is economic: the cost of a defect grows the further downstream it travels. A type mismatch caught at ingestion costs seconds. The same defect caught after a model has been retrained on corrupted data, deployed, and used to make decisions can cost far more, because by then the bad data has propagated into features, model weights, and live decisions.
 
-> **Key idea:** Put a check at every boundary where you stop trusting and start computing. The two boundaries that pay off the most are right after ingestion (the handoff from someone else's system to yours) and right before training or scoring (the handoff from your data prep to your model).
+
+::: {.callout-important title="Key idea"}
+Put a check at every boundary where you stop trusting and start computing. The two boundaries that pay off the most are right after ingestion (the handoff from someone else's system to yours) and right before training or scoring (the handoff from your data prep to your model).
+:::
+
 
 Why bother encoding these expectations in code at all, rather than relying on a careful analyst to eyeball the data? Three observations make the case.
 
@@ -35,7 +43,11 @@ Why bother encoding these expectations in code at all, rather than relying on a 
 
 In an AI/ML context, validation also guards the inputs to feature stores (@sec-feature-stores) and the outputs of LLM-based extraction steps (@sec-llms), where free text gets parsed into structured fields that may or may not conform to a schema.^[A *feature store* is a shared repository of computed model inputs reused across teams and projects. *Training/serving skew* is the situation where the data a model sees in production differs systematically from the data it was trained on; validating both with the same rules is one of the most reliable defenses against it.]
 
-> **Note:** Validation does not replace exploratory data analysis. EDA is how you *discover* what to expect; validation is how you *encode and enforce* those expectations so they keep holding on every future batch.
+
+::: {.callout-note}
+Validation does not replace exploratory data analysis. EDA is how you *discover* what to expect; validation is how you *encode and enforce* those expectations so they keep holding on every future batch.
+:::
+
 
 ## Schema and constraint checks
 
@@ -47,13 +59,21 @@ The second layer is the constraint check, which concerns the values living insid
 
 The distinction is not pedantry, it points straight at the diagnosis. Schema failures usually mean the wrong file or a breaking upstream change: someone renamed a column or shipped a different table entirely. Constraint failures usually mean the right file with bad records: the structure is fine but a sensor went haywire or a data-entry slip crept in. Both matter, and a good validation layer reports them separately so you know which kind of problem you are chasing.
 
-> **Tip:** When a report shows a schema failure, look upstream (wrong source, changed format). When it shows only constraint failures, look at the records (bad values in an otherwise correct file). Conflating the two is the fastest way to waste an afternoon debugging.
+
+::: {.callout-tip}
+When a report shows a schema failure, look upstream (wrong source, changed format). When it shows only constraint failures, look at the records (bad values in an otherwise correct file). Conflating the two is the fastest way to waste an afternoon debugging.
+:::
+
 
 ### A formal view of a validation report
 
 The tools in this chapter look different on the surface (one uses a pipe-friendly "agent," another stores rules as objects, a third hides inside a modeling recipe), but underneath they all compute the same thing. It is worth writing that thing down once, because once you see it, every report becomes readable.
 
-> **Intuition:** Every check answers one question: "what fraction of the data fails this rule?" That fraction is then compared against a threshold you chose. Pass or fail is just "is the fraction small enough?" Nothing in any of the packages below is more complicated than that, no matter how polished the report looks.
+
+::: {.callout-tip title="Intuition"}
+Every check answers one question: "what fraction of the data fails this rule?" That fraction is then compared against a threshold you chose. Pass or fail is just "is the fraction small enough?" Nothing in any of the packages below is more complicated than that, no matter how polished the report looks.
+:::
+
 
 Let the dataset be a table $D$ with $n$ rows. A validation suite is an ordered list of checks $V = (v_1, \dots, v_m)$. Each check $v_k$ is a predicate applied either to the whole table or row by row. For a row-level check, define the indicator
 
@@ -85,7 +105,11 @@ $$
 
 Setting $\tau_k = 0$ gives a strict check (any failing row fails the whole check). Setting $\tau_k > 0$ gives a tolerant check, useful when a small rate of bad records is acceptable but a spike is not. This is the warn/fail threshold idea that `pointblank` exposes directly.
 
-> **When to use this:** Use $\tau_k = 0$ for things that must never be wrong, such as primary keys and column types. Use a small positive $\tau_k$ for messy real-world fields where a few bad rows per batch are normal but a sudden jump means something broke.
+
+::: {.callout-tip title="When to use this"}
+Use $\tau_k = 0$ for things that must never be wrong, such as primary keys and column types. Use a small positive $\tau_k$ for messy real-world fields where a few bad rows per batch are normal but a sudden jump means something broke.
+:::
+
 
 The suite as a whole is summarized by an action level. A common rule:
 
@@ -110,7 +134,11 @@ The first is fail loudly, fail early. When an expectation is violated in a batch
 
 The second is quarantine, do not silently drop. When a tolerant check fails on a minority of rows, route those rows to a quarantine table for later inspection rather than deleting them. Dropping bad rows hides the existence of a problem and the count keeps looking healthy; quarantining surfaces the problem while letting the good rows proceed.
 
-> **Warning:** Silently dropping rows that fail a check is one of the most common and most damaging anti-patterns in data pipelines. The bug disappears from view but the data is now biased, because the rows you discarded were not a random sample. Always count and store what you remove.
+
+::: {.callout-warning}
+Silently dropping rows that fail a check is one of the most common and most damaging anti-patterns in data pipelines. The bug disappears from view but the data is now biased, because the rows you discarded were not a random sample. Always count and store what you remove.
+:::
+
 
 With the principles in place, the practical question is which tool to reach for. The table below contrasts the main R tooling so you can match a tool to a situation; the sections that follow walk through each in turn.
 
@@ -129,7 +157,11 @@ With the principles in place, the practical question is which tool to reach for.
 
 The `pointblank` package builds a validation plan with a pipe-friendly grammar that reads almost like a checklist. You create an *agent* that points at a table, add validation steps to it, then call `interrogate()` to run them all. Each step records its fail fraction $p_k$ and compares it to thresholds you set with `action_levels()`, which is exactly the warn/fail machinery from the formal view. The agent then produces a report you can read in a browser or query in code.
 
-> **When to use this:** Reach for `pointblank` when checks recur (scheduled batches, production tables) and when a human needs to read the result. Its strength is the shareable, step-by-step report.
+
+::: {.callout-tip title="When to use this"}
+Reach for `pointblank` when checks recur (scheduled batches, production tables) and when a human needs to read the result. Its strength is the shareable, step-by-step report.
+:::
+
 
 Because `pointblank` is not installed in the runnable library used to build this book, the next three chunks are set to `eval=FALSE`. The code is current and idiomatic, so it will run unchanged once the package is installed.
 
@@ -200,7 +232,11 @@ mtcars |>
 
 Where `pointblank` builds a plan step by step, the `validate` package takes a declarative stance: you write the rules once, store them as an object (or even in an external YAML or CSV file), and then *confront* any dataset with them. The shift in mindset is small but powerful: rules become data. You can keep them in version control, hand them to a domain expert to edit, and reuse the same rule set across many projects, all without touching pipeline code.
 
-> **Intuition:** `pointblank` feels like writing a script ("do this check, then this one"). `validate` feels like writing a spec sheet ("here are the laws this data must obey") and then asking, "does this batch obey them?" Both compute the same fail fractions; they differ in how you author and store the rules.
+
+::: {.callout-tip title="Intuition"}
+`pointblank` feels like writing a script ("do this check, then this one"). `validate` feels like writing a spec sheet ("here are the laws this data must obey") and then asking, "does this batch obey them?" Both compute the same fail fractions; they differ in how you author and store the rules.
+:::
+
 
 This package is also not in the runnable library here, so the chunk is `eval=FALSE`.
 
@@ -226,7 +262,11 @@ Because rules are objects, you can keep them under version control separately fr
 
 The tools so far validate data as a standalone step. But recall the training/serving skew problem: the surest way to guarantee the model sees consistent data is to validate it with the *exact same code* at training time and at serving time. The `recipes` package (part of the tidymodels framework, @sec-tidymodels-framework) makes this automatic. A recipe bundles preprocessing steps into one object, and its `check_*` steps raise an error during `bake()` if a rule is violated. Because the very same recipe object that prepared the training data is the one that processes serving data, the contract travels with the pipeline and cannot drift apart from it.
 
-> **Key idea:** Embedding checks in the recipe means there is no separate "did you remember to validate serving data?" step to forget. The recipe refuses to transform data that breaks the contract, so a violation surfaces before a single prediction is made.
+
+::: {.callout-important title="Key idea"}
+Embedding checks in the recipe means there is no separate "did you remember to validate serving data?" step to forget. The recipe refuses to transform data that breaks the contract, so a violation surfaces before a single prediction is made.
+:::
+
 
 ```{r recipes-check, eval=FALSE}
 library(recipes)
@@ -243,7 +283,11 @@ prepped <- prep(rec, training = mtcars)
 bake(prepped, new_data = mtcars)
 ```
 
-> **Note:** The exact arguments accepted by `check_range()` have shifted across `recipes` versions, so consult `?check_range` for the version you have installed. The shape of the idea is stable even when the argument names move: a check step that errors at `bake()` time.
+
+::: {.callout-note}
+The exact arguments accepted by `check_range()` have shifted across `recipes` versions, so consult `?check_range` for the version you have installed. The shape of the idea is stable even when the argument names move: a check step that errors at `bake()` time.
+:::
+
 
 All four tools (the agent, the rule object, the recipe step, and the base-R engine we build next) compute the same fail fractions. They differ only in ergonomics and in where the report lands. With the conceptual map in hand, we can now build a working engine from scratch and watch it catch real defects.
 
@@ -251,7 +295,11 @@ All four tools (the agent, the rule object, the recipe step, and the base-R engi
 
 The best way to convince yourself there is no magic is to build the engine yourself. The previous tools share one core: compute a fail fraction per check and compare it to a tolerance. The function below does exactly that in plain base R, with no packages at all. It checks column existence, column type, value ranges, and missingness, and returns a tidy pass/fail report whose columns are the $(\text{check}, n, f_k, p_k, \text{pass})$ tuple from the formal view. This chunk is `eval=TRUE` and runs as part of building the book.
 
-> **Tip:** Read the function once for shape, not detail. The helper `add()` appends one report row per check; the loop walks each column in the schema and calls `add()` for existence, type, missingness, range, and uniqueness. Everything else is bookkeeping.
+
+::: {.callout-tip}
+Read the function once for shape, not detail. The helper `add()` appends one report row per check; the loop walks each column in the schema and calls `add()` for existence, type, missingness, range, and uniqueness. Everything else is bookkeeping.
+:::
+
 
 ```{r base-engine}
 # A small data-validation engine in base R.
@@ -456,7 +504,11 @@ legend("bottomright",
 
 Both curves rise from near 0 to near 1 as $\pi$ crosses the corresponding tolerance, and the shape is the whole story. When the true contamination rate sits below $\tau$, any flag is a false alarm caused by sampling noise, and the strict check (red) raises more of these because its threshold is closer to the noise. When the true rate climbs above $\tau$, the check reliably fires, and the strict check gets there sooner, catching smaller problems. So choosing $\tau$ is choosing where you want the transition to sit, which in turn depends on how much a missed problem costs you versus how much a false alarm costs you.
 
-> **Warning:** A tolerance set too tight cries wolf. If a check fails on noise every other run, people learn to ignore it, and then it stays ignored on the day it finally matters. An alert that is routinely overridden is no better than no alert at all.
+
+::: {.callout-warning}
+A tolerance set too tight cries wolf. If a check fails on noise every other run, people learn to ignore it, and then it stays ignored on the day it finally matters. An alert that is routinely overridden is no better than no alert at all.
+:::
+
 
 ## Practical guidance, pitfalls, and when to use it
 

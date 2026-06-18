@@ -9,7 +9,11 @@ Suppose you want to draw a smooth curve through a scatterplot, but you are not w
 
 The central idea is to fit a separate but very simple model at each query point $x_0$, using only the observations that are "close" to $x_0$. Closeness is measured by a weighting function, also called a kernel, written $K_\lambda(x_0, x_i)$. The kernel assigns a large weight to observations near $x_0$ and a small (or zero) weight to those far away. Because the weights change smoothly as $x_0$ moves, the resulting estimate $\hat{f}(x)$ is itself smooth across the input space $R^p$.
 
-> **Intuition:** A kernel is just a recipe for "how much should this neighbor count?" Points right next to $x_0$ get a full vote, points a little further away get a fractional vote, and points beyond the kernel's reach get no vote at all.
+
+::: {.callout-tip title="Intuition"}
+A kernel is just a recipe for "how much should this neighbor count?" Points right next to $x_0$ get a full vote, points a little further away get a fractional vote, and points beyond the kernel's reach get no vote at all.
+:::
+
 
 The kernel carries a parameter $\lambda$ that sets the "width" of the neighborhood, that is, how far away an observation can be and still influence the fit. Choosing $\lambda$ is the main modeling decision in kernel smoothing, which is one of its appeals: there is very little to train. The cost shows up at prediction time instead. Kernel smoothers are memory-based methods, meaning the entire training set must be kept around and consulted every time we want a prediction at a new location $x_0$.^[Contrast this with ordinary linear regression, which compresses all the training data into a handful of coefficients and then throws the data away. Kernel methods keep everything, which makes prediction more expensive but the model far more flexible.]
 
@@ -39,7 +43,11 @@ $$
 
 Read the formula as a weighted average: each $y_i$ is multiplied by its weight $K_\lambda(x_0, x_i)$, and the denominator normalizes the weights so they sum to one. The key difference from nearest neighbors is that the weights now change continuously as $x_0$ moves, rather than in discrete jumps. The result is a smooth curve, which is both more pleasant to look at and, in some settings, more useful to work with.
 
-> **Key idea:** Nearest neighbors gives every neighbor an equal vote and everyone else zero. A kernel replaces that hard cutoff with a smooth falloff in influence, and smoothness in the weights produces smoothness in the fit.
+
+::: {.callout-important title="Key idea"}
+Nearest neighbors gives every neighbor an equal vote and everyone else zero. A kernel replaces that hard cutoff with a smooth falloff in influence, and smoothness in the weights produces smoothness in the fit.
+:::
+
 
 ### Choosing the kernel function
 
@@ -77,7 +85,11 @@ $$
 
 where $\sigma$ plays the role of the "width." It is continuously differentiable everywhere, which is attractive, but it has infinite support: every observation gets a nonzero weight, however tiny. That can make it more taxing to compute on large data sets, since no point can be skipped.
 
-> **Tip:** When you need a smooth fit and computation is not a bottleneck, a Gaussian or tri-cube kernel is a safe choice. When the data set is large and you want speed, prefer a compact kernel like the Epanechnikov or tri-cube so that distant points can be ignored entirely.
+
+::: {.callout-tip}
+When you need a smooth fit and computation is not a bottleneck, a Gaussian or tri-cube kernel is a safe choice. When the data set is large and you want speed, prefer a compact kernel like the Epanechnikov or tri-cube so that distant points can be ignored entirely.
+:::
+
 
 So far $\lambda$ has been a single fixed number, but the neighborhood width need not be constant. With adaptive neighborhoods, the width depends on the location $x_0$,
 
@@ -93,7 +105,11 @@ A few consequences of these choices are worth keeping in mind:
 - An adaptive width $h_\lambda(x)$ can hold the bias roughly constant across the input space, but then the variance becomes inversely proportional to the local density of observations: where data are sparse, the estimate is noisier.
 - The biggest weakness of kernel smoothers is estimation near the boundaries of the data. Near an edge the kernel becomes lopsided, with neighbors on only one side, so the fit is badly biased there. Local regression (@sec-local) was designed partly to correct this boundary bias.
 
-> **Warning:** Trust a kernel smoother least at the left and right ends of the data. The asymmetry of the neighborhood near a boundary systematically pulls the fit toward the interior, and no amount of width tuning fully removes it.
+
+::: {.callout-warning}
+Trust a kernel smoother least at the left and right ends of the data. The asymmetry of the neighborhood near a boundary systematically pulls the fit toward the interior, and no amount of width tuning fully removes it.
+:::
+
 
 ## Selecting the Kernel Width
 
@@ -105,7 +121,11 @@ Everything above turns on one number, $\lambda$, the width of the kernel $K_\lam
 
 In every case the qualitative tradeoff is the same. A smaller width does less averaging, giving higher variance but smaller bias (the fit tracks local wiggles, including noise). A larger width does more averaging, giving lower variance but higher bias (the fit is smoother but can miss real structure). This is the bias-variance tradeoff in its most visible form: $\lambda$ is the dial between an overly jagged fit and an overly flat one.
 
-> **When to use this:** Reach for kernel smoothing when you want a flexible one-dimensional (or low-dimensional) curve, you have enough data to average locally, and you care more about following the data's shape than about an interpretable equation.
+
+::: {.callout-tip title="When to use this"}
+Reach for kernel smoothing when you want a flexible one-dimensional (or low-dimensional) curve, you have enough data to average locally, and you care more about following the data's shape than about an interpretable equation.
+:::
+
 
 Because there is no formula that hands you the right width, $\lambda$ is chosen by data-driven tuning, most commonly [Cross-validation]: try a grid of widths, estimate out-of-sample error for each, and keep the width that minimizes it.
 
@@ -121,7 +141,11 @@ $$
 
 A common choice is the Gaussian kernel with standard deviation $\lambda$. The leading factor $\frac{1}{n\lambda}$ normalizes the result so that it integrates to one, as a density must. The same construction extends to higher dimensions by replacing the one-dimensional kernel with a multivariate (Gaussian) kernel.
 
-> **Intuition:** Picture dropping a tiny mound of sand on the number line at each data point. Where points cluster, the mounds overlap and pile high; where points are scarce, the sand is thin. The resulting profile, rescaled to integrate to one, is the estimated density.
+
+::: {.callout-tip title="Intuition"}
+Picture dropping a tiny mound of sand on the number line at each data point. Where points cluster, the mounds overlap and pile high; where points are scarce, the sand is thin. The resulting profile, rescaled to integrate to one, is the estimated density.
+:::
+
 
 Density estimates are not only descriptive: they plug directly into classification through Bayes' theorem. Suppose there are $J$ classes, and we fit a separate nonparametric density $\hat{f}_j (X)$ for $j = 1, \dots, J$, one per class. Given a prior probability $\hat{\pi}_j$ for each class (these might come from the observed class proportions or from outside knowledge), the posterior probability that a new point $x_0$ belongs to class $j$ is
 

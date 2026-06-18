@@ -11,7 +11,11 @@ Building a predictive model is rarely a single fit. You try different feature se
 
 Most chapters in this book are about *how to fit a model well*. This one is about *how to remember what you fit*, which turns out to be just as important once a model leaves your laptop and starts making decisions someone depends on. The mental shift is small but freeing: instead of treating each fit as a throwaway command, you treat it as an event worth recording, the way a lab scientist keeps a notebook. By the end you will know what to record, why an append-only log is the right data structure for it, how the main R tools (MLflow, pins, vetiver) implement that idea, and how to reproduce the whole thing in 30 lines of base R.
 
-> **Intuition:** Think of experiment tracking as a lab notebook for model fitting. You would never trust a chemistry result that nobody wrote down. A model result deserves the same discipline.
+
+::: {.callout-tip title="Intuition"}
+Think of experiment tracking as a lab notebook for model fitting. You would never trust a chemistry result that nobody wrote down. A model result deserves the same discipline.
+:::
+
 
 Experiment tracking is the practice of recording, for every model fit (a "run"^[A *run* is a single execution of your training code with a fixed set of choices. Fitting the same model at a different penalty value is a different run. Re-fitting the identical configuration tomorrow is also a different run, because the environment, data, or random seed may have shifted.]), three kinds of information:
 
@@ -25,7 +29,11 @@ These three categories answer, respectively, "what did I do," "how well did it w
 
 A model registry is the downstream half of this story. Once you have many runs, you promote chosen models into a versioned store with named stages (for example, `staging` and `production`), so that a serving system can ask for "the current production model" without knowing which run created it. Lineage ties the two together: given a deployed model, you can trace back to the run, the parameters, the code commit, and the data version that produced it.^[Lineage is the audit answer to "why is the system predicting this?" When a deployed model misbehaves, lineage lets you reconstruct the exact training conditions instead of guessing.]
 
-> **Key idea:** Tracking, registry, and lineage are three views of one append-only record. Tracking writes runs, the registry promotes a chosen run's model under a stable name, and lineage reads the record backward from a deployed model to its origin.
+
+::: {.callout-important title="Key idea"}
+Tracking, registry, and lineage are three views of one append-only record. Tracking writes runs, the registry promotes a chosen run's model under a stable name, and lineage reads the record backward from a deployed model to its origin.
+:::
+
 
 This chapter covers the concepts and the main R tooling: MLflow for tracking, and the tidymodels-adjacent stack of pins (a versioned model board) and vetiver (model deployment objects and metadata; the broader serving story is the subject of the model deployment chapter, @sec-model-deployment). Most of these packages are not installed in this environment, so their chunks are shown with `eval=FALSE` but written as correct, current code. The runnable demonstration is a minimal experiment logger written in base R that records parameters and metrics to a `data.frame`, persists them to CSV, and queries for the best run. That demo is enough to teach the core idea: tracking is, at bottom, an append-only log plus a query.
 
@@ -53,7 +61,11 @@ where
 
 The collection $\{\text{run}_r\}_{r=1}^{R}$ is an append-only log. We never edit a past run; we only add new ones. This is what makes the system trustworthy: the record of what happened does not change after the fact.
 
-> **Note:** "Append-only" is the whole game. If you allow yourself to go back and tweak a past metric, the log stops being evidence of what happened and becomes a story you are telling about it. Every tool in this chapter enforces, or at least encourages, append-only writes.
+
+::: {.callout-note}
+"Append-only" is the whole game. If you allow yourself to go back and tweak a past metric, the log stops being evidence of what happened and becomes a story you are telling about it. Every tool in this chapter enforces, or at least encourages, append-only writes.
+:::
+
 
 ### Selecting the best run
 
@@ -65,13 +77,21 @@ $$
 
 For a metric where larger is better (accuracy, AUC), replace $\min$ with $\max$. This is just a query over the log, and it is exactly what the demo below implements. Notice that nothing here requires special infrastructure: once the runs are stored in a table, "find the best model" is a single sort.
 
-> **Warning:** The run you select on and the number you report should not come from the same data. Picking $r^\star$ on a holdout set and then quoting that same holdout RMSE as the model's performance flatters the result, because you chose the run that happened to look best on exactly those points. Select on validation, report on a test set you touch once. We return to this in the pitfalls section.
+
+::: {.callout-warning}
+The run you select on and the number you report should not come from the same data. Picking $r^\star$ on a holdout set and then quoting that same holdout RMSE as the model's performance flatters the result, because you chose the run that happened to look best on exactly those points. Select on validation, report on a test set you touch once. We return to this in the pitfalls section.
+:::
+
 
 ### Why a hash matters for lineage
 
 To make lineage verifiable rather than aspirational, we want a fingerprint of each artifact that changes whenever the bytes change. A hash function^[A *hash* is a deterministic function that turns any input into a short fixed-length string. Cryptographic hashes such as SHA-256 are designed so that even a one-byte change produces a completely different digest, which is what makes them useful as tamper-evident fingerprints.] $H$ maps an artifact $a$ to a fixed-length digest $H(a)$ with the property that, in practice, $a \neq a' \Rightarrow H(a) \neq H(a')$. Storing $H(a_r)$ alongside the run lets a serving system confirm that the file it loaded is byte-for-byte the file that the run recorded. pins uses content hashing internally for exactly this reason, and the same idea underlies data-version checks.
 
-> **Intuition:** A hash is a tamper-evident seal. If two files share a hash they are (for practical purposes) the same file, and if the hashes differ something changed. That is enough to catch a silently swapped model or a corrupted download.
+
+::: {.callout-tip title="Intuition"}
+A hash is a tamper-evident seal. If two files share a hash they are (for practical purposes) the same file, and if the hashes differ something changed. That is enough to catch a silently swapped model or a corrupted download.
+:::
+
 
 Those three pieces, a run as a record, selection as a query, and a hash for verification, are everything the heavier tools build on. With the structure in hand, we can compare the tools that implement it.
 
@@ -93,7 +113,11 @@ The R ecosystem offers several tools that overlap in places. @tbl-experiment-tra
 
 The rows are not competitors so much as stages of one pipeline. A common production pattern combines them: use `tune` (introduced in the tidymodels chapter, @sec-tidymodels-framework, and extended in the tuning and stacking chapter, @sec-model-stacking) to search, log everything to MLflow during development, then convert the final fit to a vetiver object and pin it to a board that the serving API reads from.
 
-> **When to use this:** Reach for the base-R logger or a `tune` tibble for a solo, short-lived analysis; MLflow when a team needs a shared UI and a registry; pins plus vetiver when the deliverable is a served model that needs versioning and rollback. The next three sections show each in turn.
+
+::: {.callout-tip title="When to use this"}
+Reach for the base-R logger or a `tune` tibble for a solo, short-lived analysis; MLflow when a team needs a shared UI and a registry; pins plus vetiver when the deliverable is a served model that needs versioning and rollback. The next three sections show each in turn.
+:::
+
 
 <br>
 
@@ -101,7 +125,11 @@ The rows are not competitors so much as stages of one pipeline. A common product
 
 MLflow is the most widely used open-source tracking server, and it is a faithful instance of the structure above: it stores runs, gives them a web UI, and adds a registry. It organizes work into experiments, and each experiment holds runs. The R interface mirrors the Python one: open a run, log parameters and metrics, log artifacts, and the run closes automatically. The loop below fits lasso at four penalty values and logs each fit as its own run.
 
-> **Note:** The chunks in this section and the next use `eval=FALSE` because MLflow, pins, and vetiver are not installed in this build environment, and the MLflow examples also assume a tracking server and an `ames_train` object. The code is correct and current; it is shown for reading rather than executed here.
+
+::: {.callout-note}
+The chunks in this section and the next use `eval=FALSE` because MLflow, pins, and vetiver are not installed in this build environment, and the MLflow examples also assume a tracking server and an `ames_train` object. The code is correct and current; it is shown for reading rather than executed here.
+:::
+
 
 ```{r mlflow-track, eval=FALSE}
 library(mlflow)
@@ -187,7 +215,11 @@ vetiver_prepare_docker(board, "ames_price_model", docker_args = list(port = 8088
 
 The key property is that `vetiver_pin_write()` does not overwrite. Each write is a new version with its own hash, so a serving process pointed at the board can pin to a known version, and rollback is just reading an earlier one. This is the lineage chain in practice: deployed API to pinned version to model object to the run metadata stored inside the vetiver object.
 
-> **Tip:** Rollback is the feature people underestimate until they need it. Because every write is a new immutable version, recovering from a bad deploy is `vetiver_pin_read(board, name, version = "<previous>")`, not a frantic re-train. Pin the serving API to an explicit version rather than "latest" so a new write never changes production behavior by surprise.
+
+::: {.callout-tip}
+Rollback is the feature people underestimate until they need it. Because every write is a new immutable version, recovering from a bad deploy is `vetiver_pin_read(board, name, version = "<previous>")`, not a frantic re-train. Pin the serving API to an explicit version rather than "latest" so a new write never changes production behavior by surprise.
+:::
+
 
 <br>
 
@@ -195,7 +227,11 @@ The key property is that `vetiver_pin_write()` does not overwrite. Each write is
 
 The dependencies above are powerful but heavy, and they can hide how simple the core idea is. The whole contract, append a record and query it, fits in a few base-R functions. We build a logger with exactly three pieces: `log_run()` appends a run to a CSV, `read_runs()` reads the log back, and `best_run()` runs the $\arg\min$ query. This needs nothing but base R, so unlike the sections above it actually executes here.
 
-> **Intuition:** If you understand the next three functions, you understand MLflow. The commercial tools add a UI, concurrent writes, hashing, and a registry, but the beating heart is still "append a row, then sort the table."
+
+::: {.callout-tip title="Intuition"}
+If you understand the next three functions, you understand MLflow. The commercial tools add a UI, concurrent writes, hashing, and a registry, but the beating heart is still "append a row, then sort the table."
+:::
+
 
 ```{r logger-define}
 # A tiny experiment tracker: append-only CSV of params + metrics.
@@ -316,7 +352,11 @@ A tracking system is only as good as the habits around it. The failures here are
 
 -   Promote deliberately. A model in the registry's production stage is a contract with whatever consumes it. Gate promotion behind a check (does the new version beat the current production version on a frozen evaluation set?) rather than promoting whatever finished most recently.
 
-> **Warning:** The single most common reproducibility failure is the unlogged default. You set a learning rate explicitly but rely on the package default for everything else; a year later the package updates, the default shifts, and your "reproduced" run quietly produces different numbers. Logging only what you typed is not the same as logging what was used.
+
+::: {.callout-warning}
+The single most common reproducibility failure is the unlogged default. You set a learning rate explicitly but rely on the package default for everything else; a year later the package updates, the default shifts, and your "reproduced" run quietly produces different numbers. Logging only what you typed is not the same as logging what was used.
+:::
+
 
 Taken together, these habits turn a pile of model fits into a record you can defend. The good news from the base-R demo is that the mechanism is trivial; the discipline is the hard part, and it is entirely within your control.
 

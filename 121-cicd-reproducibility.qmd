@@ -9,7 +9,11 @@ A model that runs on your laptop today and nowhere else tomorrow is a liability,
 
 If you have never set up a test suite or a build pipeline, do not worry: the ideas are simpler than the acronyms suggest, and you can adopt them one piece at a time. By the end of the chapter you will know how to pin an exact computing environment so results travel between machines, write a test that refuses to ship a model unless it clears a quality bar, run that test automatically on every change, and retrain on a schedule without a human having to remember. The single runnable example is the part that matters most: a small assertion that checks a model's holdout metric and stops the build if it falls short.
 
-> **Intuition:** Reproducibility is about making the *past* repeatable; CI/CD is about making the *future* automatic. Together they let you trust that a model you cannot personally babysit is still behaving.
+
+::: {.callout-tip title="Intuition"}
+Reproducibility is about making the *past* repeatable; CI/CD is about making the *future* automatic. Together they let you trust that a model you cannot personally babysit is still behaving.
+:::
+
 
 The pieces fit together as a chain. Reproducibility starts with pinning the exact package versions a project uses (`renv`) and organizing files so the pipeline is discoverable. Tests (`testthat`) state what "correct" means for data and models, including the threshold a model must clear. CI (GitHub Actions) runs those tests on every change so regressions are caught before merge. Automated retraining extends the same machinery to run on a schedule or when new data arrives. A model card records what was built and how it should be used. The runnable core of the chapter is a `testthat`-style assertion that validates a model meets a metric threshold on a holdout set, because that assertion is the gate everything else protects.
 
@@ -24,7 +28,11 @@ set up env -> structure project -> write code + tests -> commit -> CI runs tests
 
 Reproducibility is a property that must hold at every arrow, not a step you do once. CI/CD is the automation that enforces it: instead of trusting a human to rerun the tests before merging, a machine reruns them and blocks the merge if they fail.
 
-> **Key idea:** Reproducibility is not a checkbox at the end of a project. It is an invariant that has to survive every transition in the diagram above, which is exactly why automating its enforcement pays off.
+
+::: {.callout-important title="Key idea"}
+Reproducibility is not a checkbox at the end of a project. It is an invariant that has to survive every transition in the diagram above, which is exactly why automating its enforcement pays off.
+:::
+
 
 Three observations motivate the investment.
 
@@ -61,13 +69,21 @@ Each of the four dials is a source of irreproducibility if you leave it free. Th
 
 The practical goal is usually statistical reproducibility, not bitwise: parallel reductions and floating-point nondeterminism make exact equality hard, but a stable metric within tolerance is enough to trust an evaluation gate.^[Bitwise reproducibility means the saved model object is byte-for-byte identical across runs. That is wonderful when achievable but often impossible: summing numbers in a different order on different hardware can change the last few decimal places. Statistical reproducibility asks only that the *evaluation* lands in the same place, which is what an automated gate actually needs.]
 
-> **Key idea:** The promotion gate is a hypothesis test in disguise. We promote $M$ only if $\widehat{R}(M)$ clears a threshold $\tau$ on a holdout the model never saw. Everything else in this chapter exists to make that test trustworthy and to run it automatically.
+
+::: {.callout-important title="Key idea"}
+The promotion gate is a hypothesis test in disguise. We promote $M$ only if $\widehat{R}(M)$ clears a threshold $\tau$ on a holdout the model never saw. Everything else in this chapter exists to make that test trustworthy and to run it automatically.
+:::
+
 
 ## Dependency pinning with `renv`
 
 Of the four dials, the environment $E$ is the one most people forget and the one that bites hardest, because a package update can silently change a default or a numerical routine without any change to your own code. `renv` (short for "R environment") is the tool that locks it. It gives each project its own private library and records the exact version of every package in a lockfile (`renv.lock`). Restoring that lockfile on another machine reconstructs the same environment, which pins the $E$ argument above.
 
-> **When to use this:** Reach for `renv` at the very start of any project whose results you might need to reproduce later, on another machine, or with a collaborator. It is the single highest-value reproducibility step for an R project, and it costs about three commands.
+
+::: {.callout-tip title="When to use this"}
+Reach for `renv` at the very start of any project whose results you might need to reproduce later, on another machine, or with a collaborator. It is the single highest-value reproducibility step for an R project, and it costs about three commands.
+:::
+
 
 The workflow is small. Because `renv` writes to a project library and contacts package repositories, this chunk is `eval=FALSE`, but it is the idiomatic sequence a reader runs in a real project.
 
@@ -112,7 +128,11 @@ The lockfile is JSON and records, per package, the version and the repository it
 
 Two rules make `renv` pay off. Commit `renv.lock` so the environment travels with the code, and run `renv::restore()` as the first step of every CI job so the build uses pinned versions rather than whatever CRAN ships that day.
 
-> **Warning:** Commit the lockfile, not the library. The actual package files live under `renv/library/` and should be left out of git (they are large and machine-specific). The lockfile is the recipe; the library is the meal, and you only need to ship the recipe.
+
+::: {.callout-warning}
+Commit the lockfile, not the library. The actual package files live under `renv/library/` and should be left out of git (they are large and machine-specific). The lockfile is the recipe; the library is the meal, and you only need to ship the recipe.
+:::
+
 
 ## Project structure
 
@@ -144,7 +164,11 @@ myproject/
 
 The principle is separation of concerns: functions in `R/` are pure and testable, scripts in `scripts/` are thin entry points, raw data in `data-raw/` is never mutated, and artifacts in `models/` carry their own metadata. CI can then run `tests/` without executing an expensive training job, and retraining can call the same `R/` functions the tests already cover.
 
-> **Tip:** The payoff of keeping logic in `R/` and entry points in `scripts/` is that your tests and your production runs exercise the *same* functions. If a test passes on `train_model()`, you know the script that calls `train_model()` is running tested code, not a copy that has drifted.
+
+::: {.callout-tip}
+The payoff of keeping logic in `R/` and entry points in `scripts/` is that your tests and your production runs exercise the *same* functions. If a test passes on `train_model()`, you know the script that calls `train_model()` is running tested code, not a copy that has drifted.
+:::
+
 
 ## Unit tests for data and models with `testthat`
 
@@ -190,7 +214,11 @@ testthat::test_dir("tests/testthat")
 
 Everything so far has pointed at one object: the gate that decides whether a model is good enough to ship. It is small enough to build from scratch in base R, and seeing it in full removes any mystery about what CI is actually doing on your behalf. We implement a `testthat`-style assertion, `assert_metric_threshold()`, that trains nothing itself but takes a computed metric and a threshold, compares them, and raises an error if the metric falls short. This is the gate a CI job or a retraining script calls before promoting a model. The chunk is `eval=TRUE`.
 
-> **Intuition:** The gate has exactly two outcomes. If the metric clears the bar, it stays quiet and lets the script continue. If it does not, it `stop()`s, which in a script means a nonzero exit code, which is the universal signal a CI system reads as "this build failed."
+
+::: {.callout-tip title="Intuition"}
+The gate has exactly two outcomes. If the metric clears the bar, it stays quiet and lets the script continue. If it does not, it `stop()`s, which in a script means a nonzero exit code, which is the universal signal a CI system reads as "this build failed."
+:::
+
 
 ```{r gate-engine}
 # A minimal expectation function in the spirit of testthat.
@@ -342,7 +370,11 @@ text(min(thresholds), 0.08, "5% flake budget", pos = 4, col = "grey40", cex = 0.
 
 The curve crosses 50% exactly at the mean, as expected for a symmetric distribution: a threshold at the mean rejects half of all otherwise-fine retrains. The lesson is that a gate is a statistical decision, not a fixed wall.
 
-> **Tip:** To keep the false-failure rate under a budget (say 5%), set $\tau$ several standard deviations below the mean, or, better, report a confidence interval for the metric and gate on its lower bound rather than a point estimate. Gating on a lower bound builds the sampling noise directly into the decision.
+
+::: {.callout-tip}
+To keep the false-failure rate under a budget (say 5%), set $\tau$ several standard deviations below the mean, or, better, report a confidence interval for the metric and gate on its lower bound rather than a point estimate. Gating on a lower bound builds the sampling noise directly into the decision.
+:::
+
 
 ## GitHub Actions CI
 
@@ -377,7 +409,11 @@ jobs:
 
 Reading the steps in order: `checkout` fetches the code, `setup-r` installs R, `setup-renv` calls `renv::restore()` so CI uses the pinned versions, and the final step runs the suite with `stop_on_failure = TRUE`, which makes a failed expectation return a nonzero exit code. The same pattern extends to a matrix that tests several R versions or operating systems by listing them under `strategy.matrix`.
 
-> **Warning:** The `setup-renv` step is not optional decoration. Without it, the runner installs whatever package versions it pleases, and your carefully committed lockfile does nothing. A lockfile that is never restored gives a false sense of safety.
+
+::: {.callout-warning}
+The `setup-renv` step is not optional decoration. Without it, the runner installs whatever package versions it pleases, and your carefully committed lockfile does nothing. A lockfile that is never restored gives a false sense of safety.
+:::
+
 
 ## Automated retraining
 
@@ -409,7 +445,11 @@ jobs:
 
 The `02-evaluate.R` script is where the threshold assertion from this chapter lives. Because it `stop()`s on failure, a model that no longer clears the bar never reaches the upload step, so a degraded model is never promoted.
 
-> **Key idea:** The schedule decides *when* to attempt a promotion; the gate decides *whether* to allow it. Keeping those two responsibilities separate is what prevents a calendar from shipping a bad model just because it is Monday.
+
+::: {.callout-important title="Key idea"}
+The schedule decides *when* to attempt a promotion; the gate decides *whether* to allow it. Keeping those two responsibilities separate is what prevents a calendar from shipping a bad model just because it is Monday.
+:::
+
 
 The pattern that scales beyond toy projects records, on every run, the metric value, the data hash, the seed, and the package versions, so a later failure can be traced to exactly which dial of $T(D,\theta,s,E)$ changed. That log is what turns a mysterious regression into a one-line diagnosis.
 
@@ -446,7 +486,11 @@ The pipeline now produces trustworthy models automatically, but a model that nob
 # - R 4.4.3; package versions pinned in renv.lock (committed).
 ```
 
-> **Tip:** The card is most useful when it is generated, not hand-written, so that the numbers always match the run that produced the artifact. A script can fill a template from the same objects the evaluation gate already computed (the metric, the data hash, the seed, the lockfile), which keeps the card honest. A hand-edited card drifts from reality the moment someone forgets to update a number.
+
+::: {.callout-tip}
+The card is most useful when it is generated, not hand-written, so that the numbers always match the run that produced the artifact. A script can fill a template from the same objects the evaluation gate already computed (the metric, the data hash, the seed, the lockfile), which keeps the card honest. A hand-edited card drifts from reality the moment someone forgets to update a number.
+:::
+
 
 ## Comparison of practices
 
@@ -466,7 +510,11 @@ Having walked the chain end to end, it helps to see all the practices side by si
 
 A mature project uses all of them, but the order of adoption matters: pin dependencies and set seeds first (cheap, high impact), add a threshold gate and a CI workflow next (turns quality into a checkable contract), then schedule retraining and generate cards once the pipeline is stable.
 
-> **When to use this:** You do not need the full stack to benefit. Start at the top of that adoption order and stop wherever the cost of the next layer exceeds its payoff for your project.
+
+::: {.callout-tip title="When to use this"}
+You do not need the full stack to benefit. Start at the top of that adoption order and stop wherever the cost of the next layer exceeds its payoff for your project.
+:::
+
 
 ## Practical guidance, pitfalls, and when to use it
 

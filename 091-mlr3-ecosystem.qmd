@@ -9,7 +9,11 @@ Imagine you have written a careful script that holds out some data, fits one mod
 
 The `mlr3` ecosystem is a modern, object oriented framework for machine learning in R.^[Object oriented here means the framework is organized around "objects" that carry both data and the methods that act on them. A learner object, for instance, knows how to train itself and how to predict, so you call `learner$train(...)` rather than passing the model through a chain of standalone functions.] It is the successor to the older `mlr` package, rebuilt on top of `R6` classes and `data.table` for speed and a consistent interface. The name stands for "machine learning in R, version 3". This chapter explains the building blocks (tasks, learners, measures), the pipeline system (`mlr3pipelines`), automated tuning (`mlr3tuning`), and benchmarking, then contrasts the design with `tidymodels`. By the end you should understand not just the `mlr3` syntax but the underlying workflow that any serious comparison of models needs, regardless of which framework you use.
 
-> **Key idea:** A model comparison is only honest if every candidate is evaluated under identical conditions and no information from the held out data ever reaches the training step. Everything `mlr3` does is in service of those two rules.
+
+::: {.callout-important title="Key idea"}
+A model comparison is only honest if every candidate is evaluated under identical conditions and no information from the held out data ever reaches the training step. Everything `mlr3` does is in service of those two rules.
+:::
+
 
 Because `mlr3` is probably not installed in your environment, the `mlr3` specific code chunks are marked `eval=FALSE`. They are written to be correct and current, so you can copy them into a session that has `mlr3` installed. To teach the core ideas with code that actually runs, the chapter also includes a base R implementation of the resampling and benchmarking loop that `mlr3` automates, so you can see exactly what the framework is doing under the hood.
 
@@ -26,7 +30,11 @@ A supervised learning project repeats the same skeleton regardless of the algori
 
 The payoff of separating these concerns is that they become interchangeable. Because a learner is just an object that exposes `$train()` and `$predict()`, you can swap one for another without touching the evaluation code, attach preprocessing as a reusable graph, and run an apples to apples benchmark. In a larger AI or ML engineering setting this matters because the same task and resampling can be reused across experiments, logged, and handed to a tuning routine, which keeps the comparison fair and reproducible.
 
-> **Intuition:** Think of the four objects as standardized plugs and sockets. As long as every learner has the same shape of plug, you can swap which algorithm is plugged into your evaluation harness without rewiring anything else.
+
+::: {.callout-tip title="Intuition"}
+Think of the four objects as standardized plugs and sockets. As long as every learner has the same shape of plug, you can swap which algorithm is plugged into your evaluation harness without rewiring anything else.
+:::
+
 
 With the vocabulary in place, we can look at the three foundational objects in code.
 
@@ -58,7 +66,11 @@ pred$score(measure)                          # RMSE on the held out rows
 
 The key idea is that `task`, `learner`, and `measure` are independent. To try a different algorithm you change only the `lrn(...)` line; the splitting, training, prediction, and scoring code stays exactly as it is. The naming convention is `lrn("<type>.<algorithm>")`, for example `regr.ranger`, `classif.xgboost`, or `classif.log_reg`. You can list everything available with `mlr_learners` and `as.data.table(mlr_learners)`.
 
-> **Tip:** The prefix before the dot is the task type (`regr` for regression, `classif` for classification) and the part after the dot names the underlying R package or algorithm. If `lrn("classif.ranger")` complains that it cannot find the learner, the usual cause is that the `mlr3learners` package, or the backing package such as `ranger`, is not loaded.
+
+::: {.callout-tip}
+The prefix before the dot is the task type (`regr` for regression, `classif` for classification) and the part after the dot names the underlying R package or algorithm. If `lrn("classif.ranger")` complains that it cannot find the learner, the usual cause is that the `mlr3learners` package, or the backing package such as `ranger`, is not loaded.
+:::
+
 
 A measure is just a function of the prediction object and the truth: it takes what the model predicted and what actually happened, and returns a single number summarizing the gap. For regression the root mean squared error over a held out set of size $m$ is
 
@@ -92,7 +104,11 @@ $$
 
 where $D_k$ is the set of rows in fold $k$ and $\hat{f}^{(-k)}$ is the model trained with fold $k$ removed. The disjointness of training and scoring rows is what makes this an honest estimate rather than an optimistic one.
 
-> **Intuition:** Every row gets to be a test point exactly once, judged by a model that never saw it during training. Averaging the $K$ scores uses all the data for both purposes without ever letting a row grade its own homework.
+
+::: {.callout-tip title="Intuition"}
+Every row gets to be a test point exactly once, judged by a model that never saw it during training. Averaging the $K$ scores uses all the data for both purposes without ever letting a row grade its own homework.
+:::
+
 
 In `mlr3` this entire procedure is one object plus one call.
 
@@ -198,7 +214,11 @@ ggplot(detail, aes(x = learner, y = rmse)) +
 
 Real data is rarely ready to model. It needs preprocessing: imputation of missing values, encoding of categorical factors into numbers, scaling features to comparable ranges, feature selection. Here lurks one of the most common and most invisible mistakes in applied machine learning. If you learn a preprocessing rule from the whole data set, for example the mean used to center a feature, then that rule has already peeked at the rows you intend to hold out, and your cross validation estimate becomes optimistic. The fix is to treat preprocessing as part of the model, so that every step is refit inside each training fold and never sees the test rows.
 
-> **Warning:** Centering, scaling, imputing, or selecting features on the full data set before you split is leakage. It is tempting because it is convenient, and it silently makes every reported score too good. The whole point of a pipeline is to make the correct thing the easy thing.
+
+::: {.callout-warning}
+Centering, scaling, imputing, or selecting features on the full data set before you split is leakage. It is tempting because it is convenient, and it silently makes every reported score too good. The whole point of a pipeline is to make the correct thing the easy thing.
+:::
+
 
 `mlr3pipelines` represents the full model, preprocessing included, as a directed graph of `PipeOp` objects (short for pipeline operators). Each `PipeOp` has a `$train()` and `$predict()` step, mirroring a learner, which is exactly what lets preprocessing be refit per fold. Connecting operators with the `%>>%` operator builds a `Graph`, and wrapping the graph as a `GraphLearner` produces something that behaves exactly like an ordinary learner, so it slots into resampling and tuning unchanged.
 
@@ -231,11 +251,19 @@ $$
 
 over a search space $\Lambda$. The strategies differ only in how they explore that space: grid search evaluates a fixed lattice of points, random search samples points at random (often more efficient when only a few hyperparameters matter), and Bayesian optimization fits a surrogate model of $\widehat{\text{Err}}_{CV}(\lambda)$ to predict which configurations are worth trying next. The hyperparameter optimization chapter (@sec-hyperparameter-optimization) covers these search strategies in more depth.
 
-> **Note:** Random search frequently beats grid search for the same budget, because grids waste evaluations on dimensions that do not matter, while random sampling spreads its trials across the dimensions that do. Bayesian optimization adds a layer of intelligence on top of that by learning from the trials it has already run.
+
+::: {.callout-note}
+Random search frequently beats grid search for the same budget, because grids waste evaluations on dimensions that do not matter, while random sampling spreads its trials across the dimensions that do. Bayesian optimization adds a layer of intelligence on top of that by learning from the trials it has already run.
+:::
+
 
 Now for the subtle point that trips up even experienced practitioners. Tuning is itself part of model fitting, because the data is what chose $\lambda^*$. So if you report the best inner cross validation score as your model's performance, you are reporting a number that was chosen because it was the best, which makes it optimistic almost by definition. To get an unbiased estimate you must wrap the tuning inside an outer resampling loop. This is called nested resampling: an inner loop selects $\lambda^*$, and an outer loop scores the whole tuning procedure on data the inner loop never saw.
 
-> **Warning:** The single most common way to overstate a model's accuracy is to tune on cross validation and then report the best cross validation score as the final number. The same data both chose and judged the configuration. Nested resampling is the cure, and `mlr3` makes it a one-liner via `auto_tuner` inside an outer `resample()`.
+
+::: {.callout-warning}
+The single most common way to overstate a model's accuracy is to tune on cross validation and then report the best cross validation score as the final number. The same data both chose and judged the configuration. Nested resampling is the cure, and `mlr3` makes it a one-liner via `auto_tuner` inside an outer `resample()`.
+:::
+
 
 ```{r mlr3-tuning, eval=FALSE}
 library(mlr3tuning)
@@ -309,7 +337,11 @@ The base R loop earlier in this chapter is the conceptual common denominator of 
 
 ## Practical guidance, pitfalls, and when to use it
 
-> **When to use this:** Reach for `mlr3` when you need to compare many models or preprocessing variants under identical, reproducible conditions, when you want preprocessing bundled into the model so that resampling stays honest, or when you want automated tuning with nested resampling done correctly. It is well suited to research style benchmarking and to ML engineering pipelines where the same task and resampling objects are reused across experiments. For a quick one-off fit of a single model, the framework's machinery is more than you need.
+
+::: {.callout-tip title="When to use this"}
+Reach for `mlr3` when you need to compare many models or preprocessing variants under identical, reproducible conditions, when you want preprocessing bundled into the model so that resampling stays honest, or when you want automated tuning with nested resampling done correctly. It is well suited to research style benchmarking and to ML engineering pipelines where the same task and resampling objects are reused across experiments. For a quick one-off fit of a single model, the framework's machinery is more than you need.
+:::
+
 
 Most of the ways these workflows go wrong are variations on the two rules from the start of the chapter: keep test data out of training, and judge every model under identical conditions. The recurring pitfalls below are all special cases.
 
@@ -321,7 +353,11 @@ Most of the ways these workflows go wrong are variations on the two rules from t
 
 To tie it all together, here is a reasonable default workflow. Define the task, build a `GraphLearner` with the needed preprocessing, set up a five or ten fold resampling, benchmark a small set of learners plus a baseline, then tune the winner with `auto_tuner` under nested resampling before reporting its score. Follow that sequence and the honesty of your numbers is built in rather than hoped for.
 
-> **Key idea:** Everything in this chapter, in `mlr3` or in the base R loop, comes down to a uniform fit-and-predict interface, a fixed set of folds shared across candidates, and preprocessing and tuning kept strictly inside the training side of each split. Master that pattern and the specific framework becomes a detail.
+
+::: {.callout-important title="Key idea"}
+Everything in this chapter, in `mlr3` or in the base R loop, comes down to a uniform fit-and-predict interface, a fixed set of folds shared across candidates, and preprocessing and tuning kept strictly inside the training side of each split. Master that pattern and the specific framework becomes a detail.
+:::
+
 
 ## Further reading
 

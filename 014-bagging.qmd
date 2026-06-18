@@ -9,7 +9,11 @@ A single decision tree, like CART (see the classification and regression trees c
 
 This chapter introduces a remedy called bagging, short for bootstrap aggregation. The idea is simple and powerful: instead of trusting one unstable tree, grow many trees on slightly different versions of the data and average their predictions. Averaging cancels out the random wobble of any individual tree, so the combined predictor is far more stable than its parts. By the end of the chapter you will understand why averaging reduces variance, how the bootstrap lets us mimic having many training sets when we really have only one, how to estimate test error for free using out-of-bag samples, and how to measure variable importance once the trees are no longer individually interpretable. Bagging is also the conceptual stepping stone to random forests (@sec-random-forest), which we preview here.
 
-> **Intuition:** Think of each tree as a noisy measurement of the same underlying quantity. One measurement is unreliable, but the average of many independent measurements is close to the truth. Bagging applies that everyday logic to prediction models.
+
+::: {.callout-tip title="Intuition"}
+Think of each tree as a noisy measurement of the same underlying quantity. One measurement is unreliable, but the average of many independent measurements is close to the truth. Bagging applies that everyday logic to prediction models.
+:::
+
 
 ## Why averaging reduces variance
 
@@ -21,7 +25,11 @@ $$
 \hat{f}_{bag} (X) = \frac{1}{B} \sum_{b=1}^B \hat{f}^b (x)
 $$
 
-> **Key idea:** Averaging keeps the bias of the base model roughly the same while shrinking its variance. That is why we deliberately grow each tree large and unpruned: large trees have low bias but high variance, and averaging takes care of the variance.
+
+::: {.callout-important title="Key idea"}
+Averaging keeps the bias of the base model roughly the same while shrinking its variance. That is why we deliberately grow each tree large and unpruned: large trees have low bias but high variance, and averaging takes care of the variance.
+:::
+
 
 ## The bootstrap: many data sets from one
 
@@ -29,7 +37,11 @@ There is a practical problem with the recipe above. In reality we almost never h
 
 We generate $B$ such bootstrap samples, fit a model on each, and average the fits. The bagged prediction $\hat{f}_{bag}(x)$ is the average of the fits from these $B$ bootstrap samples, exactly as in the formula above but with bootstrap samples standing in for genuine independent training sets.
 
-> **Note:** With regression trees, we construct $B$ trees and average their predictions, growing each tree large with no pruning. Each tree on its own has high variance and low bias; averaging then drives the variance down without inflating the bias. In practice, around **100** trees is usually enough to capture most of the variance reduction.
+
+::: {.callout-note}
+With regression trees, we construct $B$ trees and average their predictions, growing each tree large with no pruning. Each tree on its own has high variance and low bias; averaging then drives the variance down without inflating the bias. In practice, around **100** trees is usually enough to capture most of the variance reduction.
+:::
+
 
 For classification the averaging step changes slightly because we cannot average class labels directly. Instead, we record the class predicted by each of the $B$ trees for a given test observation and take a majority vote, choosing the category that occurs most often across the trees.
 
@@ -39,7 +51,11 @@ A pleasant side effect of the bootstrap is that we can estimate test error witho
 
 The procedure works as follows. For a given tree, the observations that were not selected into its bootstrap sample are called the out-of-bag (OOB) observations for that tree.^[On average, each bootstrap sample omits about one third of the original observations, so every observation is OOB for roughly a third of the trees, giving us plenty of trees to average over.] To get an OOB prediction for the $i$-th observation, we use only the trees in which that observation was OOB, and average their predictions. Comparing these OOB predictions against the true responses gives the OOB MSE for regression, or the OOB classification error for classification.
 
-> **Key idea:** The OOB error is a valid estimate of the test error because each observation is predicted only by trees that never saw it during training. No data point judges a model that was trained on it.
+
+::: {.callout-important title="Key idea"}
+The OOB error is a valid estimate of the test error because each observation is predicted only by trees that never saw it during training. No data point judges a model that was trained on it.
+:::
+
 
 ## The cost: losing interpretability
 
@@ -107,7 +123,11 @@ mean((yhat.bag - boston.test) ^ 2)
 
 ```
 
-> **Tip:** More trees rarely hurt accuracy and never cause overfitting in bagging, so the practical question is how many trees you can afford rather than how many you should risk. Fewer trees mainly trade away a little stability for faster computation.
+
+::: {.callout-tip}
+More trees rarely hurt accuracy and never cause overfitting in bagging, so the practical question is how many trees you can afford rather than how many you should risk. Fewer trees mainly trade away a little stability for faster computation.
+:::
+
 
 ## From bagging to random forests
 
@@ -156,4 +176,8 @@ varImpPlot(rf.boston) #rm and lstate are most important
 
 Both panels point to the same conclusion: `rm` (average number of rooms) and `lstat` (percentage of lower-status population) are by far the most important predictors of median home value, which matches what we would expect from housing economics.
 
-> **When to use this:** Reach for bagging or a random forest whenever a single tree predicts well in spirit but is too unstable to trust, and you are willing to trade the readability of one tree for stronger, more reliable predictions. Variable importance plots then give you back a coarse, ensemble-level view of which predictors drive the model.
+
+::: {.callout-tip title="When to use this"}
+Reach for bagging or a random forest whenever a single tree predicts well in spirit but is too unstable to trust, and you are willing to trade the readability of one tree for stronger, more reliable predictions. Variable importance plots then give you back a coarse, ensemble-level view of which predictors drive the model.
+:::
+

@@ -11,7 +11,11 @@ The core difficulty is that the catalog is huge and any single person has touche
 
 We build up in layers. First the recommendation problem and its notation. Then content-based filtering, which recommends items similar to ones you liked, using item features. Then collaborative filtering, which ignores item features entirely and leans on the crowd, in both its user-based and item-based forms. Then matrix factorization, the workhorse idea that compresses the giant sparse grid into a handful of latent factors per user and per item, and which we implement from scratch in base R using both an SVD-style approach and alternating least squares. Along the way we treat implicit feedback (clicks and plays rather than star ratings), the cold-start problem (what to do about a brand-new user or item), and how to measure whether any of it is working, with precision@k, recall@k, and NDCG. The running demo trains on a small user-item ratings matrix, produces top-N lists, and reports a ranking metric.
 
-> **Note:** This chapter is self-contained, but it leans on ideas you may have met elsewhere in the book: the singular value decomposition (dimension reduction, @sec-dimension-reduction), regularized least squares (ridge regression), and cross-validation style evaluation. No prior exposure to recommender systems is assumed.
+
+::: {.callout-note}
+This chapter is self-contained, but it leans on ideas you may have met elsewhere in the book: the singular value decomposition (dimension reduction, @sec-dimension-reduction), regularized least squares (ridge regression), and cross-validation style evaluation. No prior exposure to recommender systems is assumed.
+:::
+
 
 ## The recommendation problem {#recommender-systems-problem}
 
@@ -21,7 +25,11 @@ The goal is to learn a function $\hat r_{ui}$ that predicts the value of *unobse
 
 The first is *rating prediction*: estimate $r_{ui}$ as accurately as possible, measured by something like root mean squared error on held-out known ratings. This is the framing the Netflix Prize made famous. The second is *top-N recommendation*: produce, for each user, an ordered list of $N$ items, and judge the list by whether the items the user actually wanted appear near the top. These are not the same objective. A model can have excellent RMSE and still produce poor lists, because RMSE rewards getting the boring middle of the distribution right, while ranking only cares about the head. We will train models that minimize a prediction loss but evaluate them, in the end, as rankers.
 
-> **Key idea:** Predicting ratings accurately and ranking items well are related but distinct goals. Optimize a prediction loss because it is convenient and smooth, but evaluate with a ranking metric because that is what the user experiences.
+
+::: {.callout-important title="Key idea"}
+Predicting ratings accurately and ranking items well are related but distinct goals. Optimize a prediction loss because it is convenient and smooth, but evaluate with a ranking metric because that is what the user experiences.
+:::
+
 
 A piece of notation we use throughout: write $\langle x, y \rangle = \sum_k x_k y_k$ for the dot product of two vectors, and $\lVert x \rVert$ for the Euclidean norm $\sqrt{\langle x, x \rangle}$. The cosine similarity between two nonzero vectors is
 
@@ -41,7 +49,11 @@ $$
 
 and then scores a candidate item by how close its features are to the profile, usually with cosine similarity: $\hat r_{ui} \propto \operatorname{cos}(p_u, \phi_i)$. A user who rated several film-noir titles highly accumulates a profile that points in the "noir" direction of feature space, and other noir films score well even if no other user has ever touched them.
 
-> **Intuition:** Content-based filtering recommends more of what you already liked, described in terms of the items' own attributes. If you read three books tagged "Roman history," it will hand you a fourth.
+
+::: {.callout-tip title="Intuition"}
+Content-based filtering recommends more of what you already liked, described in terms of the items' own attributes. If you read three books tagged "Roman history," it will hand you a fourth.
+:::
+
 
 The strengths and weaknesses follow directly from that description. Because scoring needs only the target user's own history plus item features, a brand-new item with known features can be recommended immediately: there is no *item* cold-start problem. The recommendations are also easy to explain ("because you liked X, which is also a noir thriller"). The cost is that quality is capped by the feature engineering, the system can only exploit attributes you thought to record, and it tends toward *overspecialization*: it keeps serving the same narrow slice and rarely surprises the user with something outside their established profile. It also still needs *some* history per user, so it does nothing for a brand-new user.
 
@@ -61,7 +73,11 @@ $$
 
 where $\bar r_u$ is user $u$'s mean rating, $s_{uv}$ is the similarity between users $u$ and $v$ (cosine, or Pearson correlation over their commonly rated items), and the sum runs over neighbors who have rated item $i$. Subtracting each neighbor's mean before averaging, then adding back $u$'s own mean, removes per-user rating bias so that a harsh rater's "good" and a generous rater's "good" count equally.
 
-> **Note:** Pearson correlation over co-rated items is cosine similarity computed on mean-centered vectors. Centering matters because it neutralizes users who rate everything high or everything low, which would otherwise look spuriously similar to everyone.
+
+::: {.callout-note}
+Pearson correlation over co-rated items is cosine similarity computed on mean-centered vectors. Centering matters because it neutralizes users who rate everything high or everything low, which would otherwise look spuriously similar to everyone.
+:::
+
 
 ### Item-based collaborative filtering {#recommender-systems-itemknn}
 
@@ -73,7 +89,11 @@ $$
 
 summing over items $j$ that user $u$ has rated and that are similar to the target item $i$. The practical reason this often wins in production is stability and scale: there are usually far fewer items than users, item-item similarities change slowly and can be computed offline, and serving a recommendation is then a cheap lookup. User tastes, by contrast, shift, and the user set churns.
 
-> **When to use this:** Reach for item-based collaborative filtering when the item catalog is smaller and more stable than the user base, which is the common case for retail and media. Use user-based when the opposite holds, or when you want recommendations that adapt quickly to a user's session.
+
+::: {.callout-tip title="When to use this"}
+Reach for item-based collaborative filtering when the item catalog is smaller and more stable than the user base, which is the common case for retail and media. Use user-based when the opposite holds, or when you want recommendations that adapt quickly to a user's session.
+:::
+
 
 Both neighborhood methods share a weakness that motivates the next section. They are *local*: a prediction draws only on the handful of nearest neighbors and the directly co-rated entries. When the matrix is very sparse, two users may have no items in common at all even though they would agree, and the similarity is then undefined or noisy. Matrix factorization addresses this by learning a *global* low-dimensional structure that connects users and items even when they share no observed entry.
 
@@ -93,7 +113,11 @@ $$
 
 A user whose vector points strongly in the "action" direction scores highly on items whose vector also points there. The factors are *learned*, not specified; the model discovers whatever $k$ dimensions best reconstruct the observed ratings, and they often, though not always, correspond to interpretable themes.
 
-> **Intuition:** Compress every user and every item into $k$ numbers, a short coordinate vector, such that the dot product of a user's vector with an item's vector reproduces ratings. Recommending then means finding the items whose vectors align best with yours, even items no similar user has touched, because alignment is mediated through the shared latent space rather than through direct co-ratings.
+
+::: {.callout-tip title="Intuition"}
+Compress every user and every item into $k$ numbers, a short coordinate vector, such that the dot product of a user's vector with an item's vector reproduces ratings. Recommending then means finding the items whose vectors align best with yours, even items no similar user has touched, because alignment is mediated through the shared latent space rather than through direct co-ratings.
+:::
+
 
 ### Adding biases {#recommender-systems-bias}
 
@@ -130,7 +154,11 @@ $$
 p_u \;=\; \bigl( Q_u^{\top} Q_u + \lambda I \bigr)^{-1} Q_u^{\top}\, \tilde r_u.
 $$
 
-> **Note:** The phrase "SVD" in recommender systems is overloaded. The classical SVD factorizes a *fully observed* matrix and is not directly applicable when most entries are missing. "SVD" as used in the Netflix-Prize literature means the biased latent-factor model above, fit by SGD or ALS over observed entries. We show both: a literal SVD on a mean-imputed matrix as a baseline, and ALS as the proper method.
+
+::: {.callout-note}
+The phrase "SVD" in recommender systems is overloaded. The classical SVD factorizes a *fully observed* matrix and is not directly applicable when most entries are missing. "SVD" as used in the Netflix-Prize literature means the biased latent-factor model above, fit by SGD or ALS over observed entries. We show both: a literal SVD on a mean-imputed matrix as a baseline, and ALS as the proper method.
+:::
+
 
 ### Connection to the SVD {#recommender-systems-svd}
 
@@ -148,7 +176,11 @@ $$
 
 Because the sum is over all $mn$ pairs, a naive ALS step looks expensive, but the algebra rearranges so that each step costs little more than the explicit case. The practical lesson stands on its own.
 
-> **Warning:** Do not feed implicit counts into an explicit-rating model as if a "0" meant "disliked." Absence is not negation. Either use a confidence-weighted method that treats unobserved pairs as weak negatives, or sample negatives deliberately. Treating every unseen item as a hard zero will teach the model that users dislike everything they have not yet encountered.
+
+::: {.callout-warning}
+Do not feed implicit counts into an explicit-rating model as if a "0" meant "disliked." Absence is not negation. Either use a confidence-weighted method that treats unobserved pairs as weak negatives, or sample negatives deliberately. Treating every unseen item as a hard zero will teach the model that users dislike everything they have not yet encountered.
+:::
+
 
 ## Cold start {#recommender-systems-coldstart}
 
@@ -156,7 +188,11 @@ Collaborative methods need history, and at the edges of the system there is none
 
 For a new item, content features rescue you: if you know the item's attributes you can place it in a content-based model, or fold the features into the factorization as side information, until enough ratings accumulate to learn a proper $q_i$. For a new user, the usual moves are to recommend globally popular items (the bias-only baseline $\mu + b_i$ is exactly this), to ask a few onboarding questions, or to use whatever context you have (device, location, referrer). For a new system, you begin with non-personalized popularity and graduate to collaborative methods as data arrives. The honest summary is that cold start is not solved by a clever loss function; it is solved by having a fallback hierarchy and degrading gracefully toward popularity when personalization has nothing to stand on.
 
-> **Key idea:** Cold start is a coverage problem, not an accuracy problem. The fix is a fallback ladder: personalized factors when you have history, content features when you have attributes, popularity when you have neither.
+
+::: {.callout-important title="Key idea"}
+Cold start is a coverage problem, not an accuracy problem. The fix is a fallback ladder: personalized factors when you have history, content features when you have attributes, popularity when you have neither.
+:::
+
 
 ## Evaluation {#recommender-systems-eval}
 
@@ -178,7 +214,11 @@ $$
 
 so NDCG lies in $[0,1]$, equals $1$ for a perfectly ordered list, and penalizes relevant items that sit lower down. @tbl-recommender-systems-metrics summarizes when each metric is the right lens.
 
-> **Warning:** Evaluate on a *temporal* or *leave-some-ratings-out* split, never on entries the model trained on. And report ranking metrics computed only over items the user had not already interacted with; recommending something the user has already bought looks great on paper and helps no one.
+
+::: {.callout-warning}
+Evaluate on a *temporal* or *leave-some-ratings-out* split, never on entries the model trained on. And report ranking metrics computed only over items the user had not already interacted with; recommending something the user has already bought looks great on paper and helps no one.
+:::
+
 
 ```{r tbl-recommender-systems-metrics}
 metrics_tbl <- data.frame(
@@ -463,7 +503,11 @@ knitr::kable(
 
 @tbl-recommender-systems-ranking-table reports the headline result: both latent-factor models beat the non-personalized global-mean baseline on every ranking metric, and biased ALS, which optimizes over observed entries rather than an imputed matrix, edges out the truncated SVD. The global-mean model assigns the same score to every item for a user, so its ordering carries no personal signal and its ranking metrics hover near what random ordering would give.
 
-> **Note:** Exact numbers depend on the seeds and the small problem size. The qualitative ordering, personalized factor models above the popularity baseline and ALS at or above imputed SVD, is the robust takeaway, and it matches what the literature reports on real data.
+
+::: {.callout-note}
+Exact numbers depend on the seeds and the small problem size. The qualitative ordering, personalized factor models above the popularity baseline and ALS at or above imputed SVD, is the robust takeaway, and it matches what the literature reports on real data.
+:::
+
 
 ### Reading off a user's recommendations {#recommender-systems-readoff}
 
@@ -498,7 +542,11 @@ Respect the feedback type. Explicit ratings and implicit counts are different pr
 
 Watch for feedback loops and popularity bias. A deployed recommender shapes the very data it later trains on: items it shows get clicked, so they accumulate more positive signal, so they get shown more. Left unchecked this collapses diversity and entrenches a popularity rich-get-richer dynamic. Inject exploration, monitor catalog coverage, and beware of evaluating offline on data that a previous version of the same system generated.
 
-> **Warning:** Offline metrics and online outcomes can disagree. A model that wins on held-out NDCG may lose on live engagement because the offline data was itself filtered by the old recommender, and because metrics like NDCG do not capture novelty, diversity, or long-term satisfaction. Treat offline evaluation as a screen, not a verdict; confirm with an A/B test.
+
+::: {.callout-warning}
+Offline metrics and online outcomes can disagree. A model that wins on held-out NDCG may lose on live engagement because the offline data was itself filtered by the old recommender, and because metrics like NDCG do not capture novelty, diversity, or long-term satisfaction. Treat offline evaluation as a screen, not a verdict; confirm with an A/B test.
+:::
+
 
 Finally, scale shapes the algorithm choice. Neighborhood methods are simple and explainable but degrade on very sparse, very large matrices; matrix factorization scales better and generalizes through the latent space; in industry both are now often components inside a larger two-stage pipeline (a cheap candidate generator followed by a learned re-ranker, a setting taken up in the learning to rank chapter, @sec-learning-to-rank). @tbl-recommender-systems-metrics and the demo above cover the foundations every such pipeline rests on.
 

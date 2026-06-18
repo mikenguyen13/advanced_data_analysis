@@ -15,7 +15,11 @@ This chapter is about that handoff. We will look at the two basic serving patter
 
 The mechanics of wrapping a function as an HTTP endpoint were introduced in the API chapter (@sec-api), and packaging that endpoint into a portable image was covered in the containerizing chapter (@sec-containerizing-r). This chapter assumes both and focuses on the decisions around them: when to serve in real time versus in batch, how to keep the request and response format stable, and how to ship a new version with controlled risk.
 
-> **Note:** This chapter is about *serving* a frozen model, not about training it. Choosing and fitting the model happened in earlier chapters. Here the model is a given, and the questions are all operational: where it runs, who calls it, and how you change it safely.
+
+::: {.callout-note}
+This chapter is about *serving* a frozen model, not about training it. Choosing and fitting the model happened in earlier chapters. Here the model is a given, and the questions are all operational: where it runs, who calls it, and how you change it safely.
+:::
+
 
 ## Where Deployment Fits in the Workflow
 
@@ -25,7 +29,11 @@ Two properties make this boundary worth treating carefully. The first is that th
 
 The second property is that callers form a contract with the endpoint. Once a dashboard or a downstream service sends requests in a particular shape and parses responses in a particular shape, you cannot change that shape without coordinating with every caller. A model you can edit freely; a public interface you cannot. Much of what follows is really about contract discipline rather than statistics.
 
-> **Key idea:** Training produces three things you must ship *together*: the fitted parameters, the preprocessing that maps raw inputs to model inputs, and the metadata that pins the environment (R version, package versions, input schema). The serving process loads all three and does nothing else heavy. If any one of the three is missing or stale, the served model quietly stops matching the trained model.
+
+::: {.callout-important title="Key idea"}
+Training produces three things you must ship *together*: the fitted parameters, the preprocessing that maps raw inputs to model inputs, and the metadata that pins the environment (R version, package versions, input schema). The serving process loads all three and does nothing else heavy. If any one of the three is missing or stale, the served model quietly stops matching the trained model.
+:::
+
 
 This is the same separation-of-concerns argument from the API chapter, made stricter: at serving time the goal is to do as little as possible beyond loading a self-contained artifact and calling `predict()` on validated input.
 
@@ -37,7 +45,11 @@ In batch serving, you score a large set of rows on a schedule (nightly, hourly) 
 
 In online (real-time) serving, the model sits behind an endpoint and scores one request at a time as it arrives. This is the made-to-order kitchen: the dish is fresh and tailored to the request, but someone has to be standing at the stove, fast, whenever an order comes in. Online serving gives fresh predictions on inputs you have never seen, at the cost of latency budgets, capacity planning, and the operational burden of keeping a service healthy.
 
-> **Warning:** "Online serving" here means real-time request scoring with a *fixed* model. It is distinct from *online learning* (the online and streaming learning chapter, @sec-online-learning), where the model parameters themselves update as data arrive. A real-time endpoint usually serves a frozen model and is retrained out of band. Confusing the two leads people to expect an endpoint to "learn" from traffic when it is doing nothing of the kind.
+
+::: {.callout-warning}
+"Online serving" here means real-time request scoring with a *fixed* model. It is distinct from *online learning* (the online and streaming learning chapter, @sec-online-learning), where the model parameters themselves update as data arrive. A real-time endpoint usually serves a frozen model and is retrained out of band. Confusing the two leads people to expect an endpoint to "learn" from traffic when it is doing nothing of the kind.
+:::
+
 
 @tbl-model-deployment-batch-online lays out the two regimes side by side along the properties that usually drive the choice between them.
 
@@ -75,7 +87,11 @@ knitr::kable(
 
 A frequent and sensible hybrid combines the two: precompute predictions in batch for the common, slow-moving cases (and cache them), then stand up an online endpoint only for the long tail of fresh inputs the cache misses. This keeps the expensive online path small while still covering inputs the batch never saw.
 
-> **Tip:** When you are unsure which regime you need, start by asking whether the inputs exist before the prediction is needed. If every input you will ever score is already known (an existing customer list, a fixed product catalog), batch is almost always simpler and cheaper. Only reach for online serving when inputs are genuinely created at request time.
+
+::: {.callout-tip}
+When you are unsure which regime you need, start by asking whether the inputs exist before the prediction is needed. If every input you will ever score is already known (an existing customer list, a fixed product catalog), batch is almost always simpler and cheaper. Only reach for online serving when inputs are genuinely created at request time.
+:::
+
 
 ### A Cost Model for Choosing
 
@@ -121,7 +137,11 @@ legend("topleft",
 
 Having decided to serve a model online, the next question is what, exactly, the endpoint promises to the world. That promise is the contract: the agreement between server and callers about the request format, the response format, and the error behavior. The contract, not the model, is what callers depend on. You can swap a random forest for a gradient boosting model freely as long as the contract holds, and conversely, a tiny change to the response shape can break a dashboard even though the model is untouched.
 
-> **Intuition:** A serving endpoint is like a power socket. Appliances do not care how the electricity is generated, only that the voltage and the plug shape stay fixed. Callers do not care which algorithm you use, only that the request and response keep their agreed shape.
+
+::: {.callout-tip title="Intuition"}
+A serving endpoint is like a power socket. Appliances do not care how the electricity is generated, only that the voltage and the plug shape stay fixed. Callers do not care which algorithm you use, only that the request and response keep their agreed shape.
+:::
+
 
 A minimal prediction contract has these parts, each of which a caller will eventually depend on:
 
@@ -133,7 +153,11 @@ A minimal prediction contract has these parts, each of which a caller will event
 
 Of all these parts, the single most important property is input validation at the boundary. A model will happily extrapolate on garbage: feed a logistic regression an age of $-5$ or a category it never saw, and it will still return a confident-looking probability. The endpoint must therefore reject inputs that violate the schema before they reach the model. This is the same idea as the data validation chapter (@sec-data-validation), applied at the request boundary.
 
-> **Warning:** An endpoint that does not validate its input does not fail loudly; it fails *quietly*, returning plausible numbers for nonsense inputs. Silent wrong answers are far more dangerous than visible errors, because nobody knows to investigate them.
+
+::: {.callout-warning}
+An endpoint that does not validate its input does not fail loudly; it fails *quietly*, returning plausible numbers for nonsense inputs. Silent wrong answers are far more dangerous than visible errors, because nobody knows to investigate them.
+:::
+
 
 The runnable demo at the end of this chapter implements exactly this validation step in base R, so the logic is visible without any framework.
 
@@ -164,7 +188,11 @@ knitr::kable(
 
 `vetiver` packages a fitted model together with the metadata needed to serve it (the prediction method, the input prototype that defines the schema, and a version string), stores it in a `pins` board (a local folder, a cloud bucket, or Posit Connect), and can generate the `plumber` API and the Dockerfile for you. In other words, it automates the "ship three things together" rule from the start of the chapter: the fitted object, the schema, and the environment metadata all travel as one versioned artifact. It removes most of the hand-written glue from the API chapter (@sec-api) and the containerizing chapter (@sec-containerizing-r).
 
-> **When to use this:** Reach for `vetiver` when you want the standard, opinionated path (model plus schema plus version plus API plus Dockerfile) generated for you. Drop to hand-written `plumber` and Docker only when you need control the generator does not give.
+
+::: {.callout-tip title="When to use this"}
+Reach for `vetiver` when you want the standard, opinionated path (model plus schema plus version plus API plus Dockerfile) generated for you. Drop to hand-written `plumber` and Docker only when you need control the generator does not give.
+:::
+
 
 The flow below shows the path end to end. It requires `vetiver` and `pins`, which are not in the runnable set here, so the chunk is `eval=FALSE`, but it is current, idiomatic code.
 
@@ -214,14 +242,22 @@ Getting a model live is the easy part; the hard part comes later, when you need 
 
 Versioned endpoints keep more than one model addressable at once. The new model is deployed alongside the old one (for example at `/v2/predict` while `/v1/predict` keeps serving), and traffic is moved deliberately rather than flipped. The payoff is that rollback becomes a routing change instead of a redeploy: if `/v2` misbehaves, you point traffic back at `/v1` in seconds.
 
-> **Key idea:** You cannot roll back safely to a version you did not keep. Versioned endpoints exist so that the previous, known-good model is always one routing change away.
+
+::: {.callout-important title="Key idea"}
+You cannot roll back safely to a version you did not keep. Versioned endpoints exist so that the previous, known-good model is always one routing change away.
+:::
+
 
 With more than one version live, two rollout strategies sit on top of versioning. They look similar (both split traffic) but answer different questions:
 
 - Canary. Send a small fraction of live traffic (say 5 percent) to the new version, watch its error rate and prediction quality, and increase the fraction only if it holds up.^[The name comes from the "canary in a coal mine": a small, expendable probe that warns of danger before it reaches everyone. The canary fraction is the share of users you are willing to expose to a bad release while you find out whether it is bad.] The blast radius of a bad model is bounded by the canary fraction. This is a risk-control mechanism.
 - A/B test. Split traffic between two versions to *measure* which produces better downstream outcomes (conversion, revenue, click-through), with the split held long enough to reach statistical significance. This is a measurement mechanism, not just a safety valve.
 
-> **Warning:** Do not use a canary to decide which model is "better." A canary runs briefly on little traffic, which is fine for catching crashes but far too little data to measure a small business lift. Measuring lift is the job of an A/B test, and the next section shows why it needs so much more traffic.
+
+::: {.callout-warning}
+Do not use a canary to decide which model is "better." A canary runs briefly on little traffic, which is fine for catching crashes but far too little data to measure a small business lift. Measuring lift is the job of an A/B test, and the next section shows why it needs so much more traffic.
+:::
+
 
 @tbl-model-deployment-rollout contrasts the three rollout strategies by their goal, traffic split, decision rule, and main risk.
 
@@ -260,7 +296,11 @@ $$
 
 where $z_q$ is the $q$ quantile of the standard normal.^[This is the standard two-proportion power formula; the same one used for any conversion-rate experiment. We use the normal approximation, which is accurate when the counts in each arm are not tiny.] The $\delta^2$ in the denominator is the key fact: detecting a smaller lift costs quadratically more traffic. Halving the lift you want to detect roughly quadruples the sample you need.
 
-> **Intuition:** Small effects hide in noise. To be confident that a 1 percent improvement is real and not luck, you need enough data that random fluctuations average out below 1 percent, and that takes a great deal more traffic than confirming a 4 percent improvement. This is why canarying (a safety decision, needing little data) and A/B testing (a measurement decision, needing a lot) are genuinely different activities even though both split traffic.
+
+::: {.callout-tip title="Intuition"}
+Small effects hide in noise. To be confident that a 1 percent improvement is real and not luck, you need enough data that random fluctuations average out below 1 percent, and that takes a great deal more traffic than confirming a 4 percent improvement. This is why canarying (a safety decision, needing little data) and A/B testing (a measurement decision, needing a lot) are genuinely different activities even though both split traffic.
+:::
+
 
 @fig-model-deployment-abtest plots this relationship: the required sample size per arm climbs steeply as the lift to detect shrinks, reflecting the $\delta^2$ in the denominator.
 

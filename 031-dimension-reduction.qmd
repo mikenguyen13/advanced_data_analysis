@@ -11,7 +11,11 @@ The guiding intuition is that high-dimensional data usually live, at least appro
 
 We begin with principal components analysis (PCA), the workhorse of linear dimension reduction. PCA looks for a small number of directions along which the data vary the most, and it turns out to be the right starting point because so many other methods are either special cases of it, extensions of it, or reactions against its limitations. From there we build outward: aligning two point clouds (Procrustes transformations), bending PCA into curved feature spaces (kernel PCA), making the result interpretable (sparse PCA), respecting non-negativity (non-negative matrix factorization), and finally relaxing the linearity assumption altogether (nonlinear dimension reduction).
 
-> **Key idea:** Almost everything in this chapter reduces to one linear-algebra tool, the singular value decomposition (SVD). If you understand how the SVD gives you PCA, the rest of the chapter is a set of variations on that theme.
+
+::: {.callout-important title="Key idea"}
+Almost everything in this chapter reduces to one linear-algebra tool, the singular value decomposition (SVD). If you understand how the SVD gives you PCA, the rest of the chapter is a set of variations on that theme.
+:::
+
 
 ## Principal Components
 
@@ -29,7 +33,11 @@ where the coefficients (loadings) are normalized such that $\sum_{j=1}^p \phi^2_
 
 The next principal component is again a linear combination of the same features, chosen to account for the next largest amount of variation, subject to being orthogonal to the first. We continue in this way, each new component capturing as much of the remaining variation as possible while staying perpendicular to all the ones before it. Orthogonality is what keeps the components from redundantly re-describing the same variation.
 
-> **Intuition:** Picture the data as an elongated cloud of points. The first principal component is the long axis of the cloud, the direction in which the points are most spread out. The second is the longest direction perpendicular to the first, and so on. Keeping only the first few axes is like photographing the cloud from its most informative angle.
+
+::: {.callout-tip title="Intuition"}
+Picture the data as an elongated cloud of points. The first principal component is the long axis of the cloud, the direction in which the points are most spread out. The second is the longest direction perpendicular to the first, and so on. Keeping only the first few axes is like photographing the cloud from its most informative angle.
+:::
+
 
 ### A more formal view
 
@@ -78,7 +86,11 @@ Two facts are worth keeping in mind as you connect PCA to other material. First,
 
 Second, a practical question: how many components should we keep? A useful diagnostic is to compare the variation captured by the real data against the variation captured when the data are deliberately scrambled. You randomize the pixels (or feature values) across samples to destroy any real structure, run the same decomposition, and compare. The number of components whose singular values rise meaningfully above the randomized baseline is roughly the number worth keeping; at the point where the real and randomized curves meet, the extra components are capturing noise rather than signal. @hastie2001a (14.24) illustrate exactly this comparison, showing the singular values for randomized data alongside those for the actual images.
 
-> **Tip:** The scrambling comparison is more honest than the familiar "look for an elbow in the scree plot" rule, because it gives you a concrete null expectation for how much variance a meaningless direction should explain.
+
+::: {.callout-tip}
+The scrambling comparison is more honest than the familiar "look for an elbow in the scree plot" rule, because it gives you a concrete null expectation for how much variance a meaningless direction should explain.
+:::
+
 
 The remaining sections all start from this PCA machinery and modify one ingredient at a time.
 
@@ -141,7 +153,11 @@ $$
 
 but polynomial, linear, hyperbolic tangent, Laplacian, and Bessel kernels, among others, are all used in practice.
 
-> **Warning:** Kernel PCA buys flexibility at a price. Because the feature transformation is nonlinear, you generally cannot invert it to recover the original $x$ from a kernel principal component (the so-called pre-image problem). And there is no way to know in advance which kernel will work best for a given data set, so the choice of kernel and its tuning parameters becomes an empirical question.
+
+::: {.callout-warning}
+Kernel PCA buys flexibility at a price. Because the feature transformation is nonlinear, you generally cannot invert it to recover the original $x$ from a kernel principal component (the so-called pre-image problem). And there is no way to know in advance which kernel will work best for a given data set, so the choice of kernel and its tuning parameters becomes an empirical question.
+:::
+
 
 ### Sparse PCA
 
@@ -163,7 +179,11 @@ What makes this tractable is that the problem decouples nicely. The pair $\mathb
 
 Because each step is something we already know how to do, we can iterate between the two until convergence [@hastie2001a, 14.5.5]. This alternating strategy, fix half the unknowns and solve the other half, recurs throughout the chapter.
 
-> **When to use this:** Reach for sparse PCA when interpretability matters as much as compression, for example when you want to name a component by the few variables that define it, or when $p$ is large and you suspect only a subset of features drives each direction of variation.
+
+::: {.callout-tip title="When to use this"}
+Reach for sparse PCA when interpretability matters as much as compression, for example when you want to name a component by the few variables that define it, or when $p$ is large and you suspect only a subset of features drives each direction of variation.
+:::
+
 
 ### Non-negative Matrix Factorization
 
@@ -183,7 +203,11 @@ $$
 
 This objective is not arbitrary: it is the log-likelihood of a model in which each $x_{ij}$ is a Poisson random variable with mean (intensity) $(\mathbf{WH})_{ij}$, which is a natural choice for count-like, non-negative data. The columns of $\mathbf{W}$ are usually the quantities of primary interest, since they present the primary non-negative components in the data: the recurring parts (a facial feature, a topic, a spectral signature) out of which each observation is additively built.^[The classic illustration is faces: NMF tends to discover localized parts such as eyes, noses, and mouths, whereas PCA produces global "eigenfaces" that look like ghostly whole-face templates. The non-negativity is what forces a parts-based representation.]
 
-> **Warning:** The factorization into $\mathbf{W}$ and $\mathbf{H}$ is generally not unique, so different runs (or different initializations) can give different but equally valid decompositions. The result can still be very useful; just do not over-interpret a single solution as the one true set of parts.
+
+::: {.callout-warning}
+The factorization into $\mathbf{W}$ and $\mathbf{H}$ is generally not unique, so different runs (or different initializations) can give different but equally valid decompositions. The result can still be very useful; just do not over-interpret a single solution as the one true set of parts.
+:::
+
 
 ### Beyond PCA
 

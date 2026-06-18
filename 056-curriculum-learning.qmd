@@ -9,11 +9,19 @@ When a child learns arithmetic, no one starts with long division. They start wit
 
 The idea is old in pedagogy and was brought into modern machine learning by Bengio and colleagues in 2009, who framed it as a *continuation method*: a way of optimizing a hard, bumpy loss surface by first optimizing a smoothed, easier version and gradually morphing it back into the real one. Seen this way, an easy-to-hard curriculum is a form of optimization scheduling. It does not change what the model can represent; it changes the path the optimizer takes to get there, and a better path can mean faster convergence, a lower final loss, or escape from a bad local region.
 
-> **Intuition:** The loss surface a model sees depends on which examples are in the current batch. Easy examples (clean, unambiguous, low-noise) tend to produce a smoother loss with a clearer downhill direction. Train on those first and the optimizer takes confident early steps; introduce the hard examples once the parameters are already in a good neighborhood and they refine rather than derail the fit.
+
+::: {.callout-tip title="Intuition"}
+The loss surface a model sees depends on which examples are in the current batch. Easy examples (clean, unambiguous, low-noise) tend to produce a smoother loss with a clearer downhill direction. Train on those first and the optimizer takes confident early steps; introduce the hard examples once the parameters are already in a good neighborhood and they refine rather than derail the fit.
+:::
+
 
 This chapter builds the idea from intuition to formalism, then to a runnable demonstration. We define what "easy" means, write down pacing functions that control how fast difficulty ramps up, contrast a fixed curriculum (the teacher decides the order) with self-paced learning (the model decides what it is ready for), and give a base-R simulation that trains the same model on an easy-to-hard curriculum versus a random order and compares how fast each converges. We close with the cases where curricula help, the cases where they quietly hurt, and a checklist of pitfalls.
 
-> **When to use this:** Reach for curriculum learning when your data has a wide and measurable spread of difficulty (clean versus noisy, short versus long, common versus rare), when the optimization is hard (non-convex, noisy gradients, sparse signal), and when you can score examples by difficulty cheaply. If every example is roughly equally hard, or the model is a convex learner with a unique optimum, ordering buys you little.
+
+::: {.callout-tip title="When to use this"}
+Reach for curriculum learning when your data has a wide and measurable spread of difficulty (clean versus noisy, short versus long, common versus rare), when the optimization is hard (non-convex, noisy gradients, sparse signal), and when you can score examples by difficulty cheaply. If every example is roughly equally hard, or the model is a convex learner with a unique optimum, ordering buys you little.
+:::
+
 
 ## Where this fits in a modern ML/AI workflow
 
@@ -28,7 +36,11 @@ It appears under several names across subfields:
 
 The new component is small: a difficulty score $d(x, y)$ for each example and a pacing function $g(t)$ that says how much of the sorted data to expose at training step $t$. Everything downstream (the model, the loss, the optimizer) is unchanged.
 
-> **Key idea:** Curriculum learning does not change the hypothesis space or the objective's global minimum. It reweights or reorders the examples seen over time, changing the optimization trajectory. Any gain is a gain in optimization, not in representational power.
+
+::: {.callout-important title="Key idea"}
+Curriculum learning does not change the hypothesis space or the objective's global minimum. It reweights or reorders the examples seen over time, changing the optimization trajectory. Any gain is a gain in optimization, not in representational power.
+:::
+
 
 ## Setup and notation
 
@@ -52,7 +64,11 @@ $$
 
 where $Q(p)$ is the empirical $p$-quantile of the difficulty scores. Early on $g(t)$ is small and $\mathcal{D}_t$ holds only the easiest examples; by the end $g(T) = 1$ and $\mathcal{D}_t = \mathcal{D}$, so the model trains on everything. The curriculum is the pair (difficulty score, pacing function).
 
-> **Note:** The requirement $g(T) = 1$ matters. A curriculum that never exposes the hard examples is not a curriculum, it is a censored dataset, and it will produce a model that has never seen the cases you care about most. The goal is to delay the hard examples, not to delete them.
+
+::: {.callout-note}
+The requirement $g(T) = 1$ matters. A curriculum that never exposes the hard examples is not a curriculum, it is a censored dataset, and it will produce a model that has never seen the cases you care about most. The goal is to delay the hard examples, not to delete them.
+:::
+
 
 ## A continuation-method view
 
@@ -67,7 +83,11 @@ $$
 
 When $\lambda$ is small, the weights $w_i$ concentrate on the easy examples, smoothing the surface by ignoring the hard, high-variance contributions. As $\lambda \to 1$ the weights flatten toward $w_i = 1$ and the objective returns to the ordinary average loss. An easy-to-hard schedule is exactly the case where $w_i(\lambda) = \mathbb{1}\{d_i \le Q(\lambda)\}$, a hard threshold that lets in progressively harder examples as $\lambda$ grows.
 
-> **Intuition:** Dropping the hard examples early is like blurring a photo before tracing its outline. The big shapes (the coarse structure of the decision rule) are easy to see in the blurred version. Once you have those, sharpening the image back in lets you fill in the fine detail without losing the outline you already found.
+
+::: {.callout-tip title="Intuition"}
+Dropping the hard examples early is like blurring a photo before tracing its outline. The big shapes (the coarse structure of the decision rule) are easy to see in the blurred version. Once you have those, sharpening the image back in lets you fill in the fine detail without losing the outline you already found.
+:::
+
 
 The catch is that this is a heuristic, not a guarantee. Continuation methods provably help only when the smoothed surface really is a good guide to the true one. If "easy" examples imply a different solution than the full dataset, the early steps walk toward the wrong region and the curriculum hurts. We return to this failure mode in the practical guidance.
 
@@ -92,7 +112,11 @@ $$
 
 So at the current parameters the model trains on exactly those examples whose loss is below the threshold $1/K$: the ones it already finds easy. Training alternates between solving for $v$ (select the currently easy examples) and a gradient step on $\theta$ over the selected set. Annealing $K$ downward over time raises the threshold $1/K$, admitting harder examples as training proceeds, so the schedule emerges from the loss instead of being fixed by a teacher.
 
-> **Key idea:** A fixed curriculum trusts an external difficulty score; self-paced learning trusts the model's current loss. The first is simple and stable but only as good as the teacher's score; the second adapts to the model but risks a feedback loop where the model keeps excluding the very examples it most needs to learn.
+
+::: {.callout-important title="Key idea"}
+A fixed curriculum trusts an external difficulty score; self-paced learning trusts the model's current loss. The first is simple and stable but only as good as the teacher's score; the second adapts to the model but risks a feedback loop where the model keeps excluding the very examples it most needs to learn.
+:::
+
 
 The soft version replaces the binary $v_i$ with continuous weights $v_i \in [0, 1]$ and a smoother regularizer, which tends to behave better because it avoids hard in-or-out flips between rounds.
 
@@ -143,7 +167,11 @@ legend("bottomright",
 )
 ```
 
-> **Warning:** Pacing length is a hyperparameter, not a free choice. If the curriculum reaches full data ($g(t) = 1$) far too early, almost all training happens on the full set and there is no curriculum effect. If it reaches full data too late, the model overfits the easy subset and sees the hard examples only briefly. Tune the step at which $g$ hits 1 the way you would tune a learning-rate schedule.
+
+::: {.callout-warning}
+Pacing length is a hyperparameter, not a free choice. If the curriculum reaches full data ($g(t) = 1$) far too early, almost all training happens on the full set and there is no curriculum effect. If it reaches full data too late, the model overfits the easy subset and sees the hard examples only briefly. Tune the step at which $g$ hits 1 the way you would tune a learning-rate schedule.
+:::
+
 
 ## A worked simulation: easy-to-hard versus random order
 
@@ -291,7 +319,11 @@ knitr::kable(summary_tab,
 )
 ```
 
-> **Note:** The advantage here is real but modest and task-dependent. We engineered difficulty to coincide with label noise near the boundary, which is the friendly case for curricula. The next section shows the same machinery can be neutral or harmful when that alignment breaks.
+
+::: {.callout-note}
+The advantage here is real but modest and task-dependent. We engineered difficulty to coincide with label noise near the boundary, which is the friendly case for curricula. The next section shows the same machinery can be neutral or harmful when that alignment breaks.
+:::
+
 
 ## When curricula help and when they do not
 
@@ -332,7 +364,11 @@ knitr::kable(when_tab,
 
 Two points in that table deserve emphasis. First, for a strictly convex objective with a unique global minimum (ordinary logistic or linear regression trained to convergence), the order of examples cannot change the destination; it can only change the path. Any benefit there is purely a convergence-speed effect and vanishes once you train long enough, which is why our demo measures steps-to-target rather than only the final fit. Second, the most dangerous case is the bottom row: if the easy examples are easy *because* they belong to a non-representative slice (one class, one domain, one writing style), the early curriculum steps optimize toward that slice's solution, and the model can settle into a basin that the later hard examples cannot pull it out of. This is the curriculum analogue of confirmation bias.
 
-> **Intuition:** A curriculum is a bet that the easy examples and the hard examples want the same model. When that bet is right, easy-first is a head start. When it is wrong, easy-first is a detour that points the optimizer at the wrong answer before the hard examples ever get a vote.
+
+::: {.callout-tip title="Intuition"}
+A curriculum is a bet that the easy examples and the hard examples want the same model. When that bet is right, easy-first is a head start. When it is wrong, easy-first is a detour that points the optimizer at the wrong answer before the hard examples ever get a vote.
+:::
+
 
 ## Practical guidance and pitfalls
 
@@ -352,7 +388,11 @@ The simulation makes curriculum learning look like a tidy win, and under the rig
 
 - Evaluate on the full distribution. Always measure progress on the complete dataset or a representative held-out set (as the demo does with `full_loss`), never only on the currently exposed easy subset, or you will mistake a shrinking-then-growing training set for genuine improvement.
 
-> **Key idea:** Curriculum learning is a scheduling trick layered on top of an unchanged model and objective. Treat it like any other optimization hyperparameter: cheap to try, sometimes a real speed-up, occasionally harmful, and always worth validating against a plain random-order baseline before you trust it.
+
+::: {.callout-important title="Key idea"}
+Curriculum learning is a scheduling trick layered on top of an unchanged model and objective. Treat it like any other optimization hyperparameter: cheap to try, sometimes a real speed-up, occasionally harmful, and always worth validating against a plain random-order baseline before you trust it.
+:::
+
 
 ## Further reading
 

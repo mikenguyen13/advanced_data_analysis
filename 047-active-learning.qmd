@@ -9,7 +9,11 @@ Most supervised learning assumes labels are free: you have a labeled training se
 
 Active learning studies how a model can choose which examples to get labeled so that it learns more per label. Instead of labeling a random sample of the pool, the learner ranks unlabeled points by how useful their labels would be, asks an oracle^[An *oracle* is whatever can supply a true label on demand: a human annotator, a panel of raters, or a physical measurement. The word just means "the thing we pay to get a label," with no assumption that it is infallible.] (a human or an expensive measurement) for the most useful ones, retrains, and repeats. The goal is to reach a target accuracy with fewer labels than random sampling would need.
 
-> **Intuition:** A student who only studies the problems they already get right learns little. A student who seeks out the problems they find confusing learns fast. Active learning is the model behaving like the second student, spending its labeling budget on the examples it is least sure about.
+
+::: {.callout-tip title="Intuition"}
+A student who only studies the problems they already get right learns little. A student who seeks out the problems they find confusing learns fast. Active learning is the model behaving like the second student, spending its labeling budget on the examples it is least sure about.
+:::
+
 
 By the end of this chapter you will know the active-learning loop, the three families of query strategies (uncertainty, committee disagreement, and expected model change), and how to read a learning curve that shows the payoff. We close with a runnable demo in base R that compares smart querying against random sampling, plus a set of practical cautions so you know when the idea helps and when it can mislead.
 
@@ -30,7 +34,11 @@ unlabeled pool  ->  query strategy  ->  oracle (human/measurement)  ->  labeled 
 
 The query strategy is the only new component. Everything else (the model, the training loop, the evaluation) is what you already have.
 
-> **Key idea:** Active learning does not invent a new model. It wraps a loop around your existing model that decides which labels to buy next. If you can fit a classifier and read off its predicted probabilities, you can run active learning.
+
+::: {.callout-important title="Key idea"}
+Active learning does not invent a new model. It wraps a loop around your existing model that decides which labels to buy next. If you can fit a classifier and read off its predicted probabilities, you can run active learning.
+:::
+
 
 ## Setup and notation
 
@@ -42,7 +50,11 @@ Let $\mathcal{X} \subseteq \mathbb{R}^p$ be the input space and $\mathcal{Y} = \
 
 A model trained on $\mathcal{L}$ produces a class-probability estimate $\hat{p}_\theta(y \mid x)$, the model's guess at the chance that input $x$ belongs to each class. A query strategy is a scoring function $a(x)$, called the *acquisition function*, that assigns each $x \in \mathcal{U}$ a value, where higher means "more useful to label." Each round we pick the top points by $a(x)$, send them to the oracle, add the returned labels to $\mathcal{L}$, refit, and recompute $a$ on the remaining pool.
 
-> **Note:** The whole subject reduces to choosing $a(x)$. The sections below are really a tour of different sensible definitions of "useful," and the tradeoffs between them in cost and behavior.
+
+::: {.callout-note}
+The whole subject reduces to choosing $a(x)$. The sections below are really a tour of different sensible definitions of "useful," and the tradeoffs between them in cost and behavior.
+:::
+
 
 ## Pool-based vs stream-based
 
@@ -52,7 +64,11 @@ In pool-based active learning the whole pool $\mathcal{U}$ is available at once.
 
 In stream-based active learning inputs arrive one at a time and you must decide on the spot whether to pay for a label or discard the point. There is no global ranking, so you threshold the acquisition score: label $x$ if $a(x) \ge \tau$ for some threshold $\tau$ tuned to spend the budget at the right rate.^[Setting $\tau$ is the hard part: too low and you exhaust the budget on the first day's traffic, too high and you finish the month with labels unspent. A common fix is to track recent spend and nudge $\tau$ up or down to stay on pace.] This fits online systems and production traffic sampling (see the online and streaming learning chapter, @sec-online-learning), where storing and rescoring the full stream is impractical.
 
-> **When to use this:** Reach for pool-based active learning when you are building a dataset offline and can hold all candidates in memory. Reach for stream-based when points fly past in real time, as in sampling live production requests for human review, and you cannot revisit them later.
+
+::: {.callout-tip title="When to use this"}
+Reach for pool-based active learning when you are building a dataset offline and can hold all candidates in memory. Reach for stream-based when points fly past in real time, as in sampling live production requests for human review, and you cannot revisit them later.
+:::
+
 
 @tbl-active-learning-settings lays out the two settings side by side, from how candidates arrive to how each one controls the labeling budget.
 
@@ -105,7 +121,11 @@ For binary problems all three rank points identically: each is maximized at $\ha
 
 For a binary logistic model with $\hat{p} = \hat{p}_\theta(y=1 \mid x)$, all three scores peak where $\hat{p} = 0.5$, that is, on the fitted decision boundary $x^\top \hat\beta = 0$. Uncertainty sampling therefore pulls queries toward the current boundary.
 
-> **Intuition:** Picture the model drawing a line between two classes. The points it is least sure about are the ones sitting right on the line. Labeling those tells the model exactly where the line should go, which is far more informative than labeling a point deep inside a region it already understands.
+
+::: {.callout-tip title="Intuition"}
+Picture the model drawing a line between two classes. The points it is least sure about are the ones sitting right on the line. Labeling those tells the model exactly where the line should go, which is far more informative than labeling a point deep inside a region it already understands.
+:::
+
 
 ### Query-by-committee
 
@@ -136,7 +156,11 @@ $$
 
 A large expected gradient means the new example would move the parameters substantially, which is taken as a proxy for learning a lot. This is more expensive (a gradient per candidate per possible label) and is sensitive to feature scaling, since gradient norms inherit the scale of the inputs.
 
-> **Warning:** Expected model change rewards points that would jolt the parameters hard, but a hard jolt is not always good learning. Outliers and mislabeled points also produce large gradients, so this strategy can chase noise. Standardize features first and watch for it spending budget on junk.
+
+::: {.callout-warning}
+Expected model change rewards points that would jolt the parameters hard, but a hard jolt is not always good learning. Outliers and mislabeled points also produce large gradients, so this strategy can chase noise. Standardize features first and watch for it spending budget on junk.
+:::
+
 
 ### Strategy comparison
 
@@ -174,7 +198,11 @@ We simulate a binary classification problem, then compare two label-acquisition 
 
 Both start from the same small seed set and the same model (logistic regression via `glm`). We track test accuracy as a function of the number of labels acquired. Everything here is base R.
 
-> **Tip:** To compare label-acquisition policies fairly, hold everything else fixed: the same seed batch, the same model, the same held-out test set. The only thing that may differ between runs is which points get queried. That isolation is what lets us attribute any accuracy gap to the query strategy rather than to luck in the starting data.
+
+::: {.callout-tip}
+To compare label-acquisition policies fairly, hold everything else fixed: the same seed batch, the same model, the same held-out test set. The only thing that may differ between runs is which points get queried. That isolation is what lets us attribute any accuracy gap to the query strategy rather than to luck in the starting data.
+:::
+
 
 ```{r al-data, eval=TRUE}
 .libPaths(c("C:/Users/miken/R/library-4.4", .libPaths()))
@@ -320,7 +348,11 @@ The demo uses raw `glm` probabilities for the score. Two refinements carry over 
 
 First, uncertainty sampling trusts the model's probabilities, so calibration matters. A model is *calibrated* when its stated probabilities match reality: among inputs it labels "70% class 1," about 70% truly are. If $\hat{p}$ is overconfident, the "closest to 0.5" set may not be the genuinely ambiguous set. Calibrating probabilities (Platt scaling, isotonic regression; see @sec-probability-calibration) before scoring helps.
 
-> **Warning:** A model can be confidently wrong. An overconfident model pushes most predictions toward 0 or 1, so very few points look uncertain, and the ones that do may not be the truly hard cases. Calibrate before you trust an uncertainty score.
+
+::: {.callout-warning}
+A model can be confidently wrong. An overconfident model pushes most predictions toward 0 or 1, so very few points look uncertain, and the ones that do may not be the truly hard cases. Calibrate before you trust an uncertainty score.
+:::
+
 
 Second, query-by-committee needs only a set of differing models. A cheap committee is a handful of bootstrap refits of the same `glm` (the same resampling idea behind bagging, @sec-bagging): resample $\mathcal{L}$ with replacement, fit each, and score pool points by the variance of their predicted probabilities across committee members. High variance flags disagreement and is a drop-in replacement for the `abs(p - 0.5)` score above.
 
@@ -343,7 +375,11 @@ Just as often, though, the strategy backfires in predictable ways. Watch for the
 - Model and oracle drift. If the labeling guidelines or the data distribution shift mid-collection, earlier queries may no longer reflect what you need.
 - Reproducibility. Because the labeled set depends on the model that selected it, results are tied to the strategy and seeds. Log which strategy chose each label.
 
-> **Key idea:** The actively chosen labels are deliberately biased toward the decision boundary, so they are excellent training data but a terrible random sample. Never estimate population quantities (class frequencies, base rates) from them, and always evaluate on a separate, randomly drawn test set.
+
+::: {.callout-important title="Key idea"}
+The actively chosen labels are deliberately biased toward the decision boundary, so they are excellent training data but a terrible random sample. Never estimate population quantities (class frequencies, base rates) from them, and always evaluate on a separate, randomly drawn test set.
+:::
+
 
 Putting the cautions together, here is a sensible default recipe: seed with a small random (or clustered) batch, use margin or entropy sampling with calibrated probabilities, query in modest batches with a light diversity penalty, and always evaluate on a fixed random held-out set rather than on the actively chosen data.
 

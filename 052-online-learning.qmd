@@ -9,7 +9,11 @@ Most of this book assumes a fixed training set: you collect $n$ observations, fi
 
 This chapter develops the core ideas: the incremental update view of learning, the perceptron and online gradient descent, the stochastic approximation theory that explains why these updates converge, regret as the right notion of performance, Hoeffding (very fast) decision trees for unbounded streams, and concept drift. The runnable demos are implemented in base R so the mechanics are fully visible: a streaming mean and variance with Welford's algorithm, and an online logistic regression that updates one observation at a time.
 
-> **Intuition:** Batch learning is like studying for an exam from a fixed textbook. Online learning is like a person who has to answer questions all day long, learning a little from each one as soon as they find out whether they were right, and never getting to reread the earlier questions. The skill is to improve continuously from a single forward pass through experience.
+
+::: {.callout-tip title="Intuition"}
+Batch learning is like studying for an exam from a fixed textbook. Online learning is like a person who has to answer questions all day long, learning a little from each one as soon as they find out whether they were right, and never getting to reread the earlier questions. The skill is to improve continuously from a single forward pass through experience.
+:::
+
 
 By the end you should be able to recognize when a problem calls for streaming methods rather than periodic retraining, write a simple incremental update by hand, reason about whether it will converge, and avoid the operational traps (leaky evaluation, runaway learning rates, silent drift) that make online systems fail in production.
 
@@ -36,7 +40,11 @@ To place online learning next to its relatives, @tbl-online-learning-paradigm-co
 
 A common production pattern is a hybrid: train a strong batch model offline, then keep a lightweight online layer (a logistic regression or a small set of weights) updating on the live stream to absorb short-term drift, retraining the heavy model on a slower clock.
 
-> **When to use this:** Reach for a streaming method when the data is too big to store, never stops arriving, or moves faster than you can retrain. If your dataset is finite, fits in memory, and comes from a stable distribution, batch learning is simpler to validate and usually more accurate per example. Section \@ref(practical-guidance-and-pitfalls) returns to this decision in detail.
+
+::: {.callout-tip title="When to use this"}
+Reach for a streaming method when the data is too big to store, never stops arriving, or moves faster than you can retrain. If your dataset is finite, fits in memory, and comes from a stable distribution, batch learning is simpler to validate and usually more accurate per example. Section \@ref(practical-guidance-and-pitfalls) returns to this decision in detail.
+:::
+
 
 ## The Incremental Update View
 
@@ -48,7 +56,11 @@ $$
 
 where $\eta_t > 0$ is a step size (learning rate)^[The learning rate controls how far each example is allowed to move the parameters. It is the single most important knob in online learning, and most of the failure modes in Section \@ref(practical-guidance-and-pitfalls) trace back to choosing it badly.] and $g_t$ is the gradient of the current example's loss. Two features make this practical: the update touches only the current example, and the cost per step does not grow with $t$.
 
-> **Key idea:** Almost every online method in this chapter is a special case of $\theta_{t+1} = \theta_t - \eta_t g_t$. Change the loss $\ell_t$ and you change the algorithm; the update template stays the same. Recognizing this one line under different disguises is most of what it takes to read the online-learning literature.
+
+::: {.callout-important title="Key idea"}
+Almost every online method in this chapter is a special case of $\theta_{t+1} = \theta_t - \eta_t g_t$. Change the loss $\ell_t$ and you change the algorithm; the update template stays the same. Recognizing this one line under different disguises is most of what it takes to read the online-learning literature.
+:::
+
 
 Even a running average is an instance of this template. If $\ell_t(\theta) = \tfrac12 (\theta - x_t)^2$ then $g_t = \theta_t - x_t$, and with $\eta_t = 1/t$ the update
 
@@ -72,7 +84,11 @@ $$
 
 In words: if the prediction is correct, leave the weights alone; if it is wrong, nudge them toward getting that example right by adding $y_t x_t$. This is online (sub)gradient descent with step size 1 on the loss $\ell_t(\theta) = \max(0, -y_t \theta^\top x_t)$, the perceptron loss.^[A (sub)gradient generalizes the gradient to functions with kinks. The perceptron loss has a corner at $y_t\theta^\top x_t = 0$; one valid subgradient there is $0$, which is why a correct prediction triggers no update.] The classic guarantee bounds the number of mistakes rather than a probability of error, which is what makes it an online rather than a statistical result.
 
-> **Note:** The mistake bound below is one of the oldest results in machine learning, and it is striking precisely because it makes no probabilistic assumption. It does not say "errors are unlikely"; it says the perceptron can make at most a fixed number of mistakes, ever, as long as the data is separable with a margin.
+
+::: {.callout-note}
+The mistake bound below is one of the oldest results in machine learning, and it is striking precisely because it makes no probabilistic assumption. It does not say "errors are unlikely"; it says the perceptron can make at most a fixed number of mistakes, ever, as long as the data is separable with a margin.
+:::
+
 
 Perceptron mistake bound. Suppose there is a unit vector $u$ ($\lVert u \rVert = 1$) and a margin $\gamma > 0$ with $y_t (u^\top x_t) \ge \gamma$ for all $t$, and suppose $\lVert x_t \rVert \le R$ for all $t$. Then the total number of mistakes the perceptron makes is at most
 
@@ -94,7 +110,11 @@ $$
 
 These two conditions encode a tug-of-war. The first condition keeps the steps large enough in aggregate to reach the solution from any start; the second forces the steps to shrink fast enough that gradient noise averages out. The canonical choice $\eta_t = c/t$ satisfies both. In practice $\eta_t = c/\sqrt{t}$ (which violates the second condition) is common because it adapts better when the target moves, trading exact convergence for responsiveness.
 
-> **Intuition:** A step size that decays too slowly leaves the model permanently jittery, chasing noise. One that decays too fast freezes the model before it has reached a good answer. The $\sum\eta_t=\infty,\ \sum\eta_t^2<\infty$ pair is the precise statement of "fast enough to settle, slow enough to arrive."
+
+::: {.callout-tip title="Intuition"}
+A step size that decays too slowly leaves the model permanently jittery, chasing noise. One that decays too fast freezes the model before it has reached a good answer. The $\sum\eta_t=\infty,\ \sum\eta_t^2<\infty$ pair is the precise statement of "fast enough to settle, slow enough to arrive."
+:::
+
 
 ### Regret: the right scorecard
 
@@ -112,7 +132,11 @@ $$
 
 Sublinear $O(\sqrt{T})$ regret means the per-round penalty for not knowing the future vanishes as $\sqrt{T}/T = 1/\sqrt{T}$. This is the central performance promise of online convex optimization and it requires no statistical assumption on how the data is generated.
 
-> **Key idea:** Regret reframes the goal. Instead of asking "did we recover the true model?" (which assumes there is one), it asks "did we do nearly as well as the best fixed model we could have picked with hindsight?" That question stays meaningful even when an adversary chooses the data, which is why regret, not risk, is the native scorecard of online learning.
+
+::: {.callout-important title="Key idea"}
+Regret reframes the goal. Instead of asking "did we recover the true model?" (which assumes there is one), it asks "did we do nearly as well as the best fixed model we could have picked with hindsight?" That question stays meaningful even when an adversary chooses the data, which is why regret, not risk, is the native scorecard of online learning.
+:::
+
 
 ## Demo 1: Streaming Mean and Variance (Welford)
 
@@ -127,7 +151,11 @@ $$
 
 and the sample variance is $s_t^2 = M_{2,t} / (t-1)$. Each step is $O(1)$ in time and memory. Notice that the mean update $\bar x_t = \bar x_{t-1} + (x_t - \bar x_{t-1})/t$ is exactly the running-average special case from Section \@ref(the-incremental-update-view), with the gradient $g_t = \theta_t - x_t$ and step size $\eta_t = 1/t$.
 
-> **Warning:** The textbook one-pass formula $\operatorname{Var} = \frac{1}{n-1}\big(\sum x^2 - n\bar x^2\big)$ is numerically dangerous. For data with a large mean and small spread (say sensor readings around 1{,}000{,}000 that vary by a few units), catastrophic cancellation can return a variance that is wildly wrong or negative. Prefer Welford whenever you compute variance from a stream.
+
+::: {.callout-warning}
+The textbook one-pass formula $\operatorname{Var} = \frac{1}{n-1}\big(\sum x^2 - n\bar x^2\big)$ is numerically dangerous. For data with a large mean and small spread (say sensor readings around 1{,}000{,}000 that vary by a few units), catastrophic cancellation can return a variance that is wildly wrong or negative. Prefer Welford whenever you compute variance from a stream.
+:::
+
 
 In the code below, `welford_update` carries the running state (count, mean, and $M_2$) and returns the new state after seeing one value. The `stopifnot` lines at the end are a self-check: they confirm the one-pass result equals what `mean()` and `var()` compute from the whole stored vector.
 
@@ -191,7 +219,11 @@ $$
 
 The OGD update is therefore the compact $\theta \leftarrow \theta - \eta_t (p_t - y_t) x_t$. The gradient is just the prediction error $(p_t - y_t)$ scaled onto the input $x_t$: predict too high and the weights move down along $x_t$, predict too low and they move up. We process one observation at a time, never re-reading past data, and we track the running average log loss to see learning happen. For an honest read on generalization we also compute, before each update, the loss on a held-out test set; this is the prequential idea of test-then-train.^[Prequential (predictive-sequential) evaluation scores each example with the current model *before* that example is used to update it. Because the model never sees an example's label until after it has been graded on it, no future information leaks into the score, so prequential loss is an unbiased running estimate of how the deployed model is doing.]
 
-> **Warning:** Never evaluate a temporal stream by shuffling it and taking a random train/test split. Doing so lets the model train on examples that came *after* the ones it is tested on, leaking the future and producing an optimistic, meaningless score. Prequential test-then-train respects the arrow of time.
+
+::: {.callout-warning}
+Never evaluate a temporal stream by shuffling it and taking a random train/test split. Doing so lets the model train on examples that came *after* the ones it is tested on, leaking the future and producing an optimistic, meaningless score. Prequential test-then-train respects the arrow of time.
+:::
+
 
 @fig-online-learning-online-logit shows the resulting learning curves alongside the batch reference.
 
@@ -283,7 +315,11 @@ $$
 
 of its observed average. So if $\bar G_a - \bar G_b > \epsilon$, then with confidence $1-\delta$ feature $a$ really is the best split, and the node can split now without waiting for more data. As $n$ grows, $\epsilon$ shrinks, so even near-ties eventually resolve.
 
-> **Intuition:** The Hoeffding bound answers "have I seen enough examples to be sure the leading feature really is leading, and is not ahead by luck?" When the gap between the top two features is larger than the statistical wiggle room $\epsilon$, the answer is yes and the node commits. The remarkable part is that this lets a single streaming pass build a tree whose splits match, with high probability, what a batch tree would have chosen on the same data, while reading each example only once.
+
+::: {.callout-tip title="Intuition"}
+The Hoeffding bound answers "have I seen enough examples to be sure the leading feature really is leading, and is not ahead by luck?" When the gap between the top two features is larger than the statistical wiggle room $\epsilon$, the answer is yes and the node commits. The remarkable part is that this lets a single streaming pass build a tree whose splits match, with high probability, what a batch tree would have chosen on the same data, while reading each example only once.
+:::
+
 
 @tbl-online-learning-hoeffding-vs-batch contrasts the streaming tree with its batch ancestors.
 
@@ -324,7 +360,11 @@ Everything so far assumed that the world a model learns is the world it is later
 - Real concept drift: $P(y \mid x)$ changes, so the optimal boundary itself moves. This is what degrades a fixed model's accuracy.
 - Drift can also differ in *speed*: abrupt (a sudden regime change), gradual (one concept fades as another grows), or recurring (seasonal patterns that return).
 
-> **Note:** The distinction between covariate shift and real drift is practical, not academic. Covariate shift often just means the model needs more coverage of the newly common inputs; real drift means the model's current answer is now wrong and it has to forget. Misdiagnosing one as the other wastes effort.
+
+::: {.callout-note}
+The distinction between covariate shift and real drift is practical, not academic. Covariate shift often just means the model needs more coverage of the newly common inputs; real drift means the model's current answer is now wrong and it has to forget. Misdiagnosing one as the other wastes effort.
+:::
+
 
 No single mechanism handles every kind of drift, so production systems combine several. The main families are these.
 
@@ -356,7 +396,11 @@ Even when online learning is warranted, a handful of mistakes account for most f
 - Catastrophic forgetting and label delay. If labels arrive late (a click is known only later), align the update to when the label actually lands, not when the features arrived.
 - Stateful bugs. Online systems carry state across time, so a bad update can corrupt the model permanently. Keep a periodic checkpoint and a guardrail metric that can trigger a rollback.
 
-> **Tip:** The single highest-leverage safeguard for a production online learner is a checkpoint plus a rollback trigger. Because the model's state evolves continuously, one pathological batch of inputs can poison it for good; being able to revert to last night's snapshot turns a permanent outage into a brief blip.
+
+::: {.callout-tip}
+The single highest-leverage safeguard for a production online learner is a checkpoint plus a rollback trigger. Because the model's state evolves continuously, one pathological batch of inputs can poison it for good; being able to revert to last night's snapshot turns a permanent outage into a brief blip.
+:::
+
 
 To summarize the chapter in one breath: online learning replaces "fit once, ship, retrain later" with "update on every example, forever." The same gradient step ($\theta_{t+1} = \theta_t - \eta_t g_t$) drives the perceptron, online logistic regression, and general OGD; stochastic approximation explains when it converges and regret measures it when it cannot; Hoeffding trees bring the streaming discipline to discrete split decisions; and concept drift, together with leak-free prequential evaluation and a sane learning rate, is where the real engineering lives.
 

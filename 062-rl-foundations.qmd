@@ -9,7 +9,11 @@ Most of the models in this book learn from a fixed dataset: you hand the algorit
 
 Think of training a dog, steering a delivery robot through a warehouse, or deciding which treatment to give a patient whose condition evolves over months. In each case you choose an action, the situation responds, you collect some reward or penalty, and then you face a new situation shaped by what you just did. The agent's problem is to figure out a *policy*, a rule for choosing actions, that makes the long-run reward as large as possible. The difficulty is that good behavior now may depend on consequences that only appear much later. A move in chess that looks quiet can decide the game twenty moves on.
 
-> **Intuition:** Supervised learning answers "what is the label of this input?" Reinforcement learning answers "what should I *do* in this situation so that things go well later?" The second question is harder because the data the agent sees depends on the choices it makes, and because the signal about whether a choice was good can arrive long after the choice itself.
+
+::: {.callout-tip title="Intuition"}
+Supervised learning answers "what is the label of this input?" Reinforcement learning answers "what should I *do* in this situation so that things go well later?" The second question is harder because the data the agent sees depends on the choices it makes, and because the signal about whether a choice was good can arrive long after the choice itself.
+:::
+
 
 This chapter builds the theory that makes that question precise and solvable. We formalize the interaction as a Markov Decision Process, define what "long-run reward" means through returns and discounting, and introduce the value functions that summarize how good states and actions are. The centerpiece is the set of Bellman equations, which turn a long-horizon optimization into a fixed-point problem you can actually compute. We then implement two classical dynamic programming algorithms, policy iteration and value iteration, on a small gridworld, and read off the optimal policy. Everything here assumes the agent knows how the world works (the *model*). Later chapters relax that assumption and learn from experience alone; this chapter is the foundation they all rest on.
 
@@ -19,7 +23,11 @@ The interaction unfolds in discrete time steps $t = 0, 1, 2, \dots$. At each ste
 
 The agent's behavior is captured by a *policy* $\pi$. A deterministic policy is a function $\pi: \mathcal{S} \to \mathcal{A}$ mapping each state to an action. A stochastic policy is a conditional distribution $\pi(a \mid s) = \Pr(A_t = a \mid S_t = s)$, a probability of taking each action in each state. The whole enterprise is about searching the space of policies for one that earns the most reward over time.
 
-> **Key idea:** The reward is not the goal. The reward signal tells the agent what is good in the short term; the *goal* is to maximize the cumulative reward over the long run. These can pull in opposite directions, and managing that tension is the entire game.
+
+::: {.callout-important title="Key idea"}
+The reward is not the goal. The reward signal tells the agent what is good in the short term; the *goal* is to maximize the cumulative reward over the long run. These can pull in opposite directions, and managing that tension is the entire game.
+:::
+
 
 Two themes recur throughout RL and are worth naming early. The first is *delayed reward*: an action's true worth may only be revealed many steps later, so the agent must learn to assign credit across time. The second is the *exploration versus exploitation* trade-off: to maximize reward the agent should exploit actions it already believes are good, but to discover whether better actions exist it must sometimes explore actions it is unsure about. In this chapter the agent knows the environment's dynamics, so exploration does not arise; it becomes central once we move to learning from samples in later chapters.^[The exploration/exploitation dilemma is the heart of the multi-armed bandit problem (@sec-multi-armed-bandits) and of the contextual bandit chapter (@sec-contextual-bandits) elsewhere in this book. Dynamic programming sidesteps it entirely by assuming a known model.]
 
@@ -45,9 +53,17 @@ $$
 
 The defining assumption is the *Markov property*: the distribution of $S_{t+1}$ and $R_{t+1}$ depends only on the current state $S_t$ and action $A_t$, not on the entire history that led there. In symbols, $\Pr(S_{t+1}, R_{t+1} \mid S_t, A_t) = \Pr(S_{t+1}, R_{t+1} \mid S_0, A_0, \dots, S_t, A_t)$.
 
-> **Note:** The Markov property is a statement about the *state*, not about reality. A state is Markov when it carries enough information that the past adds nothing predictive. If a robot's state is just its position, but its battery level also matters, the state is not Markov and the theory below can mislead you. Good state design, folding in whatever history matters, is what makes a problem an MDP in the first place.
 
-> **Warning:** "Markov" does not mean "memoryless agent." It means the *state* summarizes the relevant past. The agent is free to use a rich state that includes velocity, recent observations, or any engineered features. The property fails only when something predictive of the future is left out of the state.
+::: {.callout-note}
+The Markov property is a statement about the *state*, not about reality. A state is Markov when it carries enough information that the past adds nothing predictive. If a robot's state is just its position, but its battery level also matters, the state is not Markov and the theory below can mislead you. Good state design, folding in whatever history matters, is what makes a problem an MDP in the first place.
+:::
+
+
+
+::: {.callout-warning}
+"Markov" does not mean "memoryless agent." It means the *state* summarizes the relevant past. The agent is free to use a rich state that includes velocity, recent observations, or any engineered features. The property fails only when something predictive of the future is left out of the state.
+:::
+
 
 ## Returns and discounting
 
@@ -67,7 +83,11 @@ $$
 G_t = R_{t+1} + \gamma\big(R_{t+2} + \gamma R_{t+3} + \cdots\big) = R_{t+1} + \gamma\, G_{t+1}.
 $$
 
-> **Intuition:** The return splits cleanly into "what I get now" plus "a discounted copy of the same problem starting next step." That self-similarity is exactly what the Bellman equations exploit. The whole infinite future collapses into one immediate reward plus one discounted reference to the future.
+
+::: {.callout-tip title="Intuition"}
+The return splits cleanly into "what I get now" plus "a discounted copy of the same problem starting next step." That self-similarity is exactly what the Bellman equations exploit. The whole infinite future collapses into one immediate reward plus one discounted reference to the future.
+:::
+
 
 ## Value functions
 
@@ -87,7 +107,11 @@ $$
 
 The two are linked. Averaging $q_\pi$ over the actions the policy would take recovers the state value, $v_\pi(s) = \sum_a \pi(a \mid s)\, q_\pi(s, a)$. The action-value function is the more directly useful of the two for control: if you know $q_\pi$, you can improve the policy by picking the action with the largest $q$-value in each state, without needing the model at all.
 
-> **When to use this:** Reach for the state-value function $v_\pi$ when you want to evaluate or compare policies and you have the model handy. Reach for the action-value function $q_\pi$ when you want to *choose* actions or improve a policy, especially in model-free settings where $q$ lets you act greedily without simulating transitions.
+
+::: {.callout-tip title="When to use this"}
+Reach for the state-value function $v_\pi$ when you want to evaluate or compare policies and you have the model handy. Reach for the action-value function $q_\pi$ when you want to *choose* actions or improve a policy, especially in model-free settings where $q$ lets you act greedily without simulating transitions.
+:::
+
 
 ## The Bellman expectation equations
 
@@ -135,7 +159,11 @@ $$
 \pi_*(s) = \arg\max_a \sum_{s', r} p(s', r \mid s, a)\big[r + \gamma\, v_*(s')\big].
 $$
 
-> **Key idea:** Solving an MDP reduces to finding a fixed point of the Bellman optimality operator. Dynamic programming finds that fixed point by repeated application; the contraction property of the operator guarantees it converges to the unique solution $v_*$.
+
+::: {.callout-important title="Key idea"}
+Solving an MDP reduces to finding a fixed point of the Bellman optimality operator. Dynamic programming finds that fixed point by repeated application; the contraction property of the operator guarantees it converges to the unique solution $v_*$.
+:::
+
 
 ## Dynamic programming
 
@@ -165,7 +193,11 @@ $$
 
 This is policy iteration with exactly one sweep of evaluation between improvements. It converges to $v_*$, and a greedy policy is read off at the end. @tbl-rl-foundations-dp-compare contrasts the two.
 
-> **Warning:** Exact DP needs the full model $p$ and sweeps the entire state space on every iteration. Its cost grows with $|\mathcal{S}|^2 |\mathcal{A}|$ per sweep, so it is impractical for the enormous state spaces of real problems (the "curse of dimensionality"). The sample-based and function-approximation methods in later chapters exist precisely to escape this limit.
+
+::: {.callout-warning}
+Exact DP needs the full model $p$ and sweeps the entire state space on every iteration. Its cost grows with $|\mathcal{S}|^2 |\mathcal{A}|$ per sweep, so it is impractical for the enormous state spaces of real problems (the "curse of dimensionality"). The sample-based and function-approximation methods in later chapters exist precisely to escape this limit.
+:::
+
 
 ## A gridworld in base R
 
@@ -436,7 +468,11 @@ The *discount factor* deserves deliberate choice. Values near $1$ make the agent
 
 Finally, remember the *scope* of what we did here. Exact dynamic programming requires the full model $p$ and a state space small enough to sweep. That is rarely true of real problems. When the model is unknown you turn to model-free methods such as Monte Carlo and temporal-difference learning (@sec-td-learning), including Q-learning; when the state space is too large to enumerate you replace the value table with a function approximator such as a neural network (@sec-neural-networks), which leads into deep reinforcement learning (@sec-deep-reinforcement-learning). The Bellman equations and the value-function vocabulary from this chapter remain the backbone of all of those methods.
 
-> **When to use this:** Use exact dynamic programming when you genuinely know the dynamics and the state space is small (inventory control on a coarse grid, small scheduling problems, textbook MDPs). For anything with an unknown or huge environment, treat this chapter as the conceptual foundation and reach for the sample-based methods in the chapters that follow.
+
+::: {.callout-tip title="When to use this"}
+Use exact dynamic programming when you genuinely know the dynamics and the state space is small (inventory control on a coarse grid, small scheduling problems, textbook MDPs). For anything with an unknown or huge environment, treat this chapter as the conceptual foundation and reach for the sample-based methods in the chapters that follow.
+:::
+
 
 ## Further reading
 

@@ -9,7 +9,11 @@ Imagine you are trying to draw a smooth curve through a cloud of scattered point
 
 This chapter shows how that idea is made precise, how it extends to higher-degree polynomials and to more than one predictor, and how to fit it in R with `loess`. By the end you should understand why local *linear* fits are the workhorse choice, when a local *quadratic* fit earns its extra variance, and why the whole approach quietly breaks down once you have more than a few predictors.
 
-> **Key idea:** Local regression fits a simple model (a line, or a low-degree polynomial) inside a moving neighborhood, weighting points by how close they are. The fitted value at a point is read off that local model. Sliding the neighborhood across the range of $x$ traces out a smooth curve.
+
+::: {.callout-important title="Key idea"}
+Local regression fits a simple model (a line, or a low-degree polynomial) inside a moving neighborhood, weighting points by how close they are. The fitted value at a point is read off that local model. Sliding the neighborhood across the range of $x$ traces out a smooth curve.
+:::
+
 
 This method is also known as locally weighted linear regression, and the most common software implementation is called loess (or lowess).
 
@@ -25,7 +29,11 @@ and gives the estimate $\hat{f}(x_0) =\hat{\alpha}(x_0)+ \hat{\beta}(x_0)x_0$.
 
 Notice that the intercept $\alpha(x_0)$ and slope $\beta(x_0)$ both carry the argument $x_0$: we are not fitting one global line but a fresh line at every target point. The fitted value is then this local line evaluated back at $x_0$.
 
-> **Intuition:** A weighted average is just a local fit of a *constant*. Local linear regression upgrades that constant to a line. Because a line can have a nonzero slope, it can follow a trend right up to the edge of the data, which is exactly where a flat local average goes wrong.
+
+::: {.callout-tip title="Intuition"}
+A weighted average is just a local fit of a *constant*. Local linear regression upgrades that constant to a line. Because a line can have a nonzero slope, it can follow a trend right up to the edge of the data, which is exactly where a flat local average goes wrong.
+:::
+
 
 It is worth writing the solution in matrix form, because it reveals something useful. Let $b(x)^T = (1,x)$ collect the intercept-and-slope basis, and define the $n \times 2$ matrix $\mathbf{B}$ whose $i$-th row is $b(x_i)^T$. Let $\mathbf{W}(x_0)$ be the $n \times n$ diagonal matrix whose $i$-th diagonal entry is the kernel weight $K_\lambda(x_0, x_i)$. Then the weighted least squares solution is
 
@@ -35,7 +43,11 @@ $$
 
 The right-hand side is the payoff: the fitted value is a *linear combination* of the observed $y_i$, with weights $l_i(x_0)$ that depend only on the $x$ values and the kernel, not on the responses. These weights blend the kernel weights with the least squares machinery, and the resulting weighting function is called the equivalent kernel.^[The equivalent kernel is a helpful diagnostic: it tells you, for a given target point, exactly how much each observation contributes to the fit. Near a boundary it automatically reshapes itself so that the fit stops being dragged inward, which is the mathematical reason local linear fits beat local averages at the edges.]
 
-> **Note:** Because $\hat{f}(x_0) = \sum_i l_i(x_0) y_i$ is linear in $\mathbf{y}$, local regression is a *linear smoother*. That linearity makes quantities like effective degrees of freedom and pointwise standard errors easy to compute, just as in ordinary linear regression.
+
+::: {.callout-note}
+Because $\hat{f}(x_0) = \sum_i l_i(x_0) y_i$ is linear in $\mathbf{y}$, local regression is a *linear smoother*. That linearity makes quantities like effective degrees of freedom and pointwise standard errors easy to compute, just as in ordinary linear regression.
+:::
+
 
 The advantage of moving from constants to lines is concrete: local linear regression corrects the boundary bias to first order, meaning the leading bias term now depends only on the second derivative of $f$ and so is small on average. The price is small. The fit tends to be slightly biased in regions where the true function curves sharply, because a straight line cannot bend.
 
@@ -58,7 +70,11 @@ The accumulated wisdom on which degree to use can be summarized in a few rules o
 - Local quadratic fits earn their keep in the *interior*, where they trim the bias caused by curvature in the true function.
 - Asymptotically, local polynomials of odd degree dominate those of even degree, because asymptotic mean squared error is dominated by boundary effects, where the odd-degree fits do better.
 
-> **When to use this:** Reach for local linear regression by default. Step up to local quadratic only when you have reason to believe the true function curves sharply in the interior of the data and you have enough observations there to absorb the extra variance.
+
+::: {.callout-tip title="When to use this"}
+Reach for local linear regression by default. Step up to local quadratic only when you have reason to believe the true function curves sharply in the interior of the data and you have enough observations there to absorb the extra variance.
+:::
+
 
 <br>
 
@@ -87,11 +103,19 @@ $$
 
 where $||.||$ is the Euclidean norm and $D$ is a one-dimensional weighting function applied to that distance.
 
-> **Warning:** The Euclidean norm mixes all coordinates together, so it is sensitive to the scale of each variable. A predictor measured in thousands will dominate one measured in fractions. Standardize the predictors before fitting, or the neighborhoods will be defined almost entirely by the large-scale variables.
+
+::: {.callout-warning}
+The Euclidean norm mixes all coordinates together, so it is sensitive to the scale of each variable. A predictor measured in thousands will dominate one measured in fractions. Standardize the predictors before fitting, or the neighborhoods will be defined almost entirely by the large-scale variables.
+:::
+
 
 Higher dimensions make the boundary problem worse, not better. Because of the curse of dimensionality, as $p$ grows a larger and larger fraction of the data sits on or near the boundary of the predictor space, so the very region where local fits struggle becomes most of the region.^[A quick way to feel this: in a unit hypercube, the fraction of volume within a thin shell of the surface grows toward 1 as the dimension increases. Almost every point is "near an edge" in high dimensions.] As in one dimension, local polynomial regression still corrects this boundary bias to first order, but the deeper difficulty is balancing localness (which lowers bias) against variance as $p$ climbs, all without the exponentially larger sample size that true localness in high dimensions would demand.
 
-> **Warning:** As a practical rule, do not use kernel smoothing or local polynomial regression in more than about three dimensions. Beyond that, the neighborhoods are either too sparse (high variance) or too wide to be local (high bias), and structured methods such as generalized additive models (@sec-gam) are needed.
+
+::: {.callout-warning}
+As a practical rule, do not use kernel smoothing or local polynomial regression in more than about three dimensions. Beyond that, the neighborhoods are either too sparse (high variance) or too wide to be local (high bias), and structured methods such as generalized additive models (@sec-gam) are needed.
+:::
+
 
 ### Adding structure when dimension is high
 
@@ -117,7 +141,11 @@ $$
 \min_{\alpha (z_0), \beta(z_0)} \sum_{i=1}^n K_\lambda (z_0,z_i)[y_i - \alpha(z_0)-x_{1i} \beta_1(z_0)- \dots - x_{qi} \beta_q (z_0)]^2
 $$
 
-> **Key idea:** Both tricks fight the curse of dimensionality the same way: by refusing to let the function vary freely in every direction at once. Reshaping the kernel limits *where* the model looks; varying coefficient models limit *how* the model is allowed to bend.
+
+::: {.callout-important title="Key idea"}
+Both tricks fight the curse of dimensionality the same way: by refusing to let the function vary freely in every direction at once. Reshaping the kernel limits *where* the model looks; varying coefficient models limit *how* the model is allowed to bend.
+:::
+
 
 ## Application
 

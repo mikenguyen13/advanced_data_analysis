@@ -9,7 +9,11 @@ A trained regression model hands back a single number for each new input. Ask a 
 
 The usual approaches to prediction intervals come with strings attached. Ordinary least squares gives a clean interval formula, but it rests on the assumption that the errors are normal with constant variance, and it is built for linear models. Bayesian methods give credible intervals, but their honesty depends on the prior and the likelihood being right. Bootstrap intervals relax some of this but lean on asymptotics and can be slow. What we would really like is a procedure that wraps around *any* model we already trust for point prediction (a random forest (@sec-random-forest), a neural network (@sec-neural-networks), a boosted tree (@sec-boosting), even a black box we did not build) and returns an interval that is guaranteed to contain the truth a stated fraction of the time, without assuming anything about the shape of the error distribution. That is exactly what conformal prediction delivers.
 
-> **Key idea:** Conformal prediction converts any point predictor into a set-valued predictor with a finite-sample, distribution-free coverage guarantee. Choose a miscoverage level $\alpha$ (say $0.1$). The method returns prediction sets that contain the true outcome with probability at least $1 - \alpha$ (here $90\%$), and this holds for any data distribution, any model, and any sample size, requiring only that the data are exchangeable.
+
+::: {.callout-important title="Key idea"}
+Conformal prediction converts any point predictor into a set-valued predictor with a finite-sample, distribution-free coverage guarantee. Choose a miscoverage level $\alpha$ (say $0.1$). The method returns prediction sets that contain the true outcome with probability at least $1 - \alpha$ (here $90\%$), and this holds for any data distribution, any model, and any sample size, requiring only that the data are exchangeable.
+:::
+
 
 The phrase "distribution-free" is the part that surprises people. We are not assuming normal errors, not assuming the model is correctly specified, not even assuming the model is any good. A terrible model still gets a valid coverage guarantee from conformal prediction; the price for a bad model is paid in *width*, not in *coverage*. A poor model produces honest but wide intervals, while a sharp model produces honest and narrow ones. Coverage is protected unconditionally; usefulness is what improves as the model improves.
 
@@ -27,7 +31,11 @@ $$
 
 Independent and identically distributed (i.i.d.) data are exchangeable, so the assumption is weaker than i.i.d. and covers the cases most practitioners care about. The point of stating it carefully is to know when conformal prediction can fail: if the future is drawn from a different distribution than the past (distribution shift, time trends, feedback loops), exchangeability breaks and the guarantee no longer holds.
 
-> **Warning:** Exchangeability is the load-bearing assumption. Time series with trends, data that drift after deployment, or test points systematically different from calibration points all violate it, and coverage can degrade quietly. Conformal prediction is distribution-free, not assumption-free.
+
+::: {.callout-warning}
+Exchangeability is the load-bearing assumption. Time series with trends, data that drift after deployment, or test points systematically different from calibration points all violate it, and coverage can degrade quietly. Conformal prediction is distribution-free, not assumption-free.
+:::
+
 
 ## Nonconformity scores
 
@@ -61,17 +69,25 @@ $$
 
 empirical quantile, equivalently the $\lceil (n_c + 1)(1 - \alpha) \rceil$-th smallest of the $n_c$ calibration scores. The "$+1$" accounts for the test point being one more exchangeable draw, and it is what turns an approximate guarantee into an exact one. Skipping it costs a little coverage when $n_c$ is small.
 
-> **Intuition:** The calibration scores are a sample of "how far off the model typically is." If you want to cover $90\%$ of future points, find the residual size that $90\%$ of calibration residuals fall under, then pad the prediction by that amount in both directions. The $(n_c+1)$ tweak is the bookkeeping that makes "about $90\%$" into "provably at least $90\%$."
+
+::: {.callout-tip title="Intuition"}
+The calibration scores are a sample of "how far off the model typically is." If you want to cover $90\%$ of future points, find the residual size that $90\%$ of calibration residuals fall under, then pad the prediction by that amount in both directions. The $(n_c+1)$ tweak is the bookkeeping that makes "about $90\%$" into "provably at least $90\%$."
+:::
+
 
 ### The coverage theorem
 
 Here is the guarantee, stated for the absolute-residual score and the interval above.
 
-> **Theorem (split-conformal coverage, @Lei_2018).** If $(X_1, Y_1), \dots, (X_{n+1}, Y_{n+1})$ are exchangeable and $\hat{q}$ is the $\lceil (n_c+1)(1-\alpha)\rceil$-th smallest calibration score, then
-> $$
-> \Pr\!\big(Y_{n+1} \in C(X_{n+1})\big) \;\ge\; 1 - \alpha.
-> $$
-> If in addition the scores have no ties (a continuous distribution), the probability is also bounded above by $1 - \alpha + 1/(n_c + 1)$, so coverage is tight, not merely conservative.
+
+::: {.callout-note title="Theorem (split-conformal coverage, @Lei_2018)"}
+If $(X_1, Y_1), \dots, (X_{n+1}, Y_{n+1})$ are exchangeable and $\hat{q}$ is the $\lceil (n_c+1)(1-\alpha)\rceil$-th smallest calibration score, then
+$$
+\Pr\!\big(Y_{n+1} \in C(X_{n+1})\big) \;\ge\; 1 - \alpha.
+$$
+If in addition the scores have no ties (a continuous distribution), the probability is also bounded above by $1 - \alpha + 1/(n_c + 1)$, so coverage is tight, not merely conservative.
+:::
+
 
 The proof is short enough to give in full, and seeing it removes the mystery.
 
@@ -89,7 +105,11 @@ $$
 
 That is the entire argument. No distributional assumption entered; only exchangeability and a counting argument about ranks. The guarantee holds for every sample size, which is what "finite-sample" means.
 
-> **Note:** The probability in the theorem is **marginal**: it averages over the randomness in both the calibration draw and the test point. It does not promise $90\%$ coverage for every individual $x$. The distinction between marginal and conditional coverage is important enough that we return to it below.
+
+::: {.callout-note}
+The probability in the theorem is **marginal**: it averages over the randomness in both the calibration draw and the test point. It does not promise $90\%$ coverage for every individual $x$. The distinction between marginal and conditional coverage is important enough that we return to it below.
+:::
+
 
 ## Marginal versus conditional coverage
 
@@ -101,7 +121,11 @@ $$
 
 The difference matters whenever prediction difficulty varies across the feature space. With the constant-width absolute-residual interval, the half-width $\hat{q}$ is the same for every $x$. In regions where the outcome is easy to predict, that fixed width over-covers (the interval is wider than it needs to be); in regions where the outcome is volatile, it under-covers (too narrow). The marginal average can still be exactly $1-\alpha$ while some subgroups sit well above and others well below.
 
-> **Intuition:** A constant-width interval is like a single jacket size handed to a whole population. On average the fit is acceptable, but it is baggy on small people and tight on large ones. Conditional coverage asks the interval to fit *everyone* reasonably, which means letting the width change with $x$.
+
+::: {.callout-tip title="Intuition"}
+A constant-width interval is like a single jacket size handed to a whole population. On average the fit is acceptable, but it is baggy on small people and tight on large ones. Conditional coverage asks the interval to fit *everyone* reasonably, which means letting the width change with $x$.
+:::
+
 
 Exact distribution-free conditional coverage is impossible in finite samples without further assumptions (a result of @Vovk_2012 and @Lei_2014). But we can get much closer in practice by choosing a nonconformity score that already knows local difficulty. That is the motivation for conformalized quantile regression.
 
@@ -123,7 +147,11 @@ $$
 
 The same exchangeability proof gives the same $1-\alpha$ marginal guarantee, because nothing in that argument depended on the score being an absolute residual. The reward is that the interval inherits the variable width of the quantile band: it widens where the data are volatile and narrows where they are calm, so conditional coverage is much more even than for the constant-width method, while marginal coverage stays exact.
 
-> **Key idea:** CQR keeps the exact marginal guarantee of split conformal prediction and adds local adaptivity by conformalizing a quantile-regression band instead of a mean prediction. You give up nothing on coverage and gain intervals that breathe with the difficulty of the input.
+
+::: {.callout-important title="Key idea"}
+CQR keeps the exact marginal guarantee of split conformal prediction and adds local adaptivity by conformalizing a quantile-regression band instead of a mean prediction. You give up nothing on coverage and gain intervals that breathe with the difficulty of the input.
+:::
+
 
 ## A simulation in base R
 
@@ -326,9 +354,17 @@ Do not skip the $+1$ correction. Using the plain empirical quantile instead of t
 
 Match the score to what you care about. The absolute-residual score gives constant-width intervals that are fine when the noise is homoskedastic, but for heteroskedastic data a locally adaptive score such as CQR (or normalizing the residual by an estimate of local spread) gives far more even conditional coverage at the same marginal level. Reach for an adaptive score whenever prediction difficulty varies across the feature space.
 
-> **Warning:** Watch for distribution shift. The single biggest failure mode in deployment is that test data stop being exchangeable with calibration data: covariates drift, the target relationship changes, or model outputs feed back into the system. When that happens, coverage degrades without any error message. For sequential or shifting data, look at extensions such as adaptive conformal inference (@Gibbs_2021) and weighted conformal prediction (@Tibshirani_2019), which relax exchangeability in controlled ways.
 
-> **When to use this:** Use conformal prediction whenever you need honest, distribution-free uncertainty bands around an existing point predictor and your data are (approximately) exchangeable. It shines as a thin wrapper around black-box models where you cannot or do not want to assume an error distribution. Prefer CQR or another adaptive score when conditional coverage matters; the plain residual score is enough when the noise is roughly uniform across inputs.
+::: {.callout-warning}
+Watch for distribution shift. The single biggest failure mode in deployment is that test data stop being exchangeable with calibration data: covariates drift, the target relationship changes, or model outputs feed back into the system. When that happens, coverage degrades without any error message. For sequential or shifting data, look at extensions such as adaptive conformal inference (@Gibbs_2021) and weighted conformal prediction (@Tibshirani_2019), which relax exchangeability in controlled ways.
+:::
+
+
+
+::: {.callout-tip title="When to use this"}
+Use conformal prediction whenever you need honest, distribution-free uncertainty bands around an existing point predictor and your data are (approximately) exchangeable. It shines as a thin wrapper around black-box models where you cannot or do not want to assume an error distribution. Prefer CQR or another adaptive score when conditional coverage matters; the plain residual score is enough when the noise is roughly uniform across inputs.
+:::
+
 
 A last point on interpretation. Conformal coverage is marginal by default, so a reported $90\%$ interval means $90\%$ of such intervals contain the truth on average, not that any particular interval has a $90\%$ chance once you condition on its specific $x$. Communicating that distinction to stakeholders prevents the common mistake of reading a single interval as a conditional guarantee.
 

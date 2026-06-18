@@ -9,7 +9,11 @@ Suppose you have a million customer support tickets and a new one arrives readin
 
 Modern machine learning systems represent text, images, audio, and other unstructured inputs as fixed-length numeric vectors called embeddings. The trick is that the vectors are arranged so that things with similar meaning sit close together. Once an object lives in a vector space, "find things like this one" stops being a vague linguistic question and becomes a concrete geometry problem: search for the vectors closest to a query vector.
 
-> **Intuition:** Think of an embedding as a coordinate on a map of meaning. Two cities that are close on a map are easy to travel between; two sentences that are close in embedding space are similar in meaning. Search becomes "which points are nearest this one," exactly like finding the closest town.
+
+::: {.callout-tip title="Intuition"}
+Think of an embedding as a coordinate on a map of meaning. Two cities that are close on a map are easy to travel between; two sentences that are close in embedding space are similar in meaning. Search becomes "which points are nearest this one," exactly like finding the closest town.
+:::
+
 
 This chapter covers how embeddings are produced, how similarity is measured, how to retrieve nearest neighbors quickly at scale, and the engineering tradeoffs that vector databases force you to make. By the end you will be able to compute similarities by hand in base R, run exact nearest-neighbor search, reason about the approximate indexes (HNSW and IVF) that power production systems, and recognize the failure modes that quietly break retrieval pipelines. The mathematics is light (mostly inner products and distances); the payoff is understanding the engine behind semantic search and retrieval-augmented generation.
 
@@ -17,7 +21,11 @@ This chapter covers how embeddings are produced, how similarity is measured, how
 
 An embedding is a learned map $\phi: \mathcal{X} \to \mathbb{R}^d$ from raw objects (a sentence, a product description, an image) to a $d$-dimensional vector.^[The word "learned" is doing real work here. The map $\phi$ is not hand-designed; it is the output of training a neural network (often a transformer, @sec-transformers) on a large corpus, so that the geometry of the output space reflects patterns the model picked up from data.] The map is trained so that semantically similar objects land near each other and dissimilar objects land far apart. A typical text embedding model produces $d$ between 384 and 3072.
 
-> **Key idea:** The intelligence lives in the encoder that produces the vectors. The search machinery in this chapter is "just" geometry. Once meaning has been baked into coordinates, finding similar items is a matter of measuring distances, which is fast and well understood.
+
+::: {.callout-important title="Key idea"}
+The intelligence lives in the encoder that produces the vectors. The search machinery in this chapter is "just" geometry. Once meaning has been baked into coordinates, finding similar items is a matter of measuring distances, which is fast and well understood.
+:::
+
 
 Embeddings sit between raw data and downstream tasks in many pipelines. The most common uses are the following.
 
@@ -29,7 +37,11 @@ Embeddings sit between raw data and downstream tasks in many pipelines. The most
 
 The reason this pattern is so common comes down to economics: training a good encoder is expensive and done once, but using it is cheap. You embed your corpus a single time, store the vectors, and answer queries with fast geometric lookups. The retrieval step is the part that has to scale to millions or billions of vectors, which is what most of this chapter is about.
 
-> **When to use this:** Reach for embeddings whenever "similar in meaning" matters more than "shares exact words," when you need to compare items across modalities (text against images), or when you want dense numeric features for a classifier from inputs that have no natural numeric form. If exact-match or keyword lookup already solves your problem, a plain index is simpler and faster.
+
+::: {.callout-tip title="When to use this"}
+Reach for embeddings whenever "similar in meaning" matters more than "shares exact words," when you need to compare items across modalities (text against images), or when you want dense numeric features for a classifier from inputs that have no natural numeric form. If exact-match or keyword lookup already solves your problem, a plain index is simpler and faster.
+:::
+
 
 With that motivation in place, the rest of the chapter works from the bottom up: first how to measure closeness between two vectors, then how to find the closest vectors in a corpus, and finally how to do that search quickly when the corpus is huge.
 
@@ -48,7 +60,11 @@ $$
 $$
 which lies in $[-1, 1]$. A value near $1$ means the vectors point in nearly the same direction, $0$ means orthogonal, and $-1$ means opposite. Cosine similarity ignores vector magnitude and looks only at direction, which is usually what you want for text: a long document and a short one about the same topic should still be judged similar.
 
-> **Note:** The contrast between the two measures is exactly the contrast between length and direction. Euclidean distance asks "how far apart are the tips of the arrows," so it is sensitive to magnitude. Cosine similarity asks "do the arrows point the same way," ignoring how long they are. For embeddings, direction carries the meaning and magnitude is often an artifact of input length, so cosine is the usual default.
+
+::: {.callout-note}
+The contrast between the two measures is exactly the contrast between length and direction. Euclidean distance asks "how far apart are the tips of the arrows," so it is sensitive to magnitude. Cosine similarity asks "do the arrows point the same way," ignoring how long they are. For embeddings, direction carries the meaning and magnitude is often an artifact of input length, so cosine is the usual default.
+:::
+
 
 ### The Connection Between Cosine and Euclidean Distance
 
@@ -58,7 +74,11 @@ d_2(\tilde{u}, \tilde{v})^2 = \|\tilde u\|_2^2 + \|\tilde v\|_2^2 - 2\,\tilde u^
 $$
 So on unit vectors, ranking by smallest Euclidean distance gives exactly the same order as ranking by largest cosine similarity. This is why most vector databases tell you to normalize your embeddings and then use either metric: the nearest neighbor set is identical. It also lets a library that only implements L2 search serve cosine queries after a one-time normalization.
 
-> **Tip:** The equation $d_2(\tilde u, \tilde v)^2 = 2(1 - \cos(u,v))$ is worth committing to memory. It is the bridge that lets you move freely between the two worlds, and several code chunks below use it to convert an L2 distance the library reports back into the cosine similarity you actually wanted to read.
+
+::: {.callout-tip}
+The equation $d_2(\tilde u, \tilde v)^2 = 2(1 - \cos(u,v))$ is worth committing to memory. It is the bridge that lets you move freely between the two worlds, and several code chunks below use it to convert an L2 distance the library reports back into the cosine similarity you actually wanted to read.
+:::
+
 
 The related cosine distance is defined as $1 - \cos(u, v)$, which is what many libraries report. Note it is not a true metric (it violates the triangle inequality), so be careful when an algorithm assumes metric properties.^[A true metric must satisfy the triangle inequality $d(a,c) \le d(a,b) + d(b,c)$. Cosine distance does not, which matters for methods like metric trees that prune the search using that inequality. The squared Euclidean distance on normalized vectors, by contrast, behaves itself, another reason to normalize and then think in L2 terms.]
 
@@ -66,7 +86,11 @@ The related cosine distance is defined as $1 - \cos(u, v)$, which is what many l
 
 Given a query $q$ and a corpus $\{v_1, \dots, v_n\}$, exact $k$-nearest-neighbor (kNN) retrieval returns the $k$ indices with the largest $\cos(q, v_i)$ (or smallest distance). The brute-force cost is $O(nd)$ per query: you score every vector. That is fine for thousands of vectors but becomes the bottleneck at millions, which motivates approximate methods later in the chapter.
 
-> **Warning:** "Exact" here means the result is the true mathematical nearest neighbor, not that the answer is correct in any deeper sense. If the embeddings themselves are poor, exact search just retrieves the wrong things very precisely. Quality starts with the encoder; search only preserves whatever quality the vectors already have.
+
+::: {.callout-warning}
+"Exact" here means the result is the true mathematical nearest neighbor, not that the answer is correct in any deeper sense. If the embeddings themselves are poor, exact search just retrieves the wrong things very precisely. Quality starts with the encoder; search only preserves whatever quality the vectors already have.
+:::
+
 
 ## A Runnable Base R Demonstration
 
@@ -174,7 +198,11 @@ The neighbor order matches the brute-force cosine search, confirming the equival
 
 Exact search costs $O(nd)$ per query. When $n$ reaches tens of millions, that is too slow for interactive use. Approximate nearest neighbor (ANN) indexes trade a small, controllable loss in accuracy for large speedups, often returning 95 to 99 percent of the true neighbors in a fraction of the time. Accuracy is measured by recall@k: of the true top-$k$ neighbors, what fraction did the index return.^[For example, if the true 10 nearest neighbors are a set $T$ and the index returns a set $R$ of size 10, recall@10 is $|T \cap R| / 10$. A recall of 0.97 means the index missed, on average, about one of every 33 true neighbors. Whether that matters depends entirely on the application.]
 
-> **Intuition:** Exact search reads every page of the book to answer a question. ANN is like using the index and the table of contents: you skip almost all the pages and accept a tiny chance of missing the one paragraph you wanted, in exchange for an answer that arrives in milliseconds.
+
+::: {.callout-tip title="Intuition"}
+Exact search reads every page of the book to answer a question. ANN is like using the index and the table of contents: you skip almost all the pages and accept a tiny chance of missing the one paragraph you wanted, in exchange for an answer that arrives in milliseconds.
+:::
+
 
 Two index families dominate production systems. They take opposite routes to the same goal of avoiding a full scan: one navigates a graph of neighbors, the other narrows the search to a few clusters.
 
@@ -182,7 +210,11 @@ Two index families dominate production systems. They take opposite routes to the
 
 HNSW builds a multi-layer proximity graph. Each vector is a node connected to a bounded number of nearby vectors. Upper layers are sparse "express lanes" with long-range links; lower layers are dense and local. A search starts at an entry point in the top layer and greedily walks toward the query, descending layers until it reaches the bottom, where it does a fine-grained local search.
 
-> **Intuition:** HNSW works like an airline network. The top layer is a few hub airports with long-haul routes that cover huge distances in one hop; the bottom layer is the dense web of regional flights. To reach a small town you fly hub-to-hub first to get into the right region, then take short hops to the exact destination. That is why search is fast even with millions of nodes: most of the distance is covered by a handful of long edges.
+
+::: {.callout-tip title="Intuition"}
+HNSW works like an airline network. The top layer is a few hub airports with long-haul routes that cover huge distances in one hop; the bottom layer is the dense web of regional flights. To reach a small town you fly hub-to-hub first to get into the right region, then take short hops to the exact destination. That is why search is fast even with millions of nodes: most of the distance is covered by a handful of long edges.
+:::
+
 
 The key parameters are the following.
 
@@ -196,7 +228,11 @@ Search time is roughly $O(\log n)$ in practice, which is why HNSW dominates late
 
 IVF first runs k-means to partition the space into `nlist` clusters, each with a centroid. Every vector is assigned to its nearest centroid's list. At query time you score the query against the centroids, pick the `nprobe` closest clusters, and search only the vectors in those lists. You scan a fraction $\approx \text{nprobe} / \text{nlist}$ of the corpus instead of all of it.
 
-> **Intuition:** IVF is like a library organized into sections. Instead of walking every shelf, you decide your book is probably in the "history" and "biography" sections and search only those. `nprobe` is how many sections you are willing to browse; checking more raises your chance of finding the book but takes longer. The risk, as with a real library, is that the book was misshelved one section over.
+
+::: {.callout-tip title="Intuition"}
+IVF is like a library organized into sections. Instead of walking every shelf, you decide your book is probably in the "history" and "biography" sections and search only those. `nprobe` is how many sections you are willing to browse; checking more raises your chance of finding the book but takes longer. The risk, as with a real library, is that the book was misshelved one section over.
+:::
+
 
 The parameters are the following.
 
@@ -205,7 +241,11 @@ The parameters are the following.
 
 IVF pairs naturally with product quantization (PQ), which compresses each vector into a short code so billions of vectors fit in memory. PQ splits the $d$ dimensions into $m$ subvectors and replaces each with the index of its nearest centroid in a small per-subspace codebook, giving large compression at the cost of some precision.^[As a rough sense of scale: a 768-dimensional float32 vector is about 3 KB. Split into $m = 8$ subvectors each coded with 8 bits, it shrinks to 8 bytes, a roughly 400-fold reduction. You no longer store the vector itself, only the codebook indices, which is why a billion vectors can fit in memory at all.] The combination `IVF-PQ` is the standard recipe for very large corpora.
 
-> **Warning:** PQ stores a lossy approximation of each vector, so the distances it computes are approximate even before any clustering shortcut. This is fine for a first-pass candidate list but a poor choice when you need precise scores. The standard fix is to re-rank the PQ candidates against the full vectors, a pattern we return to under practical guidance.
+
+::: {.callout-warning}
+PQ stores a lossy approximation of each vector, so the distances it computes are approximate even before any clustering shortcut. This is fine for a first-pass candidate list but a poor choice when you need precise scores. The standard fix is to re-rank the PQ candidates against the full vectors, a pattern we return to under practical guidance.
+:::
+
 
 ### Comparison of Index Types
 
@@ -228,7 +268,11 @@ knitr::kable(tab, caption = "Tradeoffs among common vector index types.")
 
 The libraries that implement these indexes (FAISS, hnswlib, Annoy, ScaNN) are Python or C++ and are not in this book's installed R set, so the chunks below are marked `eval=FALSE`. They are correct, idiomatic code a reader can run after installing the relevant tools.
 
-> **Note:** The pattern in every chunk below is the same three steps: build (or train) an index, add your vectors, then query. Once you recognize that skeleton, switching between hnswlib, FAISS, and a database is mostly a matter of renaming methods and translating parameters, not learning a new mental model.
+
+::: {.callout-note}
+The pattern in every chunk below is the same three steps: build (or train) an index, add your vectors, then query. Once you recognize that skeleton, switching between hnswlib, FAISS, and a database is mostly a matter of renaming methods and translating parameters, not learning a new mental model.
+:::
+
 
 ### hnswlib via reticulate
 
@@ -364,7 +408,11 @@ Re-ranking helps quality. A standard pattern is to retrieve a generous candidate
 
 Filtering interacts badly with ANN. Combining a metadata filter (for example, "only documents from 2025") with ANN can leave a graph or cluster nearly empty of matching vectors, hurting recall. Prefer databases that support filtered vector search natively rather than filtering after retrieval.
 
-> **Tip:** If you take away one habit from this section, make it this: build a small exact ground-truth set and measure recall@k before you trust an ANN index. Almost every pitfall above shows up as a quiet drop in recall, and you cannot fix a number you never measured.
+
+::: {.callout-tip}
+If you take away one habit from this section, make it this: build a small exact ground-truth set and measure recall@k before you trust an ANN index. Almost every pitfall above shows up as a quiet drop in recall, and you cannot fix a number you never measured.
+:::
+
 
 ### When to Use What
 

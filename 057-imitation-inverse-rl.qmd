@@ -9,7 +9,11 @@ Suppose you want a system to drive a car, fold a shirt, or write a polite reply,
 
 The reinforcement learning chapters (@sec-rl-foundations) assume you could write down a reward function and let an agent discover good behavior through trial and error. That assumption breaks in two common situations. First, the reward is genuinely hard to specify: what numeric reward captures "drive like a careful human"? Second, trial and error is expensive or dangerous: you cannot let a self driving prototype explore by colliding with pedestrians. In both cases you usually do have examples of an expert doing the task well. Imitation learning and inverse reinforcement learning (IRL) are the two main ways to exploit those examples.
 
-> **Intuition:** Reinforcement learning answers "what should I do to maximize this reward?" Imitation learning answers a different question: "what would the expert do here?" You replace the reward signal with demonstrations and try to reproduce the behavior that produced them.
+
+::: {.callout-tip title="Intuition"}
+Reinforcement learning answers "what should I do to maximize this reward?" Imitation learning answers a different question: "what would the expert do here?" You replace the reward signal with demonstrations and try to reproduce the behavior that produced them.
+:::
+
 
 The two approaches in this chapter differ in what they try to copy. Behavioral cloning copies the expert's actions directly: it treats the demonstrations as a labeled dataset and fits a classifier or regressor from states to actions. Inverse reinforcement learning copies the expert's intent: it assumes the expert is optimizing some unknown reward function and tries to recover that reward, after which standard RL produces a policy. Cloning is simple and supervised; IRL is harder but generalizes better because a reward is a more portable description of a task than a lookup table of moves.
 
@@ -27,7 +31,11 @@ $$
 
 a collection of state action pairs sampled from trajectories the expert generated. The goal is to recover a policy $\hat\pi$ that behaves like $\pi_E$.
 
-> **When to use this:** Reach for imitation learning when you have demonstrations of good behavior and either the reward is hard to specify or exploration is costly or unsafe. If you can write a clean reward and exploration is cheap, plain RL is simpler. If you have demonstrations but also want to keep improving past the expert, combine imitation as a warm start with RL fine tuning.
+
+::: {.callout-tip title="When to use this"}
+Reach for imitation learning when you have demonstrations of good behavior and either the reward is hard to specify or exploration is costly or unsafe. If you can write a clean reward and exploration is cheap, plain RL is simpler. If you have demonstrations but also want to keep improving past the expert, combine imitation as a warm start with RL fine tuning.
+:::
+
 
 A quick map of the three methods covered here, before the details:
 
@@ -45,7 +53,11 @@ $$
 
 where $\ell$ is a supervised loss, for example cross entropy for discrete actions or squared error for continuous ones. That is the entire method. Any classifier you already know (logistic regression, a tree, a neural network, k nearest neighbors) is a valid policy class.
 
-> **Key idea:** Behavioral cloning reduces sequential decision making to a single supervised learning problem. Every tool, intuition, and diagnostic you have for classification transfers directly. This is why it is almost always the first thing to try.
+
+::: {.callout-important title="Key idea"}
+Behavioral cloning reduces sequential decision making to a single supervised learning problem. Every tool, intuition, and diagnostic you have for classification transfers directly. This is why it is almost always the first thing to try.
+:::
+
 
 The catch is subtle and important. Supervised learning assumes the training and test inputs come from the same distribution. In a sequential task that assumption fails, because the states the learner visits depend on the actions the learner takes. If the cloned policy makes a small mistake, it nudges the system into a state slightly different from anything the expert demonstrated. The classifier was never trained there, so it makes a larger mistake, which pushes the system even further off the demonstrated distribution. Errors feed on themselves.
 
@@ -67,9 +79,17 @@ $$
 
 where $J(\pi)$ is the total expected cost over a horizon of $T$ steps. The quadratic $T^2$ is the signature of compounding error. Contrast this with the linear $O(T\epsilon)$ you would get if the state distribution did not shift. Over a long horizon, even a tiny supervised error can blow up.
 
-> **Warning:** The $T^2$ blow up is not a pessimistic worst case curiosity; it is what you actually observe. A behavioral cloning agent can score 99 percent action accuracy on a held out demonstration set and still fail the task badly, because the 1 percent of mistakes land it in unfamiliar states where its accuracy is far worse. Action accuracy on expert data is a misleading proxy for task performance.
 
-> **Intuition:** Think of walking a tightrope by copying a video of an acrobat. Each frame you imitate almost perfectly. But the tiny errors push you slightly off balance into poses the acrobat never struck, and the video has no advice for those poses. The further you drift, the less the demonstrations help, and you fall. The expert's data covers only the narrow ridge of states the expert visited.
+::: {.callout-warning}
+The $T^2$ blow up is not a pessimistic worst case curiosity; it is what you actually observe. A behavioral cloning agent can score 99 percent action accuracy on a held out demonstration set and still fail the task badly, because the 1 percent of mistakes land it in unfamiliar states where its accuracy is far worse. Action accuracy on expert data is a misleading proxy for task performance.
+:::
+
+
+
+::: {.callout-tip title="Intuition"}
+Think of walking a tightrope by copying a video of an acrobat. Each frame you imitate almost perfectly. But the tiny errors push you slightly off balance into poses the acrobat never struck, and the video has no advice for those poses. The further you drift, the less the demonstrations help, and you fall. The expert's data covers only the narrow ridge of states the expert visited.
+:::
+
 
 ### Practical remedies short of new algorithms
 
@@ -104,7 +124,11 @@ $$
 
 removing one factor of $T$ compared with plain cloning. The intuition is that the learner is never tested on states it was not trained on, so a single mistake no longer cascades unboundedly.
 
-> **Note:** DAgger's cost is repeated access to the expert. It assumes you can query the expert for the correct action on arbitrary states the learner visits, including awkward ones. That is reasonable when the expert is a human labeler or a slow but available planner, and unreasonable when the expert is a one time recorded dataset with no way to ask follow up questions. The right method depends on whether your expert is queryable or only logged.
+
+::: {.callout-note}
+DAgger's cost is repeated access to the expert. It assumes you can query the expert for the correct action on arbitrary states the learner visits, including awkward ones. That is reasonable when the expert is a human labeler or a slow but available planner, and unreasonable when the expert is a one time recorded dataset with no way to ask follow up questions. The right method depends on whether your expert is queryable or only logged.
+:::
+
 
 ## Inverse reinforcement learning
 
@@ -122,7 +146,11 @@ where $w \in \mathbb{R}^k$ is the weight vector to be estimated and $\phi(s)$ is
 
 IRL is fundamentally ill posed. Many reward functions make the same behavior optimal, and some make every behavior optimal. The reward $R(s) = 0$ everywhere makes any policy optimal, so it trivially explains any demonstration. Scaling a reward by a positive constant, or adding a constant, does not change the optimal policy either. So the raw question "which reward did the expert optimize?" has no unique answer.
 
-> **Key idea:** IRL does not have a single correct reward, so every IRL method needs an extra principle to pick one reward among the many that explain the data. The choice of that principle is what distinguishes the major algorithms: maximum margin (Abbeel and Ng, 2004), maximum entropy (Ziebart et al., 2008), and adversarial matching (Ho and Ermon, 2016).
+
+::: {.callout-important title="Key idea"}
+IRL does not have a single correct reward, so every IRL method needs an extra principle to pick one reward among the many that explain the data. The choice of that principle is what distinguishes the major algorithms: maximum margin (Abbeel and Ng, 2004), maximum entropy (Ziebart et al., 2008), and adversarial matching (Ho and Ermon, 2016).
+:::
+
 
 ### Apprenticeship learning via feature matching
 
@@ -190,7 +218,11 @@ A useful way to remember the relationships:
 
 In modern practice these blend. The reinforcement learning from human feedback (RLHF) used to align large language models (@sec-llms) is essentially IRL followed by RL: a reward model is fit to human preference comparisons (a form of recovering the reward behind expert judgments), then a policy is optimized against that learned reward. Behavioral cloning, under the name supervised fine tuning, is the warm start that precedes it.
 
-> **Intuition:** If you only need the agent to act in the same environment it was trained in, copying actions (behavioral cloning) may be enough. If you need it to act well in a new environment, or to keep improving, recover the reward (IRL), because intent transfers where a memorized action map does not.
+
+::: {.callout-tip title="Intuition"}
+If you only need the agent to act in the same environment it was trained in, copying actions (behavioral cloning) may be enough. If you need it to act well in a new environment, or to keep improving, recover the reward (IRL), because intent transfers where a memorized action map does not.
+:::
+
 
 ## Runnable demo: behavioral cloning on a gridworld
 
@@ -445,7 +477,11 @@ draw_policy(clone_policy,  "Cloned policy (red = disagrees)", compare = expert_p
 draw_heat(visit_counts,    "Demonstration visit counts")
 ```
 
-> **Note:** The exact numbers depend on the random seed, the exploration rate during data collection, and the classifier. The qualitative lesson is robust and is the point of the demo: a clone with high action accuracy still loses task performance, and the losses concentrate exactly where the demonstrations are sparse. Try lowering `n_demo_eps` to make the data sparser and watch the clone's success rate fall further; raise it and the gap shrinks.
+
+::: {.callout-note}
+The exact numbers depend on the random seed, the exploration rate during data collection, and the classifier. The qualitative lesson is robust and is the point of the demo: a clone with high action accuracy still loses task performance, and the losses concentrate exactly where the demonstrations are sparse. Try lowering `n_demo_eps` to make the data sparser and watch the clone's success rate fall further; raise it and the gap shrinks.
+:::
+
 
 ## Practical guidance and pitfalls
 
@@ -459,7 +495,11 @@ A few hard won lessons for applying these methods.
 - Causal confusion is a real failure mode. A clone can latch onto a feature that correlates with the expert action in the data but is not its cause (the classic example: an indicator light that turns on because the expert braked, which the clone then uses to decide to brake). More expert data does not fix it; interventions or DAgger style on policy data do.
 - Use imitation as a warm start, then fine tune with RL. In practice the strongest pipeline clones first to get a competent initial policy cheaply, then improves it with RL against a real or learned reward, which is exactly the supervised fine tuning then RLHF recipe used for aligning language models.
 
-> **Warning:** A cloned policy is only ever as good as its demonstrations and cannot exceed the expert. If the expert is mediocre, the clone is mediocre. To surpass the expert you need a reward signal, through IRL plus RL or through RL fine tuning, because only a reward tells the agent that some unseen behavior is better than what the expert showed.
+
+::: {.callout-warning}
+A cloned policy is only ever as good as its demonstrations and cannot exceed the expert. If the expert is mediocre, the clone is mediocre. To surpass the expert you need a reward signal, through IRL plus RL or through RL fine tuning, because only a reward tells the agent that some unseen behavior is better than what the expert showed.
+:::
+
 
 ## Further reading
 

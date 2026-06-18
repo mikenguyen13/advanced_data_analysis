@@ -9,7 +9,11 @@ Retrieval-augmented generation (RAG) is a pattern that gives a language model ac
 
 This pattern matters because the two failure modes of a bare language model are exactly the ones retrieval fixes. A model trained months ago does not know about events or documents created since, and a model asked about something it never saw will often produce a fluent but wrong answer (a hallucination^[A *hallucination* is a generated statement that is grammatical and confident but not supported by any source. The danger is that it reads exactly like a correct answer, so a reader cannot tell the two apart without checking.]). RAG addresses both: it keeps the knowledge in an updatable store outside the model, and it grounds the answer in retrieved text so the model has something true to copy from and to cite.
 
-> **Intuition:** Think of a bare language model as a smart student answering from memory in a closed-book exam, and a RAG system as the same student taking an open-book exam. The student is no more intelligent in the second case, but the answers are better because the relevant facts are sitting open on the desk.
+
+::: {.callout-tip title="Intuition"}
+Think of a bare language model as a smart student answering from memory in a closed-book exam, and a RAG system as the same student taking an open-book exam. The student is no more intelligent in the second case, but the answers are better because the relevant facts are sitting open on the desk.
+:::
+
 
 This chapter covers the components of a RAG system in the order they run: chunking the documents, embedding the chunks, retrieving by similarity, reranking the candidates, assembling the context, and grounding the answer with citations. It then covers evaluation and the failure modes that show up in production. The retrieval step builds directly on the embeddings and dense-vector ideas from the embeddings and vector search chapter (@sec-embeddings-vector-search), and the generation step builds on the large language models chapter (@sec-llms). The runnable demonstration implements a minimal retriever in base R: cosine similarity over a small document set returning the top-$k$ chunks for a query. The generation call is shown as `eval=FALSE` because it requires an external model.
 
@@ -17,7 +21,11 @@ This chapter covers the components of a RAG system in the order they run: chunki
 
 A data team usually has more proprietary text than any public model was trained on: support tickets, internal wikis, contracts, product manuals, research notes. Fine-tuning a model on all of it is slow, expensive, and goes stale the moment a document changes. RAG is the lighter-weight alternative. You index the text once, keep the index fresh as documents change, and the model reads from it on demand. No model weights move when a document is added or edited.
 
-> **Key idea:** RAG separates *what the system knows* (the document index, which you own and can update freely) from *how the system writes* (the language model, whose weights stay fixed). Changing the facts no longer means retraining anything.
+
+::: {.callout-important title="Key idea"}
+RAG separates *what the system knows* (the document index, which you own and can update freely) from *how the system writes* (the language model, whose weights stay fixed). Changing the facts no longer means retraining anything.
+:::
+
 
 A RAG system has two phases.
 
@@ -49,7 +57,11 @@ $$
 
 Small chunks (a few sentences) give precise retrieval: a matching chunk is mostly relevant text, so the signal-to-noise ratio in the context is high. But a small chunk can be cut off from the context it needs, so an answer that spans two chunks gets split. Large chunks (a page) keep context together but dilute the match: a relevant sentence is surrounded by unrelated text, which lowers the similarity score and wastes prompt budget. The overlap $o$ exists so a sentence near a boundary still appears whole in at least one chunk.
 
-> **Warning:** Chunk size is not a setting you can guess once and forget. Too small and answers fragment across chunks; too large and the relevant sentence drowns in noise. It is one of the first knobs to tune against the evaluation set described later in the chapter.
+
+::: {.callout-warning}
+Chunk size is not a setting you can guess once and forget. Too small and answers fragment across chunks; too large and the relevant sentence drowns in noise. It is one of the first knobs to tune against the evaluation set described later in the chapter.
+:::
+
 
 In practice, split on natural boundaries (paragraphs, headings, list items) rather than at fixed token counts, so a chunk is a coherent unit of meaning. Typical settings are chunks of 200 to 500 tokens with 10 to 20 percent overlap, tuned against the evaluation set described later. Keep metadata with each chunk (source document, section, position) because that metadata becomes the citation.
 
@@ -73,11 +85,19 @@ $$
 
 for unit vectors. This equivalence is why most vector stores normalize once at index time and then use the dot product, which is cheap.
 
-> **Tip:** Normalize every embedding to unit length the moment you compute it. After that, "most similar," "largest dot product," and "smallest Euclidean distance" all pick the same chunk, and the comparison reduces to one multiplication-and-sum.
+
+::: {.callout-tip}
+Normalize every embedding to unit length the moment you compute it. After that, "most similar," "largest dot product," and "smallest Euclidean distance" all pick the same chunk, and the comparison reduces to one multiplication-and-sum.
+:::
+
 
 Two embedding strategies are worth distinguishing, because the choice between them is the reason RAG has two retrieval stages rather than one. A bi-encoder embeds the query and each chunk separately, so all chunk vectors are precomputed at index time and retrieval is a fast similarity search. A cross-encoder takes the query and a chunk together and outputs a single relevance score; it is more accurate because it can attend across both texts (the attention mechanism is covered in @sec-transformers), but it cannot precompute anything and must run once per candidate. RAG uses the bi-encoder for the first-stage retrieval (fast, over the whole corpus) and reserves the cross-encoder for reranking a short candidate list, covered below.
 
-> **Note:** The bi-encoder is fast but reads the query and the chunk in isolation; the cross-encoder is slow but reads them together, so it can notice that a chunk answers *this exact* question. Keep this trade in mind: it is exactly why we retrieve cheaply over everything, then rerank expensively over a few.
+
+::: {.callout-note}
+The bi-encoder is fast but reads the query and the chunk in isolation; the cross-encoder is slow but reads them together, so it can notice that a chunk answers *this exact* question. Keep this trade in mind: it is exactly why we retrieve cheaply over everything, then rerank expensively over a few.
+:::
+
 
 ## Retrieval
 
@@ -97,7 +117,11 @@ $$
 
 with $\alpha$ tuned on the evaluation set. Hybrid retrieval is a strong default because the two retrievers fail on different queries.
 
-> **When to use this:** Reach for hybrid retrieval whenever your queries contain literal tokens that must match exactly: part numbers, error codes, function names, surnames, legal citations. Dense embeddings smooth meaning together, which is helpful for paraphrases but harmful when the user means *that specific string*. BM25 covers the gap.
+
+::: {.callout-tip title="When to use this"}
+Reach for hybrid retrieval whenever your queries contain literal tokens that must match exactly: part numbers, error codes, function names, surnames, legal citations. Dense embeddings smooth meaning together, which is helpful for paraphrases but harmful when the user means *that specific string*. BM25 covers the gap.
+:::
+
 
 ## Reranking
 
@@ -105,7 +129,11 @@ First-stage retrieval is tuned for recall: return a candidate set of size $k$ (s
 
 The reranker is typically a cross-encoder. For each candidate chunk $c_j$ in the retrieved set, it computes a relevance score $r_j = g(q, c_j)$ by reading the query and the chunk jointly, then the candidates are sorted by $r_j$. Because the cross-encoder reads both texts together it captures interactions a bi-encoder cannot, which is why a cheap recall-oriented first stage followed by an accurate reranker outperforms either alone. The cost is bounded because the cross-encoder runs only $k$ times per query, not $m$ times.
 
-> **Intuition:** The first stage casts a wide net to make sure the right chunk is somewhere in the haul; the reranker then sorts the haul carefully so the best chunk ends up on top. Doing both is cheaper than running the careful sort over the whole corpus and more accurate than trusting the wide net's rough ordering.
+
+::: {.callout-tip title="Intuition"}
+The first stage casts a wide net to make sure the right chunk is somewhere in the haul; the reranker then sorts the haul carefully so the best chunk ends up on top. Doing both is cheaper than running the careful sort over the whole corpus and more accurate than trusting the wide net's rough ordering.
+:::
+
 
 @tbl-retrieval-augmented-generation-two-stage contrasts the two stages on the model they use, the set they run over, what they optimize, and their cost.
 
@@ -124,7 +152,11 @@ First, the context window is finite, so there is a token budget for retrieved ch
 
 Second, position matters. Models attend unevenly across a long context and tend to use information at the beginning and the end more than information buried in the middle, an effect documented as "lost in the middle." A practical response is to place the strongest chunks at the start and end of the context block, and to keep the context short rather than padding it with marginal chunks.
 
-> **Warning:** More context is not always better. Padding the prompt with marginal chunks can push the genuinely useful chunk into the middle, where the model is most likely to overlook it. A short, well-ordered context usually beats a long, exhaustive one.
+
+::: {.callout-warning}
+More context is not always better. Padding the prompt with marginal chunks can push the genuinely useful chunk into the middle, where the model is most likely to overlook it. A short, well-ordered context usually beats a long, exhaustive one.
+:::
+
 
 Third, the chunks must be labeled so the model can cite them. Wrap each chunk with its source identifier, for example a tag like `[doc: handbook.pdf, section 3]`, and instruct the model to reference those identifiers. The assembled prompt has three parts: an instruction that tells the model to answer only from the provided context and to cite sources, the labeled chunks, and the user's question.
 
@@ -136,7 +168,11 @@ The first is citation. Ask the model to attach, to each claim, the identifier of
 
 The second is abstention.^[*Abstention* is the model declining to answer (saying "I do not know") when the retrieved context does not contain the answer. It is the single clearest signal that a RAG system is actually reading its context rather than answering from memory.] The instruction to say "I do not know" when the context lacks the answer is what prevents the model from filling gaps with invented facts. A RAG system that never abstains is not grounded; it has merely added retrieved text to a model that still answers from memory when the retrieval misses. Measuring the abstention rate on queries whose answer is deliberately absent from the corpus is a direct test of grounding.
 
-> **Key idea:** Grounding is not something you assert, it is something you can check. Citations let you verify each claim against its source, and abstention lets you confirm the model stays silent when no source supports an answer. A RAG system you cannot audit is not really grounded.
+
+::: {.callout-important title="Key idea"}
+Grounding is not something you assert, it is something you can check. Citations let you verify each claim against its source, and abstention lets you confirm the model stays silent when no source supports an answer. A RAG system you cannot audit is not really grounded.
+:::
+
 
 ## A Minimal RAG Retriever in Base R
 
@@ -243,7 +279,11 @@ legend("topright",
 
 With the top chunks retrieved, generation assembles the prompt and calls a language model. The call below uses the `ellmer` package, the current idiomatic way to talk to a chat model from R. It is marked `eval=FALSE` because it needs an external model and an API key, but it is correct code a reader can run after setting their credentials.
 
-> **Note:** This chunk does not run when the book builds because it depends on a live model endpoint and an API key, neither of which is available in the build environment. The retrieval code earlier in the chapter runs in plain base R precisely so the geometry can be demonstrated without any external service.
+
+::: {.callout-note}
+This chunk does not run when the book builds because it depends on a live model endpoint and an API key, neither of which is available in the build environment. The retrieval code earlier in the chapter runs in plain base R precisely so the geometry can be demonstrated without any external service.
+:::
+
 
 ```{r rag-generate, eval=FALSE}
 library(ellmer)
@@ -279,7 +319,11 @@ The instruction to cite sources and to abstain is what turns retrieved text into
 
 A RAG system has two parts to evaluate, and they fail independently. Retrieval can return the wrong chunks, or retrieval can succeed and generation can still produce a wrong answer. Measure them separately before measuring them end to end.
 
-> **Tip:** When an end-to-end answer is wrong, resist the urge to fix the prompt first. Check the retrieval metrics: if the right chunk never reached the model, no amount of prompt tuning will help. Isolating which stage failed is most of the debugging work.
+
+::: {.callout-tip}
+When an end-to-end answer is wrong, resist the urge to fix the prompt first. Check the retrieval metrics: if the right chunk never reached the model, no amount of prompt tuning will help. Isolating which stage failed is most of the debugging work.
+:::
+
 
 Retrieval metrics treat retrieval as ranking against a set of known-relevant chunks per query. For a query whose relevant chunk is at rank $r$ in the returned list (or $\infty$ if not returned), two common measures are recall at $k$ and mean reciprocal rank,
 
@@ -320,7 +364,11 @@ RAG fails in characteristic ways, and most production debugging is about locatin
 
 -   Stale index. Documents changed but the index was not rebuilt, so the system retrieves and cites outdated text. Treat re-indexing as a scheduled job tied to the document source.
 
-> **When to use this:** Use RAG when the knowledge is large, changing, or must be cited, and when you can keep an index fresh. Prefer fine-tuning when you need to change behavior or format rather than facts, and prefer plain long-context prompting when the reference material is small and fixed enough to paste into every request.
+
+::: {.callout-tip title="When to use this"}
+Use RAG when the knowledge is large, changing, or must be cited, and when you can keep an index fresh. Prefer fine-tuning when you need to change behavior or format rather than facts, and prefer plain long-context prompting when the reference material is small and fixed enough to paste into every request.
+:::
+
 
 These three options are composable rather than mutually exclusive: a fine-tuned model that retrieves from a fresh index and abstains when the index comes up empty is a common and robust design. Stepping back, the whole pipeline in this chapter exists to serve one goal, putting true, relevant, citable text in front of the model at the moment it answers. Chunking, embedding, retrieval, and reranking decide *what* text arrives; grounding and citations decide *how honestly* the model uses it; and evaluation tells you which of those links is the weak one.
 

@@ -9,7 +9,11 @@ Most of this book treats prediction as a question with a single, self-contained 
 
 The naive workaround is to chop the structured output into pieces and predict each piece on its own. Tag each word with an independent classifier; label each pixel by itself. This throws away exactly the information that makes the problem solvable. If "fly" can be a noun or a verb, the word alone will not tell you which; the surrounding tags will. Structured prediction keeps the pieces together and scores whole configurations, so that the prediction for one part can depend on the predictions for the others.
 
-> **Intuition:** A spell-checker that corrects each letter in isolation is hopeless. One that knows which letter sequences form real words, and which word sequences form real sentences, can fix errors a per-letter model cannot even see. Structure is the extra constraint that turns an impossible local decision into an easy global one.
+
+::: {.callout-tip title="Intuition"}
+A spell-checker that corrects each letter in isolation is hopeless. One that knows which letter sequences form real words, and which word sequences form real sentences, can fix errors a per-letter model cannot even see. Structure is the extra constraint that turns an impossible local decision into an easy global one.
+:::
+
 
 This raises an immediate difficulty. If a sentence has $T$ words and each word can take one of $K$ tags, there are $K^T$ possible taggings. We cannot score them all. The art of structured prediction is to define scores that decompose over small, overlapping pieces of the output, so that the best whole configuration can be found efficiently by dynamic programming even though the number of configurations is astronomical. This chapter develops that idea for the most common and most tractable case, the linear chain, which covers sequence labeling tasks like part-of-speech tagging, named-entity recognition, and gene finding.
 
@@ -35,7 +39,11 @@ $$
 
 where $\psi_t(k, x)$ scores "label $k$ at position $t$ given the input" (the emission or unary score) and $\phi(j, k)$ scores the transition from label $j$ to label $k$ (the pairwise score). The crucial property is the Markov assumption: a label interacts directly only with its immediate neighbors, never with distant positions except through the chain. This locality is what makes efficient inference possible.
 
-> **Key idea:** Decomposition is everything. Because the score is a sum of terms that each touch at most two adjacent labels, we can find the best whole sequence without enumerating all $K^T$ of them. The number of sequences is exponential; the work to find the best one is linear in $T$.
+
+::: {.callout-important title="Key idea"}
+Decomposition is everything. Because the score is a sum of terms that each touch at most two adjacent labels, we can find the best whole sequence without enumerating all $K^T$ of them. The number of sequences is exponential; the work to find the best one is linear in $T$.
+:::
+
 
 In a linear model, every score is a weighted feature count. Collect all the model parameters into a single weight vector $w$, and define a feature function $\mathbf{f}(x, y)$ that counts how often each feature fires across the whole structure. Then
 
@@ -57,7 +65,11 @@ $$
 
 where $\pi$ is the initial-state distribution, $A(j,k) = p(y_t=k \mid y_{t-1}=j)$ is the transition matrix, and $B(k, o) = p(x_t = o \mid y_t = k)$ is the emission matrix. Taking logs turns the product into a sum and reveals an HMM as a special case of the additive score above, with $\psi_t(k, x) = \log B(k, x_t)$ (plus $\log \pi(k)$ at $t=1$) and $\phi(j, k) = \log A(j, k)$.
 
-> **Note:** An HMM is a *generative* model: it describes how $x$ and $y$ are jointly produced, and is trained to maximize $p(x, y)$. The discriminative models below model $p(y \mid x)$ or just a score, never spending capacity on explaining $x$. For prediction we only ever need $p(y \mid x)$, so the generative effort can be wasted, but HMMs are simple, have closed-form maximum-likelihood estimates (just count transitions and emissions), and decode with the very same Viterbi algorithm.
+
+::: {.callout-note}
+An HMM is a *generative* model: it describes how $x$ and $y$ are jointly produced, and is trained to maximize $p(x, y)$. The discriminative models below model $p(y \mid x)$ or just a score, never spending capacity on explaining $x$. For prediction we only ever need $p(y \mid x)$, so the generative effort can be wasted, but HMMs are simple, have closed-form maximum-likelihood estimates (just count transitions and emissions), and decode with the very same Viterbi algorithm.
+:::
+
 
 ### Conditional Random Fields
 
@@ -83,7 +95,11 @@ $$
 
 where the expectation is computed with the forward-backward algorithm (the sum-product analogue of Viterbi). At the optimum, model expectations match empirical counts. The two hard quantities, $Z(x)$ and the feature expectations, are both computable in $O(T K^2)$ time by dynamic programming, the same complexity as decoding.
 
-> **Intuition:** A CRF is logistic regression that has learned to be polite to its neighbors. The transition scores let it say "I would label this word a verb, but the previous tag makes that unlikely, so I will reconsider," and it balances all such local pressures into one globally coherent sequence.
+
+::: {.callout-tip title="Intuition"}
+A CRF is logistic regression that has learned to be polite to its neighbors. The transition scores let it say "I would label this word a verb, but the previous tag makes that unlikely, so I will reconsider," and it balances all such local pressures into one globally coherent sequence.
+:::
+
 
 ### The Structured Perceptron
 
@@ -106,7 +122,11 @@ $$
 
 The inner maximization is called loss-augmented inference: find the output that is both high-scoring and far from the truth, the most dangerous competitor. When $\Delta$ decomposes over positions (as Hamming loss does), the loss-augmented argmax is still a linear-chain argmax and is solved by, once again, Viterbi with the per-position loss folded into the emission scores.
 
-> **Key idea:** CRF, structured perceptron, and structured SVM are three training objectives bolted onto one shared engine. The CRF needs sum-over-sequences (forward-backward); the perceptron and structured SVM need only max-over-sequences (Viterbi). Get the decoder right and you can swap training criteria freely.
+
+::: {.callout-important title="Key idea"}
+CRF, structured perceptron, and structured SVM are three training objectives bolted onto one shared engine. The CRF needs sum-over-sequences (forward-backward); the perceptron and structured SVM need only max-over-sequences (Viterbi). Get the decoder right and you can swap training criteria freely.
+:::
+
 
 @tbl-structured-prediction-model-compare lays out how these models relate.
 
@@ -143,7 +163,11 @@ $$
 
 We also record which previous label $j$ achieved each maximum, in a back-pointer table $\beta_t(k)$. After the forward sweep, the best final label is $\arg\max_k \delta_T(k)$, and we recover the full sequence by following back-pointers from $T$ down to $1$. The maximization over $j$ is the only place the previous position enters, which is precisely the Markov assumption paying off.
 
-> **Warning:** Run Viterbi in **log space**, adding log-probabilities, never multiplying raw probabilities. For a sequence of length $T$, a product of $T$ probabilities underflows to zero in floating point well before $T$ gets large, and the algorithm silently returns garbage. Sums of logs are numerically stable.
+
+::: {.callout-warning}
+Run Viterbi in **log space**, adding log-probabilities, never multiplying raw probabilities. For a sequence of length $T$, a product of $T$ probabilities underflows to zero in floating point well before $T$ gets large, and the algorithm silently returns garbage. Sums of logs are numerically stable.
+:::
+
 
 ### A Runnable Viterbi Decoder
 
@@ -217,7 +241,11 @@ cat(sprintf("Log-probability of best path: %.3f\n", result$log_prob))
 
 The decoder reads the streak of high ice-cream days as hot weather and the dip at days 3 and 4 as a cold spell, then a return to hot. Notice that a single low-ice-cream day in the middle of a hot streak need not flip the state: the sticky transition score can outvote one weak emission, which is exactly the neighbor-awareness that an independent per-day classifier lacks.
 
-> **Note:** To turn this HMM decoder into a CRF decoder, replace `logpi + logB[, obs[1]]` and `logB[k, obs[t]]` with arbitrary emission scores $\psi_t(k, x)$ and replace `logA` with arbitrary transition scores $\phi(j, k)$. The control flow is identical; only the source of the numbers changes. That is the sense in which Viterbi is the shared engine.
+
+::: {.callout-note}
+To turn this HMM decoder into a CRF decoder, replace `logpi + logB[, obs[1]]` and `logB[k, obs[t]]` with arbitrary emission scores $\psi_t(k, x)$ and replace `logA` with arbitrary transition scores $\phi(j, k)$. The control flow is identical; only the source of the numbers changes. That is the sense in which Viterbi is the shared engine.
+:::
+
 
 ### Watching the Trellis
 
@@ -305,7 +333,11 @@ A few hard-won lessons separate a structured predictor that works from one that 
 - Beyond chains, exact inference can be intractable. Viterbi exploits the chain. For general graphs (grids in image segmentation, loopy CRFs) exact argmax is NP-hard, and you fall back on approximate inference: loopy belief propagation, graph cuts for certain energy forms, or LP relaxations. Trees still admit exact dynamic programming.
 - Class and label imbalance still bite, the same difficulty studied in the class imbalance chapter (@sec-class-imbalance). Rare tags (a sparse entity type) can be swamped. Position-decomposable losses like weighted Hamming loss, plumbed through the structured SVM's loss-augmented inference, are a clean way to upweight what you care about.
 
-> **When to use this:** Reach for structured prediction whenever the output is a sequence, segmentation, alignment, or tree whose parts constrain each other, and when a per-part classifier visibly ignores obvious consistency. If the parts really are independent, the extra machinery buys nothing; predict them separately.
+
+::: {.callout-tip title="When to use this"}
+Reach for structured prediction whenever the output is a sequence, segmentation, alignment, or tree whose parts constrain each other, and when a per-part classifier visibly ignores obvious consistency. If the parts really are independent, the extra machinery buys nothing; predict them separately.
+:::
+
 
 A closing perspective: the linear-chain models here are the foundation, not the frontier. Modern sequence labelers usually compute the emission scores $\psi_t(k, x)$ with a neural network (a BiLSTM or a transformer encoder, see the attention and transformers chapter, @sec-transformers) and then place a CRF layer on top to enforce label consistency, decoded with the very Viterbi algorithm implemented above. The dynamic program has outlived every change in how the scores are produced.
 

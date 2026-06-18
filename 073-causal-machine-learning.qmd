@@ -11,7 +11,11 @@ This chapter connects the potential outcomes framework to the supervised learnin
 
 Identification (the assumptions under which a causal effect can be recovered from observational data at all) was treated in detail in the first book of this series. Here we take identification as given and focus on estimation with flexible ML models. When the assumptions below feel unfamiliar, review the identification chapter of the first book.
 
-> **Key idea:** A predictive model ranks units by *what will happen*. A causal model ranks them by *how much your action changes what happens*. These two rankings can be almost unrelated, and confusing them is the single most common mistake in applied targeting.
+
+::: {.callout-important title="Key idea"}
+A predictive model ranks units by *what will happen*. A causal model ranks them by *how much your action changes what happens*. These two rankings can be almost unrelated, and confusing them is the single most common mistake in applied targeting.
+:::
+
 
 By the end of the chapter you will be able to state the estimand (the CATE) precisely, choose among the main estimator families (meta-learners, causal forests, double/debiased ML), fit a working CATE estimator in R, and evaluate it honestly when the truth is unknown.
 
@@ -21,7 +25,11 @@ A typical ML workflow produces a scoring model: a churn score, a propensity scor
 
 In practice causal ML sits downstream of the same feature pipelines (@sec-feature-stores), data warehouses, and experiment platforms (@sec-experiment-tracking) that feed predictive models. The natural inputs are randomized experiments (A/B tests) or logged observational data with a known or estimable assignment mechanism. The outputs feed back into the same serving and decision layers: instead of scoring "probability of conversion," you score "expected lift from the offer" and rank by that. Teams that already run experiments and have a feature store are well positioned, because the marginal cost is mostly modeling and validation, not new infrastructure.
 
-> **When to use this:** Reach for causal ML when a decision will *act on* the units being scored (send a coupon, schedule a call, prescribe a drug, choose a price). If the action is the same for everyone and you only need a forecast to plan capacity or set a threshold, a plain predictive model is simpler and usually enough.
+
+::: {.callout-tip title="When to use this"}
+Reach for causal ML when a decision will *act on* the units being scored (send a coupon, schedule a call, prescribe a drug, choose a price). If the action is the same for everyone and you only need a forecast to plan capacity or set a threshold, a plain predictive model is simpler and usually enough.
+:::
+
 
 ## Potential outcomes recap and CATE
 
@@ -37,7 +45,11 @@ $$
 $$
 Averaging $\tau(x)$ over the population gives the Average Treatment Effect (ATE), $\tau = \mathbb{E}[\tau(X)]$. CATE is the object of interest for targeting, because it tells us the effect for the subpopulation defined by $X = x$. In the uplift literature $\tau(x)$ is called the uplift or incremental effect.
 
-> **Intuition:** We cannot measure the effect on one person, but we can compare otherwise-similar people who happened to be treated against those who were not. The CATE is the effect averaged over everyone who shares a given feature profile $x$. The finer we slice by $x$, the closer we get to a personalized effect, at the cost of noisier estimates.
+
+::: {.callout-tip title="Intuition"}
+We cannot measure the effect on one person, but we can compare otherwise-similar people who happened to be treated against those who were not. The CATE is the effect averaged over everyone who shares a given feature profile $x$. The finer we slice by $x$, the closer we get to a personalized effect, at the cost of noisier estimates.
+:::
+
 
 Three standard assumptions make $\tau(x)$ estimable from data. They are the same ones derived in the first book.
 
@@ -55,7 +67,11 @@ $$
 $$
 because conditioning on $W$ is, given $X$, the same as conditioning on the potential outcome. This single identity is the engine behind every estimator in this chapter: estimate the response surfaces (or functionals of them) with flexible ML, then difference them.
 
-> **Key idea:** Identification converts an impossible question (a counterfactual difference per unit) into a possible one (a difference of two ordinary regressions). Everything that follows is a different strategy for estimating those regressions, or functionals of them, accurately.
+
+::: {.callout-important title="Key idea"}
+Identification converts an impossible question (a counterfactual difference per unit) into a possible one (a difference of two ordinary regressions). Everything that follows is a different strategy for estimating those regressions, or functionals of them, accurately.
+:::
+
 
 With the estimand and the identifying identity in hand, we now turn to the estimators. The families below differ only in *how* they estimate the response surfaces and *how* they combine them.
 
@@ -71,7 +87,11 @@ $$
 $$
 and estimates $\hat\tau_S(x) = \hat\mu(x, 1) - \hat\mu(x, 0)$. To get the effect you score each unit twice, once with $w = 1$ and once with $w = 0$, and subtract. It is simple and uses all the data for one model. The risk is regularization bias toward zero: if the base learner shrinks or rarely splits on $W$ (common with tree ensembles when $W$ is one weak feature among many), the implied effect is biased small. S-learners do well when the true effect is small or smooth.
 
-> **Warning:** With a tree ensemble, $W$ competes with every other feature for splits. If the effect is subtle, the trees may barely split on $W$ and the S-learner will report an effect near zero even when a real, heterogeneous effect exists.
+
+::: {.callout-warning}
+With a tree ensemble, $W$ competes with every other feature for splits. If the effect is subtle, the trees may barely split on $W$ and the S-learner will report an effect near zero even when a real, heterogeneous effect exists.
+:::
+
 
 ### T-learner
 
@@ -116,7 +136,11 @@ A causal forest (@wager2018estimation; @athey2019grf) is a random forest whose s
 
 First, splits are chosen to maximize the difference in estimated treatment effect between child nodes, so the tree carves the covariate space into regions with different $\tau(x)$. A regression forest groups units with *similar outcomes*; a causal forest groups units with *similar effects*, which is a different and harder objective. Second, honesty: the data in each tree are split into one subsample used to choose the splits and a disjoint subsample used to estimate the effect within each leaf. Honesty removes the bias that comes from using the same data to both pick a split and estimate the quantity at that split, and it is what allows valid confidence intervals.
 
-> **Intuition:** Honesty is the statistical version of not grading your own homework. If you choose the leaf boundaries to make an effect look large and then estimate that same effect on the same rows, you will overstate it. Splitting the data in two keeps the estimate honest.
+
+::: {.callout-tip title="Intuition"}
+Honesty is the statistical version of not grading your own homework. If you choose the leaf boundaries to make an effect look large and then estimate that same effect on the same rows, you will overstate it. Splitting the data in two keeps the estimate honest.
+:::
+
 
 The forest produces a pointwise estimate $\hat\tau(x)$ together with an estimated standard error, so you get
 $$
@@ -124,7 +148,11 @@ $$
 $$
 which is rare among ML methods and valuable when a stakeholder asks "is this subgroup effect real?". Modern implementations combine the forest with the orthogonalization idea from DML (regressing out $\hat\mu(x)$ and $\hat e(x)$ first), which makes the forest robust to confounding in observational data. The `grf` package is the standard implementation; it is not installed in this environment, so the code below is shown with `eval=FALSE` but is current and runnable once you `install.packages("grf")`.
 
-> **Tip:** When a stakeholder needs uncertainty ("can we be sure this segment really responds?"), the causal forest is the easiest route to honest confidence intervals on per-segment effects without hand-deriving variances.
+
+::: {.callout-tip}
+When a stakeholder needs uncertainty ("can we be sure this segment really responds?"), the causal forest is the easiest route to honest confidence intervals on per-segment effects without hand-deriving variances.
+:::
+
 
 ```{r grf-causal-forest, eval=FALSE}
 # Causal forest with grf (install.packages("grf"))
@@ -167,7 +195,11 @@ Cross-fitting. The nuisances are estimated on one fold and the score is evaluate
 
 The resulting estimator $\hat\tau = \frac1n \sum_i \psi$-based average is $\sqrt n$-consistent and asymptotically normal even though $\hat\mu$ and $\hat e$ converge slowly. DML targets summaries by default; pairing the orthogonal score with a flexible final-stage model (R-learner, causal forest) extends it to full CATE estimation.
 
-> **Intuition:** Orthogonality makes the effect estimate insensitive to small errors in the nuisance models (the gradient in their direction is zero at the truth), and cross-fitting makes sure those nuisance models were never fit on the rows used to score them. Together they let you use heavy ML for the hard parts while keeping clean inference for the part you report.
+
+::: {.callout-tip title="Intuition"}
+Orthogonality makes the effect estimate insensitive to small errors in the nuisance models (the gradient in their direction is zero at the truth), and cross-fitting makes sure those nuisance models were never fit on the rows used to score them. Together they let you use heavy ML for the hard parts while keeping clean inference for the part you report.
+:::
+
 
 ## Runnable demo: T-learner CATE on simulated data
 
@@ -175,7 +207,11 @@ We simulate data where the true CATE is known, fit a T-learner with ordinary lea
 
 The design: outcome depends on covariates through a baseline $b(x)$, and the treatment effect is heterogeneous, $\tau(x) = 1 + 2\,x_1 + x_2^2$, so it varies smoothly across the feature space. Treatment is randomized with probability $0.5$, which makes unconfoundedness hold by construction.
 
-> **Tip:** When you are learning or debugging a CATE method, always start on a simulation where you wrote $\tau(x)$ yourself. It is the only setting where you can plot estimates against truth and see directly whether the method works.
+
+::: {.callout-tip}
+When you are learning or debugging a CATE method, always start on a simulation where you wrote $\tau(x)$ yourself. It is the only setting where you can plot estimates against truth and see directly whether the method works.
+:::
+
 
 ```{r fig-causal-machine-learning-tlearner-scatter, eval=TRUE, message=FALSE, warning=FALSE, fig.width=7, fig.height=5, fig.cap="T-learner estimated uplift versus true CATE on held-out test units. Points near the dashed 45-degree line indicate accurate per-unit effect estimates."}
 .libPaths(c("C:/Users/miken/R/library-4.4", .libPaths()))
@@ -247,7 +283,11 @@ Real problems give no $\tau_i$, so we evaluate ranking quality instead. The tric
 
 The Qini curve and the related uplift curve plot cumulative incremental outcome as we treat units in descending order of predicted uplift. A model that ranks the truly responsive units first lifts off the diagonal; the area between the curve and the random-targeting line (the Qini coefficient) is the headline metric (@radcliffe2007uplift). The code below sketches the computation on the held-out set using each unit's predicted uplift to order treatment.
 
-> **Note:** The snippet below is a teaching simplification: it differences raw treated and control means inside each top-$k$ slice. Production Qini implementations correct for unequal arm sizes within the slice and report the area under the curve. The shape and the intuition are the same.
+
+::: {.callout-note}
+The snippet below is a teaching simplification: it differences raw treated and control means inside each top-$k$ slice. Production Qini implementations correct for unequal arm sizes within the slice and report the area under the curve. The shape and the intuition are the same.
+:::
+
 
 ```{r qini-sketch, eval=TRUE, message=FALSE, warning=FALSE}
 .libPaths(c("C:/Users/miken/R/library-4.4", .libPaths()))

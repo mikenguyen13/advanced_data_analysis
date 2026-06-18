@@ -9,7 +9,11 @@ A credit card issuer watches a stream of transactions. Almost all of them are or
 
 The same shape of problem appears far beyond fraud. A sensor on a turbine reports a vibration pattern unlike anything in its operating history, hinting at a bearing about to fail. A hospital monitor sees a combination of heart rate and blood oxygen that is individually plausible but jointly alarming. A network intrusion detector flags a login from an account that suddenly behaves like a different person. In each case the interesting event is rare, often unlabeled, and recognizable mainly because it differs from the bulk of normal behavior.
 
-> **Intuition:** Most supervised learning asks "which of these known categories does this point belong to?" Anomaly detection asks a stranger question: "does this point belong to the normal world *at all*?" We model what normal looks like and then measure how surprised we are by each new observation. Surprise is the score.
+
+::: {.callout-tip title="Intuition"}
+Most supervised learning asks "which of these known categories does this point belong to?" Anomaly detection asks a stranger question: "does this point belong to the normal world *at all*?" We model what normal looks like and then measure how surprised we are by each new observation. Surprise is the score.
+:::
+
 
 This framing has a precise consequence. Because anomalies are rare and varied, we usually cannot learn a clean decision boundary between "normal" and "anomalous" the way a classifier learns boundaries between cats and dogs. Instead we learn the structure of the majority (normal) data, by its density, its geometry, or how easy it is to isolate, and we declare a point anomalous when it sits far from that structure. This connects anomaly detection tightly to two other topics in this book. Estimating where the normal data is dense and where it is sparse is exactly the problem of density estimation (@sec-density-estimation), and evaluating a detector when positives are a tiny fraction of the data is exactly the problem studied in the class imbalance chapter (@sec-class-imbalance).
 
@@ -25,7 +29,11 @@ A contextual anomaly (also called a conditional anomaly) is a value that is perf
 
 A collective anomaly is a set of observations that is anomalous as a group even though no single member is unusual on its own. In an electrocardiogram a single flat reading is normal (it happens between beats), but a long run of flat readings is a cardiac event. The individual points are fine; the *sequence* is the anomaly. Collective anomalies require the data to have structure (order, adjacency, a graph) that makes "group" meaningful.
 
-> **Key idea:** The same numeric value can be a point anomaly, a contextual anomaly, or part of a collective anomaly, or none of these, depending on what structure you model. Choosing the type is a modeling decision, not a property of the raw number.
+
+::: {.callout-important title="Key idea"}
+The same numeric value can be a point anomaly, a contextual anomaly, or part of a collective anomaly, or none of these, depending on what structure you model. Choosing the type is a modeling decision, not a property of the raw number.
+:::
+
 
 @tbl-anomaly-detection-types summarizes the three types and what each one needs.
 
@@ -63,7 +71,11 @@ We observe $n$ points $x_1, \dots, x_n$ with each $x_i \in \mathbb{R}^p$, where 
 
 Nearly every method in this chapter produces an anomaly score $s(x) \in \mathbb{R}$, with the convention that larger means more anomalous. A detector is then just a threshold $\tau$: flag $x$ as anomalous when $s(x) > \tau$. Separating the *score* from the *threshold* is the single most useful habit in this field, because the score is a property of the model while the threshold is a downstream decision that trades false alarms against missed detections, exactly the cutoff trade-off discussed in the class imbalance chapter (@sec-class-imbalance).
 
-> **Note:** Throughout, "outlier" and "anomaly" are used interchangeably. Some authors reserve "outlier" for a data-quality nuisance to be removed and "anomaly" for a signal of interest, but the detection machinery is identical; only your intent afterward differs.
+
+::: {.callout-note}
+Throughout, "outlier" and "anomaly" are used interchangeably. Some authors reserve "outlier" for a data-quality nuisance to be removed and "anomaly" for a signal of interest, but the detection machinery is identical; only your intent afterward differs.
+:::
+
 
 The ideal score is the negative log density, $s(x) = -\log f(x)$, since a point in a low-density region is by definition rare and therefore surprising. Every practical method below is, at heart, an attempt to approximate this surprise without having to estimate the full density $f$, which is hard in high dimensions (see @sec-density-estimation).
 
@@ -91,7 +103,11 @@ $$
 
 where $\Sigma$ is the covariance matrix. The Mahalanobis distance accounts for correlation and scale: it measures distance in units of standard deviations along the natural axes of the data, so an elliptical cloud is treated correctly where plain Euclidean distance would not be. Under multivariate normality, $D_M^2$ follows a $\chi^2_p$ distribution, giving a principled threshold.
 
-> **Warning:** These tests assume a known parametric form, usually Gaussian, and degrade badly when the normal data is multimodal, skewed, or lives on a curved manifold. They are excellent first tools for clean low-dimensional data and poor last tools for messy high-dimensional data. The methods in the next sections drop the distributional assumption.
+
+::: {.callout-warning}
+These tests assume a known parametric form, usually Gaussian, and degrade badly when the normal data is multimodal, skewed, or lives on a curved manifold. They are excellent first tools for clean low-dimensional data and poor last tools for messy high-dimensional data. The methods in the next sections drop the distributional assumption.
+:::
+
 
 ## Distance and density methods {#anomaly-detection-density}
 
@@ -137,7 +153,11 @@ $$
 
 The interpretation is clean. If $x$ sits in a region just as dense as its neighbors' regions, the ratio of densities is about 1 and $\text{LOF}_k(x) \approx 1$. If $x$ is in a much sparser region than its neighbors, its $\text{lrd}$ is small relative to theirs, the ratios are large, and $\text{LOF}_k(x) \gg 1$. Values comfortably above 1 flag local outliers.
 
-> **Key idea:** LOF is *relative*. A point is anomalous not because it is far from everything, but because it is far from things *compared to how close those things are to each other*. This is what lets LOF find an outlier hugging a dense cluster even when a looser cluster elsewhere has larger absolute spacing.
+
+::: {.callout-important title="Key idea"}
+LOF is *relative*. A point is anomalous not because it is far from everything, but because it is far from things *compared to how close those things are to each other*. This is what lets LOF find an outlier hugging a dense cluster even when a looser cluster elsewhere has larger absolute spacing.
+:::
+
 
 The price is two design choices. The neighborhood size $k$ controls locality: too small and LOF chases noise, too large and it reverts to a global score. And LOF, like all distance methods, inherits the curse of dimensionality, because in high $p$ all pairwise distances concentrate and "nearest" loses meaning.
 
@@ -161,9 +181,17 @@ $$
 
 This maps path length onto $(0, 1)$ with a useful reading: $s \to 1$ means very short paths (clear anomaly), $s \to 0$ means long paths (clear normal), and $s \approx 0.5$ means the point is unremarkable. Because the trees split data without computing any distances, isolation forest scales to large $n$ and high $p$ far better than LOF, and it needs no distance metric at all.
 
-> **Intuition:** Think of playing twenty questions to pin down one point. A weird point ("the one way over there") is identified in two or three questions. A typical point, surrounded by near-duplicates, takes many questions to single out. Isolation forest scores each point by how few questions it took.
 
-> **Note:** A subtlety, raised by the authors themselves, is *swamping* and *masking* in dense anomaly clusters. If anomalies form their own tight clump, they isolate each other slowly and can look normal. Subsampling each tree on a small random subset of the data (the default is 256 points) mitigates this and, conveniently, also makes the forest fast.
+::: {.callout-tip title="Intuition"}
+Think of playing twenty questions to pin down one point. A weird point ("the one way over there") is identified in two or three questions. A typical point, surrounded by near-duplicates, takes many questions to single out. Isolation forest scores each point by how few questions it took.
+:::
+
+
+
+::: {.callout-note}
+A subtlety, raised by the authors themselves, is *swamping* and *masking* in dense anomaly clusters. If anomalies form their own tight clump, they isolate each other slowly and can look normal. Subsampling each tree on a small random subset of the data (the default is 256 points) mitigates this and, conveniently, also makes the forest fast.
+:::
+
 
 ## One-class SVM {#anomaly-detection-ocsvm}
 
@@ -181,7 +209,11 @@ where $\phi$ is the feature map induced by the kernel, $\rho$ is the offset of t
 
 The parameter $\nu$ has a beautiful dual meaning that makes it easy to set: it is simultaneously an upper bound on the fraction of training points allowed to be outliers and a lower bound on the fraction of points retained as support vectors. So setting $\nu = 0.05$ says, roughly, "expect about 5% of my training data to be anomalous". With the common radial basis function (Gaussian) kernel, a bandwidth parameter $\gamma$ controls how tightly the boundary wraps the data: large $\gamma$ gives a wiggly boundary that can carve around every point, small $\gamma$ gives a smooth near-spherical envelope.
 
-> **Warning:** The one-class SVM is sensitive to $\nu$ and $\gamma$, and unlike supervised SVMs you usually have no labels to tune them with. It also assumes the training data is mostly clean normal data; heavy contamination pulls the boundary outward to include the anomalies. Treat it as powerful but finicky.
+
+::: {.callout-warning}
+The one-class SVM is sensitive to $\nu$ and $\gamma$, and unlike supervised SVMs you usually have no labels to tune them with. It also assumes the training data is mostly clean normal data; heavy contamination pulls the boundary outward to include the anomalies. Treat it as powerful but finicky.
+:::
+
 
 ## Autoencoder reconstruction error {#anomaly-detection-autoencoder}
 
@@ -215,7 +247,11 @@ recon <- predict(model, x_new)
 anomaly_score <- rowSums((x_new - recon)^2)
 ```
 
-> **Note:** Autoencoders shine when normal data has complex structure and you have enough of it to train on, but they are overkill for a few thousand low-dimensional points, where LOF or an isolation forest is faster, simpler, and often more accurate.
+
+::: {.callout-note}
+Autoencoders shine when normal data has complex structure and you have enough of it to train on, but they are overkill for a few thousand low-dimensional points, where LOF or an isolation forest is faster, simpler, and often more accurate.
+:::
+
 
 ## Evaluating detectors under heavy imbalance {#anomaly-detection-eval}
 
@@ -231,7 +267,11 @@ $$
 
 where $TP$, $FP$, and $FN$ are the counts of true positives, false positives, and false negatives. Precision answers "of the points I flagged, how many were real anomalies?" and recall answers "of the real anomalies, how many did I catch?". Sweeping the threshold traces a curve, and its area (the average precision) summarizes the detector in a single number that, unlike ROC AUC, cannot be inflated by the easy majority. A useless detector scores an average precision near the positive rate (say 0.02), so any honest improvement is visible against that floor.
 
-> **When to use this:** Default to the precision-recall curve and average precision for anomaly detection, and report ROC AUC alongside for comparability with other work. If you must pick one operating threshold, choose it on a validation set to hit a target recall or a tolerable false-alarm budget, never on the data the model scored.
+
+::: {.callout-tip title="When to use this"}
+Default to the precision-recall curve and average precision for anomaly detection, and report ROC AUC alongside for comparability with other work. If you must pick one operating threshold, choose it on a validation set to hit a target recall or a tolerable false-alarm budget, never on the data the model scored.
+:::
+
 
 ## A runnable demonstration {#anomaly-detection-demo}
 
@@ -421,7 +461,11 @@ par(op)
 
 @fig-anomaly-detection-plot tells the whole story at a glance: the red triangles in the left panel sit exactly where the middle panel is darkest, and the right panel confirms both detectors recover most anomalies before precision collapses. The kNN score does slightly better here because the data is low-dimensional and the anomalies are genuinely far in Euclidean space; in higher dimensions the isolation forest would typically pull ahead.
 
-> **Tip:** For real use, prefer a maintained implementation: `isotree` or `solitude` for isolation forests, `dbscan::lof` for the Local Outlier Factor, and `e1071::svm(type = "one-classification")` for the one-class SVM. The from-scratch forest above is for understanding, not production; it is correct but slow.
+
+::: {.callout-tip}
+For real use, prefer a maintained implementation: `isotree` or `solitude` for isolation forests, `dbscan::lof` for the Local Outlier Factor, and `e1071::svm(type = "one-classification")` for the one-class SVM. The from-scratch forest above is for understanding, not production; it is correct but slow.
+:::
+
 
 The package version of the same isolation forest, shown for reference, would be a two-line call (left unevaluated since `isotree` is not assumed installed):
 
@@ -445,7 +489,11 @@ Watch for contamination during training. One-class SVMs and autoencoders assume 
 
 Calibrate the threshold to a budget, not to 0.5. The default cutoff of a classifier is irrelevant here. Decide how many alerts a human can review per day, or what recall the application demands, and set $\tau$ to meet that, exactly the cutoff reasoning from the class imbalance chapter (@sec-class-imbalance).
 
-> **Warning:** A detector with high average precision can still be operationally useless if its alerts arrive faster than anyone can triage them. The "alert fatigue" failure mode, where investigators stop trusting a noisy detector, is a product problem that good scores alone do not solve. Always pair a score with a realistic alert budget.
+
+::: {.callout-warning}
+A detector with high average precision can still be operationally useless if its alerts arrive faster than anyone can triage them. The "alert fatigue" failure mode, where investigators stop trusting a noisy detector, is a product problem that good scores alone do not solve. Always pair a score with a realistic alert budget.
+:::
+
 
 Choose the method to match the anomaly type. Everything in the demo finds point anomalies. Contextual anomalies need the context split (model the behavioral variable *given* the context, then score residuals). Collective anomalies need methods that respect sequence or graph structure, such as sliding-window reconstruction error or change-point detection. Using a point-anomaly detector on a collective-anomaly problem will quietly miss the very thing you care about.
 

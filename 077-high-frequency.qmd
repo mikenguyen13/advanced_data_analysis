@@ -9,7 +9,11 @@ Sometimes the thing we want to predict from is not a single number or a short ve
 
 This chapter is about how to turn a high-frequency series into a manageable set of predictors that a downstream model (a regression, a classifier, a neural network) can actually use. The central idea is to change *representation*: instead of describing the signal value by value in time, we describe it by *which frequencies of oscillation are present and how strong each one is*. That change of viewpoint, from the time domain to the frequency domain, is called spectral analysis.^[The classic references for the statistical treatment of spectral analysis are Shumway and Stoffer (2016) and Chapter 3 of Cressie and Wikle (2011). For the engineering side of spectrograms, the keyword "spectrogram" will surface many tutorials and visual demos.]
 
-> **Intuition:** A musical chord is hard to describe by listing the air-pressure value at every instant, but easy to describe by saying "it contains a C, an E, and a G, each at a certain loudness." Spectral analysis does the same thing for any signal: it reports the recipe of pure tones (frequencies) that combine to make the observed series.
+
+::: {.callout-tip title="Intuition"}
+A musical chord is hard to describe by listing the air-pressure value at every instant, but easy to describe by saying "it contains a C, an E, and a G, each at a certain loudness." Spectral analysis does the same thing for any signal: it reports the recipe of pure tones (frequencies) that combine to make the observed series.
+:::
+
 
 By the end of the chapter you should understand how the Fourier (spectral) expansion represents a series as a sum of sines and cosines, how the periodogram estimates how much energy sits at each frequency, how those spectral quantities become covariates in a predictive model, and what to do when the signal's character changes over time (non-stationarity), which leads naturally to spectrograms.
 
@@ -33,7 +37,11 @@ When the series is non-stationary, its character changes as it unfolds, so a sin
 
 -   Build a time-frequency representation (a spectrogram) and treat it as an *image*, then reduce that image with basis functions or feed it to a CNN.
 
-> **Key idea:** Almost everything in this chapter is a variation on one move: replace a long, correlated signal with a short, informative set of numbers (basis coefficients, spectral power, image features) that a standard model can consume.
+
+::: {.callout-important title="Key idea"}
+Almost everything in this chapter is a variation on one move: replace a long, correlated signal with a short, informative set of numbers (basis coefficients, spectral power, image features) that a standard model can consume.
+:::
+
 
 The rest of the chapter develops the spectral representation from the ground up, starting with the continuous Fourier series, specializing to discrete time, defining the periodogram, and then addressing dimension reduction, non-stationarity, missing data, and software.
 
@@ -49,7 +57,11 @@ Why bother changing representation at all? There are three recurring payoffs:
 
 -   It often yields a lower-dimensional representation. A signal that needs thousands of time points may be well approximated by a handful of spectral coefficients.
 
-> **When to use this:** Reach for a spectral representation when the predictive signal lives in the *rhythm* of the data (pitch, periodicity, dominant cycles) and when the series is at least approximately stationary over the window you analyze.
+
+::: {.callout-tip title="When to use this"}
+Reach for a spectral representation when the predictive signal lives in the *rhythm* of the data (pitch, periodicity, dominant cycles) and when the series is at least approximately stationary over the window you analyze.
+:::
+
 
 ## Trigonometric Series Expansion
 
@@ -89,7 +101,11 @@ where $\phi_k (t) \equiv e^{ikt}$ and $\alpha_k \equiv a_k - i b_k$ are both com
 
 The coefficients $a_k$ and $b_k$ carry interpretable information about the series. For each $k = 0, 1, 2, \dots$ they define an amplitude and a phase, given by $\sqrt{a_k^2 + b_k^2}$ and $\tan^{-1} (-b_k / a_k)$ respectively. The amplitude tells you how strongly the series oscillates at that frequency, and the phase tells you where in its cycle that oscillation starts.
 
-> **Intuition:** Amplitude is "how loud is this tone," and phase is "what point in the wave were we at when the clock started." For prediction, amplitude (and the related notion of power) usually carries most of the signal, while phase often varies in ways we do not want to depend on.
+
+::: {.callout-tip title="Intuition"}
+Amplitude is "how loud is this tone," and phase is "what point in the wave were we at when the clock started." For prediction, amplitude (and the related notion of power) usually carries most of the signal, while phase often varies in ways we do not want to depend on.
+:::
+
 
 <br>
 
@@ -119,7 +135,11 @@ $$
 
 which is exactly the form of ordinary least squares estimates whenever $(\mathbf{\Phi' \Phi})^{-1}$ is defined. In other words, we are regressing the data onto the Fourier basis functions, just as we did in the spline setting (@sec-spline).
 
-> **Key idea:** A spectral expansion is a regression of the signal onto sines and cosines. Everything you know about least squares (projection, orthogonality, collinearity) carries over directly.
+
+::: {.callout-important title="Key idea"}
+A spectral expansion is a regression of the signal onto sines and cosines. Everything you know about least squares (projection, orthogonality, collinearity) carries over directly.
+:::
+
 
 When the basis functions are orthonormal, $\mathbf{\Phi' \Phi = I}$, and the formula collapses to a single projection:
 
@@ -135,7 +155,11 @@ $$
 \cal{w}_k = \frac{2 \pi k}{T} , k = 1, \dots, T/2
 $$
 
-> **Note:** The grid stops at $T/2$ because of the Nyquist limit: a series sampled $T$ times per period cannot resolve oscillations faster than half its sampling rate. Frequencies above that "fold back" and masquerade as lower ones, an effect called aliasing.
+
+::: {.callout-note}
+The grid stops at $T/2$ because of the Nyquist limit: a series sampled $T$ times per period cannot resolve oscillations faster than half its sampling rate. Frequencies above that "fold back" and masquerade as lower ones, an effect called aliasing.
+:::
+
 
 The basis functions associated with $\alpha_k$ for $k = 1, \dots, T/2-1$ are then
 
@@ -163,7 +187,11 @@ $$
 
 The complex representation above makes clear why we do not need a basis function for $b_0$ or $b_{T/2}$: the sine term vanishes at those endpoint frequencies. In this real formulation there are $T$ basis functions, and they make up a $T \times T$ matrix $\mathbf{\Phi}$ as defined previously.
 
-> **Tip:** Whether you use the complex or the real basis is bookkeeping; the information content is identical. Pick whichever your software and your audience find clearer.
+
+::: {.callout-tip}
+Whether you use the complex or the real basis is bookkeeping; the information content is identical. Pick whichever your software and your audience find clearer.
+:::
+
 
 Regardless of whether we use complex or real basis functions, we use the $\alpha$ coefficients to generate amplitudes (and related measures such as "power") associated with each frequency. Those amplitudes are what we summarize and feed forward as predictors, which is the subject of the next two sections.
 
@@ -185,11 +213,19 @@ $$
 
 which is proportional to the amplitudes at frequency $\cal{w}_k$. The periodogram can be thought of as an estimator of the spectrum of $\{y_t\}$, that is, the curve that says how the variance of the series is distributed across frequencies.
 
-> **Intuition:** The periodogram is a bar chart of "how much of this signal's energy sits at each pitch." A tall bar at one frequency means a strong, regular oscillation at that rate.
+
+::: {.callout-tip title="Intuition"}
+The periodogram is a bar chart of "how much of this signal's energy sits at each pitch." A tall bar at one frequency means a strong, regular oscillation at that rate.
+:::
+
 
 There is one important caveat. Although the periodogram is asymptotically unbiased for stationary processes, it is not a consistent estimator of the spectrum: its variance does not shrink as the series gets longer, so the raw periodogram looks jagged no matter how much data you collect.^[Each periodogram ordinate is built from essentially a fixed amount of information (one sine and one cosine coefficient), so adding data adds more ordinates rather than refining existing ones.] The standard fix is simple: smooth the periodogram across neighboring frequencies, which trades a little resolution for a large reduction in variance.
 
-> **Warning:** Do not read fine structure off a raw periodogram. The spikes you see are partly real signal and partly estimation noise. Smooth before you interpret, and be especially careful before using individual raw ordinates as predictors.
+
+::: {.callout-warning}
+Do not read fine structure off a raw periodogram. The spikes you see are partly real signal and partly estimation noise. Smooth before you interpret, and be especially careful before using individual raw ordinates as predictors.
+:::
+
 
 <br>
 
@@ -205,7 +241,11 @@ Three strategies are common, ordered roughly from simplest to most flexible:
 
 -   Project the spectral estimate itself onto a smaller set of basis functions defined over the entire frequency domain, and use those projection coefficients.
 
-> **Tip:** Start with a few handcrafted summaries before reaching for PCA. A single feature like "dominant frequency" is interpretable, robust, and often surprisingly predictive, and it gives you a baseline to beat.
+
+::: {.callout-tip}
+Start with a few handcrafted summaries before reaching for PCA. A single feature like "dominant frequency" is interpretable, robust, and often surprisingly predictive, and it gives you a baseline to beat.
+:::
+
 
 ## Non-Stationarity
 
@@ -215,7 +255,11 @@ The remedy is a time-frequency analysis: instead of one spectrum for the entire 
 
 The most standard tool for this is the spectrogram, a time-frequency plot. The idea is to slide a window along the series, compute a (short) periodogram inside each window position, and stack the results so that one axis is time, the other is frequency, and the color or height shows power.^[This is the short-time Fourier transform (STFT). The window length sets a trade-off: long windows give sharp frequency resolution but smear events in time, while short windows localize events in time but blur their frequency content.]
 
-> **Key idea:** A spectrogram turns a one-dimensional signal into a two-dimensional picture of "which frequencies are active, when." That picture is the bridge from time-series analysis to image-based methods.
+
+::: {.callout-important title="Key idea"}
+A spectrogram turns a one-dimensional signal into a two-dimensional picture of "which frequencies are active, when." That picture is the bridge from time-series analysis to image-based methods.
+:::
+
 
 ## Using Spectrograms As Predictors
 
@@ -225,7 +269,11 @@ The first is to find distinctive local features in the image, such as the conste
 
 The second, more general, approach is to treat the spectrogram as a plain image and apply the same machinery you would use on any image: reduce it with PCA or another method to get a feature vector, or feed it directly to a convolutional neural network (@sec-neural-networks) that learns its own features. This is why audio classification is so often done with image models: the spectrogram converts a hearing problem into a seeing problem.
 
-> **When to use this:** Prefer the spectrogram-as-image route when the signal is clearly non-stationary and when you have enough labeled data to train (or fine-tune) a CNN. Prefer handcrafted feature summaries when data are scarce or interpretability matters.
+
+::: {.callout-tip title="When to use this"}
+Prefer the spectrogram-as-image route when the signal is clearly non-stationary and when you have enough labeled data to train (or fine-tune) a CNN. Prefer handcrafted feature summaries when data are scarce or interpretability matters.
+:::
+
 
 ## Missing Data
 
@@ -239,7 +287,11 @@ The practical guidance, from easiest case to hardest, is:
 
 -   When neither applies, impute from the "nearest" related series. What counts as nearest is problem-specific: it might be a neighboring sensor, a similar past episode, or a matched unit.
 
-> **Warning:** Imputation is not free. Filled-in values can create artificial smoothness or spurious periodicities that show up in the spectrum, so check whether your conclusions survive when you flag and down-weight imputed regions.
+
+::: {.callout-warning}
+Imputation is not free. Filled-in values can create artificial smoothness or spurious periodicities that show up in the spectrum, so check whether your conclusions survive when you flag and down-weight imputed regions.
+:::
+
 
 ## Software
 
@@ -257,4 +309,8 @@ For time-frequency analysis and spectrograms:
 
 -   Spectrograms: the `signal` and `phonTools` packages.
 
-> **Tip:** Start with base R `spectrum` to get a feel for the periodogram and its smoothing options before adding dependencies. It is enough for most stationary, univariate explorations and requires nothing extra to install.
+
+::: {.callout-tip}
+Start with base R `spectrum` to get a feel for the periodogram and its smoothing options before adding dependencies. It is enough for most stationary, univariate explorations and requires nothing extra to install.
+:::
+

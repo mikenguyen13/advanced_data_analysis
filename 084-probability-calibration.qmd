@@ -11,7 +11,11 @@ Most machine learning courses train you to optimize accuracy, area under the ROC
 
 This matters whenever a downstream decision consumes the probability rather than just the rank. Expected-value calculations, risk thresholds in medicine, bet sizing, cost-sensitive routing, and combining several models all assume the number means what it says. If you multiply a miscalibrated probability by a payoff, you get a miscalibrated expected value, and you act on it.
 
-> **Key idea:** Discrimination (can the model separate classes?) and calibration (are the predicted probabilities truthful?) are different goals. A model can be strong on one and weak on the other. This chapter is about measuring and fixing the second.
+
+::: {.callout-important title="Key idea"}
+Discrimination (can the model separate classes?) and calibration (are the predicted probabilities truthful?) are different goals. A model can be strong on one and weak on the other. This chapter is about measuring and fixing the second.
+:::
+
 
 This chapter explains why predicted probabilities drift away from the truth, how to *see* the problem with a reliability diagram, how to *quantify* it with the Brier score and the expected calibration error, and how to *fix* it after the fact with Platt scaling, isotonic regression, and temperature scaling. We close with a runnable demonstration in base R that fits a classifier, exposes its miscalibration, recalibrates it, and tabulates the improvement.
 
@@ -25,7 +29,11 @@ $$
 
 In words: condition on the model having announced the value $q$; among all such cases, the long-run fraction of positives is exactly $q$. The forecaster who says "70%" is right when, restricted to her 70% days, rain arrives 70% of the time.
 
-> **Note:** Calibration says nothing about how often the model gets to be confident. A model that outputs the base rate $\bar{y}$ for every single case is perfectly calibrated and completely useless for discrimination. Calibration is necessary for trustworthy probabilities, not sufficient for a good model.
+
+::: {.callout-note}
+Calibration says nothing about how often the model gets to be confident. A model that outputs the base rate $\bar{y}$ for every single case is perfectly calibrated and completely useless for discrimination. Calibration is necessary for trustworthy probabilities, not sufficient for a good model.
+:::
+
 
 It is useful to name two ways a probability can be wrong:
 
@@ -44,11 +52,19 @@ Margin-based learners do the opposite. A support vector machine (@sec-svm) optim
 
 Modern deep networks (@sec-neural-networks) deserve a special mention. Guo and colleagues (2017) documented that large, accurate image classifiers are badly over-confident, and that the problem got *worse* as networks grew deeper and wider even as their accuracy improved. Capacity, batch normalization, and training far past the point of zero training error all conspire to inflate confidence.
 
-> **Intuition:** Think of the loss the model optimized. Almost no model is trained to make $\Pr(Y=1 \mid \hat p = q) = q$ hold; it is trained to minimize a surrogate loss subject to a regularizer and an architecture. Calibration is a side effect of that objective, and side effects are not guaranteed to be benign.
+
+::: {.callout-tip title="Intuition"}
+Think of the loss the model optimized. Almost no model is trained to make $\Pr(Y=1 \mid \hat p = q) = q$ hold; it is trained to minimize a surrogate loss subject to a regularizer and an architecture. Calibration is a side effect of that objective, and side effects are not guaranteed to be benign.
+:::
+
 
 There is also dataset shift. A model calibrated on its training distribution can become miscalibrated the moment the deployment population differs, even if its ranking still holds up. The base rate of the positive class drifting between training and production is enough to break calibration on its own.
 
-> **Warning:** Calibrating on the same data you trained the model on is a recipe for self-deception. The model has already partly memorized those points, so its probabilities look more honest there than they are. Always estimate and fit calibration on a held-out set the model did not see during training.
+
+::: {.callout-warning}
+Calibrating on the same data you trained the model on is a recipe for self-deception. The model has already partly memorized those points, so its probabilities look more honest there than they are. Always estimate and fit calibration on a held-out set the model did not see during training.
+:::
+
 
 ## Seeing miscalibration: the reliability diagram
 
@@ -61,7 +77,11 @@ The reliability diagram (also called a calibration plot) is the standard picture
 
 A perfectly calibrated model sits on the diagonal. Points below the diagonal mean the model is over-confident in that region (it predicted higher than the truth); points above mean it is under-confident. The vertical gap between a point and the diagonal is the calibration error in that bin.
 
-> **Tip:** Equal-width bins are easy to read but can leave some bins nearly empty when the scores cluster, making those points noisy. Equal-frequency bins give every point the same sample size and steadier estimates, at the cost of uneven $x$ spacing. Always show, or at least know, the count behind each point; a dramatic-looking deviation backed by five observations is mostly noise.
+
+::: {.callout-tip}
+Equal-width bins are easy to read but can leave some bins nearly empty when the scores cluster, making those points noisy. Equal-frequency bins give every point the same sample size and steadier estimates, at the cost of uneven $x$ spacing. Always show, or at least know, the count behind each point; a dramatic-looking deviation backed by five observations is mostly noise.
+:::
+
 
 ## Measuring miscalibration
 
@@ -85,7 +105,11 @@ $$
 
 where $b$ indexes bins, $n_b$ is the count in bin $b$, $\bar p_b$ and $\bar y_b$ are the in-bin mean prediction and observed rate, and $\bar y$ is the overall base rate. The first term is exactly calibration error; the second rewards making confident, well-separated predictions; the third is the variance of the label and cannot be reduced by any model. So a low Brier score is good, but recalibration improves it only through the first term.
 
-> **Note:** Because the Brier score mixes calibration and discrimination, a model can have a worse Brier score than another yet be better calibrated. Use it as a summary, but look at the reliability diagram and a dedicated calibration metric before concluding anything about calibration specifically.
+
+::: {.callout-note}
+Because the Brier score mixes calibration and discrimination, a model can have a worse Brier score than another yet be better calibrated. Use it as a summary, but look at the reliability diagram and a dedicated calibration metric before concluding anything about calibration specifically.
+:::
+
 
 ### Expected calibration error
 
@@ -99,7 +123,11 @@ a weighted average of the absolute gap between observed frequency and mean predi
 
 A close cousin is the maximum calibration error, $\text{MCE} = \max_b |\bar y_b - \bar p_b|$, which reports the worst bin instead of the average and matters when any single badly-wrong region is unacceptable.
 
-> **Warning:** ECE depends on the binning. Too few bins hide local errors; too many bins make each estimate noisy and can inflate ECE through sampling fluctuation alone. Report the bin count, compare models under the *same* binning, and treat small ECE differences as ties. ECE is also not a proper scoring rule, so do not use it as a training loss.
+
+::: {.callout-warning}
+ECE depends on the binning. Too few bins hide local errors; too many bins make each estimate noisy and can inflate ECE through sampling fluctuation alone. Report the bin count, compare models under the *same* binning, and treat small ECE differences as ties. ECE is also not a proper scoring rule, so do not use it as a training loss.
+:::
+
 
 ## Fixing miscalibration
 
@@ -115,7 +143,11 @@ $$
 
 The two parameters $A$ and $B$ are estimated by maximum likelihood on the calibration set, minimizing the logistic loss against the held-out labels. Geometrically it fits a single sigmoid through the reliability points, so it can correct the systematic S-shaped distortion typical of SVMs and boosted trees.
 
-> **When to use this:** Platt scaling shines when the calibration set is small and the miscalibration is smooth and sigmoidal. Because it has only two parameters it is hard to overfit, but for the same reason it cannot fix a wiggly, non-sigmoidal distortion. A subtlety worth knowing: Platt's original paper recommends regularizing the target labels (using $\tfrac{n_+ + 1}{n_+ + 2}$ for positives and $\tfrac{1}{n_- + 2}$ for negatives instead of $1$ and $0$) to avoid overfitting when classes are well separated.
+
+::: {.callout-tip title="When to use this"}
+Platt scaling shines when the calibration set is small and the miscalibration is smooth and sigmoidal. Because it has only two parameters it is hard to overfit, but for the same reason it cannot fix a wiggly, non-sigmoidal distortion. A subtlety worth knowing: Platt's original paper recommends regularizing the target labels (using $\tfrac{n_+ + 1}{n_+ + 2}$ for positives and $\tfrac{1}{n_- + 2}$ for negatives instead of $1$ and $0$) to avoid overfitting when classes are well separated.
+:::
+
 
 ### Isotonic regression
 
@@ -127,7 +159,11 @@ $$
 
 solved exactly and quickly by the pool-adjacent-violators algorithm.^[Pool adjacent violators sweeps through the score-sorted labels, and whenever the running fitted values would decrease, it pools the offending neighbors into a single block set to their average. The result is the unique non-decreasing least-squares fit, computable in linear time.] Because it is non-parametric it can fit any monotone distortion, sigmoidal or not.
 
-> **When to use this:** Reach for isotonic regression when you have a comfortable amount of calibration data (a few thousand points or more) and the distortion is complicated. With small samples it overfits, producing a jagged staircase that calibrates the calibration set but generalizes poorly. It also cannot extrapolate beyond the range of scores it saw, and it can collapse distinct scores into flat steps, which throws away some ranking information within a step.
+
+::: {.callout-tip title="When to use this"}
+Reach for isotonic regression when you have a comfortable amount of calibration data (a few thousand points or more) and the distortion is complicated. With small samples it overfits, producing a jagged staircase that calibrates the calibration set but generalizes poorly. It also cannot extrapolate beyond the range of scores it saw, and it can collapse distinct scores into flat steps, which throws away some ranking information within a step.
+:::
+
 
 ### Temperature scaling
 
@@ -139,7 +175,11 @@ $$
 
 A temperature $T > 1$ softens the distribution (less confident), $T < 1$ sharpens it (more confident), and $T = 1$ leaves the model unchanged. The single parameter $T$ is chosen by minimizing log loss (negative log-likelihood) on the calibration set.
 
-> **Key idea:** Temperature scaling does not change the predicted *class*, only the confidence. Dividing all logits by the same number cannot change which logit is largest, so accuracy and the entire ranking are untouched while the probabilities get rescaled. That is exactly why it is safe to bolt onto a finished network.
+
+::: {.callout-important title="Key idea"}
+Temperature scaling does not change the predicted *class*, only the confidence. Dividing all logits by the same number cannot change which logit is largest, so accuracy and the entire ranking are untouched while the probabilities get rescaled. That is exactly why it is safe to bolt onto a finished network.
+:::
+
 
 For binary problems with a single logit $z$ (log-odds), temperature scaling is $g(z) = \sigma(z / T)$ with $\sigma$ the logistic function, which is the special case of Platt scaling with $B = 0$ and $A = -1/T$. It is the most restrictive of the three methods (one parameter), hardest to overfit, and the right default for deep networks where the miscalibration is a uniform confidence inflation.
 
@@ -299,7 +339,11 @@ legend("topleft", bty = "n",
 
 @fig-probability-calibration-reliability shows the uncalibrated curve sagging below the diagonal across the middle of the range: when the model says 0.8, positives actually appear less often than 80% of the time. After recalibration both curves snap back toward the diagonal, matching the drop in ECE from @tbl-probability-calibration-metrics.
 
-> **Note:** We applied Platt scaling to the model's log-odds and isotonic regression to its probabilities. Either method can take either input; what matters is that the input is a monotone function of the score and that the map is fit on held-out data. Here both happened to work well because the injected distortion is smooth and monotone.
+
+::: {.callout-note}
+We applied Platt scaling to the model's log-odds and isotonic regression to its probabilities. Either method can take either input; what matters is that the input is a monotone function of the score and that the map is fit on held-out data. Here both happened to work well because the injected distortion is smooth and monotone.
+:::
+
 
 ## Practical guidance and pitfalls
 
@@ -317,7 +361,11 @@ Multiclass is harder than it looks. For $K > 2$ classes the natural extension is
 
 Calibration drifts. A model calibrated at deployment can drift as the population shifts. Monitor calibration in production the way you monitor accuracy, and be prepared to refit the calibration map (which is cheap) far more often than you retrain the model (which is expensive).
 
-> **Warning:** Do not report calibration on the same data you used to fit the calibrator, and do not report it on the data you tuned bins against. The clean protocol is three disjoint sets, train, calibrate, test, with all final metrics on the test set, exactly as in the demonstration above.
+
+::: {.callout-warning}
+Do not report calibration on the same data you used to fit the calibrator, and do not report it on the data you tuned bins against. The clean protocol is three disjoint sets, train, calibrate, test, with all final metrics on the test set, exactly as in the demonstration above.
+:::
+
 
 ## Temperature scaling in a deep network (illustrative)
 

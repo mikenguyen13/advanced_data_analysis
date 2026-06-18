@@ -11,7 +11,11 @@ The current standard R interface for this is the `ellmer` package (Wickham, Chen
 
 By the end of the chapter you should be able to read and write `ellmer` code for the four things that come up constantly (basic chat, streaming, structured extraction, and tool calling), reason about what a multi-turn conversation costs before you run it, and build a retry policy that survives rate limits without hammering the server. None of this requires you to understand how the model was trained; it requires you to treat the model as a remote, metered, slightly unpredictable function and to engineer around those three properties.
 
-> **Intuition:** Everywhere else in this book the hard part is fitting the model. Here the model is given. The hard part moves to the plumbing: how you phrase the request, how you pay for it, and how you behave when the network or the rate limiter pushes back.
+
+::: {.callout-tip title="Intuition"}
+Everywhere else in this book the hard part is fitting the model. Here the model is given. The hard part moves to the plumbing: how you phrase the request, how you pay for it, and how you behave when the network or the rate limiter pushes back.
+:::
+
 
 ```{r llm-setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
@@ -22,7 +26,11 @@ set.seed(1301)
 
 A useful mental model: a hosted LLM is a very general, very expensive prediction function that you rent by the token. It is excellent at tasks that are hard to specify with labeled data and easy to specify with instructions: summarization, extraction of structured fields from messy text, classification with no training set, rewriting, code generation, and routing. It is a poor choice when a small supervised model would be cheaper, faster, and more accurate, which is most well-defined tabular problems covered earlier in this book.
 
-> **Key idea:** The decision is not "is the LLM good at this?" but "is it the cheapest tool that is good enough?" An LLM can classify the iris dataset, but a logistic regression does it for a millionth of the cost with no network call. Reach for the LLM when the alternative is expensive labeling or brittle hand-written rules.
+
+::: {.callout-important title="Key idea"}
+The decision is not "is the LLM good at this?" but "is it the cheapest tool that is good enough?" An LLM can classify the iris dataset, but a logistic regression does it for a millionth of the cost with no network call. Reach for the LLM when the alternative is expensive labeling or brittle hand-written rules.
+:::
+
 
 In a data science workflow the LLM call usually sits at one of three places:
 
@@ -72,7 +80,11 @@ Every chat provider shares the same abstraction, and `ellmer` exposes it directl
 
 The provider is stateless across HTTP calls. It does not remember anything. The illusion of memory is created entirely on the client side: to continue a conversation you resend the entire turn history every time, append the new user turn, and the model conditions on the whole list.
 
-> **Note:** "Stateless" is the single most surprising fact about chat APIs for newcomers. The chat window in a web app feels like the model is remembering you, but under the hood every message ships the full transcript again. The server is a pure function of what you send it on each call.
+
+::: {.callout-note}
+"Stateless" is the single most surprising fact about chat APIs for newcomers. The chat window in a web app feels like the model is remembering you, but under the hood every message ships the full transcript again. The server is a pure function of what you send it on each call.
+:::
+
 
 Formally, if the conversation after $k$ turns is the sequence $c_k = (t_1, t_2, \dots, t_k)$, the model samples the next assistant turn from
 
@@ -132,7 +144,11 @@ Having seen how a conversation is assembled, the next question is how the reply 
 
 A non-streaming call blocks until the full reply is generated, then returns it. A streaming call returns tokens as they are produced. The total work and the total cost are identical; streaming only changes when you see the bytes. It matters for interactive interfaces (the user sees text appear instead of waiting) and for long generations where you want to start processing or display early.
 
-> **When to use this:** Stream anything a human watches in real time, so the interface feels responsive instead of frozen. For a batch job that only needs the final string, skip it: non-streaming code is simpler and the bill is the same.
+
+::: {.callout-tip title="When to use this"}
+Stream anything a human watches in real time, so the interface feels responsive instead of frozen. For a batch job that only needs the final string, skip it: non-streaming code is simpler and the bill is the same.
+:::
+
 
 Mechanically the response arrives as server-sent events, each carrying a small chunk of text, until a terminal event closes the stream. `ellmer` exposes this as a generator/callback so you can consume chunks as they arrive.
 
@@ -173,7 +189,11 @@ $$
 
 This quadratic growth is why long-running chats get expensive and why summarizing or truncating old turns is a standard tactic. `ellmer` tracks the per-call usage so you do not have to estimate it.
 
-> **Warning:** A chat that runs for hundreds of turns does not cost a few hundred times one call, it costs on the order of the square of that. If you do not actually need the model to remember earlier turns, make independent one-shot calls instead and the cost goes back to linear.
+
+::: {.callout-warning}
+A chat that runs for hundreds of turns does not cost a few hundred times one call, it costs on the order of the square of that. If you do not actually need the model to remember earlier turns, make independent one-shot calls instead and the cost goes back to linear.
+:::
+
 
 ```{r ellmer-tokens, eval=FALSE}
 chat$chat("Summarize the gist of cross-validation.")
@@ -315,7 +335,11 @@ So far the model has always answered. In production it sometimes will not, and h
 
 Providers cap how fast you can call them, usually as requests per minute (RPM) and tokens per minute (TPM). Exceed either and the server returns HTTP 429 ("too many requests"). Transient failures (500s, timeouts, brief network errors) also happen. A production client must retry, but retrying immediately and in lockstep makes things worse: many clients that all failed at once will all retry at the same instant and overload the server again.^[This synchronized stampede is called the "thundering herd" problem, and it shows up well beyond LLM APIs: any time many clients react to the same signal at the same moment, they can knock over the service they are all waiting on.] The standard fix is exponential backoff with jitter.
 
-> **Intuition:** "Exponential backoff" means wait longer after each failure, doubling the ceiling each time, so a struggling server gets breathing room. "Jitter" means add randomness to the wait, so two clients that failed together do not retry together. The first prevents hammering; the second prevents resynchronizing.
+
+::: {.callout-tip title="Intuition"}
+"Exponential backoff" means wait longer after each failure, doubling the ceiling each time, so a struggling server gets breathing room. "Jitter" means add randomness to the wait, so two clients that failed together do not retry together. The first prevents hammering; the second prevents resynchronizing.
+:::
+
 
 On the $r$-th retry, wait a random time
 
@@ -368,7 +392,11 @@ The features so far return prose. The last two features change what comes back s
 
 Free text is hard to parse. When you want fields, ask for a schema and let the provider constrain the decoding so the reply is valid JSON matching a type you define. `ellmer` calls these type specifications and returns parsed R objects, not raw strings. This is the right way to do extraction tasks: instead of regexing the model's prose, you get a list or data frame directly.
 
-> **Tip:** If you ever find yourself writing a regular expression to pull a number or a category out of the model's sentence, stop and define a schema instead. Schema-constrained output is more reliable and removes a whole class of parsing bugs.
+
+::: {.callout-tip}
+If you ever find yourself writing a regular expression to pull a number or a category out of the model's sentence, stop and define a schema instead. Schema-constrained output is more reliable and removes a whole class of parsing bugs.
+:::
+
 
 ```{r ellmer-structured, eval=FALSE}
 library(ellmer)
@@ -412,7 +440,11 @@ Use structured output whenever a downstream program consumes the result. Use too
 
 The mechanics above are necessary but not sufficient. The following habits separate a demo that works once from a feature you can put in front of real users and real bills. Each one corresponds to a way LLM features tend to fail in practice.
 
-> **Warning:** Treat every model output as untrusted input from the open internet, because that is effectively what it is. Never `eval()` returned R code, never run returned SQL unsandboxed, and never let user-supplied text silently rewrite your system prompt. The two pitfalls below on validation and prompt injection are the ones most likely to cause real damage.
+
+::: {.callout-warning}
+Treat every model output as untrusted input from the open internet, because that is effectively what it is. Never `eval()` returned R code, never run returned SQL unsandboxed, and never let user-supplied text silently rewrite your system prompt. The two pitfalls below on validation and prompt injection are the ones most likely to cause real damage.
+:::
+
 
 - Never hard-code keys. Read them from environment variables (`Sys.getenv("OPENAI_API_KEY")`) or a secrets manager. Keep them out of source control, logs, and saved `.RData`.
 - Pin the model version. Names like "latest" drift over time and break reproducibility. Record the exact model id alongside your results, the same way you would record a package version.

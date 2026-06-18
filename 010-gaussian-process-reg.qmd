@@ -17,7 +17,11 @@ The intuition is worth pausing on before any math. Imagine you have measured an 
 
 In this chapter you will learn what a Gaussian process is and how it differs from an ordinary Gaussian distribution, how the conditioning formula for the multivariate normal gives us a closed-form predictor and prediction variance, why the choice of *covariance function* is the heart of the method, and how to fit a GP in R. The mathematical machinery turns out to be a single, reusable idea: any finite set of values from a GP is jointly multivariate normal, so prediction reduces to conditioning one part of a Gaussian on another.
 
-> **Key idea:** A Gaussian process is a distribution over functions. Prediction with a GP is nothing more than conditioning a (very large) multivariate normal distribution on the values we have observed.
+
+::: {.callout-important title="Key idea"}
+A Gaussian process is a distribution over functions. Prediction with a GP is nothing more than conditioning a (very large) multivariate normal distribution on the values we have observed.
+:::
+
 
 We begin with the model that connects what we observe to the latent function we want to recover.
 
@@ -59,7 +63,11 @@ where $f(x) \sim GP (m(x), c(x,x'))$ is a random process, specifically a Gaussia
 
 These two functions play exactly the role that a mean vector and covariance matrix play for an ordinary multivariate normal, which brings us to a distinction that confuses many people the first time they meet it.
 
-> **Intuition:** The difference between a Gaussian *distribution* and a Gaussian *process* is the difference between a distribution over vectors and a distribution over functions.
+
+::: {.callout-tip title="Intuition"}
+The difference between a Gaussian *distribution* and a Gaussian *process* is the difference between a distribution over vectors and a distribution over functions.
+:::
+
 
 Spelling that out:
 
@@ -77,7 +85,11 @@ Working with an infinite-dimensional object sounds intimidating, but in practice
 
 -   Any finite collection of GP random variables has a joint Gaussian distribution, that is, a multivariate normal distribution.
 
-> **Key idea:** This second fact is the defining property of a Gaussian process. It means every concrete calculation we do is a finite multivariate-normal calculation, even though the process itself is infinite-dimensional.
+
+::: {.callout-important title="Key idea"}
+This second fact is the defining property of a Gaussian process. It means every concrete calculation we do is a finite multivariate-normal calculation, even though the process itself is infinite-dimensional.
+:::
+
 
 So all the work reduces to manipulating ordinary multivariate normals. The next section recalls the one result about multivariate normals that we will use over and over.
 
@@ -121,7 +133,11 @@ $$
 \mathbf{v}_* | \mathbf{v} \sim Gau (\mathbf{\mu}_*+ \mathbf{\Sigma}^T_* \mathbf{\Sigma}^{-1} (\mathbf{v} - \mathbf{\mu}), \mathbf{\Sigma}_{**} - \mathbf{\Sigma}^T_* \mathbf{\Sigma}^{-1} \mathbf{\Sigma}_*)
 $$
 
-> **Note:** Read this formula slowly, because it is the engine of GP prediction. The conditional mean of $\mathbf{v}_*$ is its prior mean $\mathbf{\mu}_*$ plus a correction that pulls it toward the observed $\mathbf{v}$, weighted by how correlated the two blocks are. The conditional variance is the prior variance $\mathbf{\Sigma}_{**}$ *reduced* by an amount reflecting how much the observation explains. Observing $\mathbf{v}$ can only shrink our uncertainty about $\mathbf{v}_*$, never increase it.
+
+::: {.callout-note}
+Read this formula slowly, because it is the engine of GP prediction. The conditional mean of $\mathbf{v}_*$ is its prior mean $\mathbf{\mu}_*$ plus a correction that pulls it toward the observed $\mathbf{v}$, weighted by how correlated the two blocks are. The conditional variance is the prior variance $\mathbf{\Sigma}_{**}$ *reduced* by an amount reflecting how much the observation explains. Observing $\mathbf{v}$ can only shrink our uncertainty about $\mathbf{v}_*$, never increase it.
+:::
+
 
 With this single tool, GP prediction becomes a matter of identifying which quantities play the roles of $\mathbf{v}$ (the data) and $\mathbf{v}_*$ (the value we want to predict).
 
@@ -240,11 +256,19 @@ $$
 k(x_0) = \mu_0 - \mathbf{c}'_0 \mathbf{C}^{-1}_z \mathbf{\mu}
 $$
 
-> **Intuition:** The weights $\mathbf{w}_0$ form an *effective kernel*, just as in spline regression (@sec-spline) and local regression (@sec-local). The prediction at $x_0$ is a weighted average of the observations, where each observation's weight is determined by how covariant it is with the target (through $\mathbf{c}_0$) after accounting for how the observations covary with each other (through $\mathbf{C}_z^{-1}$). Points that are "close" to $x_0$, in the sense the covariance function defines, get more say.
+
+::: {.callout-tip title="Intuition"}
+The weights $\mathbf{w}_0$ form an *effective kernel*, just as in spline regression (@sec-spline) and local regression (@sec-local). The prediction at $x_0$ is a weighted average of the observations, where each observation's weight is determined by how covariant it is with the target (through $\mathbf{c}_0$) after accounting for how the observations covary with each other (through $\mathbf{C}_z^{-1}$). Points that are "close" to $x_0$, in the sense the covariance function defines, get more say.
+:::
+
 
 These formulas extend directly to multiple prediction locations, with each location getting its own vector of weights.
 
-> **Warning:** The predictor requires the inverse $\mathbf{C}_z^{-1}$, an $n \times n$ matrix inversion that costs on the order of $n^3$ operations. With many sample locations this becomes the main computational bottleneck of GP regression, and a great deal of research is devoted to approximating it.
+
+::: {.callout-warning}
+The predictor requires the inverse $\mathbf{C}_z^{-1}$, an $n \times n$ matrix inversion that costs on the order of $n^3$ operations. With many sample locations this becomes the main computational bottleneck of GP regression, and a great deal of research is devoted to approximating it.
+:::
+
 
 One special case is worth noting. When there are no measurement errors (so $z_i = y_i$), we simply replace $\mathbf{C}_z$ with $\mathbf{C}_y$ throughout. In that case the prediction at an observed location returns the observation exactly, with zero variance: the GP interpolates the data.
 
@@ -263,7 +287,11 @@ Not just any function will do. Two requirements shape the choice:
 
 -   Covariance functions should be realistic, encoding the dependence structure we actually believe is present. This can be hard, but a simple and often sufficient assumption is that "nearby" observations (nearby in the same sense as kernel smoothing, @sec-kernel) are more dependent than distant ones.
 
-> **Tip:** When in doubt, start from the principle that closeness in input space implies similarity in output. Almost every standard covariance function is just a different mathematical way of encoding that one idea.
+
+::: {.callout-tip}
+When in doubt, start from the principle that closeness in input space implies similarity in output. Almost every standard covariance function is just a different mathematical way of encoding that one idea.
+:::
+
 
 To make estimation feasible we usually add a stationarity assumption. A process that is second-order (weakly) stationary has a constant expectation and a covariance that depends only on the *separation* between locations, $h = x - x'$, rather than on the locations themselves:
 
@@ -300,7 +328,11 @@ Once a family is chosen, the parameters of the covariance function (and of the m
 1.  From a frequentist perspective, estimate the parameters with REML or MLE, exactly as in [Linear Mixed Models](https://bookdown.org/mike/data_analysis/linear-mixed-models.html), and predict the random process with BLUP.
 2.  From a Bayesian perspective, treat the GP on $f(x)$ as a prior distribution and update it with the observations $\mathbf{z}$ to get a posterior.
 
-> **Warning:** Whichever route you take, large numbers of data locations make estimation expensive, because of the same high-dimensional covariance matrices $\mathbf{C}_z, \mathbf{C}_y$ (and their inverses) that complicate prediction. Scaling GPs to large data sets is an active research area.
+
+::: {.callout-warning}
+Whichever route you take, large numbers of data locations make estimation expensive, because of the same high-dimensional covariance matrices $\mathbf{C}_z, \mathbf{C}_y$ (and their inverses) that complicate prediction. Scaling GPs to large data sets is an active research area.
+:::
+
 
 A few connections and special cases are worth keeping in mind:
 
@@ -310,7 +342,11 @@ A few connections and special cases are worth keeping in mind:
 
 -   We can also allow non-Gaussian observations conditioned on the GP, exactly as in a [GLMM](https://bookdown.org/mike/data_analysis/nonlinear-and-generalized-linear-mixed-models.html).
 
-> **When to use this:** Reach for GP regression when you want smooth nonparametric predictions *with* honest uncertainty estimates, when your data set is small to moderate in size (so the $n^3$ cost is bearable), and when you have a sensible notion of which inputs should behave similarly. The design and analysis of computer experiments, where each "observation" is an expensive simulation run, is a classic fit.
+
+::: {.callout-tip title="When to use this"}
+Reach for GP regression when you want smooth nonparametric predictions *with* honest uncertainty estimates, when your data set is small to moderate in size (so the $n^3$ cost is bearable), and when you have a sensible notion of which inputs should behave similarly. The design and analysis of computer experiments, where each "observation" is an expensive simulation run, is a classic fit.
+:::
+
 
 With the theory assembled, we turn to a worked example.
 

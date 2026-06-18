@@ -9,7 +9,11 @@ In the previous reinforcement learning chapters (@sec-rl-foundations, @sec-td-le
 
 That is the idea behind policy gradient methods. We write the policy as a parameterized function, $\pi_\theta(a \mid s)$, with tunable parameters $\theta$ (the weights of a small model or a neural network). We define a scalar objective: the expected return when the agent follows that policy. Then we do what the rest of this book does everywhere else, climb the objective by gradient ascent. The twist is that the thing we are differentiating involves an expectation over trajectories that the policy itself generates, so the gradient is not a textbook derivative of a fixed loss. The central result of this chapter, the policy gradient theorem, tells us how to compute that gradient from sampled experience.
 
-> **Intuition:** A policy gradient method does not ask "which action is best?" It asks "in which direction should I shift my action probabilities so that, on average, returns go up?" If an action led to a good outcome, make it more likely; if it led to a bad outcome, make it less likely. The math below is a precise, unbiased way of carrying out that simple instinct.
+
+::: {.callout-tip title="Intuition"}
+A policy gradient method does not ask "which action is best?" It asks "in which direction should I shift my action probabilities so that, on average, returns go up?" If an action led to a good outcome, make it more likely; if it led to a bad outcome, make it less likely. The math below is a precise, unbiased way of carrying out that simple instinct.
+:::
+
 
 By the end of the chapter you will understand parameterized policies, the policy gradient theorem and its score-function derivation, the REINFORCE algorithm, why REINFORCE is noisy and how a baseline fixes it, the advantage function, the actor-critic family (with A2C as the concrete case), and the trust-region ideas behind TRPO and PPO that make these methods stable enough for production. A fully runnable base-R demonstration trains REINFORCE on a softmax-policy bandit and shows the average return climbing over training. This chapter sits naturally after the value-based reinforcement learning material and directly underpins the reinforcement learning from human feedback (RLHF) stage used to align large language models (@sec-llms), which is built on PPO.
 
@@ -23,7 +27,11 @@ The second is stochastic optimal policies. In games with hidden information, or 
 
 The third is smoothness. Value-based methods can change the policy abruptly: a tiny change in estimated values can flip the $\arg\max$ and swing behavior from one action to another. Policy gradients move the action probabilities continuously, which often makes learning more stable, though at the cost of higher variance in the gradient estimate.
 
-> **When to use this:** Reach for policy gradients when actions are continuous, when the optimal policy is stochastic, or when you want smooth policy updates and are willing to accept noisier gradients. If actions are few and discrete and a deterministic greedy policy is fine, value-based methods are usually more sample efficient. Actor-critic methods, introduced later, try to capture the benefits of both.
+
+::: {.callout-tip title="When to use this"}
+Reach for policy gradients when actions are continuous, when the optimal policy is stochastic, or when you want smooth policy updates and are willing to accept noisier gradients. If actions are few and discrete and a deterministic greedy policy is fine, value-based methods are usually more sample efficient. Actor-critic methods, introduced later, try to capture the benefits of both.
+:::
+
 
 ### Parameterized policies
 
@@ -104,7 +112,11 @@ $$
 \nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta}\!\left[ \left( \sum_{t \ge 0} \nabla_\theta \log \pi_\theta(a_t \mid s_t) \right) R(\tau) \right].
 $$
 
-> **Key idea:** The policy gradient is an average of score functions weighted by returns. Each action's log-probability is pushed up in proportion to the return of the trajectory it was part of. Good trajectories raise the probability of every action they contain; bad trajectories lower it. No model of the environment is required, because the dynamics canceled out of the gradient.
+
+::: {.callout-important title="Key idea"}
+The policy gradient is an average of score functions weighted by returns. Each action's log-probability is pushed up in proportion to the return of the trajectory it was part of. Good trajectories raise the probability of every action they contain; bad trajectories lower it. No model of the environment is required, because the dynamics canceled out of the gradient.
+:::
+
 
 ### Causality: only future rewards matter
 
@@ -127,7 +139,11 @@ $$
 
 with learning rate $\alpha > 0$. The algorithm is appealingly simple and makes no assumptions about the environment beyond being able to sample from it.
 
-> **Warning:** REINFORCE is unbiased but high variance. Because $G_t$ is a Monte Carlo estimate over an entire (random) future, a single lucky or unlucky episode can produce a large, misleading gradient. In practice plain REINFORCE learns slowly and erratically, which is the entire motivation for the variance-reduction techniques in the next section.
+
+::: {.callout-warning}
+REINFORCE is unbiased but high variance. Because $G_t$ is a Monte Carlo estimate over an entire (random) future, a single lucky or unlucky episode can produce a large, misleading gradient. In practice plain REINFORCE learns slowly and erratically, which is the entire motivation for the variance-reduction techniques in the next section.
+:::
+
 
 ## Variance reduction with a baseline
 
@@ -148,7 +164,11 @@ $$
 
 Because $b(s_t)$ does not depend on $a_t$, its contribution is $b(s_t)$ times this zero expectation, so the estimator stays unbiased for any choice of baseline. What the baseline does change is the variance. The variance-minimizing baseline is close to the expected return from that state, which is exactly the state value $V^\pi(s_t)$. Using the value as the baseline makes the weight $G_t - V^\pi(s_t)$ measure how much better the actual outcome was than what the policy expected on average.
 
-> **Intuition:** Without a baseline, an action that yields a return of $+100$ in a state where every action yields about $+100$ still gets its probability pushed up hard, even though it was not special. The baseline recenters the signal: only the part of the return that exceeds the state's typical value carries information about whether the action was better or worse than usual. Subtracting the mean does not bias the direction of the push, it just removes a large, uninformative common component and shrinks the noise.
+
+::: {.callout-tip title="Intuition"}
+Without a baseline, an action that yields a return of $+100$ in a state where every action yields about $+100$ still gets its probability pushed up hard, even though it was not special. The baseline recenters the signal: only the part of the return that exceeds the state's typical value carries information about whether the action was better or worse than usual. Subtracting the mean does not bias the direction of the push, it just removes a large, uninformative common component and shrinks the noise.
+:::
+
 
 ### The advantage function
 
@@ -185,7 +205,11 @@ w \leftarrow w + \alpha_w\, \delta_t\, \nabla_w V_w(s_t),
 \theta \leftarrow \theta + \alpha_\theta\, \delta_t\, \nabla_\theta \log \pi_\theta(a_t \mid s_t).
 $$
 
-> **Key idea:** The critic trades variance for bias. Monte Carlo returns are unbiased but noisy; bootstrapped TD targets are biased (the critic is imperfect) but far less noisy. Actor-critic methods sit on the bias-variance spectrum between pure REINFORCE (all Monte Carlo) and pure dynamic programming (all bootstrap), and that middle ground is usually where learning is fastest.
+
+::: {.callout-important title="Key idea"}
+The critic trades variance for bias. Monte Carlo returns are unbiased but noisy; bootstrapped TD targets are biased (the critic is imperfect) but far less noisy. Actor-critic methods sit on the bias-variance spectrum between pure REINFORCE (all Monte Carlo) and pure dynamic programming (all bootstrap), and that middle ground is usually where learning is fastest.
+:::
+
 
 ### A2C
 
@@ -236,7 +260,11 @@ $$
 
 where $\hat{A}_t$ is an estimated advantage and $\epsilon$ (typically around $0.1$ to $0.2$) sets the clip width. The clip removes any incentive to push the probability ratio far beyond $1 \pm \epsilon$, so even if the raw gradient wants a huge step, the objective flattens and the update stays modest.
 
-> **Note:** PPO is the workhorse behind reinforcement learning from human feedback (RLHF) for large language models. In that setting the policy is the language model, the action is the next token, and the reward comes from a learned model of human preference. The clipping in PPO is what keeps the fine-tuned model from drifting catastrophically far from the pretrained one in a single update. The chapter on large language models (@sec-llms) builds directly on these ideas.
+
+::: {.callout-note}
+PPO is the workhorse behind reinforcement learning from human feedback (RLHF) for large language models. In that setting the policy is the language model, the action is the next token, and the reward comes from a learned model of human preference. The clipping in PPO is what keeps the fine-tuned model from drifting catastrophically far from the pretrained one in a single update. The chapter on large language models (@sec-llms) builds directly on these ideas.
+:::
+
 
 ## A runnable REINFORCE demo in base R
 
@@ -348,7 +376,11 @@ par(op)
 
 The whole story of policy gradients is on this one figure. The score function pushed probability toward actions that paid more than the baseline and away from actions that paid less, and over two thousand small steps that local rule found the best action without ever computing a value function or taking a maximum over actions.
 
-> **Note:** The baseline matters even in this trivial problem. With rewards centered near $+1$, an estimator without a baseline would push up the probability of whatever action it just sampled simply because the raw reward is positive, regardless of whether that action was actually better than the alternatives. Subtracting the running-mean baseline turns the signal into "better or worse than typical," which is what makes the policy discriminate among actions rather than inflating all of them.
+
+::: {.callout-note}
+The baseline matters even in this trivial problem. With rewards centered near $+1$, an estimator without a baseline would push up the probability of whatever action it just sampled simply because the raw reward is positive, regardless of whether that action was actually better than the alternatives. Subtracting the running-mean baseline turns the signal into "better or worse than typical," which is what makes the policy discriminate among actions rather than inflating all of them.
+:::
+
 
 ## Deep-network policies
 
@@ -419,7 +451,11 @@ Evaluate without exploration noise. Training return includes the randomness of t
 
 Reach for PPO when stability matters. For most practical discrete or continuous control problems, and for RLHF, PPO is the sensible default: it captures the variance reduction of actor-critic and the stability of trust regions with a simple, robust objective. Plain REINFORCE and A2C are worth understanding and are fine on small problems, but PPO is what tends to survive contact with a real task.
 
-> **Tip:** Seed several runs and compare. Variance across random seeds is large for policy gradient methods, large enough that a single run can mislead you about whether a change helped. Reporting the spread across seeds, not a single curve, is standard practice for a reason.
+
+::: {.callout-tip}
+Seed several runs and compare. Variance across random seeds is large for policy gradient methods, large enough that a single run can mislead you about whether a change helped. Reporting the spread across seeds, not a single curve, is standard practice for a reason.
+:::
+
 
 In one line: policy gradient methods optimize a parameterized policy directly by ascending the expected return, the policy gradient theorem makes that gradient an estimable expectation of score functions weighted by returns (or advantages), baselines and critics cut its variance, and trust-region ideas (PPO) keep the updates safe enough to scale all the way up to aligning large language models.
 

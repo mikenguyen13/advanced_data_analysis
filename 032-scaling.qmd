@@ -9,7 +9,11 @@ Imagine you are handed a table of distances between thirty cities, but no map. C
 
 This chapter introduces two families of methods that share that goal. The first, *multidimensional scaling* (MDS), is a classical, mostly linear approach: it tries to preserve all pairwise distances at once. The second, *nonlinear dimension reduction* (also called *manifold learning*), assumes the data actually live on a curved, lower-dimensional surface sitting inside the high-dimensional space, and tries to "unroll" that surface. By the end you will know what each method optimizes, how the pieces fit together, and when one is preferable to another. These methods complement the linear techniques such as PCA covered in the dimension reduction chapter (@sec-dimension-reduction); here we relax the assumption that the structure we want is a flat subspace.
 
-> **Key idea:** All the methods in this chapter take a notion of closeness between observations and find a low-dimensional placement of points that keeps close things close. They differ in *which* closeness they insist on preserving (global vs. local) and in *how flexible* the placement is allowed to be (linear vs. nonlinear).
+
+::: {.callout-important title="Key idea"}
+All the methods in this chapter take a notion of closeness between observations and find a low-dimensional placement of points that keeps close things close. They differ in *which* closeness they insist on preserving (global vs. local) and in *how flexible* the placement is allowed to be (linear vs. nonlinear).
+:::
+
 
 ## Multidimensional Scaling
 
@@ -23,7 +27,11 @@ Let us set up notation. Consider observations $x_1, \dots, x_n \in R^p$. Let $d_
 
 So, in multidimensional scaling (MDS), we seek values $z_i, \dots, z_n \in R^k$ ($k <p$) to minimize a stress function.^[The *stress function* is just a name for the total mismatch between the original distances and the distances in the reduced space. Minimizing stress means making that mismatch as small as possible. Different choices of stress function give the different flavors of MDS below.]
 
-> **Intuition:** Think of the $z_i$ as pins you are free to slide around on a corkboard, and the $d_{ii'}$ as target distances printed on a list. The stress function scores how badly your current pin layout violates the target list. MDS slides the pins until the score is as low as it can go.
+
+::: {.callout-tip title="Intuition"}
+Think of the $z_i$ as pins you are free to slide around on a corkboard, and the $d_{ii'}$ as target distances printed on a list. The stress function scores how badly your current pin layout violates the target list. MDS slides the pins until the score is as low as it can go.
+:::
+
 
 ### Metric Scalings
 
@@ -53,7 +61,11 @@ $$
 
 The only change from Kruskal-Shepard is the $d_{ii'}$ in the denominator, but it matters: dividing by the original distance makes a fixed error count for more when the pair is close together. As a result the Sammon mapping preserves smaller pairwise distances more-so than larger distances.
 
-> **When to use this:** Reach for the Sammon mapping over plain least squares when the fine-grained structure among nearby points matters more to you than getting the gross, large-scale distances exactly right.
+
+::: {.callout-tip title="When to use this"}
+Reach for the Sammon mapping over plain least squares when the fine-grained structure among nearby points matters more to you than getting the gross, large-scale distances exactly right.
+:::
+
 
 <br>
 
@@ -67,7 +79,11 @@ $$
 
 Unlike the previous two, this can be solved explicitly in terms of an eigen-decomposition, so no iterative search is needed. In fact, in this context one can show an equivalence between MDS and PCA.^[When the distances are Euclidean and the similarity is the centered inner product, classical scaling recovers exactly the same low-dimensional coordinates as principal component analysis. So classical MDS is, in a precise sense, PCA viewed through the lens of pairwise relationships.]
 
-> **Note:** This equivalence is reassuring but also a limitation. Because classical scaling is PCA in disguise, it can only capture *linear* structure. The nonlinear methods later in the chapter exist precisely to go beyond what an eigen-decomposition of a centered similarity matrix can see.
+
+::: {.callout-note}
+This equivalence is reassuring but also a limitation. Because classical scaling is PCA in disguise, it can only capture *linear* structure. The nonlinear methods later in the chapter exist precisely to go beyond what an eigen-decomposition of a centered similarity matrix can see.
+:::
+
 
 ### Nonmetric scalings
 
@@ -83,7 +99,11 @@ for some arbitrary increasing function $\theta$. The function $\theta$ absorbs a
 
 One typically doesn't know $\theta$, so we iterate: fix $\theta$ and solve for the $z$'s, then fix the $z$'s and solve for $\theta$, assuming some form for $\theta$ (e.g., isotonic regression).^[Isotonic regression fits the best *monotone* (non-decreasing) function to data, which is exactly what we need since $\theta$ is only required to be increasing. Alternating between the two subproblems is a coordinate-descent strategy that steadily lowers the stress.]
 
-> **Tip:** As with PCA, you usually do not know the target dimension $k$ in advance. In general, we don't know the dimension $k$ to which we want to reduce, so we can fit different solutions and consider the value of the optimized stress function and find the "elbow" as in PCA: the dimension past which adding another axis barely reduces stress.
+
+::: {.callout-tip}
+As with PCA, you usually do not know the target dimension $k$ in advance. In general, we don't know the dimension $k$ to which we want to reduce, so we can fit different solutions and consider the value of the optimized stress function and find the "elbow" as in PCA: the dimension past which adding another axis barely reduces stress.
+:::
+
 
 ## Nonlinear Multidimensional Scaling
 
@@ -91,7 +111,11 @@ So far the methods have been essentially linear, and classical scaling is litera
 
 The motivation is a change of assumption. There is sometimes an assumption that the real surface of interest is not in $p$ dimensional space, but it lies on some $d$-dimensional manifold, where $d <<p$. A manifold is a curved surface that looks flat if you zoom in close enough, like the two-dimensional surface of the Earth sitting inside three-dimensional space.
 
-> **Intuition:** Picture a sheet of paper rolled into a Swiss roll. The data are two-dimensional (you could unroll the paper flat), but they sit in three dimensions in a curved way. Straight-line (Euclidean) distance through the roll is misleading: two points on opposite layers are close as the crow flies but far apart along the paper. Nonlinear methods try to measure and preserve distance *along the sheet*, then flatten it.
+
+::: {.callout-tip title="Intuition"}
+Picture a sheet of paper rolled into a Swiss roll. The data are two-dimensional (you could unroll the paper flat), but they sit in three dimensions in a curved way. Straight-line (Euclidean) distance through the roll is misleading: two points on opposite layers are close as the crow flies but far apart along the paper. Nonlinear methods try to measure and preserve distance *along the sheet*, then flatten it.
+:::
+
 
 This manifold assumption is often true in physical (dynamical) systems, especially when the signal-to-noise ratio is high. Sometimes these nonlinear dimension reduction methods are known as manifold mapping methods. There are many such methods (e.g., kernel PCA) with more being proposed all the time. The four below are among the most influential, and they form a natural progression: ISOMAP fixes the distance measure globally, Local MDS and LLE focus on local structure, and Laplacian Eigenmaps ties the whole idea back to graph theory.
 
@@ -107,7 +131,11 @@ ISOMAP estimates that along-the-surface distance with a graph, then hands the re
 
 -   These distances are then collected for all pairs of points and MDS with the classical scaling stress function is applied to the graph distances to get the low-dimensional mapping.
 
-> **Key idea:** ISOMAP is classical MDS with one substitution: replace Euclidean pairwise distances by graph-based geodesic distances. That single change lets a linear method recover nonlinear structure.
+
+::: {.callout-important title="Key idea"}
+ISOMAP is classical MDS with one substitution: replace Euclidean pairwise distances by graph-based geodesic distances. That single change lets a linear method recover nonlinear structure.
+:::
+
 
 <br>
 
@@ -131,7 +159,11 @@ $$
 
 where $\tau = 2wD$. Read in two halves: the first term preserves local structure and the second encourages pairs that are non-neighbors to be further apart. The trade-off is governed by two knobs. One implements this by fixing the number of neighbors, $K$, and tuning parameter $\tau$.
 
-> **Warning:** The repulsion term (the one multiplied by $\tau$) is what stops the embedding from collapsing all points onto each other, but set $\tau$ too high and unrelated clusters get pushed apart so aggressively that the local geometry you cared about gets distorted. $K$ and $\tau$ usually need to be tuned together.
+
+::: {.callout-warning}
+The repulsion term (the one multiplied by $\tau$) is what stops the embedding from collapsing all points onto each other, but set $\tau$ too high and unrelated clusters get pushed apart so aggressively that the local geometry you cared about gets distorted. $K$ and $\tau$ usually need to be tuned together.
+:::
+
 
 <br>
 
@@ -176,7 +208,11 @@ The last method is close in spirit to [Local Linear Embedding] but is built expl
 
 Like the others, LEs make use of a graph that incorporates neighborhood information from the original data. The distinctive ingredient is the *graph Laplacian*: LE then considers the Laplacian of the graph to preserve local structure in lower dimensions, and in this way it approximates the geometry of the true manifold on which the data arises.
 
-> **Intuition:** The graph Laplacian measures how much a value assigned to each node disagrees with its neighbors' values, summed over the graph. Finding low-dimensional coordinates that make this disagreement small is exactly asking that connected (nearby) points receive similar coordinates, which is the local-preservation goal restated in the language of graphs.
+
+::: {.callout-tip title="Intuition"}
+The graph Laplacian measures how much a value assigned to each node disagrees with its neighbors' values, summed over the graph. Finding low-dimensional coordinates that make this disagreement small is exactly asking that connected (nearby) points receive similar coordinates, which is the local-preservation goal restated in the language of graphs.
+:::
+
 
 Suppose we have $n$ $p$-dimensional feature vectors, $\mathbf{x}_{\cal{l}}: \cal{l} = 1, \dots, n$. The procedure constructs a weighted graph with $n$ nodes, one for each vector, and a set of edges connecting neighboring points. The embedding map is then found by computing eigenvectors of the so-called Laplacian. The algorithm, given heuristically below following @belkin2003, has three steps:
 
@@ -213,7 +249,11 @@ $$
 \mathbf{x}_i \to (\mathbf{f}_1 (i), \dots, \mathbf{f}_m(i))
 $$
 
-> **Note:** We start at $\lambda_1$, not $\lambda_0$. The smallest eigenvalue $\lambda_0 = 0$ corresponds to a constant eigenvector that assigns every point the same coordinate, which carries no information, so it is discarded.
+
+::: {.callout-note}
+We start at $\lambda_1$, not $\lambda_0$. The smallest eigenvalue $\lambda_0 = 0$ corresponds to a constant eigenvector that assigns every point the same coordinate, which carries no information, so it is discarded.
+:::
+
 
 To summarize what LE buys us: one can show through spectral graph theory that these LE embeddings preserve local info in an optimal way (i.e., they are the best locality-preserving mapping). One justification of this procedure is that the Laplacian of a graph is analogous to the Laplace-Beltrami operator on manifolds in differential geometry (i.e., it operates as the divergence of a gradient). It is also the case that the Laplace-Beltrami operator on differentiable functions on a manifold is closely related to the heat flow, which is why we consider the "heat kernel" weights. There is a relatively new area of statistical learning called manifold learning that deals with these issues.
 
@@ -223,4 +263,8 @@ This is only a sampler. There are many different approaches to nonlinear dimensi
 
 We close with one practical caveat that applies to every nonlinear method in this chapter. One cannot "back project" to the original space with nonlinear dimension reduction methods: if you are given a $z$ above, you cannot say what the associated features in $p$-dimensional space are (i.e., you cannot recover $x$ directly). Linear methods such as PCA *can* do this, because their mapping is an invertible linear transformation.
 
-> **Warning:** This irreversibility matters in practice. Nonlinear embeddings are excellent for visualization and as inputs to a downstream model, but if your application needs to map a reduced point back to interpretable original features (or to embed brand-new observations not seen during fitting), a linear method like PCA, or a method with an explicit out-of-sample extension, is the safer choice.
+
+::: {.callout-warning}
+This irreversibility matters in practice. Nonlinear embeddings are excellent for visualization and as inputs to a downstream model, but if your application needs to map a reduced point back to interpretable original features (or to embed brand-new observations not seen during fitting), a linear method like PCA, or a method with an explicit out-of-sample extension, is the safer choice.
+:::
+

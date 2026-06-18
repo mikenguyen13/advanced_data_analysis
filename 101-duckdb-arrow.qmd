@@ -11,7 +11,11 @@ The point is not to learn a new query language for its own sake. It is to unders
 
 By the end of the chapter you should be able to explain, in one sentence and with a back-of-envelope formula, why columnar storage wins for analytics; read the idiomatic R code for both DuckDB and Arrow; and decide when this single-machine stack is the right tool versus when to reach for a transactional database or a cluster.
 
-> **Intuition:** Think of a spreadsheet stored as a stack of index cards, one card per row, versus the same data stored as a few long ribbons, one ribbon per column. To average a single column, the ribbon version lets you read one ribbon and ignore the rest; the index-card version forces you to handle every card and step over all the other fields on it. That contrast, repeated billions of times, is the whole story of this chapter.
+
+::: {.callout-tip title="Intuition"}
+Think of a spreadsheet stored as a stack of index cards, one card per row, versus the same data stored as a few long ribbons, one ribbon per column. To average a single column, the ribbon version lets you read one ribbon and ignore the rest; the index-card version forces you to handle every card and step over all the other fields on it. That contrast, repeated billions of times, is the whole story of this chapter.
+:::
+
 
 ## Where This Fits in a Modern ML Workflow
 
@@ -69,7 +73,11 @@ $$
 
 is the first-order speedup from columnar storage on a wide-table aggregation. Analytical queries usually have $k \ll p$ (you select a handful of columns from a table with dozens or hundreds), so the gain is large.
 
-> **Key idea:** For a scan that touches $k$ of $p$ columns, a column store moves roughly $p/k$ times fewer bytes than a row store. Read 5 columns of a 60-column table and you have already skipped about 90% of the data before any arithmetic happens.
+
+::: {.callout-important title="Key idea"}
+For a scan that touches $k$ of $p$ columns, a column store moves roughly $p/k$ times fewer bytes than a row store. Read 5 columns of a 60-column table and you have already skipped about 90% of the data before any arithmetic happens.
+:::
+
 
 Two further effects compound this. First, compression: a column holds values of one type with low local entropy (repeated categories, slowly changing numbers), so run-length, dictionary, and delta encodings shrink it far more than a mixed row. Second, vectorization: a contiguous typed array of length $n$ lets the CPU apply one operation across many values using SIMD instructions and tight cache-friendly loops, with cost roughly
 
@@ -99,7 +107,11 @@ Both the data-volume ratio $p/k$ and the per-value constant ratio $\beta/\alpha$
 
 The takeaway is not that columns are universally better. They are better for the read-heavy, scan-heavy, few-columns-of-many pattern that defines analytics and feature engineering, and worse for high-rate single-row transactions.
 
-> **Note:** OLTP (online transaction processing) and OLAP (online analytical processing) name the two ends of this trade-off. OLTP is the small, frequent reads and writes of an application database (record an order, look up a user). OLAP is the large scans and aggregations of analytics (average revenue by region over three years). Row stores serve the former, column stores the latter.
+
+::: {.callout-note}
+OLTP (online transaction processing) and OLAP (online analytical processing) name the two ends of this trade-off. OLTP is the small, frequent reads and writes of an application database (record an order, look up a user). OLAP is the large scans and aggregations of analytics (average revenue by region over three years). Row stores serve the former, column stores the latter.
+:::
+
 
 With the mechanism settled in the abstract, the next two sections introduce the concrete tools that implement it: DuckDB as the execution engine, and Arrow as the shared format that lets pieces of the pipeline exchange data for free.
 
@@ -107,7 +119,11 @@ With the mechanism settled in the abstract, the next two sections introduce the 
 
 DuckDB is a columnar OLAP database that runs in process, meaning it executes inside your R session as a linked library rather than as a separate server you connect to over a socket. SQLite occupies the same niche for transactional, row-oriented workloads; DuckDB is the analytical counterpart. There is no server to install, no port, no authentication, and no network hop. You call a function, the query runs on your machine's cores against your machine's memory and disk, and results come back as an R object.
 
-> **Intuition:** DuckDB is to analytics what SQLite is to application data: a whole database that lives inside your program as a library, with no server to run. You get SQL and a query optimizer, but the "database" is just your R process.
+
+::: {.callout-tip title="Intuition"}
+DuckDB is to analytics what SQLite is to application data: a whole database that lives inside your program as a library, with no server to run. You get SQL and a query optimizer, but the "database" is just your R process.
+:::
+
 
 Three properties make it relevant here:
 
@@ -143,7 +159,11 @@ dbDisconnect(con, shutdown = TRUE)
 
 If SQL is not your preference, DuckDB also exposes a dplyr backend, so you can write the same pipeline in tidyverse syntax and let it compile to SQL. Computation stays in the engine until you call `collect()`, which is the only point where data crosses into an R `data.frame`.
 
-> **Tip:** The lazy pipeline below does no work as you build it. Each verb adds to a query plan; nothing reads from disk until `collect()`. That is what lets you describe a transformation over a terabyte and still pay only for the small result.
+
+::: {.callout-tip}
+The lazy pipeline below does no work as you build it. Each verb adds to a query plan; nothing reads from disk until `collect()`. That is what lets you describe a transformation over a terabyte and still pay only for the small result.
+:::
+
 
 ```{r duckdb-dplyr, eval=FALSE}
 library(duckdb)
@@ -167,7 +187,11 @@ model_table <- sales |>
 
 Where DuckDB is an engine, Arrow is a format: a precise specification for how a columnar table is laid out in RAM. An Arrow column is a typed, contiguous buffer of values plus a validity bitmap^[A validity bitmap is one bit per value recording whether that value is present or null, stored separately from the values themselves. It is how Arrow represents missing data without disturbing the contiguous run of values.] marking nulls. Because the layout is fixed and language-independent, any tool that speaks Arrow agrees on the exact bytes.
 
-> **Note:** Keep the distinction clear. Parquet is a columnar format on disk; Arrow is a columnar format in memory; DuckDB is an engine that reads both and runs queries. They are designed to fit together, not to compete.
+
+::: {.callout-note}
+Keep the distinction clear. Parquet is a columnar format on disk; Arrow is a columnar format in memory; DuckDB is an engine that reads both and runs queries. They are designed to fit together, not to compete.
+:::
+
 
 The payoff is zero-copy data sharing. If R and DuckDB (or Python, or a Parquet reader) all represent a table in the Arrow format, handing the table from one to another means passing a pointer to the existing buffers, not serializing and re-parsing the data. Define the cost of moving a table of $S$ bytes between two systems as
 
@@ -183,7 +207,11 @@ $$
 
 because only a handle (pointer, length, schema) changes hands regardless of how large $S$ is. For a pipeline that passes a billion-row table from the storage layer to the compute layer, removing an $O(S)$ copy at each boundary is the difference between feasible and not.
 
-> **Key idea:** Zero-copy means handing over an address, not a duplicate. When R and DuckDB both hold the data in Arrow format, passing a table between them costs $O(1)$ instead of $O(S)$, no matter how big the table is.
+
+::: {.callout-important title="Key idea"}
+Zero-copy means handing over an address, not a duplicate. When R and DuckDB both hold the data in Arrow format, passing a table between them costs $O(1)$ instead of $O(S)$, no matter how big the table is.
+:::
+
 
 Arrow in R is most useful for two jobs:
 
@@ -234,7 +262,11 @@ The mechanism behind columnar speedups is concrete enough to measure without any
 
 The task is a group-by mean of one numeric column out of several, exactly the $k \ll p$ analytical pattern. The columnar version operates on whole typed vectors; the row version walks records one at a time and pulls every field of each record into the interpreter.
 
-> **Note:** This is a teaching model, not a benchmark of DuckDB itself. We are isolating one effect, layout and traversal, in plain R so the cause is visible. A real columnar engine adds compression and SIMD on top, which is why its advantage at scale dwarfs what we see here.
+
+::: {.callout-note}
+This is a teaching model, not a benchmark of DuckDB itself. We are isolating one effect, layout and traversal, in plain R so the cause is visible. A real columnar engine adds compression and SIMD on top, which is why its advantage at scale dwarfs what we see here.
+:::
+
 
 ```{r row-vs-col-demo}
 set.seed(1)
@@ -328,7 +360,11 @@ $$
 
 not $N \cdot p \cdot b$. With $f = 0.1$, $k/p = 0.1$, you read on the order of $1\%$ of the raw bytes. That is the difference between a query that runs on a laptop and one that does not.
 
-> **Warning:** These savings depend on the file format. Column projection and pushdown rely on Parquet's columnar layout and row-group statistics. Run the same query against CSV and the reader must parse every byte, so the $k/p$ and $f$ factors vanish. Converting to Parquet once is what unlocks the rest.
+
+::: {.callout-warning}
+These savings depend on the file format. Column projection and pushdown rely on Parquet's columnar layout and row-group statistics. Run the same query against CSV and the reader must parse every byte, so the $k/p$ and $f$ factors vanish. Converting to Parquet once is what unlocks the rest.
+:::
+
 
 ```{r duckdb-memory-cap, eval=FALSE}
 library(DBI); library(duckdb)
@@ -351,7 +387,11 @@ dbDisconnect(con, shutdown = TRUE)
 
 Knowing the mechanism is half the job; the other half is judgment about when it pays off and what tends to go wrong. This section collects that judgment.
 
-> **When to use this:** Reach for DuckDB or Arrow when the data is too large for memory or scattered across many files, the heavy work is filtering, joining, and aggregating down to a small model-ready table, and you want a local setup with no server or cluster to manage.
+
+::: {.callout-tip title="When to use this"}
+Reach for DuckDB or Arrow when the data is too large for memory or scattered across many files, the heavy work is filtering, joining, and aggregating down to a small model-ready table, and you want a local setup with no server or cluster to manage.
+:::
+
 
 The same conditions, stated as a checklist, mark when this approach is the right call:
 

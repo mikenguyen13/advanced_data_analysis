@@ -9,7 +9,11 @@ Imagine you want to predict the price of a house from its features (number of ro
 
 This chapter introduces BART from intuition first, then states the algorithm precisely, and finally walks through worked examples in R using the `BART` package. By the end you should understand why BART is often called a "good out-of-the-box" method, how its three main settings (number of trees, number of iterations, and burn-in) work, and how to read its output, including convergence checks, variable importance, and partial dependence plots.
 
-> **When to use this:** BART is a strong default when you want flexible, nonlinear regression or classification with little tuning, and you also want uncertainty intervals around predictions. It pairs naturally with the tree-based and ensemble ideas you have already seen.
+
+::: {.callout-tip title="When to use this"}
+BART is a strong default when you want flexible, nonlinear regression or classification with little tuning, and you also want uncertainty intervals around predictions. It pairs naturally with the tree-based and ensemble ideas you have already seen.
+:::
+
 
 BART sits in the same family as the methods in the chapters on bagging (@sec-bagging), random forests (@sec-random-forest), and boosting (@sec-boosting), and it borrows one key idea from each. As in bagging and random forests, every tree is built using randomness rather than a single deterministic greedy search. As in boosting, every tree tries to capture the part of the signal that the rest of the model has not yet explained.^[The difference is that boosting fits each new tree to the residuals once, in a forward, greedy pass, while BART repeatedly *revisits and revises* every tree using a Markov chain Monte Carlo sampler. This revisiting is what produces a posterior distribution instead of a single fitted model.]
 
@@ -23,7 +27,11 @@ $$
 \hat{f}^b(x) = \sum_{k=1}^K \hat{f}_k^b(x), b = 1, \dots, B
 $$
 
-> **Key idea:** No single tree has to be good on its own. Each tree is deliberately kept small (a "weak learner"), and the prediction comes from adding many of them together. Keeping each tree small is the main guard against overfitting.
+
+::: {.callout-important title="Key idea"}
+No single tree has to be good on its own. Each tree is deliberately kept small (a "weak learner"), and the prediction comes from adding many of them together. Keeping each tree small is the main guard against overfitting.
+:::
+
 
 ### Starting point
 
@@ -33,7 +41,11 @@ $$
 \hat{f}^1(x) = \sum_{k=1}^K \hat{f}_k^1 (x) = \frac{1}{n} \sum_{i=1}^n y_i \text{ (mean response)}
 $$
 
-> **Intuition:** BART starts from the simplest possible prediction, "guess the average for everyone," and then lets the trees gradually carve out structure from there.
+
+::: {.callout-tip title="Intuition"}
+BART starts from the simplest possible prediction, "guess the average for everyone," and then lets the trees gradually carve out structure from there.
+:::
+
 
 ### Updating one tree at a time using partial residuals
 
@@ -52,7 +64,11 @@ Here is the step that makes BART Bayesian rather than just another boosting sche
 -   change the structure of the tree by adding or pruning branches, and
 -   change the prediction value stored in each terminal (leaf) node of the tree.
 
-> **Note:** Because we *perturb* the existing tree rather than regrowing it from scratch, no single update can move the model very far. This deliberate timidity is what keeps BART from chasing noise.
+
+::: {.callout-note}
+Because we *perturb* the existing tree rather than regrowing it from scratch, no single update can move the model very far. This deliberate timidity is what keeps BART from chasing noise.
+:::
+
 
 ### Collecting the output
 
@@ -70,7 +86,11 @@ $$
 
 The payoff of the Bayesian framing appears here: because each retained iteration is a posterior sample, we are not limited to the average. We can use the spread of the posterior samples to get distributional estimates of the predictions, that is, credible intervals rather than just point predictions.
 
-> **Tip:** When someone asks "how confident are you in this prediction?", BART has a direct answer: look at the variability of $\hat{f}^b(x)$ across the retained iterations.
+
+::: {.callout-tip}
+When someone asks "how confident are you in this prediction?", BART has a direct answer: look at the variability of $\hat{f}^b(x)$ across the retained iterations.
+:::
+
 
 ## The BART algorithm
 
@@ -102,7 +122,11 @@ When we use BART, we have to specify three quantities:
 
 In practice these are easy to set. We typically choose large values such as $B = 1000$ and $K = 200$, and a moderate value such as $L = 100$. Because these defaults work well across many problems, BART is a good out-of-the-box tool that needs minimal tuning.
 
-> **Warning:** The defaults are robust, but they are not free. With $K = 200$ trees and $B = 1000$ iterations, BART does a lot of computation, and runtime grows with the number of observations and predictors. If a run is slow, the thinning trick shown later in this chapter can help.
+
+::: {.callout-warning}
+The defaults are robust, but they are not free. With $K = 200$ trees and $B = 1000$ iterations, BART does a lot of computation, and runtime grows with the number of observations and predictors. If a run is slow, the thinning trick shown later in this chapter can help.
+:::
+
 
 ## Worked example: predicting Boston housing prices {#bart-boston-james}
 
@@ -138,7 +162,11 @@ bartfit$varcount.mean[ord]
 
 Two pieces of output are worth reading carefully. The first, the mean squared error on the test set, is the headline accuracy number: smaller is better, and on this split BART is competitive with or better than boosting and random forests. The second, `varcount.mean`, counts how many times each variable appeared in the collection of trees, averaged over iterations. Variables that show up more often are the ones BART relied on more heavily, so this gives a quick, model-based ranking of variable importance.
 
-> **Note:** Variable appearance counts are a useful first look at importance, but they are not the whole story. A variable can be used many times in shallow splits without changing predictions much. The partial dependence plot later in this chapter shows the *direction and shape* of a variable's effect, which counts alone cannot.
+
+::: {.callout-note}
+Variable appearance counts are a useful first look at importance, but they are not the whole story. A variable can be used many times in shallow splits without changing predictions much. The partial dependence plot later in this chapter shows the *direction and shape* of a variable's effect, which counts alone cannot.
+:::
+
 
 ## Worked example: the package authors' walkthrough
 
@@ -189,7 +217,11 @@ abline(v = burn, lwd = 2, col = "red")
 
 The trace flattens out quickly and stays level after burn-in, which indicates good convergence. If instead you saw a slow drift or a trend that never stabilized, the remedy would be to increase the burn-in (and possibly the total number of draws) and refit.
 
-> **Warning:** Skipping this convergence check is the most common BART mistake. Point predictions can look reasonable even when the chain has not mixed, but the uncertainty intervals you report will be wrong.
+
+::: {.callout-warning}
+Skipping this convergence check is the most common BART mistake. Point predictions can look reasonable even when the chain has not mixed, but the uncertainty intervals you report will be wrong.
+:::
+
 
 ### Comparing predictions with linear regression
 
@@ -292,7 +324,11 @@ lines(x, apply(partial, 2, quantile, probs = 0.975), lty = 2)
 
 The curve slopes clearly downward: as the lower-status percentage increases, predicted median home value falls, and the decline is steeper at low values of `lstat` than at high ones (a nonlinear effect a linear model would miss). The dashed band reminds us that this estimated effect is itself uncertain, which is precisely the kind of honest summary BART was built to provide.
 
-> **Tip:** Partial dependence plots are model-agnostic. You met the same idea in the chapter on interpretable machine learning (@sec-interpretable-machine-learning), and you can apply it to random forests, boosting, or BART alike. What is special here is that BART hands you a credible band for free, straight from its posterior draws.
+
+::: {.callout-tip}
+Partial dependence plots are model-agnostic. You met the same idea in the chapter on interpretable machine learning (@sec-interpretable-machine-learning), and you can apply it to random forests, boosting, or BART alike. What is special here is that BART hands you a credible band for free, straight from its posterior draws.
+:::
+
 
 ## Summary
 

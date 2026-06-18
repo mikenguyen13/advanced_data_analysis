@@ -11,7 +11,11 @@ This chapter steps back from the optimization machinery and looks at the things 
 
 The thread running through everything below is the same: a model is only as good as the question it answers and the data it learns from. If either of those is flawed, the most sophisticated algorithm in the world will give you a confident, precise, wrong answer. By the end of the chapter you should have a checklist of failure modes to run through before you trust any model, no matter how good its validation score looks.
 
-> **Key idea:** Good metrics are necessary but not sufficient. Most catastrophic model failures trace back to problems that the metrics cannot see.
+
+::: {.callout-important title="Key idea"}
+Good metrics are necessary but not sufficient. Most catastrophic model failures trace back to problems that the metrics cannot see.
+:::
+
 
 ## Type III Errors
 
@@ -23,7 +27,11 @@ A business example makes the trap concrete. Suppose a company wants to grow prof
 
 Avoiding a Type III error is not a matter of better algorithms. It is a matter of thinking carefully, before any modeling begins, about what the problem really is. That means asking how the data were sampled, what loss function actually reflects the stakes, what the costs of different kinds of mistakes are, and what decision the model is meant to support.
 
-> **Warning:** The most dangerous model is one that is technically excellent at the wrong task, because its high performance scores make everyone trust it.
+
+::: {.callout-warning}
+The most dangerous model is one that is technically excellent at the wrong task, because its high performance scores make everyone trust it.
+:::
+
 
 ## Measurement Error in the Outcome
 
@@ -33,7 +41,11 @@ It is useful to think of the irreducible error as having two distinct sources. T
 
 Neither source can be fully eliminated, but they call for different responses, and recognizing which one is dominating your error is the first step. Model error invites changes to the modeling itself: a different model form, additional or better-engineered features, or richer data. Response measurement error invites a change upstream, in how the outcome is obtained. Sometimes the most valuable thing you can do for a model's performance is not to touch the model at all, but to suggest a cleaner way of measuring the response, one that injects less noise into the target you are trying to learn.
 
-> **Intuition:** If your thermometer is unreliable, no weather model can be more accurate than the thermometer. The same logic applies to any noisily measured outcome.
+
+::: {.callout-tip title="Intuition"}
+If your thermometer is unreliable, no weather model can be more accurate than the thermometer. The same logic applies to any noisily measured outcome.
+:::
+
 
 ## Measurement Error in the Predictors
 
@@ -48,7 +60,11 @@ How well we can correct for this depends heavily on the kind of model we are usi
 
 One general strategy that does apply broadly is hierarchical (Bayesian) modeling (@sec-probabilistic-programming), which can represent the uncertainty in a predictor explicitly and propagate it through to the predictions. This is principled, but it comes with caveats: the hierarchical structure may not fit the problem at hand, and the computation can be expensive. The good news is that the error is sometimes quantifiable directly. Temperature sensors often come with a known error specification, and survey instruments can be studied for their reliability, which gives you a handle on the measurement uncertainty rather than leaving it as an unknown.
 
-> **When to use this:** Reach for explicit measurement error modeling when a key predictor is known to be noisy and that predictor's noise is large compared to the variation you are trying to explain. If the predictor is measured cleanly, the added complexity is rarely worth it.
+
+::: {.callout-tip title="When to use this"}
+Reach for explicit measurement error modeling when a key predictor is known to be noisy and that predictor's noise is large compared to the variation you are trying to explain. If the predictor is measured cleanly, the added complexity is rarely worth it.
+:::
+
 
 ## Discretizing Continuous Outcomes
 
@@ -58,7 +74,11 @@ A striking example comes from long-lead climate forecasting. Consider predicting
 
 And yet the situation is not hopeless, because the ocean moves more slowly than the atmosphere. Sea surface temperature in the tropical Pacific evolves on much longer time scales and is strongly correlated with later weather over North America. So although the variable we care about is continuous (temperature), and although we cannot predict it continuously at this horizon, we can often predict whether it will fall into a coarse category, "below normal," "normal," or "above normal," with real skill. By discretizing the outcome, we trade unattainable precision for an answer that is genuinely useful and genuinely predictable.
 
-> **Tip:** Matching the granularity of the prediction to the granularity of the available signal is a modeling decision in its own right. A skillful three-category forecast can be far more valuable than a meaningless precise one.
+
+::: {.callout-tip}
+Matching the granularity of the prediction to the granularity of the available signal is a modeling decision in its own right. A skillful three-category forecast can be far more valuable than a meaningless precise one.
+:::
+
 
 ## Dependence
 
@@ -76,7 +96,11 @@ When the errors are in fact dependent, this can bias both our predictions and ou
 
 This is one area where classical, explicitly probabilistic statistical models still tend to outperform most machine learning methods, which is worth remembering when your data have obvious grouping or autocorrelation. The advantage is not free: it comes at the cost of greater model complexity and heavier computation.
 
-> **Note:** Dependence is easy to overlook because the standard tools do not warn you about it. If your observations are grouped, repeated, or collected over time or space, treat independence as an assumption to be checked, not a default to be trusted.
+
+::: {.callout-note}
+Dependence is easy to overlook because the standard tools do not warn you about it. If your observations are grouped, repeated, or collected over time or space, treat independence as an assumption to be checked, not a default to be trusted.
+:::
+
 
 ## Preferential/Biased Sampling
 
@@ -86,7 +110,11 @@ When sampling bias is suspected, the predictions deserve honest uncertainty esti
 
 The trouble is that this bias can be either known or unknown. Sometimes you are aware that, say, only the most engaged customers were surveyed, or that environmental sensors were placed precisely where problems were already suspected. Other times the selection happened silently, baked into how the data arrived. In both cases the consequence is the same: the prediction or classification model may perform well on data that look like the training set and then fail badly on the broader population, where the sampling bias no longer holds.
 
-> **Warning:** A high validation score computed on biased data is reassuring and meaningless at the same time. If the validation data inherit the same sampling bias as the training data, they cannot reveal the problem.
+
+::: {.callout-warning}
+A high validation score computed on biased data is reassuring and meaningless at the same time. If the validation data inherit the same sampling bias as the training data, they cannot reveal the problem.
+:::
+
 
 ## Takeaways
 

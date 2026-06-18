@@ -9,7 +9,11 @@ Most of the methods in this book assume that the rows of a data set are exchange
 
 This chapter builds the topic from the ground up. We start with the forecasting setup and the notation, explain why naive cross-validation leaks information across time, and then construct the two ingredients that make modern machine-learning forecasters work: lag features and rolling-window summaries. With those in hand we compare three families of forecasters on a real series: classical statistical baselines (the naive forecast, exponential smoothing, and ARIMA), tree-based machine learning (gradient boosting, @sec-gradient-boosting), and a brief look at deep sequence models. Throughout, the running example forecasts monthly airline passenger counts, and every claim about accuracy is backed by a rolling-origin evaluation rather than a single lucky split.
 
-> **Intuition:** A forecaster is a function that maps "everything known up to now" into "a guess about what comes next." The art is choosing what to feed it (features) and how to score it honestly (evaluation that respects time).
+
+::: {.callout-tip title="Intuition"}
+A forecaster is a function that maps "everything known up to now" into "a guess about what comes next." The art is choosing what to feed it (features) and how to score it honestly (evaluation that respects time).
+:::
+
 
 ## The Forecasting Setup
 
@@ -35,7 +39,11 @@ $$
 
 and a forecasting model is good if these errors are small and unbiased across many origins.
 
-> **Key idea:** Two numbers define every forecasting problem before you write any code: the horizon $h$ (how far ahead) and the origin (the last time point you are allowed to use). Fixing them up front prevents almost every subtle mistake that follows.
+
+::: {.callout-important title="Key idea"}
+Two numbers define every forecasting problem before you write any code: the horizon $h$ (how far ahead) and the origin (the last time point you are allowed to use). Fixing them up front prevents almost every subtle mistake that follows.
+:::
+
 
 ### Decomposition and What Models Try to Capture
 
@@ -51,7 +59,11 @@ where $T_t$ is a slowly varying trend, $S_t$ is a seasonal pattern that repeats 
 
 The single most common error in applied forecasting is evaluating a model with a random split or with standard $k$-fold cross-validation. Both place future observations in the training set and past observations in the test set, which lets the model "peek" at information it would never have at deployment time. The result is an optimistic accuracy estimate that collapses in production.
 
-> **Warning:** Never shuffle a time series before splitting, and never use plain $k$-fold cross-validation on raw temporal data. Any procedure that lets a training point come from after a test point is leaking the future.
+
+::: {.callout-warning}
+Never shuffle a time series before splitting, and never use plain $k$-fold cross-validation on raw temporal data. Any procedure that lets a training point come from after a test point is leaking the future.
+:::
+
 
 The honest alternative is rolling-origin evaluation, also called time-series cross-validation or backtesting. We pick an initial training window, forecast the next $h$ steps, record the error, then move the origin forward and repeat. There are two common variants:
 
@@ -92,7 +104,11 @@ legend("topright", legend = c("train", "forecast target", "hidden future"),
 
 @fig-time-series-forecasting-rolling-origin makes the rule visual: read any row left to right and the orange target always sits to the right of every blue training point.
 
-> **Note:** Leakage also hides inside feature engineering. If you scale features using the mean and standard deviation of the whole series, or impute missing values with a global statistic, the training rows have absorbed information from the test period. Compute every such statistic on the training window only, inside each fold.
+
+::: {.callout-note}
+Leakage also hides inside feature engineering. If you scale features using the mean and standard deviation of the whole series, or impute missing values with a global statistic, the training rows have absorbed information from the test period. Compute every such statistic on the training window only, inside each fold.
+:::
+
 
 ## Turning a Time Series into a Supervised Learning Problem
 
@@ -117,7 +133,11 @@ Two enrichments make lag features much stronger:
 - Rolling-window summaries. Beyond raw lags, summarize recent history with a moving statistic computed strictly from past values, for example a trailing mean over the last $w$ points, $\bar{y}_{t-1}^{(w)} = \frac{1}{w}\sum_{j=1}^{w} y_{t-j}$, or a trailing standard deviation. These smooth out noise and hand the model a ready-made notion of "recent level" and "recent volatility."
 - Calendar features. Encode the position in the seasonal cycle (month of year, day of week) so the model can learn seasonality directly. For monthly data the month index $1,\dots,12$ is enough for a tree; linear models prefer sine/cosine pairs such as $\sin(2\pi m_t / 12)$ and $\cos(2\pi m_t / 12)$.
 
-> **Warning:** Every feature must be computable at the forecast origin. A lag of order 1 uses $y_{t-1}$, which is fine. A "centered" moving average that averages $y_{t-1}, y_t, y_{t+1}$ is not: it uses the future. When in doubt, ask whether the feature could have been written down the moment before $y_t$ was observed.
+
+::: {.callout-warning}
+Every feature must be computable at the forecast origin. A lag of order 1 uses $y_{t-1}$, which is fine. A "centered" moving average that averages $y_{t-1}, y_t, y_{t+1}$ is not: it uses the future. When in doubt, ask whether the feature could have been written down the moment before $y_t$ was observed.
+:::
+
 
 ### Multi-Step Horizons: Recursive vs Direct
 
@@ -127,7 +147,11 @@ The recursive strategy trains a single one-step model and feeds its own predicti
 
 The direct strategy trains a separate model for each horizon, with target $y_{t+h}$ regressed on features available at $t$, for each $h = 1, \dots, H$. It avoids error feedback at the cost of fitting $H$ models and ignoring the relationship between consecutive horizons.
 
-> **When to use this:** Use the recursive strategy when you have little data or a short horizon, and the direct strategy when the horizon is long, you have enough data to fit several models, and you can tolerate the extra bookkeeping. Hybrid schemes exist, but starting with recursive and checking whether direct helps is a sound default.
+
+::: {.callout-tip title="When to use this"}
+Use the recursive strategy when you have little data or a short horizon, and the direct strategy when the horizon is long, you have enough data to fit several models, and you can tolerate the extra bookkeeping. Hybrid schemes exist, but starting with recursive and checking whether direct helps is a sound default.
+:::
+
 
 ## A Worked Comparison on AirPassengers
 
@@ -193,7 +217,11 @@ feat_cols <- setdiff(names(sup_complete), c("target", "row"))
 head(sup_complete[, c("row", "target", "lag1", "lag12", "rollmean3", "month")])
 ```
 
-> **Note:** The first 12 rows have no seasonal lag and are dropped by `complete.cases`. This is normal: lag features always cost you a warm-up period equal to the largest lag.
+
+::: {.callout-note}
+The first 12 rows have no seasonal lag and are dropped by `complete.cases`. This is normal: lag features always cost you a warm-up period equal to the largest lag.
+:::
+
 
 ### Fitting the Models
 
@@ -352,7 +380,11 @@ knitr::kable(
 
 @tbl-time-series-forecasting-results tells the realistic story: the statistical models (ETS, ARIMA) are very strong on a clean, strongly seasonal series like this one, and a generic boosting model trained on a handful of lag features is competitive but does not automatically dominate. That ordering is typical and worth internalizing.
 
-> **Key idea:** On short, clean, strongly seasonal univariate series, well-tuned classical methods are hard to beat. Machine-learning forecasters earn their keep when you have many related series, many exogenous predictors, nonlinear interactions, or irregular structure that ARIMA and ETS cannot express.
+
+::: {.callout-important title="Key idea"}
+On short, clean, strongly seasonal univariate series, well-tuned classical methods are hard to beat. Machine-learning forecasters earn their keep when you have many related series, many exogenous predictors, nonlinear interactions, or irregular structure that ARIMA and ETS cannot express.
+:::
+
 
 ## Where Deep Sequence Models Fit
 
@@ -372,7 +404,11 @@ model |> fit(X, yv, epochs = 50, batch_size = 16, validation_split = 0.2)
 preds <- model |> predict(X_future)
 ```
 
-> **When to use this:** Reach for deep sequence models when you are forecasting many series jointly, have rich covariates, or need to capture long-range and nonlinear dependencies. For a single short series, they are usually overkill and underperform a tuned ETS or ARIMA.
+
+::: {.callout-tip title="When to use this"}
+Reach for deep sequence models when you are forecasting many series jointly, have rich covariates, or need to capture long-range and nonlinear dependencies. For a single short series, they are usually overkill and underperform a tuned ETS or ARIMA.
+:::
+
 
 ## Practical Guidance and Pitfalls
 
@@ -386,7 +422,11 @@ Forecasting projects fail in predictable ways. The recurring lessons:
 - Tune the right thing. For boosting, the number of rounds, tree depth, and learning rate interact; tune them with the same rolling-origin scheme you use for evaluation, never with a random split.
 - Prediction intervals matter. A point forecast without uncertainty is half a forecast. ETS and ARIMA give intervals analytically; for machine-learning models use quantile loss (see the quantile regression chapter, @sec-quantile-reg) or backtest the empirical error distribution.
 
-> **Warning:** The most damaging bugs in forecasting are silent: a feature that secretly uses the future, a scaler fit on the whole series, or a backtest that forgot to refit. They inflate accuracy on paper and only reveal themselves after deployment. Audit every feature against the question "could this have been computed at the origin?" before trusting any number.
+
+::: {.callout-warning}
+The most damaging bugs in forecasting are silent: a feature that secretly uses the future, a scaler fit on the whole series, or a backtest that forgot to refit. They inflate accuracy on paper and only reveal themselves after deployment. Audit every feature against the question "could this have been computed at the origin?" before trusting any number.
+:::
+
 
 ## Further Reading
 

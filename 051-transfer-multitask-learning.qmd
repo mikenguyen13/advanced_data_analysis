@@ -27,11 +27,15 @@ say, for a given problem, whether to train tasks separately, pool them into
 one, or tie them together with a tunable penalty, and to recognize when
 sharing backfires.
 
-> **Intuition:** Think of two students studying for related exams. If they
-> compare notes, each learns faster than working alone, as long as the
-> subjects truly overlap. If the subjects are unrelated, swapping notes just
-> adds confusion. Transfer and multi-task learning automate that judgment:
-> share when sharing pays, and back off when it does not.
+
+::: {.callout-tip title="Intuition"}
+Think of two students studying for related exams. If they
+compare notes, each learns faster than working alone, as long as the
+subjects truly overlap. If the subjects are unrelated, swapping notes just
+adds confusion. Transfer and multi-task learning automate that judgment:
+share when sharing pays, and back off when it does not.
+:::
+
 
 ## Intuition and workflow context
 
@@ -68,10 +72,14 @@ inputs into features; the head maps features to that task's predictions.] In
 classical models the shared object is more often the coefficient vector or a
 low-dimensional subspace that the coefficients live in.
 
-> **Key idea:** Transfer learning and multi-task learning are not separate
-> algorithms so much as a stance: assume related problems share structure,
-> then design the model so that structure can be reused. The rest of this
-> chapter is about *what* to share and *how strongly*.
+
+::: {.callout-important title="Key idea"}
+Transfer learning and multi-task learning are not separate
+algorithms so much as a stance: assume related problems share structure,
+then design the model so that structure can be reused. The rest of this
+chapter is about *what* to share and *how strongly*.
+:::
+
 
 In a modern ML/AI workflow these methods show up at predictable points. When
 you pull a pretrained image or text encoder and adapt it, that is transfer
@@ -113,10 +121,14 @@ advice in @Howard_2018.
 
 : Recommended adaptation strategy as a function of target data size and source-target similarity. {#tbl-transfer-multitask-learning-adapt-guidance}
 
-> **When to use this:** With only a few hundred labeled target examples,
-> default to feature extraction: it has few parameters to estimate and cannot
-> damage the backbone. Reach for fine-tuning only when target data are
-> plentiful enough to move the backbone safely without overfitting.
+
+::: {.callout-tip title="When to use this"}
+With only a few hundred labeled target examples,
+default to feature extraction: it has few parameters to estimate and cannot
+damage the backbone. Reach for fine-tuning only when target data are
+plentiful enough to move the backbone safely without overfitting.
+:::
+
 
 A useful refinement is *gradual unfreezing*: start by training the head with
 the backbone frozen, then unfreeze the top blocks, then deeper blocks, each
@@ -184,11 +196,15 @@ $$
 = \mathbb{E}_{P_S}\!\left[ \frac{P_T(x)}{P_S(x)}\, \ell(f(x), y) \right].
 $$
 
-> **Intuition:** Importance weighting says: trust source points that look
-> like target points, and discount source points that do not. A source
-> example sitting in a region the target rarely visits gets a small weight, so
-> the fitted model concentrates on the part of input space you actually care
-> about at serving time.
+
+::: {.callout-tip title="Intuition"}
+Importance weighting says: trust source points that look
+like target points, and discount source points that do not. A source
+example sitting in a region the target rarely visits gets a small weight, so
+the fitted model concentrates on the part of input space you actually care
+about at serving time.
+:::
+
 
 So you fit the model on source data but weight each source point by how
 likely it is under the target marginal. Estimating $w(x)$ directly by
@@ -217,11 +233,15 @@ adds a penalty that keeps the parameters of different tasks close. Nothing is
 literally shared; the coupling is through the penalty. This is more flexible
 when tasks are only loosely related, at the cost of more parameters.
 
-> **Note:** Hard sharing forces tasks to use exactly the same body, so the
-> coupling is total and not tunable. Soft sharing keeps separate parameters
-> and tunes the coupling through a penalty, so you can dial sharing from none
-> to near-total. That tunability is what makes the soft case the right one to
-> study in detail.
+
+::: {.callout-note}
+Hard sharing forces tasks to use exactly the same body, so the
+coupling is total and not tunable. Soft sharing keeps separate parameters
+and tunes the coupling through a penalty, so you can dial sharing from none
+to near-total. That tunability is what makes the soft case the right one to
+study in detail.
+:::
+
 
 The base-R demonstration below is an instance of soft sharing in its purest
 linear form. Each task has its own coefficient vector, and a penalty pulls
@@ -245,10 +265,14 @@ shared center. We model this with a decomposition $\beta_t = \beta_0 + v_t$,
 where $\beta_0$ is a common vector shared by all tasks and $v_t$ is a small
 task-specific deviation. We then penalize the deviations.
 
-> **Intuition:** The split $\beta_t = \beta_0 + v_t$ says each task is the
-> shared answer plus a small personal correction. Penalizing only $v_t$ keeps
-> the corrections small unless the data really demand them, which is exactly
-> the "borrow by default, deviate when justified" behavior we want.
+
+::: {.callout-tip title="Intuition"}
+The split $\beta_t = \beta_0 + v_t$ says each task is the
+shared answer plus a small personal correction. Penalizing only $v_t$ keeps
+the corrections small unless the data really demand them, which is exactly
+the "borrow by default, deviate when justified" behavior we want.
+:::
+
 
 The joint objective is
 
@@ -280,11 +304,15 @@ $$
 \hat\theta = (Z^\top Z + P)^{-1} Z^\top y .
 $$
 
-> **Note:** This is just ridge regression on a cleverly laid-out design
-> matrix. The only twist is that the penalty matrix $P$ leaves the shared
-> block $\beta_0$ unpenalized and applies $\lambda$ only to the deviation
-> blocks $v_t$. Once you see that, the multi-task estimator is no harder to
-> compute than any other ridge fit.
+
+::: {.callout-note}
+This is just ridge regression on a cleverly laid-out design
+matrix. The only twist is that the penalty matrix $P$ leaves the shared
+block $\beta_0$ unpenalized and applies $\lambda$ only to the deviation
+blocks $v_t$. Once you see that, the multi-task estimator is no harder to
+compute than any other ridge fit.
+:::
+
 
 Each task estimate is then $\hat\beta_t = \hat\beta_0 + \hat v_t$. The next
 section builds exactly this $Z$ and $P$ in base R.
@@ -459,10 +487,14 @@ because each task no longer needs to borrow. If you increase `sigma_dev` so
 the tasks drift far apart, pooling and small-$\lambda$ multi-task degrade,
 which is negative transfer, discussed next.
 
-> **Tip:** Try editing `n_train`, `sigma_dev`, and `sigma_eps` and rerunning.
-> Watching the U-shaped curve flatten, deepen, or invert builds far more
-> intuition than any single number in the table. The whole point of a runnable
-> demonstration is that the trade-off is yours to probe.
+
+::: {.callout-tip}
+Try editing `n_train`, `sigma_dev`, and `sigma_eps` and rerunning.
+Watching the U-shaped curve flatten, deepen, or invert builds far more
+intuition than any single number in the table. The whole point of a runnable
+demonstration is that the trade-off is yours to probe.
+:::
+
 
 ## Negative transfer
 
@@ -471,10 +503,14 @@ them to share hurts, and the shared model does worse than independent models.
 This failure is called negative transfer, surveyed in @Pan_2010 and
 @Zhang_2021.
 
-> **Warning:** Negative transfer is not a rare edge case; it is the default
-> outcome when you assume relatedness without checking it. The discipline that
-> protects you is simple: always keep an independent-model baseline and refuse
-> to ship a shared model that loses to it on a clean target holdout.
+
+::: {.callout-warning}
+Negative transfer is not a rare edge case; it is the default
+outcome when you assume relatedness without checking it. The discipline that
+protects you is simple: always keep an independent-model baseline and refuse
+to ship a shared model that loses to it on a clean target holdout.
+:::
+
 
 You can see it directly in the demonstration. The pooled model is the
 $\lambda \to \infty$ limit, and when `sigma_dev` is large the pooled MSE rises
@@ -562,11 +598,15 @@ penalized multi-task model, establish an independent-model baseline, tune the
 sharing strength on validation data, and only move to full fine-tuning or
 strong sharing if the data are abundant and the relatedness is confirmed.
 
-> **Key idea:** Every method in this chapter is a knob on a single dial, from
-> fully independent models to a single shared model. Transfer, multi-task,
-> domain adaptation, and task weighting are all ways of choosing, and
-> defending, where to set that dial. Let validation data, not optimism, make
-> the choice.
+
+::: {.callout-important title="Key idea"}
+Every method in this chapter is a knob on a single dial, from
+fully independent models to a single shared model. Transfer, multi-task,
+domain adaptation, and task weighting are all ways of choosing, and
+defending, where to set that dial. Let validation data, not optimism, make
+the choice.
+:::
+
 
 ## Further reading
 

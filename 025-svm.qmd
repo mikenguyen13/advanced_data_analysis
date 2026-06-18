@@ -9,7 +9,11 @@ Suppose you have measurements on two groups of patients, healthy and sick, and y
 
 This chapter builds the idea up in layers. We start with the cleanest possible case, where the two classes can be split perfectly by a straight boundary, and we ask which straight boundary is best. That gives us the maximal margin classifier. Real data are rarely so cooperative, so we relax the rule to allow some mistakes, which gives the support vector classifier. We then ask how to draw curved boundaries, which leads us to support vector machines and the kernel trick, one of the most elegant ideas in machine learning. Along the way we connect everything to a general "loss plus penalty" view through reproducing kernel Hilbert spaces, which shows that support vector machines are one member of a much larger family. We close with two extensions: support vector regression for continuous outcomes, and vector quantization, a related compression technique.
 
-> **Intuition:** The whole subject grows from one picture. Two clouds of points, and a stripe of empty space between them. Everything that follows is about how to find the widest stripe, what to do when the clouds overlap, and how to make the stripe curve.
+
+::: {.callout-tip title="Intuition"}
+The whole subject grows from one picture. Two clouds of points, and a stripe of empty space between them. Everything that follows is about how to find the widest stripe, what to do when the clouds overlap, and how to make the stripe curve.
+:::
+
 
 The mathematics here leans on geometry (hyperplanes, distances, inner products) and on convex optimization. You do not need to have seen these before; we define each term as it appears and give the picture before the formula.
 
@@ -46,7 +50,11 @@ $$
 
 The hyperplane therefore divides $p$-dimensional space into two half-spaces. To determine which side a point is on, we evaluate the sign of $\beta_0 + X^T \beta$, that is, $G(x) = \text{sign}[\beta_0 + X^T \beta]$.
 
-> **Key idea:** A linear classifier is nothing more than a hyperplane plus a sign rule. The sign tells you the predicted class; the value tells you how confident you should be.
+
+::: {.callout-important title="Key idea"}
+A linear classifier is nothing more than a hyperplane plus a sign rule. The sign tells you the predicted class; the value tells you how confident you should be.
+:::
+
 
 <br>
 
@@ -71,7 +79,11 @@ At this point the separating hyperplane is simply a linear decision boundary. Th
 
 The natural principle is to pick the boundary that sits as far as possible from the data on both sides. We define an optimal separating hyperplane, also called the maximal margin hyperplane, as the hyperplane that is farthest from the training observations. To make this precise, measure the perpendicular distance from each observation to the hyperplane. The smallest of those distances is called the margin: it is the width of the empty buffer on either side of the boundary. The maximal margin hyperplane is the separating hyperplane with the largest margin, the one whose closest point is as far away as possible.
 
-> **Intuition:** Imagine fitting the widest possible slab between the two classes, like sliding the thickest plank you can into the gap. The maximal margin hyperplane is the centerline of that plank.
+
+::: {.callout-tip title="Intuition"}
+Imagine fitting the widest possible slab between the two classes, like sliding the thickest plank you can into the gap. The maximal margin hyperplane is the centerline of that plank.
+:::
+
 
 The classifier built from this hyperplane is the maximal margin classifier. The maximal margin hyperplane is the mid-line between the two classes that admits the widest "slab" we can insert between them.
 
@@ -104,7 +116,11 @@ This clean story has limits. The method breaks down if no separating hyperplane 
 1.  The separating hyperplane has a very small margin, so the classifier is barely committed to either class near the boundary.
 2.  The boundary is very sensitive to one or two observations, in which case it will most likely overfit and generalize poorly.
 
-> **Warning:** Perfect separation on the training data is not the goal. A boundary that threads perfectly between every training point is often one that has memorized noise. The next section trades a little training accuracy for a lot of stability.
+
+::: {.callout-warning}
+Perfect separation on the training data is not the goal. A boundary that threads perfectly between every training point is often one that has memorized noise. The next section trades a little training accuracy for a lot of stability.
+:::
+
 
 <br>
 
@@ -153,7 +169,11 @@ The tuning parameter $C$ ties these violations together. Since $C$ is the upper 
 
 The two extremes are worth holding in mind. If $C = 0$, there is no budget for violations, so every $\epsilon_i = 0$, and we are back to the [Maximal Marginal Classifier] (assuming the classes are separable). If $C >0$, no more than $C$ observations can be on the wrong side of the hyperplane, since each such observation contributes $\epsilon_i > 1$. As $C$ increases, we tolerate more violations, and the margin widens to accommodate them.
 
-> **Key idea:** $C$ is the dial that controls the bias-variance trade-off for a support vector classifier, and it is usually chosen by cross-validation.
+
+::: {.callout-important title="Key idea"}
+$C$ is the dial that controls the bias-variance trade-off for a support vector classifier, and it is usually chosen by cross-validation.
+:::
+
 
 Turning that dial in either direction has predictable effects:
 
@@ -188,7 +208,11 @@ $$
 
 Here is the trick that makes this so useful. The boundary is nonlinear (quadratic) in the original feature space, but it is perfectly linear in the expanded $2p$-dimensional space. We have not invented a new algorithm; we have run the same linear machinery in a bigger space and let the extra dimensions carry the curvature.
 
-> **Intuition:** Lift the data into a higher-dimensional space where a flat cut suffices, make the flat cut there, then project the cut back down. What looks like a straight slice upstairs looks like a curve downstairs.
+
+::: {.callout-tip title="Intuition"}
+Lift the data into a higher-dimensional space where a flat cut suffices, make the flat cut there, then project the cut back down. What looks like a straight slice upstairs looks like a curve downstairs.
+:::
+
 
 Once we accept this idea, nothing stops us from going further: we could add cubic terms, higher polynomials, interactions, or any other functions (for example, spline-style basis functions) of the predictors. The difficulty is that there are infinitely many choices, and naively expanding the feature space quickly becomes computationally impossible. The support vector machine provides a principled way to enlarge the feature space while keeping the computation tractable. Two facts make this possible:
 
@@ -213,7 +237,11 @@ We could then use the [Support Vector Classifiers] machinery to find parameters 
 
 The remarkable answer is that we do not have to choose them at all. It is enough to choose a positive definite kernel function $K(x_i, x_{i'})$, and that single choice implicitly determines a whole collection of basis functions. The same positive definite kernels underpin Gaussian process regression (@sec-gaussian-process-reg), which offers a probabilistic counterpart to the kernel machinery developed here. To see why, we first need to recall inner products.
 
-> **Note:** The kernel does double duty. It encodes a similarity between two observations, and it secretly stands in for an inner product in some (possibly enormous) feature space. The "trick" is that we get the second for free once we specify the first.
+
+::: {.callout-note}
+The kernel does double duty. It encodes a similarity between two observations, and it secretly stands in for an inner product in some (possibly enormous) feature space. The "trick" is that we get the second for free once we specify the first.
+:::
+
 
 An inner product of two $r$-dimensional vectors $a$ and $b$ is $<a,b> = \sum_{j=1}^r a_j b_j$, a single number that measures how aligned the two vectors are. For two inputs $x_i$ and $x_i'$ this is
 
@@ -308,7 +336,11 @@ $$
 J(f) = \sum_{i=1}^n \sum_{j=1}^n K(x_i, x_j) \alpha_i \alpha_j
 $$
 
-> **Key idea:** Although the optimization is set up over an infinite-dimensional space of functions, the solution is finite-dimensional, indexed by the $n$ training points. This is the **kernel trick**, and it is what makes kernel methods usable in practice.
+
+::: {.callout-important title="Key idea"}
+Although the optimization is set up over an infinite-dimensional space of functions, the solution is finite-dimensional, indexed by the $n$ training points. This is the **kernel trick**, and it is what makes kernel methods usable in practice.
+:::
+
 
 In fact, the infinite-dimensional problem reduces to the finite-dimensional optimization
 
@@ -354,7 +386,11 @@ For genuine SVM analysis we usually pick a richer kernel to allow flexible bound
 -   the radial basis kernel (effectively Gaussian), $K(x, \tilde{x}) = \exp(-\gamma ||x - \tilde{x}||^2 )$; and
 -   the neural network kernel, $K(x, \tilde{x}) = \tanh (\kappa_1 <x, \tilde{x}>+ \kappa_2)$.
 
-> **When to use this:** The radial basis kernel is the usual default when you have no strong prior knowledge about the shape of the boundary, since it can approximate a wide range of curved boundaries from local information. Reach for a polynomial kernel when you expect interactions up to a known degree.
+
+::: {.callout-tip title="When to use this"}
+The radial basis kernel is the usual default when you have no strong prior knowledge about the shape of the boundary, since it can approximate a wide range of curved boundaries from local information. Reach for a polynomial kernel when you expect interactions up to a known degree.
+:::
+
 
 The honest drawback is that there is no general rule telling you which kernel to pick; the choice is typically made by cross-validation.
 
@@ -366,7 +402,11 @@ $$
 
 where $S$ is the set of support vectors. It can further be shown that for a given $\lambda$, $\beta = (1/\lambda) \sum_{i \in S} \alpha_i y_i x_i$.
 
-> **Tip:** Because only support vectors carry nonzero $\alpha_i$, a fitted SVM stores and uses just those points at prediction time. Counting the support vectors is a quick diagnostic: a model that turns most observations into support vectors is fitting a very wiggly boundary and may be overfit.
+
+::: {.callout-tip}
+Because only support vectors carry nonzero $\alpha_i$, a fitted SVM stores and uses just those points at prediction time. Counting the support vectors is a quick diagnostic: a model that turns most observations into support vectors is fitting a very wiggly boundary and may be overfit.
+:::
+
 
 Alternative Loss Functions. The hinge loss is not the only sensible choice. One useful alternative is the Huberized loss, which blends the attractive features of two worlds: it keeps the support-point sparsity of the hinge loss while staying smooth like logistic regression (so you can estimate probabilities), and it behaves well in the presence of outliers.
 
@@ -392,7 +432,11 @@ $$
 
 so that errors smaller than $\epsilon$ are ignored [@hastie2001a, 12.3.6].
 
-> **Intuition:** In classification the margin is a buffer between classes; in regression the analogous buffer is a tube around the regression line. Points inside the tube are "close enough" and contribute nothing to the loss, so only points outside the tube act as support vectors.
+
+::: {.callout-tip title="Intuition"}
+In classification the margin is a buffer between classes; in regression the analogous buffer is a tube around the regression line. Points inside the tube are "close enough" and contribute nothing to the loss, so only points outside the tube act as support vectors.
+:::
+
 
 This $\epsilon$-insensitive loss resembles other robust regression losses, such as the Huber loss, in that it limits the influence of moderate errors and keeps the fit from chasing every point.
 
@@ -413,7 +457,11 @@ $$
 V_i = \{ x \in R^k: ||x-y_i ||\le ||x - y_j|| \forall j \neq i \}
 $$
 
-> **Intuition:** Think of the codewords as towns and the Voronoi regions as the surrounding areas whose residents live closer to that town than to any other. Every point in space belongs to exactly one town.
+
+::: {.callout-tip title="Intuition"}
+Think of the codewords as towns and the Voronoi regions as the surrounding areas whose residents live closer to that town than to any other. Every point in space belongs to exactly one town.
+:::
+
 
 The Voronoi regions tile the whole space without gaps or overlaps. Formally they cover everything,
 
@@ -444,6 +492,10 @@ Because we transmit or store only the small index instead of the full vector, we
 
 The algorithm for building the codebook [@linde1980] is closely related to the K-means algorithm covered in the cluster analysis chapter (@sec-cluster). It shares K-means's limitations, however: it is only locally optimal and can be quite slow.
 
-> **Note:** VQ performance is commonly assessed with either the Mean Squared Error (MSE) between inputs and their reconstructions, or the Peak Signal to Noise Ratio (PSNR), which expresses the same reconstruction quality on a decibel scale where higher is better.
+
+::: {.callout-note}
+VQ performance is commonly assessed with either the Mean Squared Error (MSE) between inputs and their reconstructions, or the Peak Signal to Noise Ratio (PSNR), which expresses the same reconstruction quality on a decibel scale where higher is better.
+:::
+
 
 Takeaways. Support vector methods all spring from one geometric idea, the widest separating slab, refined in stages: the maximal margin classifier finds the widest perfect separator; the support vector classifier softens it with a budget $C$ for mistakes; the support vector machine bends the boundary using kernels; and the RKHS framework reveals all of this as a "loss plus penalty" problem whose infinite-dimensional setup collapses to a finite, support-vector-based solution. The same machinery extends to regression through an $\epsilon$-insensitive tube, and the partition-into-regions theme reappears in vector quantization for compression.

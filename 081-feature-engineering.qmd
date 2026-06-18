@@ -9,11 +9,19 @@ Most of this book is about models: how a spline bends, how a tree splits, how a 
 
 The payoff is large and often underappreciated. A practitioner who spends an afternoon constructing thoughtful features will frequently beat a practitioner who spends a week tuning hyperparameters on raw inputs. The features encode domain knowledge that the model cannot invent on its own, and they do so in a way that is cheap to compute and easy to inspect.
 
-> **Key idea:** A model learns a function of the features you give it, not of the data you wish you had given it. Feature engineering changes the input space so that the relationship you care about becomes easy for the model to express.
+
+::: {.callout-important title="Key idea"}
+A model learns a function of the features you give it, not of the data you wish you had given it. Feature engineering changes the input space so that the relationship you care about becomes easy for the model to express.
+:::
+
 
 This chapter walks through the core operations: scaling numeric variables, encoding categorical ones, building interactions, binning continuous predictors, extracting structure from dates and text, and handling missing values. Throughout, one theme recurs and deserves emphasis from the start: any transformation that uses the outcome, or that pools information across rows, must be learned on training data alone and then applied to validation data. Doing otherwise leaks information and inflates your performance estimates. We will build a small pipeline that does this correctly and show, with a before and after comparison, that good features improve a model on data where the truth is known.
 
-> **Note:** The terms "feature" and "predictor" and "variable" are used interchangeably here. A feature is simply a column of the design matrix that the model consumes.
+
+::: {.callout-note}
+The terms "feature" and "predictor" and "variable" are used interchangeably here. A feature is simply a column of the design matrix that the model consumes.
+:::
+
 
 ## Notation and setup
 
@@ -21,7 +29,11 @@ Let the training data consist of $n$ observations. For observation $i$ we write 
 
 The subtlety is that $\phi$ itself often has parameters estimated from data. A centering and scaling step needs a mean and a standard deviation; a target encoder needs category averages of $y$. We write these learned quantities as $\hat\theta$, estimated on the training set, so that the transformation is really $\phi(\cdot \,;\, \hat\theta)$. The cardinal rule is that $\hat\theta$ is estimated using training rows only, and the same fixed $\hat\theta$ is then used to transform validation and test rows.
 
-> **Warning:** If $\hat\theta$ is estimated on the full dataset before splitting, information from the validation rows leaks into the features. This is the most common and most damaging feature-engineering mistake. We return to it in detail in the section on leakage.
+
+::: {.callout-warning}
+If $\hat\theta$ is estimated on the full dataset before splitting, information from the validation rows leaks into the features. This is the most common and most damaging feature-engineering mistake. We return to it in detail in the section on leakage.
+:::
+
 
 ## Scaling numeric features
 
@@ -41,9 +53,17 @@ $$
 
 with $\min_j$ and $\max_j$ again learned from training data. Standardization is the usual default because it is less sensitive to a single extreme value than min-max scaling, which is anchored to the most extreme observations.
 
-> **Intuition:** Scaling does not change the information in a feature, only its units. It matters for models that compare features by magnitude (penalized regression, distance methods) and is irrelevant for models that are invariant to monotone rescaling of a single variable, such as decision trees.
 
-> **When to use this:** Always scale for ridge, lasso, elastic net, support vector machines, $k$ nearest neighbors, principal components, and neural networks. You can usually skip it for tree-based models.
+::: {.callout-tip title="Intuition"}
+Scaling does not change the information in a feature, only its units. It matters for models that compare features by magnitude (penalized regression, distance methods) and is irrelevant for models that are invariant to monotone rescaling of a single variable, such as decision trees.
+:::
+
+
+
+::: {.callout-tip title="When to use this"}
+Always scale for ridge, lasso, elastic net, support vector machines, $k$ nearest neighbors, principal components, and neural networks. You can usually skip it for tree-based models.
+:::
+
 
 For skewed positive variables, a log transform $x \mapsto \log(1 + x)$ often helps more than scaling, because it compresses a long right tail into a range where a linear model can use it. We apply exactly this idea in the demo.
 
@@ -61,7 +81,11 @@ $$
 
 One-hot encoding is faithful: it makes no assumption about an ordering or a relationship among levels, and the model is free to assign each level its own coefficient. Its weakness is dimensionality. A variable with thousands of levels (a zip code, a product id) produces thousands of sparse columns, which inflates the design matrix and can hurt models that struggle in high dimensions.
 
-> **Note:** Always learn the set of levels on the training set. If a new level appears at prediction time, a fixed encoder must have a deliberate policy for it, such as mapping it to an "unseen" indicator or to all zeros. Silently failing on novel levels is a frequent production bug.
+
+::: {.callout-note}
+Always learn the set of levels on the training set. If a new level appears at prediction time, a fixed encoder must have a deliberate policy for it, such as mapping it to an "unseen" indicator or to all zeros. Silently failing on novel levels is a frequent production bug.
+:::
+
 
 ### Target (impact) encoding
 
@@ -81,7 +105,11 @@ $$
 
 where $\lambda \ge 0$ is a smoothing constant.^[This is an empirical-Bayes style estimator: $\lambda$ acts as a number of "pseudo-observations" pulling each level's estimate toward the overall mean. Large $n_\ell$ trusts the level's own data; small $n_\ell$ borrows strength from the global mean. Micci-Barreca (2001) introduced this encoding.] As $\lambda \to 0$ we recover the raw level mean; as $\lambda \to \infty$ every level collapses to $\bar y$.
 
-> **Warning:** Target encoding uses the outcome, so it is the textbook source of leakage. The level means must be computed on training rows only, and ideally with out-of-fold estimation inside cross-validation, or the encoded feature will look far more predictive than it really is.
+
+::: {.callout-warning}
+Target encoding uses the outcome, so it is the textbook source of leakage. The level means must be computed on training rows only, and ideally with out-of-fold estimation inside cross-validation, or the encoded feature will look far more predictive than it really is.
+:::
+
 
 ## Interactions and binning
 
@@ -91,7 +119,11 @@ An interaction is a product of features, $z = x_j \, x_k$, that lets the effect 
 
 Binning (discretization) replaces a continuous variable with the bin it falls into, turning it into a categorical feature. This lets a linear model fit a step function and so capture nonlinearity, and it can tame outliers by capping them into the end bins. The cost is a loss of resolution within each bin and a dependence on where the cut points fall.
 
-> **Intuition:** Interactions and binning both add flexibility that the model could not otherwise represent. Interactions add it across variables; binning adds it within a variable. Splines (covered in the spline regression chapter, @sec-spline) are usually a smoother alternative to binning.
+
+::: {.callout-tip title="Intuition"}
+Interactions and binning both add flexibility that the model could not otherwise represent. Interactions add it across variables; binning adds it within a variable. Splines (covered in the spline regression chapter, @sec-spline) are usually a smoother alternative to binning.
+:::
+
 
 ## Date, time, and text features
 
@@ -113,17 +145,29 @@ The simplest imputations replace a missing numeric value with the training mean 
 
 Adding the indicator is valuable because the fact of missingness is itself often informative: an unfilled income field may correlate with the outcome regardless of what the true income was. Keeping the flag lets the model use that signal instead of pretending the imputed value was observed.
 
-> **Warning:** Compute the imputation values (means, medians, modes) on the training set only. Imputing with the full-data mean before splitting leaks the validation rows into the training features, exactly the error the next section is about.
+
+::: {.callout-warning}
+Compute the imputation values (means, medians, modes) on the training set only. Imputing with the full-data mean before splitting leaks the validation rows into the training features, exactly the error the next section is about.
+:::
+
 
 ## Leakage and cross-validation
 
 We can now state the central discipline plainly. Several of the transformations above estimate parameters from data: scaling needs means and standard deviations, target encoding needs level means of the outcome, imputation needs column summaries. Every one of these $\hat\theta$ must be learned inside the training portion of each resampling split and then applied to the held-out portion. The held-out rows must never influence the transformation that is later applied to them.
 
-> **Key idea:** Treat the entire feature-engineering pipeline as part of the model. Whatever the model's fitting procedure is wrapped in cross-validation, the feature steps must be wrapped in the same loop, refit on each fold's training rows.
+
+::: {.callout-important title="Key idea"}
+Treat the entire feature-engineering pipeline as part of the model. Whatever the model's fitting procedure is wrapped in cross-validation, the feature steps must be wrapped in the same loop, refit on each fold's training rows.
+:::
+
 
 The most insidious case is target encoding, because it touches the outcome directly. The clean solution is out-of-fold encoding: to encode a training row, use level means computed from the other folds, never from the row's own fold. The `recipes` and `vtreat` packages implement this. In the demo we keep the logic explicit and simple, computing the encoder on a training split and applying it to a disjoint test split, which is enough to expose the difference between honest and leaky feature engineering.
 
-> **Tip:** A quick audit: list every pipeline step that computes a number from the data. For each, ask whether that number was computed using only training rows. If any step saw the validation or test rows, you have leakage.
+
+::: {.callout-tip}
+A quick audit: list every pipeline step that computes a number from the data. For each, ask whether that number was computed using only training rows. If any step saw the validation or test rows, you have leakage.
+:::
+
 
 ## Demonstration: a feature-engineering pipeline that helps
 
@@ -408,9 +452,17 @@ Prefer transforms that match the data's shape. Log transforms for skewed positiv
 
 Keep missingness indicators. The fact that a value was missing is often predictive on its own, and an indicator column lets the model use it instead of trusting an imputed value as if observed.
 
-> **Warning:** Resist the temptation to engineer features by eyeballing the relationship between a candidate feature and the outcome on the full dataset. That inspection is itself a use of the outcome, and features chosen this way can look strong and generalize poorly. Choose feature ideas from domain knowledge and the training data, and let held-out data be the judge.
 
-> **Note:** More features are not always better. Each engineered column adds variance and a maintenance cost in production. After engineering, the predictor-reduction tools (@sec-predictor-reduction) and regularization elsewhere in this book help prune the set back down to what earns its place.
+::: {.callout-warning}
+Resist the temptation to engineer features by eyeballing the relationship between a candidate feature and the outcome on the full dataset. That inspection is itself a use of the outcome, and features chosen this way can look strong and generalize poorly. Choose feature ideas from domain knowledge and the training data, and let held-out data be the judge.
+:::
+
+
+
+::: {.callout-note}
+More features are not always better. Each engineered column adds variance and a maintenance cost in production. After engineering, the predictor-reduction tools (@sec-predictor-reduction) and regularization elsewhere in this book help prune the set back down to what earns its place.
+:::
+
 
 ## Further reading
 

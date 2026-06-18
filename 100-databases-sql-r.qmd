@@ -13,7 +13,11 @@ Most real data does not live in a `.csv` file on your laptop. It lives in a data
 
 The chapter covers the standard R interface to databases (`DBI`), how to write safe parameterized queries, and how `dbplyr` lets you write ordinary `dplyr` code that is translated into SQL and run inside the database. The mathematical content is the relational model and its algebra, which is what SQL is a syntax for. By the end you should be able to connect to a database from R, push filtering and aggregation into the engine, pull back only the small result you need, and recognize the safety and performance traps that bite people in production.
 
-> **Key idea:** The single most consequential choice in a data pipeline is *where* the computation happens. Doing the work in the database and shipping a small answer to R is usually faster, cheaper, and safer than shipping a huge table to R and working on it there.
+
+::: {.callout-important title="Key idea"}
+The single most consequential choice in a data pipeline is *where* the computation happens. Doing the work in the database and shipping a small answer to R is usually faster, cheaper, and safer than shipping a huge table to R and working on it there.
+:::
+
 
 Because the database packages (`DBI`, `RSQLite`, `dbplyr`, `duckdb`) are outside the set of packages this book runs at build time, those chunks are marked `eval=FALSE`; they are correct, current code you can run.^[Marking a chunk `eval=FALSE` only means the book does not execute it while compiling; it does not mean the code is untested or wrong. Copy any such chunk into an R session with the relevant package installed and it will run.] A self-contained base R demonstration at the end teaches the same ideas with no external dependency, so you can see every concept run even without a database.
 
@@ -23,7 +27,11 @@ A typical pipeline starts with raw data in a database and ends with a model or a
 
 The principle is to do filtering, joining, and aggregation in the database, where the data already lives and where indexes and query planners exist, and to bring into R only the comparatively small, already-reduced table that you will model on. Pulling a billion-row table into R to then keep ten thousand rows is the most common and most expensive mistake.
 
-> **Intuition:** Think of the database as a warehouse and R as your workbench. You do not haul the entire warehouse to your bench to find one box; you ask the warehouse to find the box and send it over. The "asking" is SQL, and the box is the result of your query.
+
+::: {.callout-tip title="Intuition"}
+Think of the database as a warehouse and R as your workbench. You do not haul the entire warehouse to your bench to find one box; you ask the warehouse to find the box and send it over. The "asking" is SQL, and the box is the result of your query.
+:::
+
 
 ```
 [ database ]  --SQL/dbplyr-->  [ filtered, joined, aggregated result ]  --collect()-->  [ R data frame ]  -->  [ recipe / model / plot ]
@@ -62,7 +70,11 @@ $$
 $$
 Filtering before joining shrinks the inputs to the join. A SQL query planner applies such rewrites automatically; this is why pushing work into the database usually beats doing it in R after a naive full pull.
 
-> **Note:** You will rarely write relational algebra by hand. Its value here is conceptual: every SQL query, and every `dbplyr` pipeline, is one of these algebra expressions in disguise. When a query is slow, the question to ask is almost always "did the engine get to filter before it joined?"
+
+::: {.callout-note}
+You will rarely write relational algebra by hand. Its value here is conceptual: every SQL query, and every `dbplyr` pipeline, is one of these algebra expressions in disguise. When a query is slow, the question to ask is almost always "did the engine get to filter before it joined?"
+:::
+
 
 ## DBI: the connection interface
 
@@ -99,7 +111,11 @@ Out of the dozens of generics `DBI` defines, a handful carry almost all of the d
 - `dbSendQuery()` / `dbFetch()` / `dbClearResult()`: run a query and fetch the result in chunks, for results too large to hold in memory at once.
 - `dbWriteTable()` / `dbReadTable()`: move whole tables between R and the database.
 
-> **Tip:** Reach for `dbGetQuery()` when the result is small enough to fit in memory, and for the `dbSendQuery()` / `dbFetch()` trio when it is not, so you can stream the result in batches rather than materializing it all at once.
+
+::: {.callout-tip}
+Reach for `dbGetQuery()` when the result is small enough to fit in memory, and for the `dbSendQuery()` / `dbFetch()` trio when it is not, so you can stream the result in batches rather than materializing it all at once.
+:::
+
 
 A connection is a live resource, like an open file handle, and leaking it can exhaust the database's connection limit. For long-running jobs, wrap the connection so it always closes, even when an error is thrown partway through:
 
@@ -113,7 +129,11 @@ on.exit(dbDisconnect(con), add = TRUE)
 
 Knowing how to run queries, the next thing to learn is how to run them *safely*. There is one rule that matters more than any other here: never build a SQL string by pasting user input into it. The reason is both correctness (quoting and escaping are error prone) and security (string concatenation is the mechanism behind SQL injection, a class of attack where the input is crafted to be read as SQL code instead of data). The classic illustration: suppose you concatenate a user-supplied name.
 
-> **Warning:** If any part of your query string comes from outside your program (a web form, a file, an API call, a spreadsheet someone emailed you), treat it as hostile until it is bound as a parameter. The example below shows exactly how a friendly-looking input can become a `DROP TABLE`.
+
+::: {.callout-warning}
+If any part of your query string comes from outside your program (a web form, a file, an API call, a spreadsheet someone emailed you), treat it as hostile until it is bound as a parameter. The example below shows exactly how a friendly-looking input can become a `DROP TABLE`.
+:::
+
 
 ```{r dbsql-injection, eval=FALSE}
 # DANGEROUS: do not do this.
@@ -152,13 +172,21 @@ dbGetQuery(con, sql)
 
 The rule is simple, and worth committing to memory: values become parameters, identifiers get quoted with `dbQuoteIdentifier()`, and you never use `paste0()` to splice raw user input into SQL.
 
-> **Key idea:** A parameter is data on a separate wire from the query text. Because the driver never re-parses that wire as SQL, there is no string for an attacker to break out of. This is why parameterization fixes both the security problem and the quoting headaches at the same time.
+
+::: {.callout-important title="Key idea"}
+A parameter is data on a separate wire from the query text. Because the driver never re-parses that wire as SQL, there is no string for an attacker to break out of. This is why parameterization fixes both the security problem and the quoting headaches at the same time.
+:::
+
 
 ## dbplyr: dplyr translated to SQL
 
 Writing raw SQL by hand is fine, but if you already know `dplyr` there is a way to keep using it and still get the database to do the work. `dbplyr` is a `dplyr` backend for databases. You point `tbl()` at a database table, then write ordinary `dplyr` verbs. Instead of executing in R, the verbs are translated to SQL and executed in the database. You pull the result into R only when you call `collect()`.
 
-> **When to use this:** Reach for `dbplyr` when you are comfortable in the tidyverse and your query is expressible with standard verbs (`filter`, `select`, joins, `group_by`/`summarise`). Drop to raw SQL through `DBI` when you need a feature `dbplyr` cannot translate, such as a database-specific function or a window expression it does not yet support.
+
+::: {.callout-tip title="When to use this"}
+Reach for `dbplyr` when you are comfortable in the tidyverse and your query is expressible with standard verbs (`filter`, `select`, joins, `group_by`/`summarise`). Drop to raw SQL through `DBI` when you need a feature `dbplyr` cannot translate, such as a database-specific function or a window expression it does not yet support.
+:::
+
 
 ```{r dbsql-dbplyr, eval=FALSE}
 library(dplyr)
@@ -185,7 +213,11 @@ The translation is mechanical and follows the algebra above: `filter()` becomes 
 
 The central idea is *lazy evaluation*: the pipeline describes the work without doing it. A `dbplyr` pipeline builds up a query but does not run it. Nothing touches the database until you ask for results, either by printing (which fetches a small preview), by `collect()` (which runs the full query and returns a data frame), or by `compute()` (which materializes an intermediate result as a temporary table inside the database). This lets the whole pipeline be optimized and executed as one SQL statement rather than as a sequence of round trips.
 
-> **Intuition:** A lazy query is like a recipe, not a cooked meal. You can add steps, rearrange them, and read the recipe (`show_query()`) for free. Only `collect()` turns on the stove, and only then does the database do real work.
+
+::: {.callout-tip title="Intuition"}
+A lazy query is like a recipe, not a cooked meal. You can add steps, rearrange them, and read the recipe (`show_query()`) for free. Only `collect()` turns on the stove, and only then does the database do real work.
+:::
+
 
 The comparison in @tbl-databases-sql-r-lazy-vs-eager contrasts the two ways of finishing a pipeline.
 
@@ -225,13 +257,21 @@ tryCatch(
 
 `dbWithTransaction(con, { ... })` wraps this pattern: it commits if the block returns normally and rolls back if it throws, so you rarely need to call `dbBegin`/`dbCommit`/`dbRollback` by hand.
 
-> **Tip:** Transactions are not only for safety, they are also a speed trick. Wrapping many inserts in one transaction is a large speedup, since each statement otherwise pays the cost of its own implicit commit (a disk sync) on every row.
+
+::: {.callout-tip}
+Transactions are not only for safety, they are also a speed trick. Wrapping many inserts in one transaction is a large speedup, since each statement otherwise pays the cost of its own implicit commit (a disk sync) on every row.
+:::
+
 
 ## A runnable demonstration in base R
 
 Everything so far has been code you cannot run inside this book because the database packages are not installed at build time. To make the ideas concrete and executable, the following self-contained demonstration uses only base R and `ggplot2` to reproduce the same concepts: building a small relational table, running the relational-algebra operations that SQL performs, contrasting safe parameter binding with unsafe string pasting, and showing lazy versus eager evaluation. Think of the helper functions below as a paper-thin database engine. They are not how you would query a real database, but they make each SQL concept visible as a few lines of R you can read and run.
 
-> **Note:** This section is a teaching model, not a recommendation. In real work you would use `DBI` and `dbplyr`, not hand-written `sel`/`proj`/`join_on` helpers. The point is to show that "filter, join, group, collect" is the same program whether it runs in SQLite, in PostgreSQL, or in the toy engine below.
+
+::: {.callout-note}
+This section is a teaching model, not a recommendation. In real work you would use `DBI` and `dbplyr`, not hand-written `sel`/`proj`/`join_on` helpers. The point is to show that "filter, join, group, collect" is the same program whether it runs in SQLite, in PostgreSQL, or in the toy engine below.
+:::
+
 
 ```{r fig-databases-sql-r-group-by-region, eval=TRUE, fig.width=7, fig.height=4.5, fig.cap="Average and count of measurements by group, computed with a relational-algebra pipeline over an in-memory base R 'table'. This mirrors a GROUP BY query whose small result is collected into R for plotting."}
 .libPaths(c("C:/Users/miken/R/library-4.4", .libPaths()))
@@ -357,7 +397,11 @@ The `DBI` interface is shared, but engines differ. @tbl-databases-sql-r-backends
 
 For analytical work on large local files, DuckDB has become a popular default because it is serverless like SQLite but columnar and fast for aggregations, and it queries Parquet and CSV files in place (the in-process analytics chapter, @sec-duckdb-arrow, covers this engine in depth).^[A "columnar" engine stores each column together rather than each row together. Analytical queries that scan one or two columns of a wide table then read far less data, which is why DuckDB is fast for aggregations over large files.] Because all of these engines share the `DBI` interface, switching among them costs almost nothing: the code differs only in the `dbConnect()` line.
 
-> **When to use this:** Use SQLite for tests and small embedded data, DuckDB for fast local analytics over big files, PostgreSQL or MySQL when the data lives in a shared production database, and the `odbc` driver when you must reach an enterprise warehouse such as Snowflake or SQL Server.
+
+::: {.callout-tip title="When to use this"}
+Use SQLite for tests and small embedded data, DuckDB for fast local analytics over big files, PostgreSQL or MySQL when the data lives in a shared production database, and the `odbc` driver when you must reach an enterprise warehouse such as Snowflake or SQL Server.
+:::
+
 
 ```{r dbsql-duckdb, eval=FALSE}
 library(DBI)
@@ -385,7 +429,11 @@ The concepts above turn into a handful of habits that separate smooth pipelines 
 - Sampling and ordering can be expensive or nondeterministic. `ORDER BY RANDOM()` over a huge table is slow; prefer engine-specific sampling (`TABLESAMPLE`, DuckDB's `USING SAMPLE`) for large draws.
 - Index the columns you filter and join on. A `WHERE` or `JOIN` on an unindexed column forces a full scan; this is often the difference between seconds and minutes.
 
-> **Warning:** The two mistakes that cause the most pain in practice are collecting too early (which silently drags the whole table into R) and pasting user input into SQL (which is both a bug and a security hole). If you internalize only two habits from this chapter, make them "collect late" and "always parameterize."
+
+::: {.callout-warning}
+The two mistakes that cause the most pain in practice are collecting too early (which silently drags the whole table into R) and pasting user input into SQL (which is both a bug and a security hole). If you internalize only two habits from this chapter, make them "collect late" and "always parameterize."
+:::
+
 
 When to use it: any time the data is larger than comfortable R memory, lives in a shared store, or must be joined across several source tables. For small data already in a flat file, plain `readr`/`data.table` plus `dplyr` is simpler and there is no reason to involve a database. The crossover point in practice is roughly when a single pull would strain memory or when the same join must be recomputed often enough that the database's indexes and planner pay off.
 

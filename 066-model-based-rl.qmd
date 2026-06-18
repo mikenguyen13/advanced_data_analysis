@@ -9,7 +9,11 @@ Suppose you are learning to drive in an unfamiliar city. A purely trial-and-erro
 
 This chapter sits on top of the reinforcement learning (RL) machinery introduced in the deep reinforcement learning (@sec-deep-reinforcement-learning) and contextual bandit (@sec-contextual-bandits) chapters. There the agent learned a value function or a policy directly from experience, never forming an explicit picture of the environment's dynamics. Such methods are called model-free: they learn what to do without learning how the world works. Model-based methods take the opposite stance. They estimate the environment's transition and reward structure, and they use that structure to compute good behavior, either by full planning or by generating extra simulated experience to feed a model-free learner.
 
-> **Intuition:** A model-free agent is like someone who has memorized, for every street corner, how good it felt to turn left versus right, without knowing where any street leads. A model-based agent knows the map and can reason about routes it has never driven. The map costs effort to build and can be wrong, but once you have it, a single real trip teaches you far more.
+
+::: {.callout-tip title="Intuition"}
+A model-free agent is like someone who has memorized, for every street corner, how good it felt to turn left versus right, without knowing where any street leads. A model-based agent knows the map and can reason about routes it has never driven. The map costs effort to build and can be wrong, but once you have it, a single real trip teaches you far more.
+:::
+
 
 The central promise is sample efficiency. Real experience is often expensive: a robot wears out, a recommendation costs a real user's attention, a trading decision risks real money. If the agent can squeeze more learning out of each real interaction by planning inside a learned model, it needs fewer of those costly interactions. The central danger is model bias. A learned model is only an approximation, and an agent that plans aggressively against a flawed model can confidently pursue a strategy that is optimal in its imagination and useless in reality.
 
@@ -21,7 +25,11 @@ We work in the standard Markov decision process (MDP), the tuple $(\mathcal{S}, 
 
 A *model* of the environment is anything the agent can use to predict how the environment will respond to an action. Following Sutton and Barto (2018), a model is a function that, given a state and action, produces a prediction of the next state and reward. There are two useful flavors. A *distribution model* returns the full conditional distribution, $P(s' \mid s, a)$ and the reward distribution, so the agent can reason about all possible outcomes and their probabilities. A *sample model* returns one sampled outcome $(s', r)$ per query, which is cheaper to represent and is all that simulation-based planners such as MCTS require.
 
-> **Key idea:** Learning uses *real* experience drawn from the environment. Planning uses *simulated* experience drawn from a model. The two produce the same kind of update to a value function or policy. The only difference is where the experience comes from.
+
+::: {.callout-important title="Key idea"}
+Learning uses *real* experience drawn from the environment. Planning uses *simulated* experience drawn from a model. The two produce the same kind of update to a value function or policy. The only difference is where the experience comes from.
+:::
+
 
 This framing unifies the chapter. Both planning and learning estimate value functions and improve policies by backing up estimated returns. Direct RL (model-free learning) backs up real transitions; planning backs up transitions generated from the model. Because the update rule can be identical, an agent can interleave the two freely, which is precisely the idea behind Dyna.
 
@@ -47,7 +55,11 @@ $$
 
 where $\mathcal{T}$ denotes the operator. By the Banach fixed-point theorem the iteration converges to the unique fixed point $Q^*$ at a geometric rate $\gamma^k$. This is *pure planning*: no interaction with the environment, only computation against a known model.
 
-> **Note:** Value iteration needs the full distribution model and sweeps the entire state space on every step, so it is practical only when $\mathcal{S}$ and $\mathcal{A}$ are small enough to enumerate. The methods in the rest of this chapter exist precisely to plan without enumerating everything: Dyna plans only at states the agent actually visits, and MCTS plans only along promising trajectories.
+
+::: {.callout-note}
+Value iteration needs the full distribution model and sweeps the entire state space on every step, so it is practical only when $\mathcal{S}$ and $\mathcal{A}$ are small enough to enumerate. The methods in the rest of this chapter exist precisely to plan without enumerating everything: Dyna plans only at states the agent actually visits, and MCTS plans only along promising trajectories.
+:::
+
 
 ### Learning a model from experience
 
@@ -65,7 +77,11 @@ In continuous or high-dimensional problems the model becomes a learned regressor
 
 Dyna-Q, introduced by Sutton (1990), is the canonical architecture that fuses model-free learning with planning. The insight is that every real transition can be used twice. First it updates the value function directly (the model-free part), and second it updates a learned model. After each real step the agent then performs several *planning steps*: it samples previously seen state-action pairs from the model, queries the model for their predicted outcomes, and applies the same Q-learning update to those simulated transitions. The simulated updates propagate value information through the state space far faster than waiting for real visits.
 
-> **Intuition:** Plain Q-learning learns one transition per real step. Dyna-Q learns one transition per real step *plus* $n$ transitions replayed from its model. If $n = 50$, a single real step can trigger fifty-one value updates. When real steps are expensive, this is the difference between converging in dozens of episodes and converging in hundreds.
+
+::: {.callout-tip title="Intuition"}
+Plain Q-learning learns one transition per real step. Dyna-Q learns one transition per real step *plus* $n$ transitions replayed from its model. If $n = 50$, a single real step can trigger fifty-one value updates. When real steps are expensive, this is the difference between converging in dozens of episodes and converging in hundreds.
+:::
+
 
 The Q-learning update used everywhere in Dyna-Q is the temporal-difference update
 
@@ -77,7 +93,11 @@ with learning rate $\alpha \in (0, 1]$. The bracketed quantity is the TD error: 
 
 The full loop, for one real step, is the following. The agent observes state $s$, selects an action $a$ (typically $\varepsilon$-greedy), executes it, and observes reward $r$ and next state $s'$. It applies the TD update to $Q$ using this real transition. It records the transition in the model: $\text{Model}(s, a) \leftarrow (r, s')$. Then it loops $n$ times: sample a previously visited pair $(\tilde{s}, \tilde{a})$, look up the predicted $(\tilde{r}, \tilde{s}')$ from the model, and apply the TD update to $Q$ using that simulated transition.
 
-> **Warning:** Dyna-Q plans against whatever its model currently says. In a stationary deterministic world this is harmless, because the recorded outcome is correct. If the environment changes (a shortcut opens, a path is blocked), the stored model becomes stale and the planning updates reinforce a route that no longer exists. Dyna-Q+ addresses this by adding an exploration bonus that grows with the time since a state-action pair was last tried, nudging the agent to revisit and refresh its model.
+
+::: {.callout-warning}
+Dyna-Q plans against whatever its model currently says. In a stationary deterministic world this is harmless, because the recorded outcome is correct. If the environment changes (a shortcut opens, a path is blocked), the stored model becomes stale and the planning updates reinforce a route that no longer exists. Dyna-Q+ addresses this by adding an exploration bonus that grows with the time since a state-action pair was last tried, nudging the agent to revisit and refresh its model.
+:::
+
 
 The parameter $n$ (planning steps per real step) is the key dial. With $n = 0$, Dyna-Q is exactly Q-learning. As $n$ grows, each real interaction is amortized over more value updates, so fewer real steps are needed, at the cost of more computation per step. The demo below makes this tradeoff concrete.
 
@@ -95,7 +115,11 @@ $$
 
 where $\bar{Q}(s, a)$ is the average return observed for taking $a$ in $s$, $N(s)$ is the number of times state $s$ has been visited, $N(s, a)$ is the number of times action $a$ was taken from $s$, and $c > 0$ is an exploration constant. The first term exploits actions that have looked good; the second term, the exploration bonus, favors actions tried few times relative to their parent. UCT is a direct application of the UCB1 bandit rule (Auer, Cesa-Bianchi, and Fischer 2002) to each node, treating action choice at a node as a multi-armed bandit problem (@sec-multi-armed-bandits).
 
-> **Intuition:** The square-root term shrinks as an action is tried more often, so a much-visited action must keep earning high returns to stay attractive, while a rarely tried action gets a built-in benefit of the doubt. The constant $c$ sets how much weight curiosity gets relative to past success. Large $c$ explores broadly; small $c$ commits early to the current best line.
+
+::: {.callout-tip title="Intuition"}
+The square-root term shrinks as an action is tried more often, so a much-visited action must keep earning high returns to stay attractive, while a rarely tried action gets a built-in benefit of the doubt. The constant $c$ sets how much weight curiosity gets relative to past success. Large $c$ explores broadly; small $c$ commits early to the current best line.
+:::
+
 
 The second phase is *expansion*. Once selection reaches a node with untried actions, one new child node is added to the tree for an unexplored action.
 
@@ -109,7 +133,11 @@ $$
 
 where $G$ is the return of the simulated trajectory passing through $(s, a)$. After the budget is exhausted, the agent commits to the most-visited (or highest-value) action at the root, executes it in the real environment, and rebuilds the tree from the new state.
 
-> **Key idea:** MCTS never builds the whole tree. The UCT rule steers the four-phase loop so that simulations cluster along promising lines, giving an *anytime* planner whose recommendation improves smoothly with more compute. This is why it scales to games such as Go where the full tree is astronomically large.
+
+::: {.callout-important title="Key idea"}
+MCTS never builds the whole tree. The UCT rule steers the four-phase loop so that simulations cluster along promising lines, giving an *anytime* planner whose recommendation improves smoothly with more compute. This is why it scales to games such as Go where the full tree is astronomically large.
+:::
+
 
 A practical note bridges MCTS to the deep RL chapter (@sec-deep-reinforcement-learning): replacing the random rollout with a learned value network and biasing selection with a learned policy network is the core idea of AlphaGo and AlphaZero (Silver et al. 2016, 2017). The tree search supplies the planning; the networks supply learned priors that make each simulation far more informative.
 
@@ -125,7 +153,11 @@ $$
 
 where $\epsilon_P$ bounds the per-step transition-model error (a distance between $\hat{P}(\cdot \mid s, a)$ and $P(\cdot \mid s, a)$) and $R_{\max}$ bounds the reward. Two lessons follow. Small per-step model errors compound, and they compound worse as $\gamma \to 1$ because the $(1 - \gamma)^{-2}$ factor blows up. Planning many steps deep against an imperfect model amplifies its flaws.
 
-> **Warning:** Model bias is the reason naive model-based RL can perform *worse* than model-free RL despite using more computation. If the agent plans a long horizon against a confidently wrong model, it optimizes a fantasy. Modern remedies keep the planning horizon short, use ensembles to quantify model uncertainty and avoid trusting regions where models disagree, and continually refit the model on fresh data so its errors stay small where the agent actually goes.
+
+::: {.callout-warning}
+Model bias is the reason naive model-based RL can perform *worse* than model-free RL despite using more computation. If the agent plans a long horizon against a confidently wrong model, it optimizes a fantasy. Modern remedies keep the planning horizon short, use ensembles to quantify model uncertainty and avoid trusting regions where models disagree, and continually refit the model on fresh data so its errors stay small where the agent actually goes.
+:::
+
 
 @tbl-model-based-rl-tradeoff summarizes where each family sits on the spectrum.
 
@@ -153,7 +185,11 @@ kable(tradeoff,
 
 The cleanest way to see the sample-efficiency payoff is to run Dyna-Q and plain Q-learning side by side on the same small gridworld, with nothing but base R, and watch Dyna-Q reach good behavior in far fewer episodes. The environment is a 6 by 6 grid. The agent starts in the top-left cell, the goal is the bottom-right cell, and a short interior wall forces a detour. Each step costs a small negative reward (to encourage short paths) and reaching the goal gives a large positive reward. Moves into a wall or off the grid leave the agent in place.
 
-> **Tip:** Read the next chunks as one story. The first defines the environment, the second is a single agent loop with a planning dial `n` (set `n = 0` for plain Q-learning, `n > 0` for Dyna-Q), the third runs both agents and builds the comparison table, and the last plots the learning curves. Everything is plain base R, so you can step through it and inspect the `Q` matrix or the learned `model` at any point.
+
+::: {.callout-tip}
+Read the next chunks as one story. The first defines the environment, the second is a single agent loop with a planning dial `n` (set `n = 0` for plain Q-learning, `n > 0` for Dyna-Q), the third runs both agents and builds the comparison table, and the last plots the learning curves. Everything is plain base R, so you can step through it and inspect the `Q` matrix or the learned `model` at any point.
+:::
+
 
 ```{r model-based-rl-env}
 .libPaths(c("C:/Users/miken/R/library-4.4", .libPaths()))
@@ -316,7 +352,11 @@ legend("topright", legend = c(colnames(avg_steps), "optimal path"),
 
 The gap between the grey curve (no planning) and the blue curve (50 planning steps) is the sample-efficiency payoff in one picture. Plain Q-learning spends its early episodes wandering, because a single real transition only updates one cell of the Q-table and value information crawls outward one episode at a time. Dyna-Q replays the same handful of real transitions dozens of times per step, so within a few episodes the learned value has already flowed back from the goal across the reachable grid. Because this gridworld is deterministic and stationary, the learned model is exactly correct, so Dyna-Q here pays no model-bias cost: it is pure upside. In a noisy or changing environment the planning updates would inherit the model's errors, which is the tradeoff the previous section warned about.
 
-> **Note:** Notice that all three methods converge to roughly the same final path length. Model-based planning does not find a *better* policy than model-free learning in the limit; both converge to the optimum on a problem this small. What planning buys is *speed of convergence in real experience*. When real experience is the scarce resource, that is the entire game.
+
+::: {.callout-note}
+Notice that all three methods converge to roughly the same final path length. Model-based planning does not find a *better* policy than model-free learning in the limit; both converge to the optimum on a problem this small. What planning buys is *speed of convergence in real experience*. When real experience is the scarce resource, that is the entire game.
+:::
+
 
 ## Practical guidance and pitfalls
 
@@ -332,7 +372,11 @@ Refit the model continually and watch for nonstationarity. Dyna-Q's stored model
 
 Tune the planning budget against your compute, not blindly upward. In Dyna-Q the planning steps `n` trade real-sample efficiency for computation per step; past some point the extra planning updates have diminishing returns because the Q-table is already near-converged on the visited region. In MCTS the analogous dial is the simulation budget per decision and the UCT exploration constant $c$: too small a $c$ commits to a single line too early, too large a $c$ spreads simulations thinly and weakens the recommendation.
 
-> **Tip:** Get a tabular, deterministic version working first, exactly as in the demo above, where the learned model is provably correct and any failure is in your algorithm rather than your model. Only then introduce a learned function-approximation model and the bias problems that come with it. If Dyna-Q cannot beat Q-learning on a 6 by 6 grid, the bug is in the code, not the idea.
+
+::: {.callout-tip}
+Get a tabular, deterministic version working first, exactly as in the demo above, where the learned model is provably correct and any failure is in your algorithm rather than your model. Only then introduce a learned function-approximation model and the bias problems that come with it. If Dyna-Q cannot beat Q-learning on a 6 by 6 grid, the bug is in the code, not the idea.
+:::
+
 
 To summarize in one line: model-based RL learns or assumes a model of transitions and rewards and plans with it, trading the risk of model bias for a large gain in sample efficiency. Dyna-Q shows the gain cleanly by reusing each real transition for many planning updates, MCTS shows how to plan selectively in spaces too large to enumerate, and the simulation lemma explains why aggressive planning against a flawed model is the failure mode to guard against.
 

@@ -9,7 +9,11 @@ Most models in this book are trained once. You assemble a dataset, fit, evaluate
 
 The trouble is that the obvious approach, just keep training on whatever data is in front of you, fails badly. A neural network trained on task A and then fine tuned on task B will often forget almost everything it knew about A. This is called catastrophic forgetting, and it is the central obstacle of the field. The reason is structural: the same parameters that encode task A get overwritten to fit task B, because gradient descent has no reason to preserve anything it is not currently being asked about.
 
-> **Intuition:** Imagine studying for a chemistry exam, acing it, then spending a month cramming for history. When the chemistry final comes back around, much of it is gone. A person re-reads old notes to refresh. A naive network has no notes: each new task quietly erases the old one. Continual learning is the study of how to give the model a memory that survives the next subject.
+
+::: {.callout-tip title="Intuition"}
+Imagine studying for a chemistry exam, acing it, then spending a month cramming for history. When the chemistry final comes back around, much of it is gone. A person re-reads old notes to refresh. A naive network has no notes: each new task quietly erases the old one. Continual learning is the study of how to give the model a memory that survives the next subject.
+:::
+
 
 This chapter builds the core ideas from the ground up: the formal setup of a task sequence, why forgetting happens, the stability-plasticity dilemma that frames every method, and the three main families of solutions (regularization, rehearsal/replay, and parameter isolation). We derive elastic weight consolidation (EWC) from a Bayesian view, then show a fully runnable base-R demonstration: a small classifier trained sequentially on two tasks that catastrophically forgets the first, and the same classifier rescued by a tiny replay buffer. By the end you should be able to recognize a continual-learning problem, reason about the stability-plasticity trade-off, and implement a baseline mitigation by hand.
 
@@ -31,13 +35,21 @@ $$
 
 A large negative $\text{BWT}$ means catastrophic forgetting: tasks that were once learned well have decayed. A positive $\text{BWT}$ means learning later tasks actually helped earlier ones, which is the dream outcome.^[The notation $a_{k,j}$ follows the matrix-of-accuracies convention of Lopez-Paz and Ranzato (2017), who also defined forward transfer, the effect of past learning on a task before any of its own data is seen.]
 
-> **Note:** The three standard scenarios differ in what changes between tasks. In *task-incremental* learning the task identity is known at test time (you are told "this is the cats-vs-dogs head"). In *domain-incremental* learning the label set is fixed but the input distribution shifts. In *class-incremental* learning new classes appear over time and the model must choose among all classes seen so far with no task hint. Class-incremental is the hardest, because the model must also learn to tell tasks apart.
+
+::: {.callout-note}
+The three standard scenarios differ in what changes between tasks. In *task-incremental* learning the task identity is known at test time (you are told "this is the cats-vs-dogs head"). In *domain-incremental* learning the label set is fixed but the input distribution shifts. In *class-incremental* learning new classes appear over time and the model must choose among all classes seen so far with no task hint. Class-incremental is the hardest, because the model must also learn to tell tasks apart.
+:::
+
 
 ## Why Forgetting Happens: The Stability-Plasticity Dilemma
 
 Consider a model with parameters $\theta$ that has converged to a good solution $\theta_A^\star$ for task A, meaning it sits in a low region of the task-A loss $\mathcal{L}_A(\theta)$. Now we train on task B by minimizing $\mathcal{L}_B(\theta)$ with gradient descent. The updates follow $-\nabla_\theta \mathcal{L}_B$, which knows nothing about $\mathcal{L}_A$. Unless the two losses happen to share their minima, the parameters drift out of the task-A basin, and $\mathcal{L}_A(\theta)$ climbs back up. Nothing in plain fine tuning resists this.
 
-> **Key idea:** Forgetting is not a bug in the optimizer. It is the correct behavior of an objective that only mentions the current task. To preserve old knowledge you must change the objective, the data, or the parameter space so that something pushes back against drift.
+
+::: {.callout-important title="Key idea"}
+Forgetting is not a bug in the optimizer. It is the correct behavior of an objective that only mentions the current task. To preserve old knowledge you must change the objective, the data, or the parameter space so that something pushes back against drift.
+:::
+
 
 This sets up the stability-plasticity dilemma, a tension named in the neuroscience literature (Grossberg, 1987). A system needs *plasticity* to absorb new tasks and *stability* to retain old ones, and these pull in opposite directions:
 
@@ -100,7 +112,11 @@ $$
 
 where $\lambda > 0$ controls how hard old tasks are protected. The penalty is a per-parameter spring: its stiffness is $F_i$, so important parameters (high Fisher information) are pulled back strongly toward their old values, while unimportant ones are barely constrained.
 
-> **Intuition:** Think of each parameter attached to its old value by a spring. EWC makes the springs on the parameters that mattered for task A very stiff and the rest very loose. Task B is then learned in the slack directions that task A did not care about. With more tasks you keep adding springs (and accumulating Fisher terms), which is also why EWC eventually runs out of slack and stiffens up.
+
+::: {.callout-tip title="Intuition"}
+Think of each parameter attached to its old value by a spring. EWC makes the springs on the parameters that mattered for task A very stiff and the rest very loose. Task B is then learned in the slack directions that task A did not care about. With more tasks you keep adding springs (and accumulating Fisher terms), which is also why EWC eventually runs out of slack and stiffens up.
+:::
+
 
 The diagonal Fisher entry is estimated from the task-A data as the average squared gradient of the log-likelihood,
 
@@ -298,7 +314,11 @@ legend("bottomleft",
 
 @fig-continual-learning-forgetting is the whole chapter in one picture: a task-blind objective forgets, and a method that keeps even a sliver of the old objective alive does not.
 
-> **Warning:** Do not read the exact accuracy numbers as universal. They depend on the learning rate, the angle between the two tasks, and the buffer size. The robust takeaway is the *shape*: naive training drops sharply at the task switch, and replay flattens that drop. On harder problems (deep nets, many tasks, class-incremental) the same qualitative gap appears, usually wider.
+
+::: {.callout-warning}
+Do not read the exact accuracy numbers as universal. They depend on the learning rate, the angle between the two tasks, and the buffer size. The robust takeaway is the *shape*: naive training drops sharply at the task switch, and replay flattens that drop. On harder problems (deep nets, many tasks, class-incremental) the same qualitative gap appears, usually wider.
+:::
+
 
 ## EWC in Practice (Reference Implementation)
 
@@ -341,7 +361,11 @@ The structure mirrors the math exactly: `estimate_fisher` computes the diagonal 
 
 Choosing a method is mostly about constraints, not accuracy alone.
 
-> **When to use this:** If you can store a little past data and privacy allows it, start with a small replay buffer. It is the simplest strong baseline and usually beats regularization in head-to-head studies. If storing raw data is forbidden (privacy, regulation) or impossible (the stream is enormous), use a regularization method like EWC or generative replay. If you have a small, fixed set of well-separated tasks and ample parameters, parameter isolation gives zero forgetting at the cost of capacity.
+
+::: {.callout-tip title="When to use this"}
+If you can store a little past data and privacy allows it, start with a small replay buffer. It is the simplest strong baseline and usually beats regularization in head-to-head studies. If storing raw data is forbidden (privacy, regulation) or impossible (the stream is enormous), use a regularization method like EWC or generative replay. If you have a small, fixed set of well-separated tasks and ample parameters, parameter isolation gives zero forgetting at the cost of capacity.
+:::
+
 
 A few traps recur often enough to call out:
 
@@ -351,7 +375,11 @@ A few traps recur often enough to call out:
 - Task boundaries are often unknown. Much of the cleanest theory assumes you know when one task ends and the next begins. Real streams blur this. If boundaries are fuzzy, prefer methods that do not need them (reservoir replay, online importance estimation).
 - Class-incremental is harder than it looks. When new classes arrive with no task hint at test time, the model must also calibrate across tasks. A classifier that is individually good on each task can still be badly biased toward the most recent classes. Watch for this bias explicitly.
 
-> **Note:** Continual learning shares a border with online and incremental learning (@sec-online-learning), transfer learning (@sec-transfer-multitask-learning), and meta-learning (@sec-meta-learning), but the goal is distinct. Online learning optimizes performance on a moving target and does not especially care about old data; transfer learning moves knowledge from a source to a single target; continual learning insists on doing well on *every* task it has ever seen, with bounded resources.
+
+::: {.callout-note}
+Continual learning shares a border with online and incremental learning (@sec-online-learning), transfer learning (@sec-transfer-multitask-learning), and meta-learning (@sec-meta-learning), but the goal is distinct. Online learning optimizes performance on a moving target and does not especially care about old data; transfer learning moves knowledge from a source to a single target; continual learning insists on doing well on *every* task it has ever seen, with bounded resources.
+:::
+
 
 ## Further Reading
 

@@ -17,7 +17,11 @@ In a typical data and ML pipeline Spark sits at the data preparation and large s
 
 The decision to use Spark is mostly about data size and where the data already lives, not about model accuracy. A gradient boosting model (@sec-gradient-boosting) on a 10 GB sample will usually predict about as well as the same model on 1 TB; the value of Spark is processing the 1 TB at all when sampling would discard rare but important cases, or when the feature engineering itself requires the full table.
 
-> **When to use this:** Reach for Spark when the data is too large for one machine, is already spread across many files in a data lake or warehouse, or when the feature engineering must scan a table larger than any one machine's RAM. If your data fits comfortably in memory, you almost certainly do not need it.[^spark-overhead] We return to this decision in detail at the end of the chapter.
+
+::: {.callout-tip title="When to use this"}
+Reach for Spark when the data is too large for one machine, is already spread across many files in a data lake or warehouse, or when the feature engineering must scan a table larger than any one machine's RAM. If your data fits comfortably in memory, you almost certainly do not need it.[^spark-overhead] We return to this decision in detail at the end of the chapter.
+:::
+
 
 [^spark-overhead]: Spark carries real fixed costs: a Java Virtual Machine, a cluster to manage, network shuffles, and serialization between R and the JVM. On data that fits in memory, a single-machine tool such as `data.table` will usually finish before Spark has even started its executors.
 
@@ -29,7 +33,11 @@ A Spark application has one driver and many executors. The driver is the process
 
 When you run `sparklyr` from R, your R session is the driver side. R talks to the Spark driver (a Java Virtual Machine process) over a connection, the driver distributes tasks to executors, and only summarized results are pulled back into R. This is why you can analyze a table far larger than your laptop's memory: the table never enters R, only the answer does.
 
-> **Key idea:** The driver coordinates and the executors compute. Your R session is a thin client that builds a plan and receives small results; the data lives and moves on the cluster. Keeping this picture in mind explains nearly every performance rule later in the chapter.
+
+::: {.callout-important title="Key idea"}
+The driver coordinates and the executors compute. Your R session is a thin client that builds a plan and receives small results; the data lives and moves on the cluster. Keeping this picture in mind explains nearly every performance rule later in the chapter.
+:::
+
 
 ### Partitions and the RDD
 
@@ -39,7 +47,11 @@ The original Spark abstraction for a distributed collection is the Resilient Dis
 
 [^rdd-immutable]: Immutability is what makes lineage-based recovery possible. Because a partition is never modified in place, the recipe that built it always reproduces the same result, so Spark can safely recompute a lost partition without worrying that its inputs have since changed.
 
-> **Intuition:** Think of an RDD's lineage as a cooking recipe rather than a finished dish. If one plate is dropped, you do not redo the whole banquet; you just remake that one plate by following its steps again.
+
+::: {.callout-tip title="Intuition"}
+Think of an RDD's lineage as a cooking recipe rather than a finished dish. If one plate is dropped, you do not redo the whole banquet; you just remake that one plate by following its steps again.
+:::
+
 
 ### Transformations, actions, and lazy evaluation
 
@@ -47,7 +59,11 @@ Spark operations come in two kinds. Transformations (filter, select, join, group
 
 Laziness lets Spark optimize the whole plan before executing. The optimizer (Catalyst) can reorder and combine transformations, push filters down so less data is read, and prune unused columns. The practical consequence in `sparklyr`: a chain of `dplyr` verbs builds a query but does no work until you call something that needs the data, such as `collect()` (pull into R), `sdf_nrow()` (count), or a model fit. If you `collect()` too early, you defeat the optimizer and may pull a huge table into R.
 
-> **Warning:** A common beginner mistake is calling `collect()` partway through a pipeline "to see what is happening." That forces the entire intermediate table into the driver's R memory and can crash the session. Inspect plans with `dplyr::show_query()` or counts with `sdf_nrow()` instead, and `collect()` only the small final result.
+
+::: {.callout-warning}
+A common beginner mistake is calling `collect()` partway through a pipeline "to see what is happening." That forces the entire intermediate table into the driver's R memory and can crash the session. Inspect plans with `dplyr::show_query()` or counts with `sdf_nrow()` instead, and `collect()` only the small final result.
+:::
+
 
 ### Narrow and wide dependencies
 
@@ -55,7 +71,11 @@ Transformations differ in how partitions of the output depend on partitions of t
 
 Shuffles are the expensive part of distributed computing because network and disk are far slower than in memory work. Performance tuning in Spark is largely about reducing the amount of data shuffled and avoiding skew, where one key has far more records than the others and overloads a single executor. The math is simple: if computation cost per row is $c$ and shuffle cost per row is $s$ with $s \gg c$, then a plan that shuffles $m$ rows costs roughly $cN + sm$, and minimizing $m$ dominates.
 
-> **Intuition:** Narrow transformations are like having each worker tidy their own desk: independent and quick. A wide transformation is like asking everyone in the building to sort their papers into shared bins by topic, which means carrying paper down the hall to whoever owns each bin. The hallway traffic, not the sorting, is what slows you down.
+
+::: {.callout-tip title="Intuition"}
+Narrow transformations are like having each worker tidy their own desk: independent and quick. A wide transformation is like asking everyone in the building to sort their papers into shared bins by topic, which means carrying paper down the hall to whoever owns each bin. The hallway traffic, not the sorting, is what slows you down.
+:::
+
 
 We make the $cN + sm$ cost model visual in @fig-spark-sparklyr-shuffle-cost near the end of the chapter, after we have seen the map and reduce pattern that produces those shuffles.
 
@@ -83,7 +103,11 @@ A concrete example: computing a mean. The mean is not associative on its own[^me
 
 [^mean-assoc]: Averaging two partition means and then averaging that with a third does not in general equal the overall mean, because the partitions can hold different numbers of rows. Carrying the count alongside the sum repairs this: counts and sums each add associatively, and one final division recovers the correct mean.
 
-> **Key idea:** If you can phrase a quantity as the merge of per-partition partial results using an associative, commutative operator, Spark can compute it at scale while moving only the small partials across the network. Most of distributed analytics is finding that associative combiner.
+
+::: {.callout-important title="Key idea"}
+If you can phrase a quantity as the merge of per-partition partial results using an associative, commutative operator, Spark can compute it at scale while moving only the small partials across the network. Most of distributed analytics is finding that associative combiner.
+:::
+
 
 ## Connecting R to Spark with sparklyr
 
@@ -91,7 +115,11 @@ Now that we understand what Spark is doing under the hood, we can connect R to i
 
 [^yarn]: YARN ("Yet Another Resource Negotiator") is the cluster resource manager that ships with Hadoop; it decides which machines run your executors. On managed platforms such as Databricks or EMR the connection is configured for you and you rarely set `master` by hand.
 
-> **Tip:** Develop against `master = "local"` on a small sample so your code is fast to iterate, then change a single argument to point at the cluster for the full run. The `sparklyr` code itself does not change between the two.
+
+::: {.callout-tip}
+Develop against `master = "local"` on a small sample so your code is fast to iterate, then change a single argument to point at the cluster for the full run. The `sparklyr` code itself does not change between the two.
+:::
+
 
 ```{r spark-connect, eval=FALSE}
 library(sparklyr)
@@ -146,7 +174,11 @@ collected <- summary_tbl %>% collect()
 
 The `group_by` then `summarise` is a wide transformation: it shuffles rows so all records for each `cyl` land together, reduces within each group, and returns one row per group. Because the result is small (one row per cylinder count), `collect()` brings back almost nothing. The discipline is: do the shrinking on Spark, `collect()` only what is small.
 
-> **Note:** The `summarise` here is precisely the group-and-reduce from the previous section. `mean(mpg)` is computed as a (sum, count) combiner per `cyl`, merged across partitions, then divided. The `dplyr` verb is a friendly name for the distributed aggregation we worked out by hand.
+
+::: {.callout-note}
+The `summarise` here is precisely the group-and-reduce from the previous section. `mean(mpg)` is computed as a (sum, count) combiner per `cyl`, merged across partitions, then divided. The `dplyr` verb is a friendly name for the distributed aggregation we worked out by hand.
+:::
+
 
 You can also write the result back to storage instead of collecting it, which is what you do when the output is itself large.
 
@@ -168,7 +200,11 @@ $$
 
 so each partition produces a partial gradient, and only the $P$ partial gradient vectors (small, of length $p$) are shuffled per iteration, not the $N$ rows. Tree based models distribute differently: they compute split statistics (histograms of features within candidate nodes) per partition and merge those histograms, again an associative combine.
 
-> **Intuition:** Notice that the same trick keeps reappearing. A gradient is a sum over rows, a histogram is a count over rows, a mean is a sum and a count; in every case the per-partition partials are tiny compared to the data, so training a model on a billion rows moves only kilobytes per step. That is why MLlib scales.
+
+::: {.callout-tip title="Intuition"}
+Notice that the same trick keeps reappearing. A gradient is a sum over rows, a histogram is a count over rows, a mean is a sum and a count; in every case the per-partition partials are tiny compared to the data, so training a model on a billion rows moves only kilobytes per step. That is why MLlib scales.
+:::
+
 
 ```{r spark-mllib, eval=FALSE}
 # Train / test split done on Spark, never pulling data into R
@@ -191,7 +227,11 @@ rmse
 
 For multi step feature engineering plus a model, MLlib uses a pipeline: a sequence of stages (transformers that reshape features, and an estimator that learns) fit as one object so the same steps apply identically at training and scoring time. `sparklyr` builds these with `ml_pipeline()`. The functions prefixed `ft_` (for "feature transform") are the reshaping stages: `ft_string_indexer` turns text categories into integer codes, `ft_one_hot_encoder` expands those codes into indicator columns, and `ft_vector_assembler` packs several columns into the single `features` vector that MLlib estimators expect.
 
-> **Tip:** Bundling the preprocessing into the pipeline, rather than doing it ad hoc before the fit, is what guarantees that test data is transformed with the exact rules learned on the training data (the same category-to-index mapping, for instance). This is the distributed analogue of a `recipes` workflow from the tidymodels framework (@sec-tidymodels-framework).
+
+::: {.callout-tip}
+Bundling the preprocessing into the pipeline, rather than doing it ad hoc before the fit, is what guarantees that test data is transformed with the exact rules learned on the training data (the same category-to-index mapping, for instance). This is the distributed analogue of a `recipes` workflow from the tidymodels framework (@sec-tidymodels-framework).
+:::
+
 
 ```{r spark-pipeline, eval=FALSE}
 pipeline <- ml_pipeline(sc) %>%
@@ -212,7 +252,11 @@ preds <- ml_transform(model, splits$test)
 
 All of the `sparklyr` code above needs a Spark installation to run, so it is shown but not executed here. To make the computational model concrete with code that does run, the following chunks use plain base R. They simulate, on a single machine, the partition then map then reduce pattern that Spark distributes across executors. The point is not speed (base R on one core is not fast) but to see the moving parts: data is split into partitions, a map runs independently on each partition, and an associative reduce merges the per partition results. This is exactly the structure MLlib and `dplyr` on Spark rely on; here we play all the roles (driver and executors) ourselves so nothing is hidden.
 
-> **Note:** In a real Spark job the `lapply` calls below would run on different machines in parallel and the merge step would happen after a network shuffle. We use ordinary `lapply` and `rbind` so you can read every step, but the logical structure is identical.
+
+::: {.callout-note}
+In a real Spark job the `lapply` calls below would run on different machines in parallel and the merge step would happen after a network shuffle. We use ordinary `lapply` and `rbind` so you can read every step, but the logical structure is identical.
+:::
+
 
 First, a distributed word count, the canonical map and reduce example.
 
@@ -297,7 +341,11 @@ compare
 
 The `max_abs_diff` column is essentially zero (differences at the level of floating point rounding), which is the whole point: a correctly designed associative combiner makes the distributed computation produce the same result as the single machine computation, while only small partial results cross between partitions.
 
-> **Warning:** "Essentially zero" is not always "exactly zero." Because floating point addition is not perfectly associative, summing the same numbers in a different order (as happens when the partition count changes) can shift the last digits. This is expected behavior, not a bug, and is why distributed sums are reproducible only when the partitioning is fixed.
+
+::: {.callout-warning}
+"Essentially zero" is not always "exactly zero." Because floating point addition is not perfectly associative, summing the same numbers in a different order (as happens when the partition count changes) can shift the last digits. This is expected behavior, not a bug, and is why distributed sums are reproducible only when the partitioning is fixed.
+:::
+
 
 ## A figure: why shuffle volume dominates cost
 
@@ -345,7 +393,11 @@ The honest default is: do not use Spark until you need it. Spark adds a cluster,
 
 A few rules of thumb summarize the table. If the data fits in RAM, prefer `data.table` or `dplyr`; you will not beat them with Spark on one machine. If the data is bigger than RAM but on one machine, try `duckdb` or `arrow` (@sec-duckdb-arrow) before reaching for a cluster. Move to Spark when the data is genuinely distributed (many large files in object storage, a warehouse table of billions of rows), when the feature engineering must scan the full table, or when you already operate in a Spark based platform and want to stay in R.
 
-> **Key idea:** Spark earns its overhead only past a size and locality threshold. The right question is not "is my data big?" but "does my data fit on one machine, and if not, where does it already live?" That answer, more than any accuracy concern, decides whether Spark belongs in your pipeline.
+
+::: {.callout-important title="Key idea"}
+Spark earns its overhead only past a size and locality threshold. The right question is not "is my data big?" but "does my data fit on one machine, and if not, where does it already live?" That answer, more than any accuracy concern, decides whether Spark belongs in your pipeline.
+:::
+
 
 ## Practical guidance and pitfalls
 

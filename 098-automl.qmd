@@ -15,7 +15,11 @@ The promise is appealing and the danger is real, so it is worth being precise ab
 
 This chapter develops the idea from the ground up. We start with the central formalism, the Combined Algorithm Selection and Hyperparameter optimization (CASH) problem, which unifies "which model" and "which settings" into a single objective. We then look at how that objective is actually searched (random search, Bayesian optimization, and a brief note on neural architecture search), how meta-learning lets a system warm-start from past experience instead of starting cold, and how the major tools (`h2o` AutoML and auto-sklearn) put the pieces together. A runnable base-R demonstration builds a miniature AutoML system that searches over several model families with nested cross-validation and reports a leaderboard, so the mechanics are concrete rather than magical. We close with the pitfalls that separate a useful AutoML run from a misleading one. This chapter leans on the hyperparameter optimization chapter (@sec-hyperparameter-optimization) for the inner search and on the feature engineering chapter (@sec-feature-engineering) for the preprocessing pieces; AutoML is, in a sense, those two chapters wrapped in an outer loop together with model selection.
 
-> **Note:** A companion chapter on scalable machine learning with h2o (@sec-h2o-automl) covers the `h2o.automl()` interface and a base-R leaderboard at the engine level. This chapter is the conceptual counterpart: what AutoML is optimizing, how the search works, and why it can mislead. The two are meant to be read together.
+
+::: {.callout-note}
+A companion chapter on scalable machine learning with h2o (@sec-h2o-automl) covers the `h2o.automl()` interface and a base-R leaderboard at the engine level. This chapter is the conceptual counterpart: what AutoML is optimizing, how the search works, and why it can mislead. The two are meant to be read together.
+:::
+
 
 ## The pipeline AutoML automates {#automl-pipeline}
 
@@ -27,7 +31,11 @@ Before formalizing anything, it helps to name the parts. A supervised learning p
 - Ensembling. Combining several trained models, usually by stacking, so the final prediction is better than any single member.
 - Neural architecture search (NAS). When the model family is a neural network, the architecture itself (depth, width, connectivity) becomes a hyperparameter. We treat this briefly because it is computationally heavy and largely separate from tabular AutoML.
 
-> **Key idea:** AutoML is not one algorithm. It is an outer optimization loop that treats the choice of preprocessing, model, and hyperparameters as a single joint decision, scored by an estimate of generalization error.
+
+::: {.callout-important title="Key idea"}
+AutoML is not one algorithm. It is an outer optimization loop that treats the choice of preprocessing, model, and hyperparameters as a single joint decision, scored by an estimate of generalization error.
+:::
+
 
 The reason these stages cannot be optimized independently is interaction. The best learning rate for a booster depends on its depth; the best model family depends on how the features were encoded; whether to standardize depends on whether the model is distance-based (k-nearest neighbors cares, trees do not). Optimizing each stage in isolation and gluing the winners together can produce a pipeline that no stage would have chosen jointly. The next section makes this joint view precise.
 
@@ -46,7 +54,11 @@ $$
 
 Read it slowly. The inner part is exactly the $K$-fold cross-validation estimate of generalization error for one fixed pipeline. The outer $\arg\min$ ranges over every algorithm and every legal hyperparameter setting at once. That single $\arg\min$ over a union of heterogeneous spaces is what makes CASH the right abstraction: it refuses to separate "which model" from "which settings," because the best settings depend on the model and the best model depends on its settings.
 
-> **Intuition:** Picture a vast, lumpy landscape whose horizontal coordinates are "which algorithm" and "what hyperparameters," and whose height is cross-validated error. The landscape is not even connected in a simple way: moving from the random-forest region to the GLM region crosses a boundary where the very meaning of the coordinates changes. CASH asks for the lowest point in this whole strange landscape, and AutoML is the machinery for searching it without evaluating every point.
+
+::: {.callout-tip title="Intuition"}
+Picture a vast, lumpy landscape whose horizontal coordinates are "which algorithm" and "what hyperparameters," and whose height is cross-validated error. The landscape is not even connected in a simple way: moving from the random-forest region to the GLM region crosses a boundary where the very meaning of the coordinates changes. CASH asks for the lowest point in this whole strange landscape, and AutoML is the machinery for searching it without evaluating every point.
+:::
+
 
 One trick collapses the union of spaces into a single space, which is how tools implement CASH in practice. Introduce a top-level categorical hyperparameter $\theta$ whose value names the chosen algorithm, so $\theta \in \{1, \dots, R\}$, and make every algorithm-specific parameter conditional on $\theta$. Then the combined space is one (structured, conditional) hyperparameter space
 
@@ -56,7 +68,11 @@ $$
 
 and CASH becomes an ordinary, if high-dimensional and conditional, hyperparameter optimization problem over $\Lambda$. This is precisely why the same optimizers used for hyperparameter tuning (random search, Bayesian optimization) apply directly to model selection: once you write model choice as a hyperparameter, selecting a model is just tuning $\theta$.
 
-> **Warning:** The objective above minimizes cross-validated loss, which is an *estimate* of generalization error, not the truth. Search hard enough over enough pipelines and you will find one whose cross-validation score is low partly by luck. This is overfitting the validation procedure itself, and it is the defining hazard of AutoML. We return to it in the pitfalls section, and the demonstration measures it directly.
+
+::: {.callout-warning}
+The objective above minimizes cross-validated loss, which is an *estimate* of generalization error, not the truth. Search hard enough over enough pipelines and you will find one whose cross-validation score is low partly by luck. This is overfitting the validation procedure itself, and it is the defining hazard of AutoML. We return to it in the pitfalls section, and the demonstration measures it directly.
+:::
+
 
 ## Searching the CASH space {#automl-search}
 
@@ -66,7 +82,11 @@ The CASH objective tells us what to minimize; it says nothing about how. Every e
 
 The simplest strategy fixes a finite list of pipelines and evaluates them all. Grid search lays a regular lattice over each hyperparameter; random search draws each configuration independently from a distribution over $\Lambda$. Bergstra and Bengio (2012) showed that random search is usually the better of the two for the same budget, and the reason is geometric. If only a few of the hyperparameters actually matter (the common case), a grid wastes its budget by repeatedly testing the irrelevant ones at the same few values, whereas random search gives every important dimension many distinct values for the same number of trials.
 
-> **Intuition:** Imagine tuning two knobs where only one affects performance. A $5 \times 5$ grid tests the important knob at just 5 distinct settings (25 runs total). Twenty-five random draws test it at 25 distinct settings. Same cost, five times the resolution where it counts.
+
+::: {.callout-tip title="Intuition"}
+Imagine tuning two knobs where only one affects performance. A $5 \times 5$ grid tests the important knob at just 5 distinct settings (25 runs total). Twenty-five random draws test it at 25 distinct settings. Same cost, five times the resolution where it counts.
+:::
+
 
 Random search is the honest baseline for any AutoML claim. It is trivial to parallelize (every trial is independent), it has no failure modes beyond the budget, and a more clever method that cannot beat random search is not worth its complexity. Its weakness is that it never learns: trial 100 is drawn the same way as trial 1, ignoring everything the first 99 revealed.
 
@@ -90,13 +110,21 @@ where $\Phi$ and $\phi$ are the standard normal CDF and PDF. The first term rewa
 
 The choice of surrogate matters for AutoML specifically. A Gaussian process is the textbook choice but struggles with the conditional, partly-categorical CASH space (the $\theta$ that selects the algorithm). For that reason, the influential auto-sklearn and Auto-WEKA systems use a random-forest surrogate (the SMAC method of Hutter, Hoos, and Leyton-Brown, 2011), which handles categorical and conditional dimensions naturally. Tree-structured Parzen estimators (Bergstra et al., 2011) are another popular surrogate that models $p(\boldsymbol\lambda \mid y)$ rather than $p(y \mid \boldsymbol\lambda)$.
 
-> **Key idea:** Bayesian optimization spends a little computation deciding where to look so it can spend far less computation looking. It pays off when each evaluation (each model fit) is expensive relative to fitting the surrogate, which is exactly the AutoML regime.
+
+::: {.callout-important title="Key idea"}
+Bayesian optimization spends a little computation deciding where to look so it can spend far less computation looking. It pays off when each evaluation (each model fit) is expensive relative to fitting the surrogate, which is exactly the AutoML regime.
+:::
+
 
 ### Neural architecture search, briefly
 
 When the model is a neural network, the architecture (how many layers, how wide, which connections) is itself part of $\boldsymbol\lambda$, and searching over architectures is called neural architecture search. The combined space is enormous and each evaluation trains a network, so naive NAS can cost thousands of GPU-days. The field's progress is mostly about making the search cheaper: weight sharing across candidate architectures (ENAS), continuous relaxations that make the architecture differentiable (DARTS, Liu et al., 2019), and predicting a network's final accuracy from a few epochs. NAS matters for images, text, and other domains where architecture is decisive. For the tabular problems most AutoML systems target, a well-tuned gradient boosting machine usually beats a searched network at a fraction of the cost, so we mention NAS for completeness and spend our runnable budget elsewhere.
 
-> **When to use this:** Reach for NAS only when the architecture is genuinely the bottleneck (large-scale vision or language) and you have the compute to match. For tabular data, put the budget into searching model families and their hyperparameters, not into discovering a custom network.
+
+::: {.callout-tip title="When to use this"}
+Reach for NAS only when the architecture is genuinely the bottleneck (large-scale vision or language) and you have the compute to match. For tabular data, put the budget into searching model families and their hyperparameters, not into discovering a custom network.
+:::
+
 
 ## Meta-learning and warm-starting {#automl-meta}
 
@@ -110,7 +138,11 @@ $$
 
 and seeds the search with their winning configurations $\{\boldsymbol\lambda_i^{\star} : i \in \mathcal{N}(\mathbf{m}_{\text{new}})\}$ instead of random points. This is *warm-starting*: the optimizer's first few trials are educated guesses drawn from experience, so it spends its budget refining good regions rather than discovering them.
 
-> **Intuition:** Meta-learning is the AutoML system's memory. The first time it sees a wide, sparse, imbalanced dataset it has to search blindly; the hundredth time, it recognizes the type and starts where similar datasets ended up. The similarity is measured in meta-feature space, not in the raw data.
+
+::: {.callout-tip title="Intuition"}
+Meta-learning is the AutoML system's memory. The first time it sees a wide, sparse, imbalanced dataset it has to search blindly; the hundredth time, it recognizes the type and starts where similar datasets ended up. The similarity is measured in meta-feature space, not in the raw data.
+:::
+
 
 The auto-sklearn system of Feurer et al. (2015) is the canonical example: it precomputed the best configurations on a large bank of OpenML datasets, and at runtime it uses meta-features to pick a handful of those configurations to initialize Bayesian optimization. The reported effect is that the search reaches a good model much earlier in its budget, which matters most when the budget is short. A second, related technique those systems use is post-hoc ensembling: rather than keep only the single best pipeline the search found, build a weighted ensemble from the many pipelines it trained along the way, which are otherwise discarded. The leaderboard the search produces is, conveniently, exactly the pool an ensemble selection method (Caruana et al., 2004) draws from.
 
@@ -370,7 +402,11 @@ AutoML is a force multiplier when used with discipline and a trap when used as a
 
 - Reproducibility and seeds. A search with randomized trials or parallel training is only reproducible when seeds are fixed and the environment is pinned. Record the search space, the budget, the seed, and the package versions, or you cannot rerun the result.
 
-> **When to use this:** Reach for AutoML to get a strong baseline quickly, to search more broadly than you would by hand, or to free expert time for the parts of the problem (framing, features, evaluation) that genuinely need judgment. Do not reach for it expecting it to choose the right objective, fix leaky features, or substitute for an honest held-out evaluation. It automates the search, not the thinking around it.
+
+::: {.callout-tip title="When to use this"}
+Reach for AutoML to get a strong baseline quickly, to search more broadly than you would by hand, or to free expert time for the parts of the problem (framing, features, evaluation) that genuinely need judgment. Do not reach for it expecting it to choose the right objective, fix leaky features, or substitute for an honest held-out evaluation. It automates the search, not the thinking around it.
+:::
+
 
 ## Further reading {#automl-reading}
 

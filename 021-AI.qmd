@@ -9,7 +9,11 @@ Modern machine learning models, especially deep neural networks, are often remar
 
 This chapter introduces the tools that turn black-box predictions into something a person can reason about. We focus on two questions that the rest of the chapter circles back to repeatedly. First, how sure is the model? That is the problem of uncertainty quantification. Second, why did the model produce *this* prediction for *this* input? That is the problem of explainability. Along the way we meet a few named methods you will see again and again in practice: mixture density networks, LIME, and Shapley values (including their popular implementation, SHAP).
 
-> **Key idea:** Accuracy is not the same as trustworthiness. A model you cannot question is hard to trust, debug, audit, or defend. The methods in this chapter exist to make powerful but opaque models accountable.
+
+::: {.callout-important title="Key idea"}
+Accuracy is not the same as trustworthiness. A model you cannot question is hard to trust, debug, audit, or defend. The methods in this chapter exist to make powerful but opaque models accountable.
+:::
+
 
 ## Explainable AI
 
@@ -23,7 +27,11 @@ Uncertainty quantification (UQ) asks the model not only "what is your prediction
 
 The first is variational, or Bayesian, inference, which treats the network weights as random variables and approximates a posterior distribution over them rather than settling on a single best set of weights. The second is Monte Carlo dropout, which reinterprets the familiar dropout trick (randomly switching off neurons during training) as a principled UQ procedure; it can be justified from the perspective of deep Gaussian processes (see the Gaussian process regression chapter, @sec-gaussian-process-reg), so the same dropout you used for regularization doubles as a way to sample predictions. The third is the [Mixture Density Networks] approach, in which the network outputs an entire predictive distribution (a mixture of Gaussians) instead of just a mean. The fourth is ensembling, where you train several models, or several realizations of the same model, and read off the spread of their predictions as a measure of uncertainty.
 
-> **Intuition:** All four methods replace a single guess with a *spread* of plausible answers. They differ mainly in *where* the randomness comes from: from the weights (Bayesian, dropout), from the output layer (mixture density), or from training many models (ensembles).
+
+::: {.callout-tip title="Intuition"}
+All four methods replace a single guess with a *spread* of plausible answers. They differ mainly in *where* the randomness comes from: from the weights (Bayesian, dropout), from the output layer (mixture density), or from training many models (ensembles).
+:::
+
 
 We expand on the mixture density approach below because it is the most self-contained of the four and ties directly to material elsewhere in the book.
 
@@ -43,7 +51,11 @@ The four primary approaches are:
 
 Beyond these four, two design choices can build explainability into the model itself rather than bolting it on afterward. A self-explainable model produces explanations as part of its normal operation, for example through attention mechanisms (see @sec-transformers) that reveal which inputs the model attended to. A specialized model encodes structure that is inherently interpretable, such as graph neural networks (@sec-graph-neural-networks) that respect a known relational structure in the data.
 
-> **Warning:** Explanations can be gamed. It is possible to adjust a model so that it makes the *same* predictions while producing explanations that better fit a story someone wants to tell. An explanation is evidence, not proof; treat a too-convenient explanation with suspicion, and prefer methods and audits you cannot quietly tune.
+
+::: {.callout-warning}
+Explanations can be gamed. It is possible to adjust a model so that it makes the *same* predictions while producing explanations that better fit a story someone wants to tell. An explanation is evidence, not proof; treat a too-convenient explanation with suspicion, and prefer methods and audits you cannot quietly tune.
+:::
+
 
 With the landscape in view, we now study three workhorse methods in detail.
 
@@ -63,7 +75,11 @@ The trick that makes this a *network* is what the network is asked to output. In
 
 This method can use mixtures of other distributions as well.^[The mixture-of-Gaussians presentation follows Bishop's *Pattern Recognition and Machine Learning* (2006), where mixture density networks are developed in detail. The Gaussian case is the usual default, but nothing in the construction requires it.]
 
-> **When to use this:** Reach for a mixture density network when the conditional distribution of the output is skewed, heavy-tailed, or multi-modal, so that a single mean (and even a single variance) would be misleading. The classic example is an inverse problem where one input can plausibly map to several distinct outputs.
+
+::: {.callout-tip title="When to use this"}
+Reach for a mixture density network when the conditional distribution of the output is skewed, heavy-tailed, or multi-modal, so that a single mean (and even a single variance) would be misleading. The classic example is an inverse problem where one input can plausibly map to several distinct outputs.
+:::
+
 
 ### Local Interpretable Model-Agnostic Explanations
 
@@ -81,7 +97,11 @@ The procedure for building one local surrogate is as follows:
 4.  Train a weighted, interpretable model (e.g., regression) on the perturbed dataset, using the black-box predictions as the response.
 5.  Explain the prediction by interpreting the local model.
 
-> **Intuition:** To learn how a complicated surface behaves at one point, zoom in until it looks roughly flat, then fit a straight line there. LIME does exactly this: it jiggles the input, watches how the black box responds nearby, and fits a simple, readable model to that local response.
+
+::: {.callout-tip title="Intuition"}
+To learn how a complicated surface behaves at one point, zoom in until it looks roughly flat, then fit a straight line there. LIME does exactly this: it jiggles the input, watches how the black box responds nearby, and fits a simple, readable model to that local response.
+:::
+
 
 Formally, LIME produces an explanation for a given instance of $(\mathbf{y,x})$, where the goal is to find which of the $\mathbf{x}$ features are most responsible for a given prediction $\mathbf{\hat{y}}$. It does so by solving
 
@@ -105,7 +125,11 @@ In words, the objective trades off two things: $L(f, g, \pi_x)$ rewards a surrog
 
 The neighborhood itself is set by the proximity measure. Here $\pi_x$ is an exponential smoothing kernel, and its width is the key dial. A small kernel width means an observation must sit very close to $\mathbf{x}$ before it influences the local model, giving a tightly local explanation. A large kernel width lets observations quite different from $\mathbf{x}$ pull on the local model, giving a broader, less local explanation. Kernel widths are unavoidably subjective, so in practice you experiment with several and keep the ones that yield meaningful explanations.
 
-> **Warning:** Because the kernel width is a free choice and the explanation can shift with it, two analysts can produce different "explanations" of the same prediction. Report the width you used and check that the explanation is stable across a reasonable range.
+
+::: {.callout-warning}
+Because the kernel width is a free choice and the explanation can shift with it, two analysts can produce different "explanations" of the same prediction. Report the width you used and check that the explanation is stable across a reasonable range.
+:::
+
 
 A few practical notes round this out. LIME is straightforward to use in R through the `lime` or `iml` package.^[If you have a fitted model and want to try this, `lime` follows the steps above: build an explainer from the training data and model, then call `explain()` on the rows you want to interpret. The harder, less automatable part is judging quality, not running the code.] The difficult part is not running it but evaluating how well the local surrogate actually estimates the complex model in that neighborhood, since a poor local fit quietly undermines the interpretation. A heat map is a convenient way to display how all the variables influence the predictions at once.
 
@@ -123,7 +147,11 @@ Where LIME fits a local model, Shapley values take a game-theoretic route to the
 
 The idea comes from cooperative game theory. Shapley values were introduced in 1951 by Lloyd Shapley as a way to value each player's contribution in a cooperative game, work that contributed to his Nobel Prize in economics. The recipe, in its original setting, is to determine the value of players individually and in subsets, compute each player's marginal value across all possible orderings of the players, and then average those marginal values to get the player's Shapley value.
 
-> **Intuition:** Imagine team members joining a project one at a time, in every possible order. Each time someone joins, note how much the team's output goes up; that bump is their marginal contribution for that ordering. A player's Shapley value is the average of these bumps over all orderings. Swap "player" for "feature" and "team output" for "prediction" and you have feature attribution.
+
+::: {.callout-tip title="Intuition"}
+Imagine team members joining a project one at a time, in every possible order. Each time someone joins, note how much the team's output goes up; that bump is their marginal contribution for that ordering. A player's Shapley value is the average of these bumps over all orderings. Swap "player" for "feature" and "team output" for "prediction" and you have feature attribution.
+:::
+
 
 To make this precise, consider a game with $N$ players. The characteristic (value) function $\nu$ maps subsets $S \in \{0, 1,\dots, N\}$ to a real value $\nu(S)$, the value to be gained from that coalition of players cooperating. The marginal contribution of player $i$ to a coalition $S$ is
 
@@ -169,7 +197,11 @@ $$
 
 These axioms are exactly what make the attributions line up with human intuitions about fair credit, which is why Shapley values are useful for ensuring that feature attribution corresponds to human understanding.
 
-> **Key idea:** Shapley values are the unique feature attribution that is fair in a precise, axiomatic sense (symmetry, dummy, additivity). That uniqueness is the main reason they have become a default explanation tool.
+
+::: {.callout-important title="Key idea"}
+Shapley values are the unique feature attribution that is fair in a precise, axiomatic sense (symmetry, dummy, additivity). That uniqueness is the main reason they have become a default explanation tool.
+:::
+
 
 To use this for predictive modeling, treat a single prediction as the "game": the features $x_1, \dots, x_p$ are the players, and the value function $\nu_f$ is defined with respect to the model $f$. Then the Shapley value for feature $i$ is the influence of that feature on the outcome. Everything hinges on how one defines the value function $\nu_f$, because that is what turns an abstract game into a concrete statement about a model.
 
@@ -201,12 +233,20 @@ For implementations, you have several choices depending on your language and mod
 
 -   Others: `fastshap`, `iml`, shap-value, `DALEX`, and `shapleyR`.
 
-> **Tip:** For tree ensembles (random forests, gradient boosting), prefer Tree SHAP. It computes exact Shapley values quickly by using the tree structure, instead of the slow sampling needed in the model-agnostic case.
+
+::: {.callout-tip}
+For tree ensembles (random forests, gradient boosting), prefer Tree SHAP. It computes exact Shapley values quickly by using the tree structure, instead of the slow sampling needed in the model-agnostic case.
+:::
+
 
 Shapley values are powerful but not above criticism, and the critiques fall into two groups. The mathematical issues concern what the numbers really mean. A feature with no direct effect on the response can still be assigned influence if it is predictive of other features (indirect influence). It is unclear how statistically related features should be handled, for instance whether correlated features should be treated as a single "player." And intervention-based methods can rely on out-of-distribution sampling, extrapolating into regions of feature space where no real data live.
 
 The human-interpretability issues concern how people read the numbers. A Shapley value answers the question "Why $f(x)$ instead of $E[f(x)]$?", yet we may never actually observe data with the baseline outcome $E[f(x)]$, so the comparison can feel abstract. Shapley values also do not tell you how to *change* an outcome (they are descriptive, not prescriptive), and they are easy to misinterpret as causal when they are not.
 
-> **Warning:** A SHAP value is not a causal effect and not a recipe for action. It explains why this prediction differs from the average prediction, under specific assumptions about feature dependence. When features are correlated, read the attributions with extra care.
+
+::: {.callout-warning}
+A SHAP value is not a causal effect and not a recipe for action. It explains why this prediction differs from the average prediction, under specific assumptions about feature dependence. When features are correlated, read the attributions with extra care.
+:::
+
 
 For further reading on Shapley values and their use in machine learning, see @datta2016, @kumar2020problems, @lipovetsky2001a, @lundberg2018consistent, @lundberg2017unified, @merrick2020explanation, @trumbelj2013, and @sundararajan2020many.

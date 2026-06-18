@@ -18,9 +18,13 @@ predicted label match the true label. For free-form text there is no single
 bad, so we have to construct a scoring rule before we can measure anything.]
 Most of the work in LLM evaluation is the work of defining a usable loss.
 
-> **Key idea:** An LLM is just a function from prompt to text. Evaluation is the
-> problem of inventing a sensible loss for that function, because, unlike
-> classification or regression, no loss comes built in.
+
+::: {.callout-important title="Key idea"}
+An LLM is just a function from prompt to text. Evaluation is the
+problem of inventing a sensible loss for that function, because, unlike
+classification or regression, no loss comes built in.
+:::
+
 
 This chapter covers where evaluation fits in a modern ML/AI workflow, the
 difference between generic benchmarks and task-specific evaluation, the common
@@ -47,9 +51,13 @@ change behavior, so the evaluation set should exercise the system end to end, no
 just the raw model. This is the same logic as testing a fitted pipeline rather
 than a single estimator: the thing you deploy is the thing you score.
 
-> **Intuition:** If you score the bare model but ship the model plus a retrieval
-> step plus three guardrails, your number describes something the user never
-> meets. Score the assembled system end to end.
+
+::: {.callout-tip title="Intuition"}
+If you score the bare model but ship the model plus a retrieval
+step plus three guardrails, your number describes something the user never
+meets. Score the assembled system end to end.
+:::
+
 
 Two failure modes recur. The first is optimizing to a benchmark that does not
 resemble your traffic, which gives a number that looks good and a product that
@@ -71,9 +79,13 @@ the generalization you actually care about.] And they measure a generic skill,
 not your task. A model that ranks first on a reasoning benchmark can still be
 wrong about your product's return policy.
 
-> **Warning:** A leaderboard rank is a shortlisting signal, not a release
-> decision. The model that tops a public benchmark may know nothing about the
-> documents, jargon, and edge cases specific to your product.
+
+::: {.callout-warning}
+A leaderboard rank is a shortlisting signal, not a release
+decision. The model that tops a public benchmark may know nothing about the
+documents, jargon, and edge cases specific to your product.
+:::
+
 
 Task-specific evaluation is a dataset and metric you build from your own use
 case: real or realistic prompts, reference answers or rubrics that encode your
@@ -115,9 +127,13 @@ an answer, the softer the metric needs to be. We move from the strictest metric
 same, since flexibility buys you tolerance for paraphrase at the cost of more
 noise and more bias in the score.
 
-> **When to use this:** Reach for the strictest metric the task allows. A
-> stricter metric is cheaper, more reproducible, and easier to audit. Only loosen
-> it when the output genuinely admits many correct surface forms.
+
+::: {.callout-tip title="When to use this"}
+Reach for the strictest metric the task allows. A
+stricter metric is cheaper, more reproducible, and easier to audit. Only loosen
+it when the output genuinely admits many correct surface forms.
+:::
+
 
 ### Exact Match
 
@@ -180,9 +196,13 @@ make the quality definition explicit and auditable, which matters when several
 people disagree about what "good" means. The scores $s_{ij}$ can come from human
 raters or from an LLM judge.
 
-> **Tip:** Writing the rubric is itself the most valuable step. Forcing yourself
-> to name the criteria and assign weights surfaces hidden disagreements about
-> quality before they turn into arguments over a single output.
+
+::: {.callout-tip}
+Writing the rubric is itself the most valuable step. Forcing yourself
+to name the criteria and assign weights surfaces hidden disagreements about
+quality before they turn into arguments over a single output.
+:::
+
 
 ### LLM-as-Judge
 
@@ -196,9 +216,13 @@ comparison), length bias (preferring longer answers), and self-preference
 option order, calibrating against a human-labeled subset, and reporting agreement
 rates rather than treating the judge as ground truth.
 
-> **Warning:** A judge that grades its own model's outputs can flatter them. Never
-> let a model be the sole arbiter of its own release without first checking how
-> well it agrees with human raters.
+
+::: {.callout-warning}
+A judge that grades its own model's outputs can flatter them. Never
+let a model be the sole arbiter of its own release without first checking how
+well it agrees with human raters.
+:::
+
 
 @tbl-evaluating-llms-scorecompare compares the methods.
 
@@ -242,10 +266,14 @@ LLM judge. Faithfulness is distinct from correctness: an answer can be faithful 
 a wrong document, or correct but unsupported by the retrieved context. Report
 both when you can.
 
-> **Note:** Faithfulness measures the link between the output and the context you
-> gave the model, not the link between the output and the truth. A faithful
-> answer grounded in a wrong document is still wrong, which is why correctness
-> and faithfulness are reported as separate numbers.
+
+::: {.callout-note}
+Faithfulness measures the link between the output and the context you
+gave the model, not the link between the output and the truth. A faithful
+answer grounded in a wrong document is still wrong, which is why correctness
+and faithfulness are reported as separate numbers.
+:::
+
 
 ### Toxicity and Safety
 
@@ -260,10 +288,14 @@ everything is perfectly "safe" and completely useless.] Pushing one to zero usua
 raises the other, so safety tuning is an operating-point choice, the same trade-off
 as a classification threshold.
 
-> **Intuition:** Safety has two error types pulling against each other: letting
-> bad content through, and blocking good content. Driving the violation rate to
-> zero by refusing more aggressively just trades one failure for the other. The
-> goal is a deliberate operating point, not a corner.
+
+::: {.callout-tip title="Intuition"}
+Safety has two error types pulling against each other: letting
+bad content through, and blocking good content. Driving the violation rate to
+zero by refusing more aggressively just trades one failure for the other. The
+goal is a deliberate operating point, not a corner.
+:::
+
 
 ### Calibration
 
@@ -273,10 +305,14 @@ model (or a wrapper) emits a probability $\hat p$ that its answer is correct,
 calibration asks whether, among all answers with $\hat p \approx 0.8$, about 80
 percent are in fact correct.
 
-> **Intuition:** Calibration is about honesty, not accuracy. A weather forecaster
-> who says "70 percent chance of rain" is well calibrated if it rains on about 70
-> percent of such days, even if she is wrong half the time. A model can be
-> accurate but overconfident, or mediocre but well calibrated.
+
+::: {.callout-tip title="Intuition"}
+Calibration is about honesty, not accuracy. A weather forecaster
+who says "70 percent chance of rain" is well calibrated if it rains on about 70
+percent of such days, even if she is wrong half the time. A model can be
+accurate but overconfident, or mediocre but well calibrated.
+:::
+
 
 Bin the predictions into $B$ confidence bins. For bin
 $b$ with index set $I_b$, let
@@ -322,10 +358,14 @@ nondeterministic, fix the sampling temperature to zero for tests where you can,
 and for the rest run several samples and compare distributions rather than single
 outputs.
 
-> **Tip:** A single passing example is weak evidence when the model samples
-> randomly. For nondeterministic tests, run each input several times and assert on
-> the distribution (for example, the answer must pass in at least 9 of 10 draws)
-> rather than on one lucky output.
+
+::: {.callout-tip}
+A single passing example is weak evidence when the model samples
+randomly. For nondeterministic tests, run each input several times and assert on
+the distribution (for example, the answer must pass in at least 9 of 10 draws)
+rather than on one lucky output.
+:::
+
 
 ## Runnable Demo: EM, Token F1, and Rubric Aggregation
 
@@ -544,10 +584,14 @@ and keep a frozen subset so historical scores stay comparable. Fix sampling
 temperature to zero in tests where you can, and for nondeterministic cases compare
 score distributions over several samples rather than single outputs.
 
-> **When to use this:** Build a full evaluation harness once a change can reach
-> users, once several people must agree on what "good" means, or once you need to
-> detect drift over time. Throwaway prototypes and exploratory prompting do not
-> need one; a small golden set and a couple of assertions are enough.
+
+::: {.callout-tip title="When to use this"}
+Build a full evaluation harness once a change can reach
+users, once several people must agree on what "good" means, or once you need to
+detect drift over time. Throwaway prototypes and exploratory prompting do not
+need one; a small golden set and a couple of assertions are enough.
+:::
+
 
 When not to do heavy evaluation: throwaway prototypes and exploratory prompting
 do not need a full harness. The cost is justified once a change can reach users,

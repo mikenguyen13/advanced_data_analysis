@@ -9,13 +9,21 @@ Imagine you are trying to predict the price of a house, but instead of writing d
 
 A tree works by carving the predictor space into a set of simple, non-overlapping regions and then making one constant prediction inside each region. The "questions" are splitting rules of the form "is feature $X_j$ below some threshold?", and because each rule splits the data in two and then we split again, the rules naturally form a branching structure that looks like an upside-down tree. The same machinery handles both numeric and categorical responses, which is why the method is called CART, short for Classification And Regression Trees.^[The acronym CART comes from the title of the foundational book by Breiman, Friedman, Olshen, and Stone (1984), which introduced the modern version of the algorithm.]
 
-> **Key idea:** A tree partitions the feature space into regions and predicts a single value per region. For regression, that value is the average response of the training points in the region; for classification, it is the most common class in the region.
+
+::: {.callout-important title="Key idea"}
+A tree partitions the feature space into regions and predicts a single value per region. For regression, that value is the average response of the training points in the region; for classification, it is the most common class in the region.
+:::
+
 
 The first split, at the top of the tree (the "root"), is usually the one that buys you the largest drop in prediction error, measured by the sum of squared residuals (SSR) for regression. Once that split is chosen, the procedure repeats inside each of the two resulting pieces, and so on.
 
 In this chapter you will learn how a tree is grown one split at a time, how to stop it from memorizing the training data by pruning it back, and how to fit and interpret both regression and classification trees in R. Trees on their own are rarely the most accurate predictors, but they are the building block for some of the most powerful methods in this book, including bagging (@sec-bagging), random forests (@sec-random-forest), and boosting (@sec-boosting), so understanding them well pays off later.
 
-> **When to use this:** Reach for a single tree when interpretability matters more than raw accuracy, when you want a model a non-specialist can read off a diagram, or when you suspect the relationship between features and response is genuinely nonlinear and full of interactions. If the truth is close to linear, ordinary linear or logistic regression will usually beat a tree.
+
+::: {.callout-tip title="When to use this"}
+Reach for a single tree when interpretability matters more than raw accuracy, when you want a model a non-specialist can read off a diagram, or when you suspect the relationship between features and response is genuinely nonlinear and full of interactions. If the truth is close to linear, ordinary linear or logistic regression will usually beat a tree.
+:::
+
 
 It helps to be honest up front about where trees struggle, because most of these weaknesses are the reason the later ensemble chapters exist.
 
@@ -35,7 +43,11 @@ It helps to be honest up front about where trees struggle, because most of these
 
 - Most importantly, a single tree usually does not predict as accurately as competing regression and classification methods.
 
-> **Warning:** A single fully grown tree almost always overfits. The variance problem is severe enough that in practice you should either prune aggressively or move to an ensemble of trees. Treat the lone tree as a teaching device and an interpretability tool, not as your final predictor.
+
+::: {.callout-warning}
+A single fully grown tree almost always overfits. The variance problem is severe enough that in practice you should either prune aggressively or move to an ensemble of trees. Treat the lone tree as a teaching device and an interpretability tool, not as your final predictor.
+:::
+
 
 Set against those drawbacks, trees have real and durable advantages, which is why they remain so widely used.
 
@@ -73,11 +85,19 @@ $$
 
 where $\hat{y}_{R_j}$ is the mean response for the training observations within the j-th box (e..g, $\hat{c}_j$ )
 
-> **Note:** Why rectangles? Restricting the regions to axis-aligned boxes is what makes a tree readable. Each split asks about one variable at a time, so every region is described by a simple list of "this variable above this value, that variable below that value" conditions.
+
+::: {.callout-note}
+Why rectangles? Restricting the regions to axis-aligned boxes is what makes a tree readable. Each split asks about one variable at a time, so every region is described by a simple list of "this variable above this value, that variable below that value" conditions.
+:::
+
 
 Since we can't consider every possible partition (computationally constraint), we seek binary partitions and specifically, a top down, greedy approach (i.e., at each step the best split is made at that step, once we make a split, we don't go back and change it) known as recursive binary splitting.
 
-> **Intuition:** "Greedy" means the algorithm grabs the single best split available right now without worrying about whether a slightly worse split today might enable a much better split tomorrow. This is not guaranteed to find the globally optimal tree, but searching all trees is computationally hopeless, and the greedy tree is fast and usually good enough.
+
+::: {.callout-tip title="Intuition"}
+"Greedy" means the algorithm grabs the single best split available right now without worrying about whether a slightly worse split today might enable a much better split tomorrow. This is not guaranteed to find the globally optimal tree, but searching all trees is computationally hopeless, and the greedy tree is fast and usually good enough.
+:::
+
 
 ### Recursive Binary Splitting
 
@@ -109,7 +129,11 @@ Having made that first cut, we treat each resulting piece as a fresh problem and
 
 -   Regression trees can usually lead to over-fitting on the test set, to reduce this problem, we can prune (i.e., remove leaves) to obtain a subtree using cross-validation.
 
-> **Tip:** Vocabulary you will see everywhere: a *leaf* (terminal node) is an end region where a prediction is made, an *internal node* is a point where a split happens, and the connections between them are *branches*. Pruning means snipping branches off to get a smaller *subtree*.
+
+::: {.callout-tip}
+Vocabulary you will see everywhere: a *leaf* (terminal node) is an end region where a prediction is made, an *internal node* is a point where a split happens, and the connections between them are *branches*. Pruning means snipping branches off to get a smaller *subtree*.
+:::
+
 
 <br>
 
@@ -145,7 +169,11 @@ where $|T|$ is the number of terminal nodes
 
 The parameter $\alpha$ controls a tradoff between the subtree's complexity and how well it fits the training data ($\alpha = 0$ implies $T = T_0$). As $\alpha$ gets larger, the penalty for a larger tree is higher, so it penalizes similarly to lasso regression. Moreover, as $\alpha$ increases, the branches get pruned in a nested a predictable fashion. Hence, it's possible to get the whole sequence of subtrees as a function of $\alpha$ (based on cross-validation). After getting $\alpha$ using cross-validation, we can use that value with the full data set to obtain the fitted subtree
 
-> **Intuition:** The penalty $\alpha |T|$ plays the same role here that the penalty term plays in lasso regression: it shrinks model complexity. Small $\alpha$ lets the tree stay large and flexible; large $\alpha$ forces it down to a stump. The beauty is that as $\alpha$ slides from 0 upward, the leaves drop off in a single nested sequence, so cross-validation only has to compare a handful of subtrees rather than all of them.
+
+::: {.callout-tip title="Intuition"}
+The penalty $\alpha |T|$ plays the same role here that the penalty term plays in lasso regression: it shrinks model complexity. Small $\alpha$ lets the tree stay large and flexible; large $\alpha$ forces it down to a stump. The beauty is that as $\alpha$ slides from 0 upward, the leaves drop off in a single nested sequence, so cross-validation only has to compare a handful of subtrees rather than all of them.
+:::
+
 
 ### Algorithm for regression tree
 
@@ -196,7 +224,11 @@ plot(cv.boston$size, cv.boston$dev, type = "b")
 
 ```
 
-> **Tip:** Read this plot the way you would read any model-selection curve: error usually drops as the tree grows, then flattens or rises once extra leaves start fitting noise. The smallest tree near the bottom of the curve is the one to prefer, since it is simpler at little or no cost in accuracy.
+
+::: {.callout-tip}
+Read this plot the way you would read any model-selection curve: error usually drops as the tree grows, then flattens or rises once extra leaves start fitting noise. The smallest tree near the bottom of the curve is the one to prefer, since it is simpler at little or no cost in accuracy.
+:::
+
 
 If we want to prune the complex tree back to, say, five leaves, we hand `prune.tree()` the size we want. @fig-regression-trees-boston-pruned shows the pruned five-leaf tree.
 
@@ -255,7 +287,11 @@ There are three standard measures used to score a split, all of which are smalle
 
 The Gini index and Cross-Entory both take small values when all $\hat{p}_{jk}$ are close to 1 or 0. Hence, we say they measure node purity, which are more sensitive to node probabilities than the classification error rate. Hence, we typically use the last two to grow the tree.
 
-> **Key idea:** Use the Gini index or cross-entropy to *grow* the tree, because they respond smoothly to changes in class proportions and so produce better splits. Use the classification error rate when your goal is the predictive accuracy of the final *pruned* tree.
+
+::: {.callout-important title="Key idea"}
+Use the Gini index or cross-entropy to *grow* the tree, because they respond smoothly to changes in class proportions and so produce better splits. Use the classification error rate when your goal is the predictive accuracy of the final *pruned* tree.
+:::
+
 
 As a rule of thumb: use Gini and cross-entropy to build and prune a tree, and use the classification error rate for pruning if prediction accuracy of the pruned tree is the goal.
 
@@ -335,7 +371,11 @@ cv.carseats
 
 In this output, `size` = number of terminal nodes of each tree, `k` = $\alpha$ = cost-complexity parameter, and `dev` = number of cross-validation errors.
 
-> **Note:** Despite the name, `dev` here counts cross-validation *errors* (misclassifications), not deviance, because we asked for `prune.misclass`. The tree size with the smallest `dev` is the one we want.
+
+::: {.callout-note}
+Despite the name, `dev` here counts cross-validation *errors* (misclassifications), not deviance, because we asked for `prune.misclass`. The tree size with the smallest `dev` is the one we want.
+:::
+
 
 Plotting error against both tree size and the penalty $\alpha$ makes the trade-off visible at a glance. @fig-regression-trees-carseats-cv shows both views side by side.
 

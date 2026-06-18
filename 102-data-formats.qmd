@@ -9,7 +9,11 @@ Before a model sees a single row, that data has to be stored somewhere and read 
 
 This chapter builds up the small number of ideas that explain almost every practical difference between formats, then turns those ideas into concrete advice. You will learn what serialization actually is, why some formats store data by row and others by column and why that single choice drives most performance gaps, how compression and schemas work, and how partitioning lets a query skip files it does not need. We then compare the formats you are most likely to meet as a data scientist, analyst, data engineer, or AI/ML engineer working in R: CSV, RDS, JSON, Parquet, Feather/Arrow, and Avro. A runnable demo in base R measures file size and read time for CSV and RDS and produces a figure; code that needs the `arrow` package is shown as `eval=FALSE` but is correct and current, so you can run it after installing that package.
 
-> **When to use this:** Reach for this chapter whenever you are deciding how to store a cleaned dataset, hand a table to a colleague who uses a different language, save a fitted model, or speed up a tuning loop that keeps re-reading the same data.
+
+::: {.callout-tip title="When to use this"}
+Reach for this chapter whenever you are deciding how to store a cleaned dataset, hand a table to a colleague who uses a different language, save a fitted model, or speed up a tuning loop that keeps re-reading the same data.
+:::
+
 
 ## Where serialization fits in an ML workflow
 
@@ -23,7 +27,11 @@ A typical pipeline moves data through several storage stages:
 
 Two costs recur across these stages, and they pull in different directions. The first is read time. During hyperparameter tuning or cross-validation you may read the same training set dozens of times, so a format that reads in 0.2 seconds instead of 5 seconds changes how you work, not just how long you wait. The second is storage cost, which dominates at the feature-store stage, where compression ratios of 5x to 10x translate directly into cloud bills. A recurring theme of this chapter is that no single format wins on both at once, so the right choice depends on which cost you are paying.
 
-> **Key idea:** The best format depends on the stage. Human-readable text for ingestion and interchange, columnar binary for analysis-ready tables you read repeatedly, and a language-native format for model artifacts. Few projects should use just one.
+
+::: {.callout-important title="Key idea"}
+The best format depends on the stage. Human-readable text for ingestion and interchange, columnar binary for analysis-ready tables you read repeatedly, and a language-native format for model artifacts. Few projects should use just one.
+:::
+
 
 ### Serialization, formally
 
@@ -35,7 +43,11 @@ $$
 
 meaning types, values, and structure are preserved exactly. Many real formats only achieve $D(E(x)) \approx x$: the values look right but the types or precision have quietly shifted. CSV is the classic offender. Because it stores everything as text, a factor comes back as a character column, an integer may come back as a double, dates become strings, and a column of all `NA` loses any sense of its intended type. Formats that carry an explicit schema (Parquet, Avro, Feather) preserve types and give exact round trips for the types they support.
 
-> **Warning:** A "successful" CSV load that returns the right numbers can still be wrong. If a downstream join, model, or comparison depends on a column being an integer or a factor, an approximate round trip is a bug waiting to happen, not a harmless detail.
+
+::: {.callout-warning}
+A "successful" CSV load that returns the right numbers can still be wrong. If a downstream join, model, or comparison depends on a column being an integer or a factor, an approximate round trip is a bug waiting to happen, not a harmless detail.
+:::
+
 
 ## Row-oriented versus column-oriented storage
 
@@ -45,7 +57,11 @@ A row-oriented format stores all fields of record 1, then all fields of record 2
 
 A column-oriented (columnar) format stores all values of column 1 together, then all values of column 2, and so on. Parquet and Feather/Arrow are columnar. Analytical workloads usually touch a few columns of many rows (for example, "average revenue by region"), and columnar layout lets you read only the columns you need.
 
-> **Intuition:** Picture a table on a long roll of paper. Row-oriented writing reads it left-to-right, top-to-bottom, so one customer's whole record is together. Columnar writing turns the table on its side, so an entire column sits in one stretch. If you want one customer's details, the first layout is convenient; if you want the average of one column across millions of customers, the second lets you read just that strip and ignore the rest.
+
+::: {.callout-tip title="Intuition"}
+Picture a table on a long roll of paper. Row-oriented writing reads it left-to-right, top-to-bottom, so one customer's whole record is together. Columnar writing turns the table on its side, so an entire column sits in one stretch. If you want one customer's details, the first layout is convenient; if you want the average of one column across millions of customers, the second lets you read just that strip and ignore the rest.
+:::
+
 
 To make this precise, consider a table with $n$ rows and $p$ columns. Suppose a query reads $k \le p$ columns and applies a filter that keeps a fraction $s \in (0,1]$ of rows (the selectivity). Let $\bar{w}$ be the average bytes per value. A naive row-oriented scan must read essentially the whole file,
 
@@ -79,7 +95,11 @@ $$
 
 A column with low entropy (few distinct values, long runs, or strong autocorrelation) compresses well; a column of unique high-precision floats has entropy near the raw bit width and barely compresses. This is why a `category` column with four levels shrinks dramatically while a column of jittered sensor readings hardly moves.
 
-> **Intuition:** Entropy is the lower bound on "surprise per value." Predictable data (the same code repeated, or numbers that drift slowly) carries little surprise, so a compressor can describe it briefly. Truly random data carries maximum surprise and cannot be shortened, which is also why an already-compressed file does not shrink further when you zip it again.
+
+::: {.callout-tip title="Intuition"}
+Entropy is the lower bound on "surprise per value." Predictable data (the same code repeated, or numbers that drift slowly) carries little surprise, so a compressor can describe it briefly. Truly random data carries maximum surprise and cannot be shortened, which is also why an already-compressed file does not shrink further when you zip it again.
+:::
+
 
 In practice two distinct layers do the work, and it helps to keep them straight. First, encodings exploit structure before any general compressor runs: dictionary encoding replaces repeated strings with small integer codes, run-length encoding collapses repeated values into a value-and-count pair, and delta encoding stores differences between consecutive sorted values rather than the values themselves. Columnar formats apply these per column, which is exactly why grouping like values together helps. Second, codecs are the general-purpose compressors applied on top of the encoded bytes:
 
@@ -87,7 +107,11 @@ In practice two distinct layers do the work, and it helps to keep them straight.
 - Zstandard (zstd): a tunable level that trades CPU for a better ratio, good when storage cost dominates.
 - gzip: slower, with ratios similar to zstd at low levels; ubiquitous but rarely the best choice for new data.
 
-> **Tip:** A simple rule covers most cases. Use Snappy or LZ4 when speed is the bottleneck, and zstd at a moderate level (say 3 to 9) when storage is the bottleneck. Reserve very high zstd levels for cold, write-once archives where read frequency is low.
+
+::: {.callout-tip}
+A simple rule covers most cases. Use Snappy or LZ4 when speed is the bottleneck, and zstd at a moderate level (say 3 to 9) when storage is the bottleneck. Reserve very high zstd levels for cold, write-once archives where read frequency is low.
+:::
+
 
 ## Schemas
 
@@ -97,7 +121,11 @@ A schema is the declared structure of a dataset: column names, types, nullabilit
 - Schema-on-read with inference (CSV): there is no stored schema, so the reader guesses types by sampling rows. Guessing is fragile. A column that is integer for the first 1000 rows but has a decimal at row 50000 may be mis-typed, and an ID like `00123` silently becomes the number `123`.
 - Self-describing but type-loose (JSON): keys and nesting are explicit per record, but numeric precision and integer-versus-float are not pinned down, and there is no enforced cross-record consistency.
 
-> **Note:** Schema-on-write moves the cost of type decisions to the moment data is written, where the writer has full information, instead of to every future read, where a reader can only guess. That single shift is most of why columnar formats feel reliable in pipelines that run unattended.
+
+::: {.callout-note}
+Schema-on-write moves the cost of type decisions to the moment data is written, where the writer has full information, instead of to every future read, where a reader can only guess. That single shift is most of why columnar formats feel reliable in pipelines that run unattended.
+:::
+
 
 Avro deserves a note here, because it does not fit the usual pairing of "columnar and strict" versus "row-oriented and loose." It is row-oriented yet schema-on-write, and it adds schema evolution: readers and writers can use different but compatible schema versions, so you can add a field with a default or drop an optional field without breaking data already written under the old schema. That property is what makes Avro a common choice for long-lived streaming and message-queue data, where the record shape changes over months but old records must still be readable.
 
@@ -107,7 +135,11 @@ Predicate pushdown lets a reader skip blocks *within* a file. Partitioning takes
 
 The trick is choosing the partition column well. Partitioning works best on low-to-moderate cardinality columns^[*Cardinality* is the number of distinct values in a column. Date, region, and category are low to moderate; a user ID or a timestamp to the second is high.] that appear often in filters, such as date, region, or category. Partitioning on a high-cardinality column like a user ID creates millions of tiny files and hurts performance badly, an anti-pattern known as the *small-files problem*: the per-file bookkeeping (open, read metadata, close) swamps the actual data reading.
 
-> **Warning:** More partitions is not better. Aim for files in the range of roughly 100 MB to 1 GB each. If partitioning would push file sizes far below that, the column has too high a cardinality to partition on.
+
+::: {.callout-warning}
+More partitions is not better. Aim for files in the range of roughly 100 MB to 1 GB each. If partitioning would push file sizes far below that, the column has too high a cardinality to partition on.
+:::
+
 
 ## The formats at a glance
 
@@ -219,7 +251,11 @@ cat("CSV identical to original:", identical(df, csv_back), "\n")
 
 The RDS round trip is exact: `identical()` returns `TRUE`. The CSV round trip is not, because CSV changes types. The `category` factor comes back as a plain character column, since text on disk carries no notion of factor levels. This is not a bug in R; it is the direct consequence of CSV storing only text with no schema. Whether a numeric column survives is a matter of luck: an integer column like `count` happens to re-infer as integer here because every value is whole, but a column whose first sampled rows look integer and whose later rows contain a decimal would be silently re-typed.
 
-> **Warning:** Do not read CSV fidelity off this one example and conclude integers are safe. The factor loss is guaranteed; numeric type survival is incidental and depends entirely on the data sampled during inference. Treat any CSV round trip as approximate unless you declare column types explicitly.
+
+::: {.callout-warning}
+Do not read CSV fidelity off this one example and conclude integers are safe. The factor loss is guaranteed; numeric type survival is incidental and depends entirely on the data sampled during inference. Treat any CSV round trip as approximate unless you declare column types explicitly.
+:::
+
 
 ### Figure: size and read-time comparison
 
@@ -243,7 +279,11 @@ par(op)
 
 The `arrow` package is not installed in this book's build environment, so the following chunks are marked `eval=FALSE`. They are correct, current code you can run after `install.packages("arrow")`. They show, in code, the columnar advantages this chapter derived in theory: faithful round trips from a stored schema, projection and predicate pushdown, partition pruning, and a fast cross-language handoff.
 
-> **Tip:** Run these yourself after installing `arrow`, reusing the `df` from the base R demo above. Comparing the Parquet file size against the CSV and RDS numbers you just measured makes the storage savings concrete.
+
+::: {.callout-tip}
+Run these yourself after installing `arrow`, reusing the `df` from the base R demo above. Comparing the Parquet file size against the CSV and RDS numbers you just measured makes the storage savings concrete.
+:::
+
 
 Writing and reading a single Parquet file, with a choice of codec:
 
@@ -360,7 +400,11 @@ Each of those choices has a matching failure mode. The pitfalls below are the on
 
 If you remember one recipe from this chapter, make it this default for a modern R-based ML project: keep raw inputs in whatever form they arrive (often CSV or JSON), convert the cleaned analysis table to partitioned Parquet for repeated reading and cross-language sharing, use Feather for fast same-machine R-to-Python handoffs, and store fitted models and preprocessing objects as RDS. That sequence puts each format where its strengths line up with the cost you are paying at that stage, which is the single principle the rest of the chapter was building toward.
 
-> **Key idea:** Match the format to the stage, not the project. Text in, columnar binary for analysis, language-native for artifacts. Trying to force one format to cover all stages is what creates slow loads and corrupted columns.
+
+::: {.callout-important title="Key idea"}
+Match the format to the stage, not the project. Text in, columnar binary for analysis, language-native for artifacts. Trying to force one format to cover all stages is what creates slow loads and corrupted columns.
+:::
+
 
 ## Further reading
 

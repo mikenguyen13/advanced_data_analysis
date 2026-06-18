@@ -33,7 +33,11 @@ $$
 
 where $\mathbf{B}$ is the $n \times (K+1)$ matrix columns given by a vector of 1 for the intercept and $\mathbf{b}_k =(b_k(x_1), \dots, b_k (x_n))', k = 1, \dots, K$
 
-> **Key idea:** Once the basis functions are chosen, the model is linear in the coefficients $\beta$. So even though $f(X)$ may be highly curved in $X$, we estimate it with the same machinery as ordinary least squares applied to the transformed design matrix $\mathbf{B}$.
+
+::: {.callout-important title="Key idea"}
+Once the basis functions are chosen, the model is linear in the coefficients $\beta$. So even though $f(X)$ may be highly curved in $X$, we estimate it with the same machinery as ordinary least squares applied to the transformed design matrix $\mathbf{B}$.
+:::
+
 
 Because the model is linear in $\beta$, the least squares solution has the familiar closed form:
 
@@ -90,7 +94,11 @@ where j = 1,...,m and $x_+$ = max{x,0}
 
 The first $k+1$ functions reproduce an ordinary polynomial; each extra term $(x - t_j)^k_+$ switches on only past the knot $t_j$, adding exactly the flexibility needed to bend the curve there without breaking smoothness.
 
-> **Warning:** The truncated power basis is easy to understand but numerically unstable, because its columns become highly correlated. Software typically uses the equivalent but better-conditioned B-spline basis instead. The fitted curve is the same; only the internal parameterization differs.
+
+::: {.callout-warning}
+The truncated power basis is easy to understand but numerically unstable, because its columns become highly correlated. Software typically uses the equivalent but better-conditioned B-spline basis instead. The fitted curve is the same; only the internal parameterization differs.
+:::
+
 
 ## Regression Splines
 
@@ -116,7 +124,11 @@ If we have $K$ knots through the range of $X$, we fit $K+1$ different (cubic or 
 
 If the polynomials are cubic, then it's cubic spline.
 
-> **Intuition:** Each constraint is a deal: you give up a degree of freedom in exchange for a smoother curve. A free piecewise cubic with $K$ knots would have $4(K+1)$ parameters, but the continuity and derivative constraints knock most of them out. Each constraint that we add reduces the number of parameters to be fit (frees up df), and less complex.
+
+::: {.callout-tip title="Intuition"}
+Each constraint is a deal: you give up a degree of freedom in exchange for a smoother curve. A free piecewise cubic with $K$ knots would have $4(K+1)$ parameters, but the continuity and derivative constraints knock most of them out. Each constraint that we add reduces the number of parameters to be fit (frees up df), and less complex.
+:::
+
 
 After all the constraints, a cubic spline with $K$ knots has $K +4$ df. We can rewrite the cubic spline into the general basis notation, which is exactly the truncated power basis specialized to cubics:
 
@@ -153,7 +165,11 @@ This basis representation is the bridge from theory to code: the $b_k(X)$ become
 
             -   Alternatively, we can place knots based on local data abundance.
 
-> **Tip:** Placing knots at quantiles (rather than evenly along the axis) puts more knots where you have more data, so the model spends its flexibility where it can actually learn something and avoids straining in sparse regions.
+
+::: {.callout-tip}
+Placing knots at quantiles (rather than evenly along the axis) puts more knots where you have more data, so the model spends its flexibility where it can actually learn something and avoids straining in sparse regions.
+:::
+
 
 <br>
 
@@ -213,7 +229,11 @@ A natural spline of order k, with knots at $t_1 <...< t_m$, is a piecewise polyn
 
 The middle condition is the heart of it: for a cubic ($k = 3$), the boundary degree is $(3-1)/2 = 1$, so the curve becomes a straight line beyond the extreme knots. This trades a little flexibility for much narrower confidence bands at the edges.
 
-> **Note:** Natural splines are only defined for odd orders k, because the boundary degree $(k-1)/2$ must be an integer. Cubic ($k=3$) is the standard choice.
+
+::: {.callout-note}
+Natural splines are only defined for odd orders k, because the boundary degree $(k-1)/2$ must be an integer. Cubic ($k=3$) is the standard choice.
+:::
+
 
 ## Smoothing splines
 
@@ -249,7 +269,11 @@ The single tuning knob $\lambda$ slides the fit between the two extremes:
 
 -   When $\lambda \to \infty$, then $g$ approaches a straight line that passes through the training data (the ordinary least squares line, the smoothest possible fit).
 
-> **Key idea:** Although we nominally place a knot at every data point, the penalty does the real work. The remarkable fact is that the function minimizing the penalized objective is exactly a natural cubic spline with knots at the unique observed values of $x$.
+
+::: {.callout-important title="Key idea"}
+Although we nominally place a knot at every data point, the penalty does the real work. The remarkable fact is that the function minimizing the penalized objective is exactly a natural cubic spline with knots at the unique observed values of $x$.
+:::
+
 
 The properties below summarize why this works and how to think about model complexity here:
 
@@ -324,7 +348,11 @@ $$
 f(X) = \sum_{j=1}^{K_1} \sum_{k=1}^{K_2}\beta_{jk}g_{jk}(X)
 $$
 
-> **Warning:** The number of tensor-product basis functions is $K_1 \times K_2$, and it multiplies again with each added dimension. This combinatorial blow-up (a face of the curse of dimensionality) is why pure tensor-product splines are practical mainly for two or three predictors.
+
+::: {.callout-warning}
+The number of tensor-product basis functions is $K_1 \times K_2$, and it multiplies again with each added dimension. This combinatorial blow-up (a face of the curse of dimensionality) is why pure tensor-product splines are practical mainly for two or three predictors.
+:::
+
 
 Just as in one dimension, we fit by trading squared error against a roughness penalty. Then, we seek to minimize
 
@@ -386,7 +414,11 @@ and i,j = 1,..,n
 
 and $\lambda \beta^T \Omega \beta$ is the regularization term used to shrink the components of $\hat{\beta}$ towards 0. $\lambda > 0$ is the tuning parameter (or smoothing parameter). Higher value of $\lambda$, faster shrinkage (shrinking away basis functions). This is a generalized ridge penalty: instead of penalizing the raw size of the coefficients, it penalizes the roughness they produce.
 
-> **Note:** Smoothing splines and kernel regression often produce nearly identical fits, because both are linear smoothers with one complexity knob. @tbl-spline-tuning-comparison lines up the corresponding tuning parameters.
+
+::: {.callout-note}
+Smoothing splines and kernel regression often produce nearly identical fits, because both are linear smoothers with one complexity knob. @tbl-spline-tuning-comparison lines up the corresponding tuning parameters.
+:::
+
 
 |                  | Smoothing splines             | kernel regression |
 |------------------|-------------------------------|-------------------|
@@ -552,6 +584,10 @@ legend("topright",c("Smoothing Spline with 3 df","Cubic Spline"),col=c("red","da
 
 The held-out RMSE and $R^2$ in @tbl-spline-boston-performance quantify how well the spline generalizes, and the overlay in @fig-spline-boston-overlay shows the cubic regression spline (green) and the 3-df smoothing spline (red) tracking the same downward, curving relationship between `lstat` and `medv`. Both bend where a straight line could not, which is the whole point of this chapter.
 
-> **When to use this:** Reach for splines whenever you suspect a smooth but nonlinear relationship between a predictor and the response and you want a flexible fit that stays interpretable. Use a regression or natural spline when you are comfortable choosing a few knots (or letting quantiles choose them) and want a fast least-squares fit; use a smoothing spline when you would rather not pick knots and prefer to tune a single penalty by cross-validation.
+
+::: {.callout-tip title="When to use this"}
+Reach for splines whenever you suspect a smooth but nonlinear relationship between a predictor and the response and you want a flexible fit that stays interpretable. Use a regression or natural spline when you are comfortable choosing a few knots (or letting quantiles choose them) and want a fast least-squares fit; use a smoothing spline when you would rather not pick knots and prefer to tune a single penalty by cross-validation.
+:::
+
 
 This chapter built every method from one idea, expanding the predictor into a fixed basis and fitting linearly, then controlling complexity either by limiting knots (regression and natural splines) or by penalizing roughness (smoothing and thin-plate splines). The same linear-smoother machinery reappears in local regression (@sec-local), kernel smoothing (@sec-kernel), and, with multiple smooth terms added together, in generalized additive models (@sec-gam).

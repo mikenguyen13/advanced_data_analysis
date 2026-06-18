@@ -9,7 +9,11 @@ Suppose you want to decide which of several groups an observation belongs to: is
 
 The workhorses of this chapter are linear discriminant analysis (LDA) and quadratic discriminant analysis (QDA). Both assume the predictors within a class follow a multivariate normal (Gaussian) distribution. The two differ in one assumption: LDA forces every class to share the same covariance structure, which yields straight-line (linear) decision boundaries, while QDA lets each class have its own covariance, which bends the boundaries into curves. Once you understand that single distinction, the rest of the chapter is a guided tour of what to do when the basic recipe runs into trouble: too many predictors, classes that are not single blobs, or predictors that are smooth functions of position (as in images and signals).
 
-> **Key idea:** Discriminant analysis models the distribution of the predictors *inside each class* and uses Bayes' rule to classify. LDA assumes a shared covariance (linear boundaries); QDA gives each class its own covariance (quadratic boundaries).
+
+::: {.callout-important title="Key idea"}
+Discriminant analysis models the distribution of the predictors *inside each class* and uses Bayes' rule to classify. LDA assumes a shared covariance (linear boundaries); QDA gives each class its own covariance (quadratic boundaries).
+:::
+
 
 Before we write down any formulas, it helps to be clear about the assumptions the standard methods lean on. The classical LDA and QDA results are derived under the following conditions:
 
@@ -21,7 +25,11 @@ Before we write down any formulas, it helps to be clear about the assumptions th
 
 -   Independent predictors: the observations are treated as independent draws.
 
-> **Note:** Real data rarely satisfy these assumptions exactly. LDA in particular often performs well even when normality is violated, because it estimates few parameters and therefore has low variance. Treat the assumptions as the ideal setting that motivates the method, not as a checklist that must hold perfectly.
+
+::: {.callout-note}
+Real data rarely satisfy these assumptions exactly. LDA in particular often performs well even when normality is violated, because it estimates few parameters and therefore has low variance. Treat the assumptions as the ideal setting that motivates the method, not as a checklist that must hold perfectly.
+:::
+
 
 ## The LDA and QDA classifiers
 
@@ -39,7 +47,11 @@ evaluated for each class, where
 
 -   $\pi_k$ is the prior probability of belonging to class $k$.
 
-> **Intuition:** Reading the discriminant function from left to right, the first two terms together measure how close $x$ is to the centroid $\mu_k$ (in the geometry defined by $\Sigma^{-1}$), and the last term, $\log \pi_k$, tilts the decision toward classes that are more common to begin with. We pick the class that is both nearby and a priori likely.
+
+::: {.callout-tip title="Intuition"}
+Reading the discriminant function from left to right, the first two terms together measure how close $x$ is to the centroid $\mu_k$ (in the geometry defined by $\Sigma^{-1}$), and the last term, $\log \pi_k$, tilts the decision toward classes that are more common to begin with. We pick the class that is both nearby and a priori likely.
+:::
+
 
 In practice we do not know the true parameters $\Sigma, \mu_k, \pi_k$. We estimate $\Sigma$ and $\mu_k$ from the training data, and either estimate $\pi_k$ from the observed class frequencies or specify it ourselves (for example, to reflect known population proportions or the relative costs of mistakes).
 
@@ -49,13 +61,21 @@ $$
 \delta_k(x) = -\frac{1}{2} \log|\Sigma_k| - \frac{1}{2} (x - \mu_k)^T \Sigma_k^{-1} (x- \mu_k) + \log \pi_k
 $$
 
-> **When to use this:** Reach for QDA over LDA when you have enough data per class to estimate a separate covariance matrix reliably and you suspect the classes genuinely have different shapes or spreads. With small samples, the extra parameters in QDA are estimated with high variance, and the simpler LDA often classifies better.
+
+::: {.callout-tip title="When to use this"}
+Reach for QDA over LDA when you have enough data per class to estimate a separate covariance matrix reliably and you suspect the classes genuinely have different shapes or spreads. With small samples, the extra parameters in QDA are estimated with high variance, and the simpler LDA often classifies better.
+:::
+
 
 ### Why LDA is worth knowing
 
 LDA earns its place as a first-choice classifier for several reasons. It is simple and, in many problems, surprisingly hard to beat. When the data really do come from multivariate normals with a common covariance matrix, LDA *is* the Bayes classifier (the theoretically optimal rule), though that ideal setting is unlikely in practice. Its decision boundaries are linear, which makes the resulting rule easy to describe, implement, and reason about. As a bonus, it produces a natural low-dimensional view of the data, a property we exploit later in this chapter. And because it estimates relatively few parameters, it has low variance, which is often exactly what keeps it competitive.
 
-> **Tip:** When you start a classification problem, fit LDA early. It is fast, gives a sensible baseline, and the low-dimensional projection it produces is a useful diagnostic plot even if you ultimately use a fancier model.
+
+::: {.callout-tip}
+When you start a classification problem, fit LDA early. It is fast, gives a sensible baseline, and the low-dimensional projection it produces is a useful diagnostic plot even if you ultimately use a fancier model.
+:::
+
 
 ### Where LDA struggles
 
@@ -63,7 +83,11 @@ The same simplicity that makes LDA robust also limits it. Linear boundaries are 
 
 Each of these three weaknesses motivates a family of extensions, which form the backbone of the rest of the chapter. To handle nonlinear boundaries, we can recast LDA as a regression problem and then swap in flexible functions of the inputs, giving flexible discriminant analysis (FDA).^[FDA also stands for "functional data analysis" in the broader statistical literature, an unrelated topic. We use FDA here strictly for flexible discriminant analysis.] To handle the large-$p$ problem, we can penalize the LDA coefficients. And to handle inhomogeneous classes, we can model each class as a mixture of several Gaussians sharing a common covariance matrix, giving mixture discriminant analysis.
 
-> **Note:** These three remedies are not competing alternatives so much as three knobs on the same machine. FDA changes the form of the boundary, penalization controls variance, and mixtures change the assumed shape of each class. Some methods turn more than one knob at once.
+
+::: {.callout-note}
+These three remedies are not competing alternatives so much as three knobs on the same machine. FDA changes the form of the boundary, penalization controls variance, and mixtures change the assumed shape of each class. Some methods turn more than one knob at once.
+:::
+
 
 ### Background: Fisher's reduced-rank idea
 
@@ -99,7 +123,11 @@ In words, $\mathbf{W}$ looks at how far the observations are from the group cent
 
 -   $x_{kj}$ is the $p$-dimensional input vector for the $j$-th element in the $k$-th group.
 
-> **Intuition:** Good separation means the groups are far apart (large between-class spread) while each group stays tight (small within-class spread). A direction that achieves both is one along which the classes look clearly distinct.
+
+::: {.callout-tip title="Intuition"}
+Good separation means the groups are far apart (large between-class spread) while each group stays tight (small within-class spread). A direction that achieves both is one along which the classes look clearly distinct.
+:::
+
 
 We turn that intuition into math by looking for the linear combination $Z = a^T X$ that makes the between-class variance large relative to the within-class variance. Along the direction $a$, the between-class variance of $Z$ is $a^T \mathbf{B} a$ and the within-class variance is $a^T \mathbf{W}a$. So we seek the $a$ that maximizes the ratio of $a^T \mathbf{B} a$ to $a^T \mathbf{W} a$.
 
@@ -109,7 +137,11 @@ The solution is a familiar object from linear algebra: the optimal $a$, call it 
 
 This sequence of directions provides the low-dimensional representation of the data that separates the classes as much as possible. Because the differences among $K$ centroids live in at most $K-1$ dimensions, there are at most $K-1$ useful discriminant coordinates, which is why these plots are so compact.
 
-> **Key idea:** Reduced-rank LDA finds the directions that best separate the class centroids by solving an eigenvalue problem for $\mathbf{W}^{-1}\mathbf{B}$. The leading eigenvectors are the most informative views of your data.
+
+::: {.callout-important title="Key idea"}
+Reduced-rank LDA finds the directions that best separate the class centroids by solving an eigenvalue problem for $\mathbf{W}^{-1}\mathbf{B}$. The leading eigenvectors are the most informative views of your data.
+:::
+
 
 Beyond visualization, these discriminants also classify. Let $z_l(x_i) = a^T_l x_i$ for $l = 1, \dots, K-1$ be the discriminants for the $i$-th input $x_i$; one can show they each have variance one and are uncorrelated with one another. For an observation $x$, the squared distance from its discriminant scores to the $k$-th class centroid is
 
@@ -133,7 +165,11 @@ $$
 
 The remarkable fact is that the sequence of $\beta_l$'s turns out to be the same as the discriminant (canonical) vectors ($a_l$) from [Reduced-Rank LDA], up to a constant, and the scores ($\theta_s$) correspond to the $Z$'s. In other words, ordinary LDA is hiding inside a least-squares regression.
 
-> **Key idea:** Once LDA is written as a regression, the $\beta_l$ coefficients behave like ordinary regression coefficients. Anything we can do to generalize regression, we can now do to discriminant analysis.
+
+::: {.callout-important title="Key idea"}
+Once LDA is written as a regression, the $\beta_l$ coefficients behave like ordinary regression coefficients. Anything we can do to generalize regression, we can now do to discriminant analysis.
+:::
+
 
 This is the entire point of the reformulation. The $\beta$ coefficients act like linear regression coefficients, so we can generalize the procedure exactly as we did in nonparametric regression: replace the linear fits with a more flexible class of functions $\eta_l(x)$, such as a spline (@sec-spline) or MARS (@sec-mars) fit. A more general classifier is then defined by
 
@@ -145,7 +181,11 @@ where the $\lambda J(\eta_l)$ term is the regularization penalty carried over fr
 
 A particularly flexible choice uses additive splines, implemented by an algorithm called "bruto" in the `mda` package in R. Further details are in [@hastie2001a 12.5.1].
 
-> **When to use this:** Choose FDA when LDA's straight-line boundaries are clearly too restrictive but you still want the interpretable, low-dimensional structure that discriminant analysis provides. You get curved boundaries while keeping the canonical-variate viewpoint.
+
+::: {.callout-tip title="When to use this"}
+Choose FDA when LDA's straight-line boundaries are clearly too restrictive but you still want the interpretable, low-dimensional structure that discriminant analysis provides. You get curved boundaries while keeping the canonical-variate viewpoint.
+:::
+
 
 ## Penalized Discriminant Analysis
 
@@ -159,7 +199,11 @@ The matrix $\mathbf{\Omega}$ is chosen to match the structure of the problem. Fo
 
 The guiding idea is that we give more weight to "smooth" coefficient patterns and less weight to "rough" ones. This matters most when the predictors are highly correlated, as with the neighboring pixels of an image, where a smooth set of coefficients is far more believable than a jagged one. This procedure is known as [Penalized Discriminant Analysis].
 
-> **Intuition:** Penalized discriminant analysis tells the model, "do not let the coefficients wiggle wildly across correlated predictors." For image or signal data, that prior toward smoothness can dramatically improve both stability and interpretability.
+
+::: {.callout-tip title="Intuition"}
+Penalized discriminant analysis tells the model, "do not let the coefficients wiggle wildly across correlated predictors." For image or signal data, that prior toward smoothness can dramatically improve both stability and interpretability.
+:::
+
 
 ## Mixture Discriminant Analysis
 
@@ -175,7 +219,11 @@ where the mixing proportions $q_{kr}$ sum to one. Here there are $R_k$ mixture c
 
 Notice that we still assume the same covariance matrix $\Sigma$ across every class and every prototype, because estimating a separate covariance for each component would be expensive and unstable. So mixtures buy us multiple centroids per class while keeping the covariance shared.
 
-> **Warning:** Fitting these mixtures is harder than fitting plain LDA, because the optimization is non-convex and can get stuck. The parameters are typically estimated with the expectation-maximization (E-M) algorithm [@hastie2001a 12.7] or a fully Bayesian implementation. Expect to try several starting values.
+
+::: {.callout-warning}
+Fitting these mixtures is harder than fitting plain LDA, because the optimization is non-convex and can get stuck. The parameters are typically estimated with the expectation-maximization (E-M) algorithm [@hastie2001a 12.7] or a fully Bayesian implementation. Expect to try several starting values.
+:::
+
 
 ## Large p, small n Approaches
 
@@ -213,7 +261,11 @@ We call $\bar{x}= (\bar{x}_{k1}, \dots, \bar{x}_{kp})^T$ the centroid of class $
 
 Reading the score in two pieces makes it concrete. The first part is just the (negative) standardized squared distance of $x^*$ from the $k$-th centroid, and the second term corresponds to the prior probability of class $k$. We classify $x^*$ into the class with the highest score, which amounts to choosing the nearest centroid (after standardizing each feature). This classifier is often quite good in high-dimensional settings, and it is equivalent to the nearest centroid classifier.
 
-> **Warning:** Diagonal LDA uses all $p$ features in its rule. With thousands of genes or pixels, that makes the classifier hard to interpret, because nothing tells you which features actually mattered.
+
+::: {.callout-warning}
+Diagonal LDA uses all $p$ features in its rule. With thousands of genes or pixels, that makes the classifier hard to interpret, because nothing tells you which features actually mattered.
+:::
+
 
 That interpretability problem is exactly what the next method fixes. With a little extra regularization we can both prune irrelevant features and often improve test error, which leads to nearest shrunken centroids.
 
@@ -249,7 +301,11 @@ These shrunken centroids then take the place of $\bar{x}_{kj}$ in the discrimina
 
 The payoff is automatic feature selection. Only features with a nonzero $d_{kj}'$ for at least one class contribute to the classification rule, so any feature whose class means all collapsed to the overall mean is discarded entirely. See the worked example in [@hastie2001a 18.4].
 
-> **Key idea:** Soft-thresholding the centroid distances is the same trick that makes the lasso select variables. Here it lets a high-dimensional classifier name the handful of features (genes, words, pixels) that actually drive the decision.
+
+::: {.callout-important title="Key idea"}
+Soft-thresholding the centroid distances is the same trick that makes the lasso select variables. Here it lets a high-dimensional classifier name the handful of features (genes, words, pixels) that actually drive the decision.
+:::
+
 
 ### Regularized Discriminant Analysis
 
@@ -269,7 +325,11 @@ $$
 
 for $\gamma \in [0,1]$. When $\gamma \neq 1$ the sample covariance is pulled toward its diagonal, which restores invertibility. This has a similar flavor to ridge regression, discussed in the predictor reduction chapter (@sec-predictor-reduction), except that it shrinks toward a diagonal matrix rather than toward zero. As usual, $\gamma$ is chosen by cross-validation. This is sometimes called $L_2$-penalized discriminant analysis.
 
-> **Tip:** If your covariance estimate is singular or nearly so, a small amount of diagonal shrinkage is often all you need to make discriminant analysis usable again, without abandoning it for a different model class.
+
+::: {.callout-tip}
+If your covariance estimate is singular or nearly so, a small amount of diagonal shrinkage is often all you need to make discriminant analysis usable again, without abandoning it for a different model class.
+:::
+
 
 ### Logistic Regression with Quadratic Regularization
 
@@ -325,13 +385,21 @@ $$
 
 The striking feature of this model is that each data point gets its own mean, so there are $n+1$ parameters for $n$ samples [@hastie2001a 18.8]. The fusion penalty is what makes this work: it forces all points to share the same mean *unless the data clearly argue otherwise*, producing a piecewise-constant fit.
 
-> **Intuition:** The fused lasso says "assume your neighbors agree with you until the evidence forces a jump." That is exactly the right prior for signals that are flat over stretches and then shift, like copy-number along a chromosome.
+
+::: {.callout-tip title="Intuition"}
+The fused lasso says "assume your neighbors agree with you until the evidence forces a jump." That is exactly the right prior for signals that are flat over stretches and then shift, like copy-number along a chromosome.
+:::
+
 
 ### A note on support vector machines
 
 It is worth ending with a method from outside the discriminant-analysis family, because it is one of the strongest competitors in the large-$p$, small-$n$ setting: the support vector classifier (@sec-svm) works very well here. We can add regularization to the SVM, but when $p \gg n$ the unregularized support vector classifier usually performs about as well as, or better than, the regularized version. Overfitting is less of a worry than you might expect, because the SVM solution depends on relatively few support vectors rather than on all the data.
 
-> **When to use this:** For a fresh high-dimensional classification problem, it is worth pitting nearest shrunken centroids, penalized logistic regression, and a support vector classifier against each other by cross-validation. Each can win depending on how the classes are shaped.
+
+::: {.callout-tip title="When to use this"}
+For a fresh high-dimensional classification problem, it is worth pitting nearest shrunken centroids, penalized logistic regression, and a support vector classifier against each other by cross-validation. Each can win depending on how the classes are shaped.
+:::
+
 
 Finally, remember that in the multiclass problem we can build any of these binary classifiers up to many classes using either the "one versus one" or the "one versus all" strategy.
 

@@ -15,7 +15,11 @@ Weak supervision is the umbrella term for learning under that kind of imperfect 
 - Inexact supervision: labels exist but at the wrong granularity, for example a label on a bag of instances rather than on each instance (multiple-instance learning).
 - Inaccurate supervision: labels exist for everything but some are wrong (learning with label noise).
 
-> **Intuition:** Think of the label as a measurement of the truth taken through a dirty lens. Sometimes the lens only shows part of the picture (incomplete), sometimes it blurs fine detail into a coarse summary (inexact), and sometimes it reports the wrong reading entirely (inaccurate). Weakly-supervised learning is the discipline of recovering a sharp model from blurry measurements, by writing down how the lens distorts and then inverting it.
+
+::: {.callout-tip title="Intuition"}
+Think of the label as a measurement of the truth taken through a dirty lens. Sometimes the lens only shows part of the picture (incomplete), sometimes it blurs fine detail into a coarse summary (inexact), and sometimes it reports the wrong reading entirely (inaccurate). Weakly-supervised learning is the discipline of recovering a sharp model from blurry measurements, by writing down how the lens distorts and then inverting it.
+:::
+
 
 This chapter concentrates on two threads that a working data scientist meets often. The first is positive-unlabeled learning, the incomplete-label case where you observe some positives and a mass of unlabeled examples but never a single confirmed negative. The second is programmatic (weak) supervision, where instead of hand labels you write many noisy labeling rules and let a *label model* reconcile them. Along the way we treat label noise directly, since it is the mechanism underneath both. By the end you will be able to derive why a naive classifier trained on "positive versus unlabeled" is biased, correct that bias two different ways, and run a simulation that recovers a fully-supervised baseline from positives and unlabeled data alone.
 
@@ -39,9 +43,17 @@ $$
 
 The constant $c$ is called the label frequency or propensity. SCAR says the lens that hides labels is uniform: it does not preferentially reveal easy positives or hard ones.
 
-> **Key idea:** SCAR turns an apparently hopeless problem (no negatives anywhere) into a solvable one. If labeled positives are a *representative* random sample of all positives, then the unlabeled pool is a known mixture of the same positives (the unlabeled fraction of them) and the negatives, and that mixture structure is enough to back out the clean classifier.
 
-> **Warning:** SCAR is an assumption, not a fact. If positives are labeled in a feature-dependent way (say, sicker patients are more likely to get diagnosed), the propensity becomes $c(x)$ and plain SCAR estimators are biased. The weaker **SAR** (selected at random given features) model of Bekker and Davis (2020) handles that case but needs a propensity model, much like inverse-propensity weighting in causal machine learning (@sec-causal-machine-learning).
+::: {.callout-important title="Key idea"}
+SCAR turns an apparently hopeless problem (no negatives anywhere) into a solvable one. If labeled positives are a *representative* random sample of all positives, then the unlabeled pool is a known mixture of the same positives (the unlabeled fraction of them) and the negatives, and that mixture structure is enough to back out the clean classifier.
+:::
+
+
+
+::: {.callout-warning}
+SCAR is an assumption, not a fact. If positives are labeled in a feature-dependent way (say, sicker patients are more likely to get diagnosed), the propensity becomes $c(x)$ and plain SCAR estimators are biased. The weaker **SAR** (selected at random given features) model of Bekker and Davis (2020) handles that case but needs a propensity model, much like inverse-propensity weighting in causal machine learning (@sec-causal-machine-learning).
+:::
+
 
 ## Why the Naive Classifier Is Biased, and How to Fix It
 
@@ -73,7 +85,11 @@ $$
 \hat c \;=\; \frac{1}{|P_{\text{val}}|} \sum_{x \in P_{\text{val}}} \hat g(x) .
 $$
 
-> **Intuition:** A known positive should score $1$ under the true model $f$. If the naive model $g$ scores it only $0.3$ on average, the lens is letting through about $30\%$ of positives, so $\hat c \approx 0.3$ and you divide every naive score by $0.3$ to undo the shrinkage.
+
+::: {.callout-tip title="Intuition"}
+A known positive should score $1$ under the true model $f$. If the naive model $g$ scores it only $0.3$ on average, the lens is letting through about $30\%$ of positives, so $\hat c \approx 0.3$ and you divide every naive score by $0.3$ to undo the shrinkage.
+:::
+
 
 ### The class-prior view and the nnPU risk
 
@@ -91,7 +107,11 @@ $$
 
 where $\mathbb{E}_p$ averages over labeled positives and $\mathbb{E}_{\text{u}}$ over the unlabeled pool. The bracketed term estimates the negative-class risk by subtracting the positive contribution out of the unlabeled mixture. This is the unbiased PU (uPU) risk. Its flaw: with a flexible model the bracketed estimate can go negative, which is impossible for a real risk and signals overfitting. Kiryo, Niu, du Plessis, and Sugiyama (2017) fixed this by clamping the negative-risk term at zero, giving the non-negative PU (nnPU) risk that is the default for deep PU models built on neural networks (@sec-neural-networks) today.
 
-> **Note:** The two corrections answer different questions. Elkan-Noto post-processes a single naive model's scores by a constant and needs the propensity $c$. The risk-based view rebuilds the loss from scratch and needs the prior $\pi$. They are connected: under SCAR, $c$ and $\pi$ are related through the observed labeled fraction, so estimating one constrains the other.
+
+::: {.callout-note}
+The two corrections answer different questions. Elkan-Noto post-processes a single naive model's scores by a constant and needs the propensity $c$. The risk-based view rebuilds the loss from scratch and needs the prior $\pi$. They are connected: under SCAR, $c$ and $\pi$ are related through the observed labeled fraction, so estimating one constrains the other.
+:::
+
 
 ## A Runnable PU Demo Versus a Supervised Baseline
 
@@ -224,7 +244,11 @@ par(old_par)
 
 @fig-weakly-supervised-pu-boundaries shows the geometric effect of the bias: the naive red curve is pushed deep into the positive cluster (it has learned $g = c \cdot f$, a model that is "sure" only about the densest positive core), while the corrected curve snaps back almost on top of the oracle boundary. The blue circles in the middle panel are the handful of revealed positives the PU models were allowed to see.
 
-> **Note:** This demo uses logistic regression, but nothing about Elkan-Noto is tied to it. Any probabilistic classifier (random forest with `type = "prob"`, gradient boosting, a neural net) can be wrapped the same way: fit on $s$, estimate $\hat c$ on held-out known positives, divide. The risk-based nnPU estimator is the alternative when you would rather change the loss than post-process the scores, and it is what you reach for with deep models.
+
+::: {.callout-note}
+This demo uses logistic regression, but nothing about Elkan-Noto is tied to it. Any probabilistic classifier (random forest with `type = "prob"`, gradient boosting, a neural net) can be wrapped the same way: fit on $s$, estimate $\hat c$ on held-out known positives, divide. The risk-based nnPU estimator is the alternative when you would rather change the loss than post-process the scores, and it is what you reach for with deep models.
+:::
+
 
 ## Programmatic Weak Supervision and Label Models
 
@@ -238,7 +262,11 @@ $$
 
 with the per-LF accuracies $p(\lambda_{ij} \mid y_i)$ as parameters fit by maximizing the marginal likelihood of the observed votes (the $y_i$ are integrated out, an EM-style estimation). The output is a soft label $p(y_i = 1 \mid \lambda_{i\cdot})$ per example, which then trains a downstream "end model" exactly as if it were a noisy ground-truth label.
 
-> **Key idea:** Majority vote treats every labeling function as equally trustworthy. A label model learns from the *agreement and disagreement structure* of the votes which LFs to trust, even with no labeled data, because a consistently-outvoted LF reveals itself as unreliable. This is the same latent-variable trick as crowd-sourcing aggregation (Dawid and Skene, 1979).
+
+::: {.callout-important title="Key idea"}
+Majority vote treats every labeling function as equally trustworthy. A label model learns from the *agreement and disagreement structure* of the votes which LFs to trust, even with no labeled data, because a consistently-outvoted LF reveals itself as unreliable. This is the same latent-variable trick as crowd-sourcing aggregation (Dawid and Skene, 1979).
+:::
+
 
 Here is a compact base-R label model: estimate per-LF accuracies by EM and compare its fused label against plain majority vote.
 
@@ -326,7 +354,11 @@ $$
 
 so that minimizing average $\tilde\ell$ on noisy data is equivalent to minimizing $\ell$ on clean data. This is the same "subtract out the contamination, then renormalize" move as the uPU risk, and it is why the three topics in this chapter are really one idea applied through different noise lenses.
 
-> **When to use this:** If you can estimate flip rates (from a small clean validation set, from a confident-learning procedure like Northcutt, Jiang, and Chuang 2021, or from domain knowledge), loss correction is principled and cheap. If you cannot, robust losses (for example the generalized cross-entropy of Zhang and Sabuncu 2018) or sample-reweighting heuristics are the fallback, trading the unbiasedness guarantee for not needing to know the rates.
+
+::: {.callout-tip title="When to use this"}
+If you can estimate flip rates (from a small clean validation set, from a confident-learning procedure like Northcutt, Jiang, and Chuang 2021, or from domain knowledge), loss correction is principled and cheap. If you cannot, robust losses (for example the generalized cross-entropy of Zhang and Sabuncu 2018) or sample-reweighting heuristics are the fallback, trading the unbiasedness guarantee for not needing to know the rates.
+:::
+
 
 ## Practical Guidance and Pitfalls
 
@@ -336,7 +368,11 @@ Estimate the nuisance constant on held-out positives, not training positives. Th
 
 Check the SCAR assumption before trusting a single constant. If you suspect labeling depends on features (sicker patients diagnosed more often, popular items reviewed more often), SCAR is violated and a constant correction is wrong. Move to the SAR model with an explicit propensity $c(x)$, or at minimum stratify $\hat c$ within feature groups.
 
-> **Warning:** A naive PU classifier reports terrible *accuracy* and *calibration* even when its *ranking* is fine. Do not conclude PU learning failed because precision at threshold $0.5$ is low. Look at AUC or average precision first, and only then worry about the threshold, which the propensity correction sets.
+
+::: {.callout-warning}
+A naive PU classifier reports terrible *accuracy* and *calibration* even when its *ranking* is fine. Do not conclude PU learning failed because precision at threshold $0.5$ is low. Look at AUC or average precision first, and only then worry about the threshold, which the propensity correction sets.
+:::
+
 
 For programmatic supervision, write labeling functions to be *precise where they fire and free to abstain*. A high-coverage but inaccurate LF poisons the label model less than you might fear (the model down-weights it), but a systematically correlated set of LFs breaks the conditional-independence assumption and inflates apparent confidence. Audit LF pairwise agreement, and model correlations when LFs share an upstream resource (the same dictionary, the same parser).
 

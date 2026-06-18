@@ -9,7 +9,11 @@ A model in production is only as good as the features it receives at the moment 
 
 This chapter explains the offline/online pattern that feature stores implement, the two correctness problems they solve (training-serving skew and point-in-time correctness), and the operations they support (registration, materialization, reuse). Production feature stores (Feast, Tecton, Databricks Feature Store, Vertex AI Feature Store) are external systems, so chunks that reference them are marked `eval=FALSE` and written so a reader can run them in a configured environment. To teach the core ideas with code that runs, the chapter builds a small feature-store abstraction in base R and `data.table`: you register feature functions, materialize a feature table, and perform a point-in-time join that avoids label leakage.
 
-> **Intuition:** Think of a feature store as a shared kitchen for an ML team. Instead of every cook (model) buying and chopping the same vegetables (features) in their own way, the ingredients are prepared once, to one recipe, and handed to everyone. The two guarantees the store enforces are that the dish tastes the same whether you order it now or had it last month (no training-serving skew), and that no recipe secretly uses an ingredient that had not yet arrived in the pantry (no leakage).
+
+::: {.callout-tip title="Intuition"}
+Think of a feature store as a shared kitchen for an ML team. Instead of every cook (model) buying and chopping the same vegetables (features) in their own way, the ingredients are prepared once, to one recipe, and handed to everyone. The two guarantees the store enforces are that the dish tastes the same whether you order it now or had it last month (no training-serving skew), and that no recipe secretly uses an ingredient that had not yet arrived in the pantry (no leakage).
+:::
+
 
 By the end of the chapter you should be able to state the two correctness problems precisely, explain why the offline and online stores hold the same features in different shapes, and read (and modify) a working as-of join that produces a leakage-free training table.
 
@@ -22,11 +26,19 @@ Consider the lifecycle of a single prediction problem, say predicting whether a 
 
 When the same feature is implemented twice, by two people, in two languages, against two storage systems, the two implementations drift. The model was trained on one definition and is served another. This is training-serving skew,^[The term comes from Google's account of operational ML (Sculley et al., 2015, listed under Further reading), where it is named as one of the leading causes of models that look healthy in evaluation but disappoint in production.] and it is one of the most common and most damaging failure modes in deployed ML. A feature store removes the duplication: a feature is defined once, and the same definition feeds both the offline (training) and online (serving) paths.
 
-> **Warning:** Skew rarely announces itself. The model keeps returning predictions, the service keeps responding, and only the quality quietly erodes. Because nothing crashes, skew can persist for months before anyone connects falling business metrics to a feature whose serving-time definition drifted from its training-time twin.
+
+::: {.callout-warning}
+Skew rarely announces itself. The model keeps returning predictions, the service keeps responding, and only the quality quietly erodes. Because nothing crashes, skew can persist for months before anyone connects falling business metrics to a feature whose serving-time definition drifted from its training-time twin.
+:::
+
 
 A second problem is subtler. To train a supervised model you assemble rows of the form (features, label). The label is observed at some time $t$. The features must reflect only information available strictly before $t$. If any feature accidentally includes data from on or after $t$, the model learns from the future, scores beautifully in offline evaluation, and fails in production. This is label leakage,^[Leakage is not unique to feature stores; it is one of the most common reasons published ML results fail to reproduce. The point-in-time variety, where a feature quietly includes data from after the label was decided, is among the hardest to spot because the offline metrics look excellent.] and the discipline that prevents it is point-in-time correctness: every feature value joined to a label must be the value that was current as of the label's timestamp. Doing this join by hand is error prone; a feature store builds it into the materialization step.
 
-> **Key idea:** Training-serving skew is about computing a feature *the same way* in two places. Point-in-time correctness is about computing it *as of the right moment* in time. The first keeps offline and online agreeing; the second keeps the past from peeking at the future. A feature store exists to enforce both automatically rather than leaving them to careful but fallible hand-coding.
+
+::: {.callout-important title="Key idea"}
+Training-serving skew is about computing a feature *the same way* in two places. Point-in-time correctness is about computing it *as of the right moment* in time. The first keeps offline and online agreeing; the second keeps the past from peeking at the future. A feature store exists to enforce both automatically rather than leaving them to careful but fallible hand-coding.
+:::
+
 
 So the feature store sits between raw data and the model, on both the training and serving paths, as the single source of truth for feature values:
 
@@ -47,7 +59,11 @@ $$
 
 where $f(e, t)$ uses only events for entity $e$ with event time strictly less than $t$. The strict inequality is the whole point: at decision time $t$ you do not yet know events that occur at $t$ or later.
 
-> **Note:** Writing a feature as a function of an entity *and* a timestamp is the move that makes correctness checkable. A feature is not just "the customer's login count"; it is "the customer's login count as known at time $t$." Once the timestamp is an explicit argument, the rule "use only events with time $< t$" is something you can read off the code and test, rather than a convention you hope everyone followed.
+
+::: {.callout-note}
+Writing a feature as a function of an entity *and* a timestamp is the move that makes correctness checkable. A feature is not just "the customer's login count"; it is "the customer's login count as known at time $t$." Once the timestamp is an explicit argument, the rule "use only events with time $< t$" is something you can read off the code and test, rather than a convention you hope everyone followed.
+:::
+
 
 ### Training-serving skew
 
@@ -69,7 +85,11 @@ $$
 
 that is, the most recent value strictly before the label time. The join that assembles a training table out of a label table and one or more feature tables, taking for each label the latest feature row before the label time, is an as-of join (also called a backward or rolling join). A naive equi-join on the entity alone, ignoring time, would attach the latest known feature value, which may post-date the label and leak the future. The as-of join is the operational form of point-in-time correctness.
 
-> **Intuition:** Picture each entity's feature history as a row of stepping stones laid out along a time axis, one stone per recorded value. The label sits at its own point on that axis. The as-of join walks backward from the label and steps onto the nearest stone behind it. A plain join, by contrast, always jumps to the *last* stone in the row, even if that stone lies ahead of the label, which is exactly how the future leaks in.
+
+::: {.callout-tip title="Intuition"}
+Picture each entity's feature history as a row of stepping stones laid out along a time axis, one stone per recorded value. The label sits at its own point on that axis. The as-of join walks backward from the label and steps onto the nearest stone behind it. A plain join, by contrast, always jumps to the *last* stone in the row, even if that stone lies ahead of the label, which is exactly how the future leaks in.
+:::
+
 
 Define leakage for a single feature as using $f(e_i, t_i')$ for some $t_i' \ge t_i$. The damage is that the offline estimate of generalization error is optimistically biased: if $\hat{R}_{\text{leak}}$ is the risk estimated with leaked features and $R$ is the true deployed risk, then typically $\hat{R}_{\text{leak}} \ll R$, and the gap is not detectable from the offline split alone, because the split shares the leak.
 
@@ -83,7 +103,11 @@ The online store holds only the latest value of each feature per entity, keyed b
 
 Materialization is the process that runs the feature definitions over raw data and writes the results: the full timeline to the offline store, and the latest snapshot per entity to the online store. Because both are written from the same definitions, the online value an entity is served equals the offline value that would be recorded for that entity at the same time, which is exactly the no-skew property.
 
-> **Key idea:** The online store is not a separately written system; it is a projection of the offline store down to "latest row per entity." That single fact is what guarantees no skew. If the online values came from a different code path, all bets would be off. Keep this in mind when you read the runnable code later: we build `online_store` by literally taking the last row per customer from `offline_store`.
+
+::: {.callout-important title="Key idea"}
+The online store is not a separately written system; it is a projection of the offline store down to "latest row per entity." That single fact is what guarantees no skew. If the online values came from a different code path, all bets would be off. Keep this in mind when you read the runnable code later: we build `online_store` by literally taking the last row per customer from `offline_store`.
+:::
+
 
 @tbl-feature-stores-offline-online contrasts the two stores along the dimensions that drive their different designs.
 
@@ -105,13 +129,21 @@ The feature definition is shared across both columns; only the storage and acces
 
 Correctness is the headline benefit, but reuse is the one that pays the operational bills. A feature such as "7-day login count" is useful for churn prediction, for fraud scoring, and for a recommendation model. Without a feature store, each team recomputes it, with the attendant risk of subtle differences and duplicated compute. With a feature store, the feature is registered once under a name, materialized once, and referenced by name from every model. The unit of reuse is the named feature (or a named group of features sharing an entity and update cadence, often called a feature view or feature group). Reuse reduces compute, reduces skew across models, and makes lineage auditable: you can ask which models depend on a feature before you change it.
 
-> **Tip:** Treat a feature definition like a published API. Once several models reference `logins_7d` by name, changing what that name computes silently breaks all of them. The lineage a feature store records ("which models read this feature?") is exactly what lets you change a definition deliberately instead of by accident.
+
+::: {.callout-tip}
+Treat a feature definition like a published API. Once several models reference `logins_7d` by name, changing what that name computes silently breaks all of them. The lineage a feature store records ("which models read this feature?") is exactly what lets you change a definition deliberately instead of by accident.
+:::
+
 
 ## A production feature store: Feast (eval=FALSE)
 
 Before building our own, it helps to see what the real thing looks like, so the vocabulary (entity, source, feature view, materialization) lands on something concrete. The following sketch uses Feast, an open-source feature store, to show the shape of a real definition. It will not run here because `feast` (a Python package, driven from R via `reticulate`) and a configured store are not part of this environment. The code is idiomatic and current so it can be adapted in a configured project.
 
-> **When to use this:** Reach for a managed store like Feast when you actually have a low-latency online serving path, several models or teams sharing features, or event-timestamped data where point-in-time joins are easy to botch. For a single batch-scored model trained and served from the same warehouse, the lighter `data.table` approach later in this chapter is usually enough.
+
+::: {.callout-tip title="When to use this"}
+Reach for a managed store like Feast when you actually have a low-latency online serving path, several models or teams sharing features, or event-timestamped data where point-in-time joins are easy to botch. For a single batch-scored model trained and served from the same warehouse, the lighter `data.table` approach later in this chapter is usually enough.
+:::
+
 
 ```{r feast-define, eval=FALSE}
 # Driven from R through reticulate; requires a configured Feast repo.
@@ -330,7 +362,11 @@ cmp
 
 The `leaked` column flags the rows where the leaky join attached a larger (later) spend than was knowable at the label time. A model trained on `leak_spend` would appear to predict churn well offline and then underperform in production, because at serving time only the point-in-time value is available.
 
-> **Warning:** The most dangerous part of leakage is that the leaky training table contains no obvious tell. The numbers are valid spends for real customers; they are simply spends from the wrong side of the label time. You cannot catch this by inspecting the table for impossible values. You catch it by enforcing the as-of rule in the join, which is exactly why pushing that rule into shared infrastructure beats trusting each analyst to remember it.
+
+::: {.callout-warning}
+The most dangerous part of leakage is that the leaky training table contains no obvious tell. The numbers are valid spends for real customers; they are simply spends from the wrong side of the label time. You cannot catch this by inspecting the table for impossible values. You catch it by enforcing the as-of rule in the join, which is exactly why pushing that rule into shared infrastructure beats trusting each analyst to remember it.
+:::
+
 
 ### A figure: leakage inflates apparent accuracy
 

@@ -13,7 +13,11 @@ This pattern matters far beyond hospitals. It is how a phone keyboard learns the
 
 The chapter builds the idea from the ground up. We start with the optimization problem federated learning actually solves, derive the FedAvg algorithm that almost everyone uses, and then confront the two facts that make the field hard in practice: communication is expensive, and the clients' data is not identically distributed. We close with privacy and security, since the whole point was to protect data, and a runnable base-R simulation that trains a logistic model across several clients and shows the global loss falling round by round, compared head to head against ordinary centralized training.
 
-> **Note:** This chapter assumes comfort with gradient descent and with the idea of minimizing an average loss over a dataset. The running example is logistic regression because its loss is convex and easy to reason about, but nothing about the federated machinery is specific to that choice; the same recipe wraps around neural networks (@sec-neural-networks), gradient-boosted trees (@sec-gradient-boosting), and more.
+
+::: {.callout-note}
+This chapter assumes comfort with gradient descent and with the idea of minimizing an average loss over a dataset. The running example is logistic regression because its loss is convex and easy to reason about, but nothing about the federated machinery is specific to that choice; the same recipe wraps around neural networks (@sec-neural-networks), gradient-boosted trees (@sec-gradient-boosting), and more.
+:::
+
 
 ## The federated optimization problem {#federated-learning-problem}
 
@@ -32,7 +36,11 @@ $$
 
 The goal is the same $w^\star = \arg\min_w F(w)$ you would compute centrally. The constraint is what is new: the server may never see any $x_i$ or $y_i$. It can only send $w$ to clients and receive things computed from $w$ and the local data, such as gradients or updated parameters.
 
-> **Key idea:** The federated objective $F(w)$ is identical to the centralized objective. Federated learning is not a different model or a different loss. It is a constrained way of optimizing the same loss, where the optimizer is forbidden from gathering the data in one place.
+
+::: {.callout-important title="Key idea"}
+The federated objective $F(w)$ is identical to the centralized objective. Federated learning is not a different model or a different loss. It is a constrained way of optimizing the same loss, where the optimizer is forbidden from gathering the data in one place.
+:::
+
 
 This framing immediately suggests a naive algorithm. Each client computes the gradient of its local objective at the current $w$, the server averages those gradients (weighting by $n_k/n$), takes one gradient-descent step, and broadcasts the new $w$. Because the gradient of $F$ is the weighted average of the gradients of the $F_k$,
 
@@ -66,7 +74,11 @@ where $S_t$ is the set of participating clients that round.
 
 The single knob that distinguishes FedAvg from federated gradient descent is the amount of local work per round, usually summarized by the number of *local epochs* $E$ (or equivalently the number of local steps). Setting $E$ so that each client takes exactly one full-batch gradient step recovers federated gradient descent exactly. Larger $E$ means more local progress between communications, hence fewer rounds to reach a target accuracy, hence less total communication.
 
-> **Intuition:** Federated gradient descent is a committee that votes after every single word of discussion: correct, but unbearably slow to reach a decision. FedAvg lets each member think privately for a while and then averages their conclusions. Far fewer meetings, and usually you arrive at nearly the same place.
+
+::: {.callout-tip title="Intuition"}
+Federated gradient descent is a committee that votes after every single word of discussion: correct, but unbearably slow to reach a decision. FedAvg lets each member think privately for a while and then averages their conclusions. Far fewer meetings, and usually you arrive at nearly the same place.
+:::
+
 
 There is no free lunch, though, and it is worth being precise about why. When $E = 1$ step, averaging parameters equals averaging gradients, which is exact. When $E$ is larger, each client walks toward *its own* local minimum, which is the minimizer of $F_k$, not of the global $F$. Averaging endpoints that have each drifted toward a different local optimum is not the same as one step on the global objective. This *client drift* is the price of doing more local work, and it is mild when the clients' data look alike and severe when it does not. That observation is the bridge to the non-IID problem in Section \@ref(federated-learning-noniid).
 
@@ -76,7 +88,11 @@ In a federated system the dominant cost is almost never the arithmetic. It is th
 
 The accounting is straightforward. If the algorithm needs $T$ rounds to reach a target accuracy and $|S_t|$ clients participate per round, the total uplink communication is on the order of $T \cdot |S_t| \cdot d$ scalars. Two levers reduce it. The first is increasing local work $E$ to cut the number of rounds $T$, which is the FedAvg lever already discussed. The second is shrinking the per-message size $d$ through *compression*: quantizing parameters to fewer bits, or sending only a sparse subset of the largest updates. These are complementary; production systems use both.
 
-> **Warning:** Cranking $E$ ever higher does not reduce rounds without limit. Past a point, the extra local epochs push each client deeper into its own local optimum, client drift grows, and the averaged model stops improving (or oscillates). There is a sweet spot for $E$, and it shrinks as the clients' data become more heterogeneous. More local computation buys fewer rounds only up to the moment drift starts eating the gains.
+
+::: {.callout-warning}
+Cranking $E$ ever higher does not reduce rounds without limit. Past a point, the extra local epochs push each client deeper into its own local optimum, client drift grows, and the averaged model stops improving (or oscillates). There is a sweet spot for $E$, and it shrinks as the clients' data become more heterogeneous. More local computation buys fewer rounds only up to the moment drift starts eating the gains.
+:::
+
 
 Two further realities shape round design. *Client sampling*: with millions of intermittently-available devices (phones charging overnight on Wi-Fi), the server samples a small fraction each round rather than waiting for everyone. This keeps each round fast and is itself a form of stochasticity. *Stragglers*: clients run at different speeds, and a synchronous round is only as fast as its slowest participant, so practical systems set deadlines and simply drop clients that miss them. We will see in the demo that even with all clients participating every round, FedAvg with a few local epochs reaches centralized-quality accuracy in a modest number of rounds.
 
@@ -88,7 +104,11 @@ Heterogeneity shows up in several distinct ways, and it helps to name them. Clie
 
 The mechanism by which this hurts is client drift, the same phenomenon flagged in Section \@ref(federated-learning-fedavg). When client $k$ runs many local steps, it descends toward $\arg\min_w F_k(w)$, the minimizer of *its own* objective. Under non-IID data those local minimizers sit far apart. Averaging parameter vectors that have each been pulled toward a different target lands somewhere that minimizes none of them well, and can be worse than a single careful global step. The more local epochs $E$ you run, the further each client drifts, so the very lever that saves communication amplifies the non-IID penalty. This is why $E$ and data heterogeneity must be tuned together.
 
-> **Key idea:** Under IID data, local minima roughly coincide and averaging long-trained local models is nearly as good as global training. Under non-IID data, local minima diverge, and averaging drifted models degrades the result. Heterogeneity converts the communication-saving trick of large $E$ into a source of bias.
+
+::: {.callout-important title="Key idea"}
+Under IID data, local minima roughly coincide and averaging long-trained local models is nearly as good as global training. Under non-IID data, local minima diverge, and averaging drifted models degrades the result. Heterogeneity converts the communication-saving trick of large $E$ into a source of bias.
+:::
+
 
 Several algorithms address this directly. *FedProx* (Li and colleagues, 2020) adds a proximal term $\tfrac{\mu}{2}\lVert w_k - w^t \rVert^2$ to each client's local objective, penalizing how far a client may wander from the current global model and thereby capping drift. *SCAFFOLD* (Karimireddy and colleagues, 2020) introduces control variates that estimate and subtract each client's drift direction, correcting the local updates so they point toward the global optimum. A simpler and surprisingly effective measure is to lower $E$ and rely on client sampling. The demo below makes the IID-versus-non-IID gap concrete by training the same model under both data partitions.
 
@@ -104,7 +124,11 @@ $$
 
 The *privacy budget* $\varepsilon$ controls the strength: small $\varepsilon$ means the two cases are nearly indistinguishable, hence strong privacy. In federated learning DP is usually applied by *clipping* each client's update to a bounded norm $C$ (so no single client can dominate) and then adding Gaussian noise with standard deviation proportional to $C$ before aggregation. More noise buys more privacy and costs accuracy; the noise-versus-accuracy tradeoff is the central design decision.
 
-> **Note:** There are two flavors. *Local DP* adds noise on each client before anything leaves the device, protecting against an untrusted server but hurting accuracy more. *Central DP* adds noise at the server during aggregation, protecting against an outside observer of the final model while trusting the server, and it preserves accuracy better for the same $\varepsilon$.
+
+::: {.callout-note}
+There are two flavors. *Local DP* adds noise on each client before anything leaves the device, protecting against an untrusted server but hurting accuracy more. *Central DP* adds noise at the server during aggregation, protecting against an outside observer of the final model while trusting the server, and it preserves accuracy better for the same $\varepsilon$.
+:::
+
 
 Privacy is about what the model leaks; *security* is about adversaries who actively interfere. Two tools recur. *Secure aggregation* uses cryptography so the server learns only the sum (or average) of client updates, never any individual client's update, closing the gap that lets a curious server inspect one client's contribution. On the threat side, because clients control their own training, a malicious client can submit poisoned updates to corrupt or backdoor the global model; *robust aggregation* rules (trimmed mean, coordinate-wise median, Krum), a robust cousin of the model-combining ideas in the ensemble learning chapter (@sec-ensemble-learning), replace the plain average with statistics that ignore outliers. The honest summary is that federation is a privacy *improvement* but not a privacy *guarantee*, and a serious deployment layers DP, secure aggregation, and robust aggregation on top of plain FedAvg.
 
@@ -364,11 +388,19 @@ The simulation is small, but every choice it exposed scales up to real deploymen
 
 Tune local epochs and heterogeneity together. The single most important hyperparameter is the amount of local work $E$. Raise it to cut communication rounds, but watch the non-IID loss curve: when added local epochs stop lowering the loss or start making it bounce, drift has overtaken the savings and you should back off or switch to a drift-correcting method like FedProx or SCAFFOLD. There is no universal best $E$; it depends on how heterogeneous your clients are.
 
-> **When to use this:** Reach for federated learning when data genuinely cannot be centralized (regulation, privacy, ownership, or bandwidth) and the value lies in combining it. If you are allowed to pool the data, pool it. Centralized training is simpler, faster, and strictly easier to debug, and the demo shows the best federated outcome merely *matches* it.
+
+::: {.callout-tip title="When to use this"}
+Reach for federated learning when data genuinely cannot be centralized (regulation, privacy, ownership, or bandwidth) and the value lies in combining it. If you are allowed to pool the data, pool it. Centralized training is simpler, faster, and strictly easier to debug, and the demo shows the best federated outcome merely *matches* it.
+:::
+
 
 Do not equate "data stayed put" with "privacy achieved." Model updates leak information, and a determined adversary can exploit them. If privacy is a real requirement and not a slogan, budget for differential privacy from the start, expect to pay accuracy for it, and add secure aggregation so the server never inspects an individual client's update. Decide explicitly whether you trust the server (central DP, better accuracy) or not (local DP, stronger guarantee).
 
-> **Warning:** Because clients train on data the server never sees, a malicious or malfunctioning client can poison the global model with crafted updates, and plain averaging gives every client equal sway. In any open or low-trust federation, replace the mean with a robust aggregation rule (coordinate-wise median, trimmed mean, or Krum) and clip update norms so no single client can dominate a round.
+
+::: {.callout-warning}
+Because clients train on data the server never sees, a malicious or malfunctioning client can poison the global model with crafted updates, and plain averaging gives every client equal sway. In any open or low-trust federation, replace the mean with a robust aggregation rule (coordinate-wise median, trimmed mean, or Krum) and clip update norms so no single client can dominate a round.
+:::
+
 
 Mind the systems realities the demo glossed over. Real clients are intermittently available, run at wildly different speeds, and number in the thousands or millions, so you will sample a small fraction each round and set deadlines that drop stragglers. Model size $d$ drives every uplink message, so for large models, compression (quantization, sparsification) is not optional. And monitoring is genuinely hard: you cannot inspect the data that produced a bad update, so build evaluation on a held-out, server-side proxy set and track per-round global metrics, exactly the global-loss curve the demo plotted, as your primary health signal.
 

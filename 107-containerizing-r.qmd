@@ -15,7 +15,11 @@ This chapter is about reproducible deployment, not a new estimator. It connects 
 
 By the end you will be able to read and write a `Dockerfile` for an R service, pin package versions so a build today and a build next year behave the same, understand the routing object that lives inside the image, and reason about when adding more containers actually buys you more throughput. None of this requires prior Docker experience; the intuition comes first, and the commands follow.
 
-> **Intuition:** A container is a shipping crate for software. You pack the R runtime, the system libraries, the exact package versions, and your serving code once, seal the crate, and from then on every machine that opens it sees an identical interior. The phrase "it works on my machine" stops being a problem because every machine is now, in effect, your machine.
+
+::: {.callout-tip title="Intuition"}
+A container is a shipping crate for software. You pack the R runtime, the system libraries, the exact package versions, and your serving code once, seal the crate, and from then on every machine that opens it sees an identical interior. The phrase "it works on my machine" stops being a problem because every machine is now, in effect, your machine.
+:::
+
 
 ## Where this fits in a modern ML/AI workflow
 
@@ -30,7 +34,11 @@ The phrase hides several distinct problems.
 
 A container removes these as variables by shipping all of them inside one artifact. You build an image once (a read-only filesystem snapshot plus metadata about what to run), and every container (a running instance of that image) starts from exactly that snapshot.^[The image-versus-container distinction is the one piece of vocabulary worth fixing early. An image is the recipe plus the frozen ingredients; a container is a meal cooked from it. One image can spawn many containers, and they cannot drift apart because they all start from the same read-only layers.] The fitted model, the R runtime, and the `plumber` code travel together.
 
-> **Key idea:** Each "it worked on my machine" failure is really a hidden dependency that was present on one host and absent on another. Containerization makes every such dependency explicit and ships it along, so there is nothing left to be implicitly different.
+
+::: {.callout-important title="Key idea"}
+Each "it worked on my machine" failure is really a hidden dependency that was present on one host and absent on another. Containerization makes every such dependency explicit and ships it along, so there is nothing left to be implicitly different.
+:::
+
 
 The position in the workflow is specific. Containerization happens *after* you have a serialized model and a serving script, and *before* the model receives live traffic:
 
@@ -66,13 +74,21 @@ knitr::kable(
 
 The container is the middle option that wins for model serving: it is reproducible like a VM but light enough that you can run many replicas of it cheaply, because they all share the host kernel and only carry user-space libraries.^[Sharing the host kernel is exactly why a container starts in seconds while a virtual machine boots a whole operating system. The trade-off is that a container is not as strongly isolated as a VM, which matters when you must run untrusted code or a different operating system entirely. For serving your own R model, that weaker isolation is a fair price for the speed and small footprint.]
 
-> **When to use this:** Reach for a container when a model needs to run somewhere other than the laptop it was trained on, especially when other systems or teammates will call it. For a one-off report you will run once and read yourself, a container is more machinery than the job needs.
+
+::: {.callout-tip title="When to use this"}
+Reach for a container when a model needs to run somewhere other than the laptop it was trained on, especially when other systems or teammates will call it. For a one-off report you will run once and read yourself, a container is more machinery than the job needs.
+:::
+
 
 ## A minimal Dockerfile for R
 
 With the conceptual picture in place, we can write the recipe that produces an image. That recipe is a `Dockerfile`: a plain text file of ordered instructions, read top to bottom, where each instruction adds one layer to the image. For R, the standard base images come from the rocker project, which publishes images such as `rocker/r-ver` (a fixed R version on Debian) and `rocker/r-base` (see the Further Reading entry for Boettiger and Eddelbuettel). Pinning the base image tag (writing `rocker/r-ver:4.4.3` rather than `rocker/r-ver:latest`) pins the R version, which is the first reproducibility decision.
 
-> **Warning:** The tag `latest` is a trap for reproducibility. It means "whatever was newest when you pulled," so the same `Dockerfile` can produce different images on different days. Always pin an explicit version tag for anything you intend to rebuild.
+
+::: {.callout-warning}
+The tag `latest` is a trap for reproducibility. It means "whatever was newest when you pulled," so the same `Dockerfile` can produce different images on different days. Always pin an explicit version tag for anything you intend to rebuild.
+:::
+
 
 ```{r cntr-dockerfile, eval=FALSE}
 # Dockerfile
@@ -154,7 +170,11 @@ renv::restore()   # install exactly the versions recorded in renv.lock
 
 `renv` records not only versions but the *repository snapshot* (for example a Posit Public Package Manager URL dated to a specific day), so even a package that was later removed from CRAN can still be reinstalled. Commit `renv.lock` to version control; it is the single source of truth for the environment.
 
-> **Tip:** Treat `renv.lock` the way you treat your source code: commit it, review changes to it, and rebuild the image whenever it changes. A lockfile that lives only on one developer's laptop reproduces nothing.
+
+::: {.callout-tip}
+Treat `renv.lock` the way you treat your source code: commit it, review changes to it, and rebuild the image whenever it changes. A lockfile that lives only on one developer's laptop reproduces nothing.
+:::
+
 
 @tbl-containerizing-r-pinning-table separates what each layer pins, which is the clearest way to see why you need all three.
 
@@ -219,7 +239,11 @@ Either way the object is the same idea: a finite set of routes, each route a (ve
 
 The router told us *what* the server holds. To see *what it does* with each incoming request, without Docker, sockets, or a network, we can simulate the request/response cycle in base R. A request is a method, a path, and a parsed body; the server dispatches on (method, path), runs the handler, and serializes the returned list to a JSON-like string. This is exactly the loop `plumber` runs, stripped to its logic.
 
-> **Note:** The `to_json` function below is a deliberately tiny serializer for teaching only. It handles flat named lists of scalars and nothing more. Real serving uses `jsonlite`, which `plumber` calls for you and which handles nesting, vectors, and edge cases the toy version ignores.
+
+::: {.callout-note}
+The `to_json` function below is a deliberately tiny serializer for teaching only. It handles flat named lists of scalars and nothing more. Real serving uses `jsonlite`, which `plumber` calls for you and which handles nesting, vectors, and edge cases the toy version ignores.
+:::
+
 
 ```{r cntr-sim}
 # A tiny router: named list keyed by "VERB /path".
@@ -279,7 +303,11 @@ $$
 
 @fig-containerizing-r-scaling-fig plots $T(k)$ for a representative service time and ceiling. The linear region is where adding replicas helps; the flat region is where you have hit a shared limit and more containers stop paying off.
 
-> **Intuition:** Adding replicas is like opening more checkout lanes. More lanes clear the queue faster, right up until the single shared exit door (the database, the host CPU) becomes the line everyone waits in. Past that point, new lanes serve no one.
+
+::: {.callout-tip title="Intuition"}
+Adding replicas is like opening more checkout lanes. More lanes clear the queue faster, right up until the single shared exit door (the database, the host CPU) becomes the line everyone waits in. Past that point, new lanes serve no one.
+:::
+
 
 ```{r fig-containerizing-r-scaling-fig, fig.cap="Throughput ceiling versus number of container replicas. Linear gains stop once a shared bottleneck C saturates.", fig.width=6, fig.height=4}
 library(ggplot2)
@@ -370,7 +398,11 @@ Common pitfalls, most of which cost hours the first time:
 - Running as root. The default container user is `root`. Create and switch to a non-root user (`USER`) for anything exposed to a network.
 - Treating the image as mutable. Do not exec into a running container and patch it. Change the `Dockerfile` or lockfile, rebuild, and redeploy, so the artifact stays the source of truth.
 
-> **Warning:** The single most common security mistake here is leaving the container running as `root` while it is exposed to a network. If the serving process is compromised, an attacker inherits whatever the container user can do. Add a `USER` instruction to drop to an unprivileged account before the `CMD` runs.
+
+::: {.callout-warning}
+The single most common security mistake here is leaving the container running as `root` while it is exposed to a network. If the serving process is compromised, an attacker inherits whatever the container user can do. Add a `USER` instruction to drop to an unprivileged account before the `CMD` runs.
+:::
+
 
 For production model lifecycle (versioning, automatic Dockerfile generation, deployment to a board, and drift monitoring), `vetiver` builds directly on `plumber` and `pins` and is the natural next step; see the API chapter's (@sec-api) discussion of versioning and hosting, the model deployment chapter (@sec-model-deployment) for serving patterns, and the model monitoring chapter (@sec-model-monitoring) for drift detection.
 

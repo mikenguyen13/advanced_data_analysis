@@ -11,7 +11,11 @@ Multivariate Adaptive Regression Splines (MARS) is a method that handles exactly
 
 By the end of this chapter you will understand the building blocks MARS uses (piecewise linear basis functions, called hinge functions), how the forward, then backward, model-building strategy works, and how the method chooses a final model size. You will also see a short worked example. The core machinery is an expansion in the piecewise linear basis function family.
 
-> **Note:** MARS is not used as much today as it once was, having been largely overtaken by tree ensembles such as gradient boosting (@sec-gradient-boosting). It remains worth studying because its ideas, adaptive knot selection and automatic interaction discovery, are clear and instructive, and the model it produces is unusually easy to interpret.
+
+::: {.callout-note}
+MARS is not used as much today as it once was, having been largely overtaken by tree ensembles such as gradient boosting (@sec-gradient-boosting). It remains worth studying because its ideas, adaptive knot selection and automatic interaction discovery, are clear and instructive, and the model it produces is unusually easy to interpret.
+:::
+
 
 ## How MARS relates to CART {-}
 
@@ -23,7 +27,11 @@ It helps to anchor MARS against CART, since the two share a common spirit but di
 
 With those two changes, the MARS forward procedure becomes essentially the CART tree-growing algorithm. Multiplying a step function by a pair of reflected step functions is equivalent to splitting a node at that step, and the second restriction (a node may not be split more than once) is what forces the binary tree structure. MARS is more flexible precisely because it drops these restrictions: it keeps smooth hinge functions instead of hard steps, and it allows additive structures rather than being confined to a binary tree.
 
-> **Key idea:** CART is a special, restricted case of the MARS-style construction. Loosening the restrictions (smooth hinges, reusable terms) is what gives MARS its extra power and its ability to represent additive effects.
+
+::: {.callout-important title="Key idea"}
+CART is a special, restricted case of the MARS-style construction. Loosening the restrictions (smooth hinges, reusable terms) is what gives MARS its extra power and its ability to represent additive effects.
+:::
+
 
 ## The building blocks: hinge functions {-}
 
@@ -49,7 +57,11 @@ $$
 
 Each of these is flat (equal to zero) on one side of the knot $t$ and rises linearly on the other side. They are linear splines, and because one is the mirror image of the other across $t$, the pair is called a reflected pair.
 
-> **Intuition:** A single hinge function is a "ramp" that switches on at $t$. A reflected pair gives you one ramp going up to the right of $t$ and one going up to the left of $t$. Adding both to a model lets the fitted curve bend at $t$ and take a different slope on each side, which is how MARS turns straight lines into flexible, piecewise-linear shapes.
+
+::: {.callout-tip title="Intuition"}
+A single hinge function is a "ramp" that switches on at $t$. A reflected pair gives you one ramp going up to the right of $t$ and one going up to the left of $t$. Adding both to a model lets the fitted curve bend at $t$ and take a different slope on each side, which is how MARS turns straight lines into flexible, piecewise-linear shapes.
+:::
+
 
 Where do we put the knots? MARS forms such a reflected pair for each input $X_j$ with knots placed at every observed value $x_{ij}$ of that input. This is what makes the knot placement adaptive: instead of guessing knot locations in advance, the method considers every data point as a candidate. The full collection of basis functions is
 
@@ -83,7 +95,11 @@ $$
 
 where $h_l$ is some basis function already in the model. Among all such candidate additions, we pick the one that produces the largest decrease in training error, and we add that reflected pair of products to the model set $M$.
 
-> **Note:** Because each new term is a product of an existing term with a new reflected pair, the search naturally discovers interactions. Multiplying by the constant $h_0(X) = 1$ keeps the new term as a simple main effect; multiplying by an existing hinge creates a two-way (or higher) interaction.
+
+::: {.callout-note}
+Because each new term is a product of an existing term with a new reflected pair, the search naturally discovers interactions. Multiplying by the constant $h_0(X) = 1$ keeps the new term as a simple main effect; multiplying by an existing hinge creates a two-way (or higher) interaction.
+:::
+
 
 To make this concrete, here is how the first couple of stages play out.
 
@@ -115,7 +131,11 @@ For example, the third choice can produce an interaction term such as $(X_1 - x_
 
 The forward pass continues until a pre-specified number of terms is in the model. By design this gives a large model that overfits the data, which is exactly what we want before pruning.
 
-> **Intuition:** The strategy is deliberately "grow too big, then trim." Greedily adding terms is fast but tends to keep some terms that only help on the training set. Pruning afterward removes them.
+
+::: {.callout-tip title="Intuition"}
+The strategy is deliberately "grow too big, then trim." Greedily adding terms is fast but tends to keep some terms that only help on the training set. Pruning afterward removes them.
+:::
+
 
 ### The backward pass: pruning {-}
 
@@ -141,7 +161,11 @@ In practice the effective parameter count is taken to be $M(\lambda) = r + cK$. 
 
 We then choose the size $\lambda$ that minimizes $GCV(\lambda)$.
 
-> **Tip:** If you constrain MARS to additive models (no products of hinge functions), use $c = 2$. The smaller penalty reflects the fact that an additive search explores fewer candidate structures, so each knot costs less complexity.
+
+::: {.callout-tip}
+If you constrain MARS to additive models (no products of hinge functions), use $c = 2$. The smaller penalty reflects the fact that an additive search explores fewer candidate structures, so each knot costs less complexity.
+:::
+
 
 ## A worked example {-}
 
@@ -177,8 +201,16 @@ MARS earns its place through a few genuine advantages, summarized here.
 
 It also has clear limitations to keep in mind.
 
-> **Warning:** Each input can appear at most once in any given product, so higher-order powers of a single input (such as $X_1^2$ via $(X_1 - t)_+ \times (X_1 - s)_+$ on the same variable) are not allowed. Permitting them tends to produce unstable fits, especially near the boundaries of the data.
+
+::: {.callout-warning}
+Each input can appear at most once in any given product, so higher-order powers of a single input (such as $X_1^2$ via $(X_1 - t)_+ \times (X_1 - s)_+$ on the same variable) are not allowed. Permitting them tends to produce unstable fits, especially near the boundaries of the data.
+:::
+
 
 You can also cap the complexity of interactions directly, restricting products to a chosen maximum order (for example, only second-degree or third-degree interactions). This is the `degree` argument in the worked example above.
 
-> **When to use this:** Reach for MARS when you want an automatic, interpretable model that captures nonlinearities and a modest number of interactions across many predictors, and you value being able to read off where the relationships bend. If raw predictive accuracy is the only goal, a tuned gradient boosting model (@sec-gradient-boosting) will often do better, at the cost of interpretability.
+
+::: {.callout-tip title="When to use this"}
+Reach for MARS when you want an automatic, interpretable model that captures nonlinearities and a modest number of interactions across many predictors, and you value being able to read off where the relationships bend. If raw predictive accuracy is the only goal, a tuned gradient boosting model (@sec-gradient-boosting) will often do better, at the cost of interpretability.
+:::
+

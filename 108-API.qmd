@@ -22,10 +22,14 @@ minimal working examples in both R (`plumber`) and Python (FastAPI), and close w
 the practical issues, validation, latency, scaling, security, and monitoring, that
 separate a weekend demo from a service you can rely on.
 
-> **Intuition:** Think of the API as a vending machine for predictions. The model is
-> the stock inside; the API is the slot you put a request into and the tray the
-> answer drops into. Callers never need to know what is inside or how it was built,
-> only how to insert a request and read the result.
+
+::: {.callout-tip title="Intuition"}
+Think of the API as a vending machine for predictions. The model is
+the stock inside; the API is the slot you put a request into and the tray the
+answer drops into. Callers never need to know what is inside or how it was built,
+only how to insert a request and read the result.
+:::
+
 
 ## Why Serve Models Through an API
 
@@ -63,10 +67,14 @@ object containing the features. The server runs the model and returns a response
 JSON containing the prediction. Each request carries everything the server needs, so
 the server keeps no memory of past calls.
 
-> **Key idea:** Because each request is self-contained (the technical word is
-> *stateless*), any server instance can answer any request. That is what lets you
-> scale *horizontally*: when traffic grows, you add more identical server instances
-> behind a load balancer instead of buying one bigger machine.
+
+::: {.callout-important title="Key idea"}
+Because each request is self-contained (the technical word is
+*stateless*), any server instance can answer any request. That is what lets you
+scale *horizontally*: when traffic grows, you add more identical server instances
+behind a load balancer instead of buying one bigger machine.
+:::
+
 
 With the motivation in place, we now turn to how this looks in code, starting with R.
 
@@ -79,9 +87,13 @@ declare the HTTP method and path. `plumber` reads those comments, parses incomin
 requests into function arguments, and serializes whatever the function returns back
 into JSON. You never write parsing or networking code yourself.
 
-> **When to use this:** Reach for `plumber` when your model is already in R and you
-> want to expose it without porting anything to another language. It is the path of
-> least resistance from a fitted R model to a live endpoint.
+
+::: {.callout-tip title="When to use this"}
+Reach for `plumber` when your model is already in R and you
+want to expose it without porting anything to another language. It is the path of
+least resistance from a fitted R model to a live endpoint.
+:::
+
 
 ### A Minimal `plumber` Example
 
@@ -129,9 +141,13 @@ cripple latency). And there are two endpoints: a trivial `/health` route that re
 but earns its keep in production, where load balancers and monitoring systems
 repeatedly ping it to confirm the service is alive.
 
-> **Tip:** Always include a lightweight health-check endpoint. Orchestration tools
-> (load balancers, Kubernetes, Posit Connect) use it to decide whether an instance
-> is ready to receive traffic and when to restart one that has gone unhealthy.
+
+::: {.callout-tip}
+Always include a lightweight health-check endpoint. Orchestration tools
+(load balancers, Kubernetes, Posit Connect) use it to decide whether an instance
+is ready to receive traffic and when to restart one that has gone unhealthy.
+:::
+
 
 With the script written, you launch the API by building a router from the file and
 running it on a chosen port:
@@ -179,10 +195,14 @@ scale it. Posit Connect (formerly RStudio Connect) is a managed platform that ca
 host `plumber` APIs and `vetiver` models with authentication, scaling, and monitoring
 handled for you, so you *publish* a model rather than administer servers yourself.
 
-> **Note:** Versioning and hosting are not R-specific ideas. Every serious serving
-> setup, in any language, needs a way to track which model is live and a place to run
-> it. `vetiver`, `pins`, and Posit Connect are simply R-friendly answers to those
-> universal questions.
+
+::: {.callout-note}
+Versioning and hosting are not R-specific ideas. Every serious serving
+setup, in any language, needs a way to track which model is live and a place to run
+it. `vetiver`, `pins`, and Posit Connect are simply R-friendly answers to those
+universal questions.
+:::
+
 
 ## Serving Models in Python
 
@@ -240,10 +260,14 @@ free**: a request with a missing field or a string where a number belongs is rej
 with a clear, automatic error before it ever reaches the model. Like `plumber`,
 FastAPI also auto-generates interactive Swagger documentation.
 
-> **Intuition:** The `pydantic` model is a bouncer at the door. It checks every
-> request against the expected schema and turns away anything malformed, so your model
-> code only ever sees clean, correctly typed inputs. We will see in a moment why that
-> guarantee matters so much.
+
+::: {.callout-tip title="Intuition"}
+The `pydantic` model is a bouncer at the door. It checks every
+request against the expected schema and turns away anything malformed, so your model
+code only ever sees clean, correctly typed inputs. We will see in a moment why that
+guarantee matters so much.
+:::
+
 
 The R and Python examples differ in syntax but not in shape. That is the real lesson:
 serving a model is the same handful of steps everywhere. Load the model once, define a
@@ -264,10 +288,14 @@ categorical input, then reject anything malformed with an informative HTTP error
 (such as `400 Bad Request`) rather than letting it crash the model or, worse, produce
 a confident but meaningless prediction.
 
-> **Warning:** A model fed garbage rarely errors out. It usually returns a number, a
-> wrong one, with no complaint. Silent garbage-in, garbage-out is far more dangerous
-> than a loud crash, because nobody notices until decisions have been made on bad
-> predictions. Validate aggressively.
+
+::: {.callout-warning}
+A model fed garbage rarely errors out. It usually returns a number, a
+wrong one, with no complaint. Silent garbage-in, garbage-out is far more dangerous
+than a loud crash, because nobody notices until decisions have been made on bad
+predictions. Validate aggressively.
+:::
+
 
 JSON serialization is the next subtlety, because every input and output crosses
 the wire as text. You have to be deliberate about how arrays, missing values
@@ -288,10 +316,14 @@ that, keep heavy preprocessing inside the serving process so it is not repeated
 elsewhere, prefer vectorized operations, and, most importantly, *measure* end-to-end
 response time under realistic load rather than guessing where the time goes.
 
-> **Tip:** Profile before you optimize. The slow step is often something unglamorous,
-> JSON parsing, a data-frame copy, a stray call that reloads the model, rather than the
-> model's arithmetic itself. Measurement, not intuition, tells you where to spend
-> effort.
+
+::: {.callout-tip}
+Profile before you optimize. The slow step is often something unglamorous,
+JSON parsing, a data-frame copy, a stray call that reloads the model, rather than the
+model's arithmetic itself. Measurement, not intuition, tells you where to spend
+effort.
+:::
+
 
 Scaling and containerization handle growth in traffic. Package the service in a
 Docker container so it runs identically on a laptop, a teammate's machine, and a
@@ -318,10 +350,14 @@ distribution) and model decay (accuracy eroding as the world changes), the subje
 the model monitoring chapter (@sec-model-monitoring). A model is
 not a finished artifact; it ages as the data-generating process moves on.
 
-> **Key idea:** A deployed model is a living system, not a delivered product.
-> Monitoring is the feedback signal that tells you *when* to retrain and redeploy,
-> which closes the loop back to the training chapters and connects naturally to the
-> versioning tools (`vetiver`, `pins`) introduced earlier.
+
+::: {.callout-important title="Key idea"}
+A deployed model is a living system, not a delivered product.
+Monitoring is the feedback signal that tells you *when* to retrain and redeploy,
+which closes the loop back to the training chapters and connects naturally to the
+versioning tools (`vetiver`, `pins`) introduced earlier.
+:::
+
 
 Taken together, these six concerns are the difference between a model that demos well
 and one that survives contact with real traffic. You do not need to solve all of them

@@ -11,7 +11,11 @@ This idea turns out to be one of the most reliable workhorses in all of machine 
 
 The boosting chapter (@sec-boosting) introduced the foundations: forward stagewise additive modeling, AdaBoost, and the basic gradient boosting machine. This chapter picks up where that left off and focuses on the modern gradient-boosted-tree systems that dominate tabular prediction in practice: XGBoost, LightGBM, and CatBoost. By the end you will be able to read these systems in two complementary ways. First, as an optimization story: each one performs functional gradient descent against a regularized objective, and the formulas they use for leaf values and splits fall directly out of that view. Second, as a set of practical knobs you actually turn, with runnable training and validation loss curves that show overfitting happening and early stopping catching it.
 
-> **Note:** This chapter assumes you have seen the boosting chapter (@sec-boosting). If the phrase "fit a tree to the residuals" is not yet familiar, read that chapter first; here we move quickly from intuition to the regularized objective that the production systems optimize.
+
+::: {.callout-note}
+This chapter assumes you have seen the boosting chapter (@sec-boosting). If the phrase "fit a tree to the residuals" is not yet familiar, read that chapter first; here we move quickly from intuition to the regularized objective that the production systems optimize.
+:::
+
 
 ## Boosting as Functional Gradient Descent
 
@@ -31,7 +35,11 @@ $$
 
 This is forward stagewise additive modeling: previously added terms stay fixed, and we only solve for the next one.^[Refitting all the earlier terms at every step would be the "fully corrective" version. Keeping them frozen is cheaper and, with shrinkage, works better in practice because it limits how aggressively the model adapts to the training data.]
 
-> **Key idea:** Treat the predictions $F(x_1), \dots, F(x_n)$ as the quantities we are optimizing, one per training point. The loss $\mathcal{L}$ is then an ordinary function of those $n$ numbers, and we can do gradient descent on it just as we would on any other parameters.
+
+::: {.callout-important title="Key idea"}
+Treat the predictions $F(x_1), \dots, F(x_n)$ as the quantities we are optimizing, one per training point. The loss $\mathcal{L}$ is then an ordinary function of those $n$ numbers, and we can do gradient descent on it just as we would on any other parameters.
+:::
+
 
 Steepest descent on $\mathcal{L}$ in this function space moves each prediction in the direction of the negative gradient. Define the pseudo-residual^[Called a "pseudo"-residual because for a general loss it is not literally the observed-minus-predicted difference; it is the negative gradient of the loss, which only coincides with the ordinary residual for squared error, as we show next.] at observation $i$ and step $m$ as
 
@@ -41,7 +49,11 @@ $$
 
 We then fit the base learner $f_m$ to the pseudo-residuals $\{(x_i, r_{im})\}$ by least squares. Here is why a tree is the right tool: pure gradient descent would tell us how to nudge each of the $n$ predictions individually, but that gives us no rule for predicting at a new $x$ we have never seen. Fitting a tree to $r_{im}$ forces the descent direction to be a function of $x$, so it generalizes. The new tree points the whole model downhill in loss while still being something we can evaluate anywhere. After fitting, the leaf values can be re-optimized for the actual loss (a line search per leaf), and the tree is added with shrinkage $\nu$.
 
-> **Intuition:** Gradient descent says "move in this direction." A tree is how we make "this direction" into a reusable function of the features instead of a one-off adjustment to the training points.
+
+::: {.callout-tip title="Intuition"}
+Gradient descent says "move in this direction." A tree is how we make "this direction" into a reusable function of the features instead of a one-off adjustment to the training points.
+:::
+
 
 ### Squared error gives ordinary residuals
 
@@ -75,7 +87,11 @@ $$
 \frac{\partial^2 l}{\partial F^2} = p (1 - p).
 $$
 
-> **Note:** The Hessian $p(1-p)$ is largest when $p \approx 0.5$ (the model is most uncertain) and shrinks toward zero as predictions become confident. XGBoost uses exactly this curvature to decide how big a step each leaf should take, which is the subject of the next section.
+
+::: {.callout-note}
+The Hessian $p(1-p)$ is largest when $p \approx 0.5$ (the model is most uncertain) and shrinks toward zero as predictions become confident. XGBoost uses exactly this curvature to decide how big a step each leaf should take, which is the subject of the next section.
+:::
+
 
 ## The Tuning Knobs and Their Roles
 
@@ -87,7 +103,11 @@ Before the production-system formulas, it helps to know what you will actually b
 - Subsampling rows (stochastic gradient boosting): fitting each tree on a random fraction of the rows decorrelates the trees and acts as a regularizer, often improving accuracy and speed.
 - Subsampling columns: sampling a fraction of features per tree or per split further decorrelates trees, in the same spirit as random forests (@sec-random-forest).
 
-> **Intuition:** The learning rate and the number of trees are two ends of the same lever. Halve the learning rate and you will roughly need to double the trees to fit the same amount. This is why we almost never tune them independently: we fix a small learning rate and let early stopping pick the count.
+
+::: {.callout-tip title="Intuition"}
+The learning rate and the number of trees are two ends of the same lever. Halve the learning rate and you will roughly need to double the trees to fit the same amount. This is why we almost never tune them independently: we fix a small learning rate and let early stopping pick the count.
+:::
+
 
 The pattern that holds across most tabular problems is worth memorizing: a small learning rate, moderate depth (often 3 to 8), some row and column subsampling, and the number of trees chosen by early stopping on a validation set. The rest of this chapter explains why these defaults work and shows them in code.
 
@@ -149,7 +169,11 @@ $$
 
 Lower is better, so $\sum_j G_j^2 / (H_j + \lambda)$ measures how good a tree structure is.
 
-> **Key idea:** The structure score turns "how good is this tree shape?" into a single number we can compute without ever fitting the leaf values by trial and error. Every decision XGBoost makes about growing the tree reduces to comparing this score before and after a candidate change.
+
+::: {.callout-important title="Key idea"}
+The structure score turns "how good is this tree shape?" into a single number we can compute without ever fitting the leaf values by trial and error. Every decision XGBoost makes about growing the tree reduces to comparing this score before and after a candidate change.
+:::
+
 
 ### Split gain
 
@@ -176,11 +200,19 @@ XGBoost's original exact greedy split search scans every candidate split point o
 - Gradient-based One-Side Sampling (GOSS): observations with large gradients are far from being fit well, so GOSS keeps all large-gradient rows and randomly subsamples the small-gradient rows, reweighting the kept small-gradient rows to keep the gradient sums roughly unbiased. This shrinks the training set while preserving the important signal.
 - Exclusive Feature Bundling (EFB): in sparse data many features are rarely nonzero at the same time. EFB bundles such mutually exclusive features into a single feature, reducing the effective feature count with little information loss.
 
-> **Warning:** LightGBM's leaf-wise growth is powerful but easy to overfit with. A tree controlled only by `num_leaves` can grow much deeper along one branch than a level-wise tree of the same leaf count. If you see training loss far below validation loss, cap `max_depth` or lower `num_leaves` before touching anything else.
+
+::: {.callout-warning}
+LightGBM's leaf-wise growth is powerful but easy to overfit with. A tree controlled only by `num_leaves` can grow much deeper along one branch than a level-wise tree of the same leaf count. If you see training loss far below validation loss, cap `max_depth` or lower `num_leaves` before touching anything else.
+:::
+
 
 CatBoost rounds out the trio with a different concern: bias. Ordinary gradient boosting uses the same rows to both fit the model and compute the residuals it will fit next, which subtly leaks information and biases the predictions, an effect its authors call prediction shift. CatBoost addresses this with ordered boosting, which computes the residual for each observation using a model trained only on earlier observations in a random permutation. It also has strong native handling of categorical features through ordered target statistics, so categorical columns can be passed in directly rather than one-hot encoded by hand.
 
-> **When to use this:** Reach for LightGBM when you have many rows and want speed; reach for CatBoost when categorical features dominate and you want sensible defaults with minimal preprocessing; reach for XGBoost as a mature, widely supported baseline. In practice all three are competitive, and the choice often comes down to ecosystem and familiarity.
+
+::: {.callout-tip title="When to use this"}
+Reach for LightGBM when you have many rows and want speed; reach for CatBoost when categorical features dominate and you want sensible defaults with minimal preprocessing; reach for XGBoost as a mature, widely supported baseline. In practice all three are competitive, and the choice often comes down to ecosystem and familiarity.
+:::
+
 
 ## Simulation: Loss Curves, Learning Rates, and Importance
 
@@ -244,7 +276,11 @@ min(log_df$valid_rmse)
 
 @fig-gradient-boosting-losscurve is the whole lesson in one picture. The training curve marches steadily downward, because adding trees can always fit the training data a little better. The validation curve drops at first, because early trees capture real structure, but then bottoms out and creeps back up, because later trees start fitting noise that does not generalize. The dashed line marks the round where validation RMSE is lowest; everything to the right of it is overfitting we would rather avoid.
 
-> **Tip:** Reading a loss curve is the single most useful diagnostic in boosting. A validation curve that is still falling means you stopped too early (train longer or lower the learning rate). One that turned up long ago means you trained too long. A flat curve far above the training curve means the model is too flexible (reduce depth or add subsampling).
+
+::: {.callout-tip}
+Reading a loss curve is the single most useful diagnostic in boosting. A validation curve that is still falling means you stopped too early (train longer or lower the learning rate). One that turned up long ago means you trained too long. A flat curve far above the training curve means the model is too flexible (reduce depth or add subsampling).
+:::
+
 
 Eyeballing the dashed line is fine for a plot, but we do not want to retrain hundreds of rounds just to throw most away. Early stopping automates picking that round: training continues until the validation metric fails to improve for a fixed number of rounds (`early_stopping_rounds`), then stops and keeps the best iteration. Here we also switch to sensible regularization (smaller learning rate, shallower trees, row and column subsampling) so the model generalizes better.
 
@@ -321,7 +357,11 @@ knitr::kable(
 
 The ranking in @tbl-gradient-boosting-importance is intuitive for housing data: `rm` (average number of rooms) and `lstat` (percent lower-status population) dominate, which matches both economic intuition and the linear-model coefficients you would get on the same data.
 
-> **Warning:** Importance scores describe what the model used, not causal effect, and they can be unstable when features are correlated (the model may "credit" one of two redundant features almost arbitrarily). Treat them as a rough guide for the model at hand, not as a measure of how the world works. For more careful attribution, the interpretable machine learning chapter (@sec-interpretable-machine-learning) covers SHAP values and partial dependence.
+
+::: {.callout-warning}
+Importance scores describe what the model used, not causal effect, and they can be unstable when features are correlated (the model may "credit" one of two redundant features almost arbitrarily). Treat them as a rough guide for the model at hand, not as a measure of how the world works. For more careful attribution, the interpretable machine learning chapter (@sec-interpretable-machine-learning) covers SHAP values and partial dependence.
+:::
+
 
 ### LightGBM on the same data
 
@@ -376,7 +416,11 @@ Everything above comes together into a short, repeatable workflow. The following
 4. Add L1/L2 penalties (`alpha`, `lambda`) and the split-cost `gamma` last, only if the model still overfits.
 5. Optionally, after the shape is settled, drop the learning rate further and retrain with early stopping for a small accuracy gain at the cost of more rounds.
 
-> **Warning:** Early stopping needs a validation set (or cross-validation via `xgb.cv` and `lgb.cv`) and a metric to monitor, and that set has been used for model selection. Always report your final performance on a separate test set the model never saw during stopping, or you will report an optimistic number.
+
+::: {.callout-warning}
+Early stopping needs a validation set (or cross-validation via `xgb.cv` and `lgb.cv`) and a metric to monitor, and that set has been used for model selection. Always report your final performance on a separate test set the model never saw during stopping, or you will report an optimistic number.
+:::
+
 
 A recurring practical question is how each library handles categorical features and missing values, since this is where the most preprocessing time is spent. The three systems differ:
 
@@ -384,7 +428,11 @@ A recurring practical question is how each library handles categorical features 
 - LightGBM handles missing values natively and can treat integer-coded columns as categorical when told which columns they are (`categorical_feature`), using an optimized partition of categories rather than one-hot expansion.
 - CatBoost is built around categorical features and applies ordered target statistics internally, which avoids manual encoding and reduces leakage.
 
-> **Tip:** The native missing-value handling in these libraries is a real convenience, but it makes "missing" itself a signal the model can use. If your data is missing for reasons related to the target (informative missingness), that can help; if it is missing by accident, double-check that the learned default directions are not picking up a quirk of your collection process.
+
+::: {.callout-tip}
+The native missing-value handling in these libraries is a real convenience, but it makes "missing" itself a signal the model can use. If your data is missing for reasons related to the target (informative missingness), that can help; if it is missing by accident, double-check that the learned default directions are not picking up a quirk of your collection process.
+:::
+
 
 To summarize the chapter: gradient boosting is functional gradient descent that builds an additive model of trees, each fit to the negative gradient of the loss. XGBoost sharpens this with a regularized, second-order objective whose leaf weights and split gains have closed forms. LightGBM and CatBoost keep that core and add speed and categorical-handling tricks. In practice you fix a small learning rate, let early stopping pick the number of trees, and tune tree shape and subsampling around that, watching the validation loss curve the entire time.
 

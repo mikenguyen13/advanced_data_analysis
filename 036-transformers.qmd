@@ -30,9 +30,13 @@ scratch in base R on a five-word toy sentence and inspect the attention weights
 directly. We close with the efficient variants that tame attention's cost on long
 inputs and the link to BERT, covered in the BERT chapter (@sec-bert).
 
-> **Key idea:** Attention replaces "remember everything in one state" with "look
-> up whatever is relevant, whenever you need it." Every position can reach every
-> other position in a single step.
+
+::: {.callout-important title="Key idea"}
+Attention replaces "remember everything in one state" with "look
+up whatever is relevant, whenever you need it." Every position can reach every
+other position in a single step.
+:::
+
 
 ## Why Move Beyond Recurrence
 
@@ -61,10 +65,14 @@ set of matrix multiplications that run in parallel across positions. And because
 there is no long multiplicative chain along the sequence axis, the gradient flow
 between distant positions is far healthier.
 
-> **Note:** Attention trades one problem for another. By comparing every position
-> with every other position, it does work that grows with the *square* of the
-> sequence length. That quadratic cost is the price of the short paths, and we
-> return to it at the end of the chapter.
+
+::: {.callout-note}
+Attention trades one problem for another. By comparing every position
+with every other position, it does work that grows with the *square* of the
+sequence length. That quadratic cost is the price of the short paths, and we
+return to it at the end of the chapter.
+:::
+
 
 With the motivation in place, we can now define the operation itself.
 
@@ -82,9 +90,13 @@ that describes what it contains, and a *value* that holds the content to be
 returned. A position compares its query against all keys, turns the comparisons
 into weights, and reads out a weighted blend of the values.
 
-> **Intuition:** Query = "what am I looking for?", key = "what do I offer?",
-> value = "what do I hand over if chosen?". A pronoun's query might match the key
-> of the noun it refers to, and pull in that noun's value.
+
+::: {.callout-tip title="Intuition"}
+Query = "what am I looking for?", key = "what do I offer?",
+value = "what do I hand over if chosen?". A pronoun's query might match the key
+of the noun it refers to, and pull in that noun's value.
+:::
+
 
 Stack the queries, keys, and values for all $n$ positions into matrices
 $Q \in \mathbb{R}^{n \times d_k}$, $K \in \mathbb{R}^{n \times d_k}$, and
@@ -123,10 +135,14 @@ lands on a single position. In that regime the softmax gradient is tiny, which
 stalls learning. Dividing by $\sqrt{d_k}$ rescales the scores back to roughly unit
 variance, keeping the softmax in a responsive range.
 
-> **Why it matters:** Without the scaling, simply making the model wider (larger
-> $d_k$) would silently saturate the softmax and freeze learning. The
-> $1/\sqrt{d_k}$ factor decouples the temperature of the attention from the width
-> of the representation.
+
+::: {.callout-important title="Why it matters"}
+Without the scaling, simply making the model wider (larger
+$d_k$) would silently saturate the softmax and freeze learning. The
+$1/\sqrt{d_k}$ factor decouples the temperature of the attention from the width
+of the representation.
+:::
+
 
 ### Computational Cost
 
@@ -166,9 +182,13 @@ A common choice is $d_k = d_v = d / h$, so the total work of multi-head attentio
 is about the same as a single full-width head, but spread across specialized
 subspaces.
 
-> **Tip:** Multi-head attention is not "more compute for more power." With
-> $d_k = d / h$ the heads split the existing width among themselves, so you get
-> several specialized views at roughly the cost of one wide view.
+
+::: {.callout-tip}
+Multi-head attention is not "more compute for more power." With
+$d_k = d / h$ the heads split the existing width among themselves, so you get
+several specialized views at roughly the cost of one wide view.
+:::
+
 
 ### Self-Attention and Cross-Attention
 
@@ -232,10 +252,14 @@ trainable.] lets the input pass through unchanged when the sublayer has little t
 add, which keeps gradients flowing through deep stacks. Layer normalization
 standardizes each position's feature vector to stabilize training.
 
-> **Note:** The two ingredients play complementary roles. Residual connections
-> keep a clean gradient highway through the depth of the network; layer
-> normalization keeps the scale of activations stable so that highway does not
-> drift. Together they are what let Transformers stack dozens of blocks.
+
+::: {.callout-note}
+The two ingredients play complementary roles. Residual connections
+keep a clean gradient highway through the depth of the network; layer
+normalization keeps the scale of activations stable so that highway does not
+drift. Together they are what let Transformers stack dozens of blocks.
+:::
+
 
 The *position-wise feed-forward* sublayer applies the same two-layer network to each
 position independently,
@@ -263,10 +287,14 @@ This keeps the model from peeking at tokens it has not yet generated, which is w
 allows the decoder to generate one token at a time at inference while still training
 in parallel.
 
-> **Key idea:** Encoder self-attention is bidirectional (every token sees the whole
-> sequence), decoder self-attention is causal (every token sees only the past).
-> That single difference is what separates an understanding model like BERT from a
-> generative model like GPT.
+
+::: {.callout-important title="Key idea"}
+Encoder self-attention is bidirectional (every token sees the whole
+sequence), decoder self-attention is causal (every token sees only the past).
+That single difference is what separates an understanding model like BERT from a
+generative model like GPT.
+:::
+
 
 ## A From-Scratch Implementation in Base R
 
@@ -275,10 +303,14 @@ version using only base R matrix algebra on a toy sequence of five tokens. No de
 learning framework is involved. The point is to make the equations concrete and to
 inspect the attention weights directly.
 
-> **When to use this:** This implementation is for learning, not production. Real
-> models use optimized framework layers (shown at the end of the chapter). Read it
-> to see exactly how the formula turns into matrix operations, then reach for a
-> framework when you build something real.
+
+::: {.callout-tip title="When to use this"}
+This implementation is for learning, not production. Real
+models use optimized framework layers (shown at the end of the chapter). Read it
+to see exactly how the formula turns into matrix operations, then reach for a
+framework when you build something real.
+:::
+
 
 We begin with the two building blocks: a numerically safe row-wise softmax, and the
 attention function itself. The softmax subtracts each row's maximum before
@@ -500,11 +532,15 @@ matrix. By replacing the softmax with a feature map $\phi(\cdot)$ and reordering
 products as $\phi(Q)\,(\phi(K)^\top V)$, the cost becomes linear in $n$. The
 approximation trades some expressiveness for scalability on long inputs.
 
-> **Warning:** Sub-quadratic attention is an approximation, not a free lunch. Each
-> variant assumes the important interactions follow a particular structure (local
-> windows, a low-rank pattern, a chosen feature map). When that assumption fits the
-> data it scales beautifully; when it does not, accuracy drops. Match the variant
-> to the structure you actually expect in your sequences.
+
+::: {.callout-warning}
+Sub-quadratic attention is an approximation, not a free lunch. Each
+variant assumes the important interactions follow a particular structure (local
+windows, a low-rank pattern, a chosen feature map). When that assumption fits the
+data it scales beautifully; when it does not, accuracy drops. Match the variant
+to the structure you actually expect in your sequences.
+:::
+
 
 ## Connection to BERT
 

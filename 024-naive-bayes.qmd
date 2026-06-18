@@ -9,7 +9,11 @@ Imagine sorting incoming email into "spam" and "not spam." You notice that the w
 
 The word "naive" comes from one bold simplification: the method treats the features as if they gave independent clues once the class is known. That is rarely true ("free" and "winner" tend to appear together in spam), yet the method works remarkably well anyway. Naive Bayes is a family of probabilistic classifiers built on Bayes' rule together with this strong conditional-independence assumption. Despite the assumption being almost always false in practice, the resulting classifiers are fast to train, scale to high-dimensional inputs, and remain competitive on many tasks, especially text classification.
 
-> **When to use this:** Reach for Naive Bayes when you want a fast, low-maintenance baseline, when the feature dimension is large relative to the sample size (text being the classic case), or when you need something that trains in a single pass. It is often the first model worth trying before reaching for anything heavier.
+
+::: {.callout-tip title="When to use this"}
+Reach for Naive Bayes when you want a fast, low-maintenance baseline, when the feature dimension is large relative to the sample size (text being the classic case), or when you need something that trains in a single pass. It is often the first model worth trying before reaching for anything heavier.
+:::
+
 
 This chapter develops the model from the joint distribution, states the assumption precisely, derives the common likelihood variants, explains why the method works better than its assumption deserves, and runs a worked example. By the end you should understand where the model sits among generative classifiers, be able to choose the right variant for your feature type, and know how to read the output of a fitted model.
 
@@ -25,7 +29,11 @@ $$
 
 This is Bayes' rule. The term $p(y = c)$ is the class prior (how common class $c$ is before we see any features), $p(x \mid y = c)$ is the class-conditional likelihood (how the features behave within class $c$), and $p(x) = \sum_{c'} p(y = c')\, p(x \mid y = c')$ is the evidence (a normalizing constant that does not depend on $c$).
 
-> **Key idea:** Because we only ever compare classes against each other for the *same* $x$, the denominator $p(x)$ is identical across classes and cannot change which class wins. We can ignore it while choosing the label and restore it later only if we want actual probabilities.
+
+::: {.callout-important title="Key idea"}
+Because we only ever compare classes against each other for the *same* $x$, the denominator $p(x)$ is identical across classes and cannot change which class wins. We can ignore it while choosing the label and restore it later only if we want actual probabilities.
+:::
+
 
 Dropping the evidence gives the working form of the rule,
 
@@ -35,7 +43,11 @@ $$
 
 The difficulty is the term $p(x \mid y = c)$. With $p$ features this is a joint distribution over a $p$-dimensional space, and estimating it directly requires modeling all interactions among the features. If each $x_j$ took $K$ values, a full table would need on the order of $K^p$ parameters per class, which is infeasible for moderate $p$.
 
-> **Intuition:** Picture trying to estimate the probability of every possible combination of $p$ binary features. There are $2^p$ combinations, so with $p = 30$ features you already have over a billion cells to fill from a finite dataset. Most cells would be empty. The naive assumption, introduced next, sidesteps this by refusing to model combinations at all.
+
+::: {.callout-tip title="Intuition"}
+Picture trying to estimate the probability of every possible combination of $p$ binary features. There are $2^p$ combinations, so with $p = 30$ features you already have over a billion cells to fill from a finite dataset. Most cells would be empty. The naive assumption, introduced next, sidesteps this by refusing to model combinations at all.
+:::
+
 
 ### The Naive (Conditional Independence) Assumption
 
@@ -47,7 +59,11 @@ $$
 
 This is the "naive" assumption. It does not claim the features are independent marginally; it claims they are independent once the class is known.
 
-> **Note:** The distinction between marginal and conditional independence matters. Height and vocabulary are correlated across all children (taller children tend to know more words), but the correlation largely vanishes once we condition on age: among five-year-olds, height tells you little about vocabulary. Naive Bayes only needs independence of this second, conditional kind, which is far more often a reasonable approximation than the marginal kind.
+
+::: {.callout-note}
+The distinction between marginal and conditional independence matters. Height and vocabulary are correlated across all children (taller children tend to know more words), but the correlation largely vanishes once we condition on age: among five-year-olds, height tells you little about vocabulary. Naive Bayes only needs independence of this second, conditional kind, which is far more often a reasonable approximation than the marginal kind.
+:::
+
 
 Substituting into Bayes' rule gives the defining form of the model:
 
@@ -79,7 +95,11 @@ $$
 
 where subtracting the maximum $m$ keeps the exponentials in a safe numerical range.^[Subtracting $m$ cancels in the ratio (it multiplies numerator and denominator by the same $e^{-m}$), so the probabilities are unchanged, but the largest exponent becomes $e^0 = 1$, which keeps everything well within floating-point limits.]
 
-> **Tip:** In practice you rarely implement this yourself, but it explains why mature libraries always work in log-space. If you ever write a Naive Bayes classifier by hand, summing logs and using the log-sum-exp trick is the difference between a working model and one that returns `NaN` on long documents.
+
+::: {.callout-tip}
+In practice you rarely implement this yourself, but it explains why mature libraries always work in log-space. If you ever write a Naive Bayes classifier by hand, summing logs and using the log-sum-exp trick is the difference between a working model and one that returns `NaN` on long documents.
+:::
+
 
 ## Variants by Feature Type
 
@@ -136,13 +156,21 @@ $$
 
 Unlike the multinomial model, the Bernoulli model explicitly penalizes the absence of a feature through the $(1 - \theta_{jc})$ term, which matters when documents are short.
 
-> **Note:** The two text variants disagree about non-occurring words. The multinomial model simply ignores a word that does not appear (its exponent $x_j = 0$ contributes a factor of $1$), whereas Bernoulli actively counts its absence as evidence via $(1 - \theta_{jc})$. For short texts like tweets or product titles, where absence is informative, Bernoulli often wins; for longer documents the multinomial model usually does.
+
+::: {.callout-note}
+The two text variants disagree about non-occurring words. The multinomial model simply ignores a word that does not appear (its exponent $x_j = 0$ contributes a factor of $1$), whereas Bernoulli actively counts its absence as evidence via $(1 - \theta_{jc})$. For short texts like tweets or product titles, where absence is informative, Bernoulli often wins; for longer documents the multinomial model usually does.
+:::
+
 
 ### Laplace (Additive) Smoothing
 
 The multinomial and Bernoulli estimates suffer from the zero-frequency problem. If token $j$ never appears in any class-$c$ training document, then $\hat{\theta}_{jc} = 0$. A single zero factor sends the entire product $\prod_j p(x_j \mid y = c)$ to zero, so the model assigns class $c$ a posterior of exactly zero for any test document containing that token, regardless of all other evidence. In log-space this is a $\log 0 = -\infty$ score.
 
-> **Warning:** This is a hard, brittle failure, not a soft one. One never-before-seen word can veto a class that every other word in the document strongly supports. A spam filter that has never seen "unsubscribe" in a legitimate email would refuse to call any "unsubscribe"-containing message legitimate. Smoothing is not optional polish; it is required for the model to behave sensibly.
+
+::: {.callout-warning}
+This is a hard, brittle failure, not a soft one. One never-before-seen word can veto a class that every other word in the document strongly supports. A spam filter that has never seen "unsubscribe" in a legitimate email would refuse to call any "unsubscribe"-containing message legitimate. Smoothing is not optional polish; it is required for the model to behave sensibly.
+:::
+
 
 Additive (Laplace) smoothing fixes this by adding a pseudocount $\alpha > 0$ to every count before normalizing. For the multinomial model,
 
@@ -158,7 +186,11 @@ It is fair to be suspicious at this point. We built the whole method on an assum
 
 Conditional independence is almost never true. Word occurrences are correlated, and continuous measurements within a class are usually correlated as well. Yet Naive Bayes often classifies well.
 
-> **Key idea:** Classification asks only for the correct $\arg\max$, not for accurate probabilities. The model can be badly wrong about *how* confident to be and still pick the right class, because picking the right class only requires the true winner to come out on top, not to come out on top by the right margin.
+
+::: {.callout-important title="Key idea"}
+Classification asks only for the correct $\arg\max$, not for accurate probabilities. The model can be badly wrong about *how* confident to be and still pick the right class, because picking the right class only requires the true winner to come out on top, not to come out on top by the right margin.
+:::
+
 
 @domingos1997optimality showed that Naive Bayes can be optimal even when the independence assumption is grossly violated. The probability estimates may be badly miscalibrated (often pushed toward $0$ or $1$ because correlated features are counted as if they were independent pieces of evidence), but the predicted class is correct as long as the class with the highest true posterior still receives the highest estimated score. The errors in the estimated factors frequently preserve the ordering of the scores across classes even when they distort their magnitudes. In short, the decision boundary can be accurate even when the underlying density estimate is not.
 
@@ -170,7 +202,11 @@ Gaussian Naive Bayes and logistic regression form a classic generative-discrimin
 
 @ng2002discriminative analyzed this pair and reached two conclusions. The discriminative method (logistic regression) has lower asymptotic error, so with enough data it tends to win. But the generative method (Naive Bayes) approaches its (higher) asymptotic error faster, needing on the order of $\log p$ training examples to converge versus on the order of $p$ for logistic regression. As a result Naive Bayes can outperform logistic regression in the small-sample regime, with the two curves crossing as the sample size grows.
 
-> **When to use this:** The practical takeaway is a rule of thumb about sample size. With little data relative to the number of features, prefer Naive Bayes; as data accumulate, the discriminative model overtakes it. This is the same bias-variance story as above, now with a named competitor.
+
+::: {.callout-tip title="When to use this"}
+The practical takeaway is a rule of thumb about sample size. With little data relative to the number of features, prefer Naive Bayes; as data accumulate, the discriminative model overtakes it. This is the same bias-variance story as above, now with a named competitor.
+:::
+
 
 ## Worked Example
 
@@ -289,7 +325,11 @@ To close, here are the points that matter most when you actually deploy a Naive 
 - Always apply smoothing for count and binary features to avoid the zero-frequency problem. For continuous features, guard against zero or near-zero estimated variances, which produce unstable likelihoods.
 - Decorrelating or pruning highly redundant features can help, since duplicated features are effectively double-counted under the independence assumption.
 
-> **Tip:** The single most common production mistake with Naive Bayes is using its raw probability outputs as if they were calibrated risk scores. Trust the predicted *label*; treat the predicted *probability* with suspicion until you have recalibrated it.
+
+::: {.callout-tip}
+The single most common production mistake with Naive Bayes is using its raw probability outputs as if they were calibrated risk scores. Trust the predicted *label*; treat the predicted *probability* with suspicion until you have recalibrated it.
+:::
+
 
 ## Further Reading
 

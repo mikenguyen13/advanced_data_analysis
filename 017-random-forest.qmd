@@ -9,7 +9,11 @@ A single decision tree is easy to read but hard to trust: change a few training 
 
 In this chapter you will learn why that twist works (it is a story about correlation, not about individual trees getting better), how the algorithm is put together step by step, how to read its built-in error estimate and variable-importance scores, and how to fit and tune one in R. Random forests are a strong default for general nonlinear, nonparametric prediction, so this is a method worth understanding well before reaching for anything fancier.
 
-> **Intuition:** Bagging averages many trees, but if those trees all key on the same one or two dominant predictors, they make correlated mistakes, and averaging correlated things barely helps. Random forests force the trees to disagree by hiding most of the predictors at each split. The trees become more diverse, their errors cancel more effectively, and the average is more stable.
+
+::: {.callout-tip title="Intuition"}
+Bagging averages many trees, but if those trees all key on the same one or two dominant predictors, they make correlated mistakes, and averaging correlated things barely helps. Random forests force the trees to disagree by hiding most of the predictors at each split. The trees become more diverse, their errors cancel more effectively, and the average is more stable.
+:::
+
 
 ## From bagging to decorrelated trees
 
@@ -25,7 +29,11 @@ $$
 
 Look at what happens as the forest grows. The second term, $\sigma^2 (1 - \rho)/B$, shrinks to zero as $B \to \infty$, but the first term, $\rho \sigma^2$, does not depend on $B$ at all. No matter how many trees you add, the variance cannot fall below this floor of $\rho \sigma^2$.
 
-> **Key idea:** Adding more trees only attacks the $\sigma^2(1-\rho)/B$ part of the variance. The floor $\rho \sigma^2$ can only be lowered by reducing the correlation $\rho$ between trees. Random forests lower $\rho$ by randomizing the variables available at each split, which is precisely the dependence that plain bagging (@sec-bagging) leaves in place.
+
+::: {.callout-important title="Key idea"}
+Adding more trees only attacks the $\sigma^2(1-\rho)/B$ part of the variance. The floor $\rho \sigma^2$ can only be lowered by reducing the correlation $\rho$ between trees. Random forests lower $\rho$ by randomizing the variables available at each split, which is precisely the dependence that plain bagging (@sec-bagging) leaves in place.
+:::
+
 
 ## The algorithm
 
@@ -70,11 +78,19 @@ To predict at a new point $x$, the two tasks differ only in how the trees are co
 -   Regression: $\hat{f}_{rf}^B(x) = \frac{1}{B}\sum_{b=1}^B T_b(x)$.
 -   Classification: let $\hat{C}_b (x)$ be the class predicted by the $b$-th tree. Then $\hat{C}_{rf}^B (x) = \text{majority vote } \{\hat{C}_b (x) \}^B_{1}$.
 
-> **Note:** Random subset selection happens *at every split*, not once per tree. A fresh random set of $m$ variables is drawn each time a node is split, which is what keeps even the same tree from being dominated by one strong predictor.
+
+::: {.callout-note}
+Random subset selection happens *at every split*, not once per tree. A fresh random set of $m$ variables is drawn each time a node is split, which is what keeps even the same tree from being dominated by one strong predictor.
+:::
+
 
 How does this compare to its neighbors? In general, gradient boosting (@sec-gradient-boosting) is roughly comparable to random forests, and random forests usually beat plain bagging (@sec-bagging), though in practice these orderings do not always hold. Which method wins depends on the structure of the problem: the degree of linearity or nonlinearity, the dependence among covariates, the relative importance of specific predictors, and so on.
 
-> **When to use this:** Reach for a random forest when you want strong nonlinear, nonparametric prediction with little tuning, mixed variable types, and a built-in honest error estimate. If you need to squeeze out the last bit of accuracy on highly structured data, compare against gradient boosting (@sec-gradient-boosting).
+
+::: {.callout-tip title="When to use this"}
+Reach for a random forest when you want strong nonlinear, nonparametric prediction with little tuning, mixed variable types, and a built-in honest error estimate. If you need to squeeze out the last bit of accuracy on highly structured data, compare against gradient boosting (@sec-gradient-boosting).
+:::
+
 
 ## Out-of-bag error: free cross-validation
 
@@ -82,7 +98,11 @@ A pleasant side effect of bootstrapping is that the forest comes with its own va
 
 For each observation pair $(x_i, y_i)$, we can form an OOB prediction by averaging only the trees built on bootstrap samples in which that observation did not appear. Comparing these OOB predictions to the actual responses gives the OOB error, which behaves like a cross-validation error estimate but costs nothing extra to compute. A useful practical signal falls out of this: once the OOB error stops improving as you add trees, the forest has effectively converged and more trees will not help.
 
-> **Tip:** Watch the OOB error as a function of the number of trees. When the curve flattens, you have enough trees. This is the random forest equivalent of a learning curve, and you get it without holding out a separate set.
+
+::: {.callout-tip}
+Watch the OOB error as a function of the number of trees. When the curve flattens, you have enough trees. This is the random forest equivalent of a learning curve, and you get it without holding out a separate set.
+:::
+
 
 ## Variable importance
 
@@ -92,7 +112,11 @@ The first measures, for each variable, how much it improves the split criterion 
 
 The second is permutation importance, which is based on OOB prediction. When the $b$-th tree is grown, its OOB samples are passed down the tree and the prediction accuracy is recorded. The values of the $j$-th variable are then randomly permuted across those OOB samples, breaking any relationship between that variable and the response, and the accuracy is recomputed. The drop in accuracy, averaged over all trees, measures the importance of variable $j$.
 
-> **Warning:** Permutation importance does not tell you how the model would do if that variable were simply *unavailable*. A refit model would likely lean on correlated surrogate variables to fill the gap, so dropping a "high importance" variable may hurt far less than its score suggests.
+
+::: {.callout-warning}
+Permutation importance does not tell you how the model would do if that variable were simply *unavailable*. A refit model would likely lean on correlated surrogate variables to fill the gap, so dropping a "high importance" variable may hurt far less than its score suggests.
+:::
+
 
 ## Other properties to keep in mind
 
@@ -206,7 +230,11 @@ str(data) ## this shows that the correct columns are factors and we've replaced
 
 With the data cleaned and typed correctly, we are ready to build a forest. This is a good moment to recall the OOB idea from earlier in the chapter, because it changes how we set up the example.
 
-> **Note:** Most machine learning methods require you to split the data manually into a training set and a test set, so you can train on one part and evaluate on data the model never saw. Random forests do this splitting for you. Because each tree is built on a bootstrap sample, not every observation is used in every tree: the bootstrap sample plays the role of the training data, and the left-out observations, the out-of-bag (OOB) data, play the role of the test set. That is why the example below never carves out a separate test set by hand.
+
+::: {.callout-note}
+Most machine learning methods require you to split the data manually into a training set and a test set, so you can train on one part and evaluate on data the model never saw. Random forests do this splitting for you. Because each tree is built on a bootstrap sample, not every observation is used in every tree: the bootstrap sample plays the role of the training data, and the left-out observations, the out-of-bag (OOB) data, play the role of the test set. That is why the example below never carves out a separate test set by hand.
+:::
+
 
 We also have missing values to deal with. Rather than drop incomplete rows, we impute them using `rfImpute`, which fills in missing entries based on random forest proximities (how similar observations are according to a preliminary forest). Breiman suggests 4 to 6 iterations is usually enough, so we use `iter = 6`.
 
@@ -345,7 +373,11 @@ model <- randomForest(hd ~ .,
 
 The loop over `mtry` from 1 to 10 refits the forest for each candidate number of variables per split and records its final OOB error, then picks the value with the lowest error. This is how we tune $m$ in practice rather than relying only on the $\sqrt{p}$ rule of thumb.
 
-> **Tip:** The `mtry` loop is a small grid search over the one knob that distinguishes a random forest from bagging. Because OOB error is nearly free, sweeping `mtry` is cheap and often worthwhile, especially when predictors are correlated and the default may be too large or too small.
+
+::: {.callout-tip}
+The `mtry` loop is a small grid search over the one knob that distinguishes a random forest from bagging. Because OOB error is nearly free, sweeping `mtry` is cheap and often worthwhile, especially when predictors are correlated and the default may be too large or too small.
+:::
+
 
 Finally, the model is refit with the best `mtry` and its proximity matrix is turned into a distance matrix via `1 - proximity`, which feeds classical multidimensional scaling (`cmdscale`; see @sec-scaling). @fig-random-forest-mds shows the resulting MDS plot, which places each patient in two dimensions so that patients the forest treats as similar sit close together. Coloring by true status shows how cleanly the forest separates healthy from unhealthy patients, a visual companion to the numeric OOB error.
 
@@ -377,6 +409,10 @@ ggplot(data=mds.data, aes(x=X, y=Y, label=Sample)) +
 # ggsave(file="random_forest_mds_plot.pdf")
 ```
 
-> **Key idea:** Proximities turn a black-box ensemble into something you can *see*. Two observations are "close" if they often land in the same terminal nodes across the forest, so an MDS plot of `1 - proximity` reveals the structure the forest has learned, including which points sit near the decision boundary.
+
+::: {.callout-important title="Key idea"}
+Proximities turn a black-box ensemble into something you can *see*. Two observations are "close" if they often land in the same terminal nodes across the forest, so an MDS plot of `1 - proximity` reveals the structure the forest has learned, including which points sit near the decision boundary.
+:::
+
 
 To recap the workflow: clean and type the data, impute missing values with `rfImpute`, fit a forest and read its OOB error and confusion matrix, add trees until the OOB error stabilizes, tune `mtry` against OOB error, and finally use proximities to visualize the learned structure. The same recipe transfers to most random forest problems you will meet.

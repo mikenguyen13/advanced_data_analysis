@@ -1,0 +1,66 @@
+# Double Descent
+
+```{r}
+#| include: false
+suppressPackageStartupMessages(library(tidyverse))
+```
+The double descent phenomenon is an intriguing empirical observation in the context of machine learning. To understand it, let's first consider the traditional U-shaped bias-variance trade-off curve:
+
+1.  As model complexity (such as the number of parameters) increases, the training error typically decreases.
+
+2.  The test error initially decreases, reaches a minimum, then increases due to overfitting, forming a U-shaped curve.
+
+However, recent empirical studies have shown that as the model complexity continues to increase well beyond the interpolation threshold (where the model perfectly fits the training data), the test error surprisingly starts to decrease again. This results in a double descent curve: the test error first descends, ascends, and then descends again.
+
+"Deep double descent" specifically refers to this phenomenon observed in deep learning models [@nakkiran2021deep].
+
+```{r}
+library(ggplot2)
+library(MASS)
+
+# Generate toy data
+set.seed(123)
+n <- 100
+x <- seq(-pi, pi, length.out = n)
+y <- sin(x) + rnorm(n, 0, 0.5)
+
+# Split data into training and test sets
+train_indices <- sample(1:n, n/2)
+x_train <- x[train_indices]
+y_train <- y[train_indices]
+x_test <- x[-train_indices]
+y_test <- y[-train_indices]
+
+# Calculate training and test errors for polynomial regressions of different degrees
+max_degree <- 25
+train_errors <- numeric(max_degree)
+test_errors <- numeric(max_degree)
+
+for (degree in 1:max_degree) {
+  model <- lm(y_train ~ poly(x_train, degree, raw=TRUE))
+  y_train_pred <- predict(model, data.frame(x_train=x_train))
+  y_test_pred <- predict(model, data.frame(x_train=x_test))
+  
+  train_errors[degree] <- mean((y_train_pred - y_train)^2)
+  test_errors[degree] <- mean((y_test_pred - y_test)^2)
+}
+
+# Plot the errors
+df <- data.frame(
+    Degree = 1:max_degree,
+    Training_Error = train_errors,
+    Test_Error = test_errors
+)
+
+ggplot(df, aes(x = Degree)) +
+    geom_line(aes(y = Training_Error, color = "Training Error")) +
+    geom_line(aes(y = Test_Error, color = "Test Error")) +
+    labs(title = "Double Descent Phenomenon", y = "Mean Squared Error", x =
+             "Polynomial Degree") +
+    scale_color_manual(values = c("Training Error" = "blue", "Test Error" =
+                                      "red")) +
+    causalverse::ama_theme() + 
+    xlim(18, 23) + 
+    ylim(0, 250000)
+
+```

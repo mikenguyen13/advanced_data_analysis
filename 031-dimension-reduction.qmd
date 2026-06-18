@@ -1,0 +1,202 @@
+# Dimension Reduction
+
+```{r}
+#| include: false
+suppressPackageStartupMessages(library(tidyverse))
+```
+
+Modern data sets often arrive with far more measured features than we can comfortably reason about: gene expression panels with thousands of probes, images with one variable per pixel, surveys with hundreds of questions. Working directly in such a high-dimensional space is awkward. Plots become impossible, models overfit, distances between points lose meaning, and storage and computation costs grow quickly. Dimension reduction is the family of techniques that responds to this problem by replacing the original features with a much smaller set of new ones that still capture most of what matters in the data.
+
+The guiding intuition is that high-dimensional data usually live, at least approximately, on a much lower-dimensional shape. The pixels of a face photograph are not independent: lighting, pose, and identity vary in a handful of coordinated ways, even though there are tens of thousands of pixels. If we can find those few underlying coordinates, we can describe each observation compactly, visualize the data, remove noise, and feed cleaner inputs to downstream models. The art is in deciding what "most of what matters" should mean, and the methods in this chapter differ mainly in how they answer that question.
+
+We begin with principal components analysis (PCA), the workhorse of linear dimension reduction. PCA looks for a small number of directions along which the data vary the most, and it turns out to be the right starting point because so many other methods are either special cases of it, extensions of it, or reactions against its limitations. From there we build outward: aligning two point clouds (Procrustes transformations), bending PCA into curved feature spaces (kernel PCA), making the result interpretable (sparse PCA), respecting non-negativity (non-negative matrix factorization), and finally relaxing the linearity assumption altogether (nonlinear dimension reduction).
+
+> **Key idea:** Almost everything in this chapter reduces to one linear-algebra tool, the singular value decomposition (SVD). If you understand how the SVD gives you PCA, the rest of the chapter is a set of variations on that theme.
+
+## Principal Components
+
+Principal components analysis is worth studying carefully because of its relationship to so many other dimension reduction approaches: understand it well, and you have a lens for understanding the rest.
+
+The core idea is to build a new set of variables, each a linear combination of the original features, that collectively account for the largest possible amount of variation in those features. "A linear combination" simply means a weighted sum, and the weights are what we are solving for. Concretely, we seek the coefficients, called *loadings*, of the linear combination of our features that maximizes the variance of the resulting new variable.
+
+The first principal component of a set of $p$ features is given by
+
+$$
+Z_1 = \phi_{11} X_1 + \phi_{21} X_2 + \dots + \phi_{p1}X_p
+$$
+
+where the coefficients (loadings) are normalized such that $\sum_{j=1}^p \phi^2_{j1} = 1$. The normalization matters: without it we could inflate the variance arbitrarily just by scaling the weights up, so we constrain the loading vector to have unit length and let only its *direction* do the work.^[Because PCA chases variance, it is sensitive to the scale of the inputs. A feature measured in dollars will dominate one measured in years simply because its numbers are larger. In practice we usually standardize the features (mean zero, unit variance) before running PCA unless the original units are genuinely comparable.]
+
+The next principal component is again a linear combination of the same features, chosen to account for the next largest amount of variation, subject to being orthogonal to the first. We continue in this way, each new component capturing as much of the remaining variation as possible while staying perpendicular to all the ones before it. Orthogonality is what keeps the components from redundantly re-describing the same variation.
+
+> **Intuition:** Picture the data as an elongated cloud of points. The first principal component is the long axis of the cloud, the direction in which the points are most spread out. The second is the longest direction perpendicular to the first, and so on. Keeping only the first few axes is like photographing the cloud from its most informative angle.
+
+### A more formal view
+
+Having built intuition, we can state the problem precisely. The principal components of a set of features in $R^p$ give a sequence of linear approximations of rank $q \le p$. The number $q$ is the dimension we are reducing *to*, and the whole point is that a small $q$ can describe the data well.
+
+Recall that we have observations $x_i, i = 1, \dots, n$, where each $x_i$ is $p$-dimensional. We seek the rank-$q$ linear model that represents these vectors,
+$$x_i \approx f(z_i) = \mu + \mathbf{V}_q z_i,$$
+where $\mu$ is a $p$-dimensional mean, $\mathbf{V}_q$ is a $p \times q$ matrix with $q$ orthogonal unit vectors as columns, and $z_i$ is a $q$-vector of parameters. Read this equation as: every observation is approximated by a common center $\mu$ plus a combination of $q$ shared directions (the columns of $\mathbf{V}_q$), with the per-observation weights collected in $z_i$.
+
+We choose these pieces to minimize the reconstruction error, the total squared distance between each observation and its approximation:
+
+$$
+\underset{\mu, \{z_i \}, \mathbf{V}_q}{\operatorname{min}} \sum_{i = 1}^n ||x_i - \mu - \mathbf{V}_qz_i ||^2
+$$
+
+This optimization looks intimidating because three things are unknown at once, but two of them have closed-form answers once the third is fixed. It can be shown that, given $\mathbf{V}_q$, we get
+
+$$
+\hat{\mu} = \bar{x} \\
+\hat{z}_i = \mathbf{V}_q^T (x_i - \bar{x})
+$$
+
+In words: the best center is just the sample mean, and the best low-dimensional coordinates for an observation are obtained by centering it and then projecting it onto the chosen directions. The real work, then, is finding $\mathbf{V}_q$; once we have it, everything else follows immediately.
+
+#### Finding the directions with the SVD
+
+We can find $\mathbf{V}_q$ as follows. First, we stack the centered observations into the rows of an $n \times p$ matrix, $\mathbf{X}$, then compute its singular value decomposition,
+
+$$
+\mathbf{X} = \mathbf{UDV}^T
+$$
+
+The SVD factors any matrix into three interpretable pieces:
+
+-   $\mathbf{U}$ is an $n \times p$ orthogonal matrix ($\mathbf{U^TU} = I_p$), whose columns $\mathbf{u}_j$ are the left singular vectors,
+
+-   $\mathbf{V}$ is a $p \times p$ orthogonal matrix ($\mathbf{V^T V} = \mathbf{I}_p$) with columns $\mathbf{v}_j$ called the right singular vectors,
+
+-   $\mathbf{D}$ is a $p \times p$ diagonal matrix, with diagonal elements $d_1 \ge d_2 \ge \dots d_p \ge 0$, known as the singular values.
+
+The singular values are ordered from largest to smallest, and that ordering is exactly what we need: it ranks the directions by how much variation they carry. The directions we want are therefore the leading columns of $\mathbf{V}$. Concretely, $\mathbf{V}_q$ consists of the first $q$ columns of $\mathbf{V}$, and in this case the columns of $\mathbf{UD}$ are called the principal components of $\mathbf{X}$.
+
+Putting it together, the $n$ optimal $\hat{z}_i$ are given by the first $q$ principal components: the $n$ rows of the $n \times q$ matrix $\mathbf{U}_q \mathbf{D}_q = \mathbf{XV}_q = \mathbf{Z}$, where $\mathbf{Z}$ is the $n \times q$ matrix of principal component scores. The scores are the new low-dimensional coordinates of each observation, the compact description we set out to find.
+
+Two facts are worth keeping in mind as you connect PCA to other material. First, the columns of $\mathbf{V}$ are equivalent to the eigenvectors of the sample covariance matrix, so PCA can be described either through the SVD of the data or through the eigendecomposition of its covariance, and you will see both in the literature.
+
+Second, a practical question: how many components should we keep? A useful diagnostic is to compare the variation captured by the real data against the variation captured when the data are deliberately scrambled. You randomize the pixels (or feature values) across samples to destroy any real structure, run the same decomposition, and compare. The number of components whose singular values rise meaningfully above the randomized baseline is roughly the number worth keeping; at the point where the real and randomized curves meet, the extra components are capturing noise rather than signal. @hastie2001a (14.24) illustrate exactly this comparison, showing the singular values for randomized data alongside those for the actual images.
+
+> **Tip:** The scrambling comparison is more honest than the familiar "look for an elbow in the scree plot" rule, because it gives you a concrete null expectation for how much variance a meaningless direction should explain.
+
+The remaining sections all start from this PCA machinery and modify one ingredient at a time.
+
+### Procrustes Transformations
+
+A notion closely related to PCA arises when, instead of compressing one data set, we want to overlay two of them: given one set of points, find the translation and rotation that best lines it up with another. This is a Procrustes transformation, named after the mythological figure who stretched or trimmed travelers to fit his bed. Here we are gently rotating and shifting one cloud of points to match another, not deforming it.
+
+Say we have two matrices, $\mathbf{X}_1$ and $\mathbf{X}_2$, and we want to transform $\mathbf{X}_1$ to match $\mathbf{X}_2$ as closely as possible. We pose this as
+
+$$
+\underset{\mu, \mathbf{R}}{\operatorname{min}} ||\mathbf{X}_2 - (\mathbf{X}_1 \mathbf{R} + \mathbf{1} \mu^T) ||_F
+$$
+
+where the ingredients are
+
+-   $\mathbf{X}_1, \mathbf{X}_2$, which are $n \times p$ matrices,
+
+-   $\mathbf{R}$, an orthonormal $p \times p$ rotation matrix, and
+
+-   $\mu$, a $p$-vector that supplies the shift (translation).
+
+The notation $||\mathbf{A}||_F$ is the Frobenius matrix norm, defined through $||\mathbf{A}||_F^2 \equiv trace(\mathbf{A^T A})$ for a matrix $\mathbf{A}$. It is just the matrix version of ordinary Euclidean length: the square root of the sum of all squared entries.^[Restricting $\mathbf{R}$ to be orthonormal is what makes this a rigid alignment. An orthonormal matrix rotates (and possibly reflects) without stretching or shearing, so the shape of the point cloud is preserved and only its orientation and position change.]
+
+This problem has an elegant closed-form solution, and (no surprise given the theme of this chapter) it runs through the SVD. Let $\bar{x}_1$ and $\bar{x}_2$ be the column mean vectors of $\mathbf{X}_1$ and $\mathbf{X}_2$, and let $\tilde{\mathbf{X}}_1$ and $\tilde{\mathbf{X}}_2$ be the corresponding data matrices with those means removed. We then take the SVD of $\tilde{\mathbf{X}}_1^T\tilde{\mathbf{X}}_2^T = \mathbf{UDV}^T$. The optimal rotation and shift are
+
+$$
+\hat{\mathbf{R}} = \mathbf{UV}^T \\
+\hat{\mu} = \bar{x}_2 - \hat{\mathbf{R}} \bar{x}_1
+$$
+
+The first line says the best rotation comes straight from the singular vectors; the second says that once you know how to rotate, the right shift is simply whatever lines the two centers up. We will see this solution reappear inside sparse PCA below.
+
+### Kernel Principal Components
+
+PCA finds the best *flat* (linear) low-dimensional approximation. But data often bend: points may lie on a curved surface that no straight axis can follow. We can extend principal components to capture such curvature, leading to principal curves and surfaces (for example @hastie2001a 14.5.2) and, more generally, to kernel principal components (KPCA).
+
+The idea behind KPCA is to nonlinearly transform the features and then perform the SVD in that transformed feature space. By bending the space first, a curved structure in the original coordinates can become flat in the new ones, where ordinary PCA works again.
+
+To see how this is possible without ever writing down the transformation explicitly, start from a reformulation of plain PCA. If $\mathbf{X} = \mathbf{UDV}^T$, then the so-called Gram matrix is $\mathbf{K} \equiv \mathbf{XX}^T$, which collects the inner products between all pairs of observations. If $\mathbf{X}$ is not centered, we can center it using $\tilde{\mathbf{X}} = (\mathbf{I} - \mathbf{M}) \mathbf{X}$, where $\mathbf{M} = (1/n)\mathbf{11}^T$, which yields the double-centered Gram matrix:
+
+$$
+\tilde{\mathbf{K}} = (\mathbf{I} - \mathbf{M}) \mathbf{K(I-M)} = \mathbf{UD^2 U^T}
+$$
+
+Setting $\mathbf{Z = UD}$ then recovers the principal component scores. The key observation is that this is essentially doing PCA through the covariance/Gram structure: we never needed the raw features, only their inner products.
+
+Kernel PCA follows exactly the same procedure but swaps in a different matrix $\mathbf{K}$. Instead of ordinary inner products, we interpret $\mathbf{K} = \{ K(x_i, x_{i'})\}$ as a *kernel matrix* whose entries are inner products of the transformed features, $K(x_i, x_{i'}) = \langle \phi (x_i), \phi(x_{i'})\rangle$. The function $\phi$ is the nonlinear feature map, but the so-called kernel trick is that we only ever evaluate $K$, never $\phi$ itself.^[This is the same kernel trick that powers support vector machines: any algorithm written purely in terms of inner products can be made nonlinear by replacing those inner products with a kernel, sidestepping the often impossibly high-dimensional feature map $\phi$.] We then find the eigenvectors ($\mathbf{U}$) and eigenvalues ($\mathbf{D}$) of this matrix, again form $\mathbf{Z = UD}$, and can show that the $i$-th element of the $m$-th component $\mathbf{z}_m$ (the $m$-th column of $\mathbf{Z}$) is
+
+$$
+z_{im} = \sum_{j=1}^N \alpha_{jm} K(x_i, x_j)
+$$
+
+where the coefficients are $\alpha_{jm} = u_{jm}/d_m$. In other words, each observation's score is a kernel-weighted combination of its similarities to all the training points.
+
+Many kernels are available. One of the most common is the radial (Gaussian) kernel,
+
+$$
+K(x,x') = \exp(-||x- x'||^2 /c)
+$$
+
+but polynomial, linear, hyperbolic tangent, Laplacian, and Bessel kernels, among others, are all used in practice.
+
+> **Warning:** Kernel PCA buys flexibility at a price. Because the feature transformation is nonlinear, you generally cannot invert it to recover the original $x$ from a kernel principal component (the so-called pre-image problem). And there is no way to know in advance which kernel will work best for a given data set, so the choice of kernel and its tuning parameters becomes an empirical question.
+
+### Sparse PCA
+
+Ordinary principal components are linear combinations of *all* $p$ features, which makes them hard to interpret in high-dimensional settings: a component that loads a little on every one of a thousand genes tells you very little. Interpretation becomes much easier if the loading vectors are *sparse*, meaning most loadings are exactly zero so that each component depends on only a handful of features.
+
+There are several ways to achieve this, but one approach that fits naturally with the rest of statistical learning is to frame it as a penalized regression problem. We treat the components as approximating (fitting) the features, and we add a penalty that pushes loadings toward zero. The sparse principal component loadings are the matrices $\mathbf{\Theta}$ and $\mathbf{V}$ that minimize
+
+$$
+\sum_{i= 1}^n ||x_i -\mathbf{\theta V}^T x_i||^2 + \lambda \sum_{k=1}^K ||v_k||^2_2 + \sum_{k=1}^K \lambda_{1k}||v_k||_1
+$$
+
+subject to $\mathbf{\Theta \Theta}^T = \mathbf{I}_K$, where $\mathbf{V}$ and $\mathbf{\Theta}$ are both $p \times K$ matrices. The three terms have clear jobs: the first measures how well the components reconstruct the features, the second is a ridge ($\ell_2$) penalty that stabilizes the solution, and the third is a lasso ($\ell_1$) penalty that drives loadings to exactly zero. Together the last two terms are exactly an elastic net penalty, with the $\ell_1$ part doing the work of encouraging sparseness.
+
+What makes this tractable is that the problem decouples nicely. The pair $\mathbf{\Theta}$ and $\mathbf{V}$ can be estimated by alternating between two familiar subproblems:
+
+-   When $\mathbf{\Theta}$ is held fixed, solving for $\mathbf{V}$ is just an ordinary elastic net regression.
+
+-   When $\mathbf{V}$ is held fixed, solving for $\mathbf{\Theta}$ is exactly the [Procrustes Transformations] problem, which the SVD solves in closed form.
+
+Because each step is something we already know how to do, we can iterate between the two until convergence [@hastie2001a, 14.5.5]. This alternating strategy, fix half the unknowns and solve the other half, recurs throughout the chapter.
+
+> **When to use this:** Reach for sparse PCA when interpretability matters as much as compression, for example when you want to name a component by the few variables that define it, or when $p$ is large and you suspect only a subset of features drives each direction of variation.
+
+### Non-negative Matrix Factorization
+
+Sometimes the data are inherently non-negative (pixel intensities, word counts, amounts purchased), and we would like the building blocks of our decomposition to be non-negative too, so that they can be read as *parts that add up* rather than directions that cancel out. Ordinary PCA loadings can be positive or negative, which often makes them hard to interpret as physical components. Non-negative matrix factorization (NMF) enforces non-negativity throughout. @hastie2001a [14.6] describe such a method due to @lee1999.
+
+Assume we have an $n \times p$ matrix $\mathbf{X}$ and seek to approximate it by
+
+$$
+\mathbf{X} \approx \mathbf{WH}
+$$
+
+where $\mathbf{W}$ is $n \times r$, $\mathbf{H}$ is $r \times p$, and the inner dimension satisfies $r \le \max(n,p)$. All elements of $\mathbf{X}$, $\mathbf{W}$, and $\mathbf{H}$ are assumed to be non-negative. We then find $\mathbf{W}$ and $\mathbf{H}$ that maximize
+
+$$
+\sum_{i=1}^n \sum_{j=1}^p [x_{ij} \log(\mathbf{WH})_{ij} - (\mathbf{WH})_{ij}]
+$$
+
+This objective is not arbitrary: it is the log-likelihood of a model in which each $x_{ij}$ is a Poisson random variable with mean (intensity) $(\mathbf{WH})_{ij}$, which is a natural choice for count-like, non-negative data. The columns of $\mathbf{W}$ are usually the quantities of primary interest, since they present the primary non-negative components in the data: the recurring parts (a facial feature, a topic, a spectral signature) out of which each observation is additively built.^[The classic illustration is faces: NMF tends to discover localized parts such as eyes, noses, and mouths, whereas PCA produces global "eigenfaces" that look like ghostly whole-face templates. The non-negativity is what forces a parts-based representation.]
+
+> **Warning:** The factorization into $\mathbf{W}$ and $\mathbf{H}$ is generally not unique, so different runs (or different initializations) can give different but equally valid decompositions. The result can still be very useful; just do not over-interpret a single solution as the one true set of parts.
+
+### Beyond PCA
+
+PCA also has several relatives that extend or reinterpret the same basic idea, each relaxing or reframing one of its assumptions. We will not develop them here, but it is worth knowing they exist and where to read more:
+
+-   factor analysis, which models the features as driven by a few latent factors plus feature-specific noise [@hastie2001a, 14.7.1];
+
+-   archetypal analysis, which represents observations as mixtures of extreme "archetype" points rather than directions of variance [@hastie2001a, 14.6.1];
+
+-   independent component analysis, which seeks components that are statistically independent rather than merely uncorrelated [@hastie2001a, 14.7.2].
+
+Taken together, the methods in this section share one DNA: find a small number of structured ingredients, recovered through an eigen- or singular-value decomposition, that reconstruct the data well. What changes from method to method is the structure we insist on (orthogonal, sparse, non-negative, independent) and how nonlinear we are willing to be.
+
+## Nonlinear Dimension Reduction
+
+Everything so far has been fundamentally linear: even kernel PCA achieves its nonlinearity by mapping into a new space and then doing linear PCA there. The next step is to drop the linearity assumption directly and let the low-dimensional representation follow whatever curved structure (manifold) the data actually lie on.

@@ -1,0 +1,382 @@
+# Random Forests
+
+```{r}
+#| include: false
+suppressPackageStartupMessages(library(tidyverse))
+```
+
+A single decision tree is easy to read but hard to trust: change a few training points and the tree can split on a completely different variable, sending its predictions in a new direction. Trees are, in the language of the bias-variance tradeoff, low bias but high variance learners. [Bagging] already addresses this by growing many trees on bootstrap resamples and averaging them, which knocks down variance without raising bias much. Random forests push that idea one step further. They start from bagging and add a single, almost embarrassingly simple twist that turns out to matter a great deal: at every split, each tree is only allowed to look at a random handful of the predictors.
+
+In this chapter you will learn why that twist works (it is a story about correlation, not about individual trees getting better), how the algorithm is put together step by step, how to read its built-in error estimate and variable-importance scores, and how to fit and tune one in R. Random forests are a strong default for general nonlinear, nonparametric prediction, so this is a method worth understanding well before reaching for anything fancier.
+
+> **Intuition:** Bagging averages many trees, but if those trees all key on the same one or two dominant predictors, they make correlated mistakes, and averaging correlated things barely helps. Random forests force the trees to disagree by hiding most of the predictors at each split. The trees become more diverse, their errors cancel more effectively, and the average is more stable.
+
+## From bagging to decorrelated trees
+
+Random forests are a bootstrap-based procedure built on a committee of trees, exactly like [Bagging]. The difference is that random forests deliberately *decorrelate* the trees. At each split in the tree-building process, and separately for each bootstrap sample, the splitting rule is chosen from a randomly selected, relatively small subset of the input variables. Because different variables are available at different splits and in different trees, the trees stop leaning on the same dominant covariates and become much less dependent on one another. That reduced dependence is what reduces the variance of the final prediction.
+
+This variance reduction is the whole point. Trees are inherently noisy, but when grown fairly deep they have relatively low bias. Averaging many low-bias, nearly independent trees therefore gives predictions (or classifications) that keep the low bias while shedding most of the variance.
+
+To see why correlation is the villain, recall a basic fact about averaging: the variance of an average of *correlated* variables is larger than the variance of an average of the same number of *independent* variables.^[Equivalently, correlation reduces the effective degrees of freedom in the data, so an average of correlated quantities behaves like an average of fewer truly independent ones.] Concretely, the average of $B$ identically distributed random variables, each with variance $\sigma^2$ and pairwise correlation $\rho$, has variance
+
+$$
+\rho \sigma^2 + \sigma^2 \frac{1 - \rho}{B}
+$$
+
+Look at what happens as the forest grows. The second term, $\sigma^2 (1 - \rho)/B$, shrinks to zero as $B \to \infty$, but the first term, $\rho \sigma^2$, does not depend on $B$ at all. No matter how many trees you add, the variance cannot fall below this floor of $\rho \sigma^2$.
+
+> **Key idea:** Adding more trees only attacks the $\sigma^2(1-\rho)/B$ part of the variance. The floor $\rho \sigma^2$ can only be lowered by reducing the correlation $\rho$ between trees. Random forests lower $\rho$ by randomizing the variables available at each split, which is precisely the dependence that plain [Bagging] leaves in place.
+
+## The algorithm
+
+Before the formal statement, here is the idea in four plain steps:
+
+1.  Create bootstrapped datasets (sampling with replacement).
+2.  Grow a decision tree on each bootstrapped dataset, but at every split consider only a random subset of the variables.
+3.  Repeat steps 1 and 2 many times to build a whole forest.
+4.  To predict, run a new observation through every tree and combine the results: average them for regression, or take a majority vote for classification (the same aggregation idea as in [Bagging], applied to many bootstrap samples).
+
+The one new knob compared to bagging is $m$, the number of input variables made available at each split, where $m \le p$ and $p$ is the total number of predictors. Smaller $m$ means more aggressive decorrelation. There is no theory that pins down the best value, but two rules of thumb, supported by simulation studies rather than by any deeper result, work well as starting points:
+
+-   $m = \sqrt{p}$ for classification.
+-   $m = \frac{p}{3}$ for regression.
+
+After $B$ trees are grown, $\{T(x, \Theta_b)\}^B_1$, the random forest regression predictor is the simple average of the trees,
+
+$$
+\hat{f}^B_{rf} (x) = \frac{1}{B} \sum_{b=1}^B T(x; \Theta_b)
+$$
+
+where $\Theta_b$ collects the split variables and cut points of the $b$-th tree.
+
+Putting the pieces together gives the standard algorithm for both regression and classification [@hastie2001a, Alg 15.1]:
+
+1.  For $b = 1$ to $B$:
+
+    1.  Draw a bootstrap sample $\mathbf{Z}^*$ of size N from the training data.
+
+    2.  Grow a random-forest tree $T_b$ on the bootstrapped data by recursively repeating the following steps at each terminal node, until the minimum node size $n_{min}$ is reached:
+
+        1.  Select $m$ variables at random from the $p$ variables.
+
+        2.  Pick the best variable and split-point among those $m$.
+
+        3.  Split the node into two daughter nodes.
+
+2.  Output the ensemble of trees $\{T_b\}^B_1$.
+
+To predict at a new point $x$, the two tasks differ only in how the trees are combined:
+
+-   Regression: $\hat{f}_{rf}^B(x) = \frac{1}{B}\sum_{b=1}^B T_b(x)$.
+-   Classification: let $\hat{C}_b (x)$ be the class predicted by the $b$-th tree. Then $\hat{C}_{rf}^B (x) = \text{majority vote } \{\hat{C}_b (x) \}^B_{1}$.
+
+> **Note:** Random subset selection happens *at every split*, not once per tree. A fresh random set of $m$ variables is drawn each time a node is split, which is what keeps even the same tree from being dominated by one strong predictor.
+
+How does this compare to its neighbors? In general, [Gradient Boosting] is roughly comparable to random forests, and random forests usually beat plain [Bagging], though in practice these orderings do not always hold. Which method wins depends on the structure of the problem: the degree of linearity or nonlinearity, the dependence among covariates, the relative importance of specific predictors, and so on.
+
+> **When to use this:** Reach for a random forest when you want strong nonlinear, nonparametric prediction with little tuning, mixed variable types, and a built-in honest error estimate. If you need to squeeze out the last bit of accuracy on highly structured data, compare against [Gradient Boosting].
+
+## Out-of-bag error: free cross-validation
+
+A pleasant side effect of bootstrapping is that the forest comes with its own validation set. Each bootstrap sample leaves out roughly a third of the observations, and those left-out points are called the out-of-bag (OOB) samples for that tree.
+
+For each observation pair $(x_i, y_i)$, we can form an OOB prediction by averaging only the trees built on bootstrap samples in which that observation did not appear. Comparing these OOB predictions to the actual responses gives the OOB error, which behaves like a cross-validation error estimate but costs nothing extra to compute. A useful practical signal falls out of this: once the OOB error stops improving as you add trees, the forest has effectively converged and more trees will not help.
+
+> **Tip:** Watch the OOB error as a function of the number of trees. When the curve flattens, you have enough trees. This is the random forest equivalent of a learning curve, and you get it without holding out a separate set.
+
+## Variable importance
+
+Because each split sees a random subset of predictors, random forests give variables that would otherwise be overshadowed a chance to be chosen. As a result, the forest tends to surface more "important" variables than a single greedy tree would. There are two common ways to score importance.
+
+The first measures, for each variable, how much it improves the split criterion (such as node impurity) summed and averaged across all trees. Variables that produce big, frequent improvements score high.
+
+The second is permutation importance, which is based on OOB prediction. When the $b$-th tree is grown, its OOB samples are passed down the tree and the prediction accuracy is recorded. The values of the $j$-th variable are then randomly permuted across those OOB samples, breaking any relationship between that variable and the response, and the accuracy is recomputed. The drop in accuracy, averaged over all trees, measures the importance of variable $j$.
+
+> **Warning:** Permutation importance does not tell you how the model would do if that variable were simply *unavailable*. A refit model would likely lean on correlated surrogate variables to fill the gap, so dropping a "high importance" variable may hurt far less than its score suggests.
+
+## Other properties to keep in mind
+
+A few additional points round out the picture of how random forests behave in practice:
+
+-   Proximity plots show which observations the forest treats as effectively close together. They are useful mainly for seeing where points sit relative to the decision boundary; we use this idea in the application below to build an MDS plot.
+-   Overfitting: random forests are fairly robust to overfitting when the number of genuinely relevant variables in $X$ is large relative to $p$.
+-   Bias: the bias of a random forest is essentially the same as the bias of an individual tree. The gain in mean squared error comes entirely from variance reduction, not from lower bias.
+-   Relationship to other methods: a random forest behaves somewhat like a nearest-neighbor classifier (such as $k$-nearest neighbor), since predictions are driven by training points that fall in the same regions.
+-   Software: common implementations include `randomForest`, `cforest`, `ParallelForest`, `ranger`, and `Rborist`.
+
+In short, random forests are a reliable, low-maintenance tool for general nonlinear, nonparametric prediction. With the mechanics in hand, the rest of the chapter walks through a complete worked example.
+
+## Application
+
+To make the ideas concrete, we walk through a complete classification example: predicting whether a patient has heart disease. Along the way we will impute missing values, fit a forest, read its OOB error, tune $m$ (called `mtry` in the code), and visualize the patients with a proximity-based plot. The example follows a demo by [Josh Starmer](https://github.com/StatQuest/random_forest_demo/blob/master/random_forest_demo.R).
+
+We start by loading the packages we need: `ggplot2` and `cowplot` for plotting, and `randomForest` for the model itself.
+
+```{r}
+library(ggplot2)
+library(cowplot)
+library(randomForest)
+```
+
+The data comes from the [UCI machine learning repository](http://archive.ics.uci.edu/ml/index.php), specifically the [heart disease data set](http://archive.ics.uci.edu/ml/datasets/Heart+Disease). We read it directly from the URL.
+
+```{r}
+url <- "http://archive.ics.uci.edu/ml/machine-learning-databases/heart-disease/processed.cleveland.data"
+
+data <- read.csv(url, header=FALSE)
+```
+
+The raw file arrives with no column names and a few quirks, so before modeling we reformat it for two reasons: to make it easy to read by giving the columns meaningful names, and to make sure `randomForest` interprets each variable correctly (factors as factors, missing values as `NA` rather than the literal string `"?"`). The comments below document what each clinical variable means.
+
+```{r}
+head(data) # you see data, but no column names
+
+colnames(data) <- c(
+  "age",
+  "sex",# 0 = female, 1 = male
+  "cp", # chest pain 
+          # 1 = typical angina, 
+          # 2 = atypical angina, 
+          # 3 = non-anginal pain, 
+          # 4 = asymptomatic
+  "trestbps", # resting blood pressure (in mm Hg)
+  "chol", # serum cholestoral in mg/dl
+  "fbs",  # fasting blood sugar if less than 120 mg/dl, 1 = TRUE, 0 = FALSE
+  "restecg", # resting electrocardiographic results
+          # 1 = normal
+          # 2 = having ST-T wave abnormality
+          # 3 = showing probable or definite left ventricular hypertrophy
+  "thalach", # maximum heart rate achieved
+  "exang",   # exercise induced angina, 1 = yes, 0 = no
+  "oldpeak", # ST depression induced by exercise relative to rest
+  "slope", # the slope of the peak exercise ST segment 
+          # 1 = upsloping 
+          # 2 = flat 
+          # 3 = downsloping 
+  "ca", # number of major vessels (0-3) colored by fluoroscopy
+  "thal", # this is short of thalium heart scan
+          # 3 = normal (no cold spots)
+          # 6 = fixed defect (cold spots during rest and exercise)
+          # 7 = reversible defect (when cold spots only appear during exercise)
+  "hd" # (the predicted attribute) - diagnosis of heart disease 
+          # 0 if less than or equal to 50% diameter narrowing
+          # 1 if greater than 50% diameter narrowing
+  )
+
+# head(data) # now we have data and column names
+
+# str(data) # this shows that we need to tell R which columns contain factors
+          # it also shows us that there are some missing values. There are "?"s
+          # in the dataset.
+
+## First, replace "?"s with NAs.
+data[data == "?"] <- NA
+
+## Now add factors for variables that are factors and clean up the factors
+## that had missing data...
+data[data$sex == 0,]$sex <- "F"
+data[data$sex == 1,]$sex <- "M"
+data$sex <- as.factor(data$sex)
+
+data$cp <- as.factor(data$cp)
+data$fbs <- as.factor(data$fbs)
+data$restecg <- as.factor(data$restecg)
+data$exang <- as.factor(data$exang)
+data$slope <- as.factor(data$slope)
+
+data$ca <- as.integer(data$ca) # since this column had "?"s in it (which
+                               # we have since converted to NAs) R thinks that
+                               # the levels for the factor are strings, but
+                               # we know they are integers, so we'll first
+                               # convert the strings to integers...
+data$ca <- as.factor(data$ca)  # ...then convert the integers to factor levels
+
+data$thal <- as.integer(data$thal) # "thal" also had "?"s in it.
+data$thal <- as.factor(data$thal)
+
+## This next line replaces 0 and 1 with "Healthy" and "Unhealthy"
+data$hd <- ifelse(test=data$hd == 0, yes="Healthy", no="Unhealthy")
+data$hd <- as.factor(data$hd) # Now convert to a factor
+
+str(data) ## this shows that the correct columns are factors and we've replaced
+  ## "?"s with NAs because "?" no longer appears in the list of factors
+  ## for "ca" and "thal"
+```
+
+
+With the data cleaned and typed correctly, we are ready to build a forest. This is a good moment to recall the OOB idea from earlier in the chapter, because it changes how we set up the example.
+
+> **Note:** Most machine learning methods require you to split the data manually into a training set and a test set, so you can train on one part and evaluate on data the model never saw. Random forests do this splitting for you. Because each tree is built on a bootstrap sample, not every observation is used in every tree: the bootstrap sample plays the role of the training data, and the left-out observations, the out-of-bag (OOB) data, play the role of the test set. That is why the example below never carves out a separate test set by hand.
+
+We also have missing values to deal with. Rather than drop incomplete rows, we impute them using `rfImpute`, which fills in missing entries based on random forest proximities (how similar observations are according to a preliminary forest). Breiman suggests 4 to 6 iterations is usually enough, so we use `iter = 6`.
+
+
+```{r}
+set.seed(42)
+
+## impute any missing values in the training set using proximities
+data.imputed <- rfImpute(hd ~ ., data = data, iter=6)
+
+
+## NOTE: iter = the number of iterations to run. Breiman says 4 to 6 iterations
+## is usually good enough. With this dataset, when we set iter=6, OOB-error
+## bounces around between 17% and 18%. When we set iter=20,
+# set.seed(42)
+# data.imputed <- rfImpute(hd ~ ., data = data, iter=20)
+## we get values a little better and a little worse, so doing more
+## iterations doesn't improve the situation.
+##
+## NOTE: If you really want to micromanage how rfImpute(),
+## you can change the number of trees it makes (the default is 300) and the
+## number of variables that it will consider at each step.
+
+## Now we are ready to build a random forest.
+
+## NOTE: If the thing we're trying to predict (in this case it is
+## whether or not someone has heart disease) is a continuous number
+## (i.e. "weight" or "height"), then by default, randomForest() will set
+## "mtry", the number of variables to consider at each step,
+## to the total number of variables divided by 3 (rounded down), or to 1
+## (if the division results in a value less than 1).
+## If the thing we're trying to predict is a "factor" (i.e. either "yes/no"
+## or "ranked"), then randomForest() will set mtry to
+## the square root of the number of variables (rounded down to the next
+## integer value).
+
+## In this example, "hd", the thing we are trying to predict, is a factor and
+## there are 13 variables. So by default, randomForest() will set
+## mtry = sqrt(13) = 3.6 rounded down = 3
+## Also, by default random forest generates 500 trees (NOTE: rfImpute() only
+## generates 300 tress by default)
+model <- randomForest(hd ~ ., data=data.imputed, proximity=TRUE)
+
+## RandomForest returns all kinds of things
+model # gives us an overview of the call, along with...
+      # 1) The OOB error rate for the forest with ntree trees. 
+      #    In this case ntree=500 by default
+      # 2) The confusion matrix for the forest with ntree trees.
+      #    The confusion matrix is laid out like this:
+```
+
+Printing the model object gives a compact summary of the fit. Two pieces matter most: the OOB estimate of the error rate (here for the default `ntree = 500` trees), which is our honest, cross-validation-like accuracy check, and the confusion matrix, which breaks the errors down by class. The confusion matrix is laid out like this, with true classes in the rows and predicted classes in the columns:
+
+               Healthy                      Unhealthy
+         --------------------------------------------------------------
+Healthy  | Number of healthy people   | Number of healthy people      |
+         | correctly called "healthy" | incorrectly called "unhealthy" |
+         | by the forest.             | by the forest                 |
+         --------------------------------------------------------------
+Unhealthy| Number of unhealthy people | Number of unhealthy people     |
+         | incorrectly called         | correctly called "unhealthy"  |
+         | "healthy" by the forest    | by the forest                 |
+         --------------------------------------------------------------
+
+Next we check whether the forest has enough trees. The principle from earlier applies directly: up to a point, more trees help, and you know you have enough once the OOB error stops improving. We plot the OOB error against the number of trees, tracking the overall rate as well as the per-class rates, so we can watch for convergence. Figure @fig-random-forest-oob-500 shows the result for the default 500-tree forest.
+
+```{r fig-random-forest-oob-500, fig.cap="Out-of-bag error rate as a function of the number of trees for the 500-tree heart disease forest. The overall OOB rate is shown alongside the per-class rates for healthy and unhealthy patients."}
+## Now check to see if the random forest is actually big enough...
+## Up to a point, the more trees in the forest, the better. You can tell when
+## you've made enough when the OOB no longer improves.
+oob.error.data <- data.frame(
+  Trees=rep(1:nrow(model$err.rate), times=3),
+  Type=rep(c("OOB", "Healthy", "Unhealthy"), each=nrow(model$err.rate)),
+  Error=c(model$err.rate[,"OOB"],
+    model$err.rate[,"Healthy"],
+    model$err.rate[,"Unhealthy"]))
+
+ggplot(data=oob.error.data, aes(x=Trees, y=Error)) +
+  geom_line(aes(color=Type))
+# ggsave("oob_error_rate_500_trees.pdf")
+
+## Blue line = The error rate specifically for calling "Unheathly" patients that
+## are OOB.
+##
+## Green line = The overall OOB error rate.
+##
+## Red line = The error rate specifically for calling "Healthy" patients
+## that are OOB.
+```
+
+After building a random forest with 500 trees, the graph does not make it clear that the OOB error has settled on a value or, if we added more trees, whether it would continue to decrease. So we do the whole thing again, but this time add more trees. Figure @fig-random-forest-oob-1000 repeats the OOB curve for a 1,000-tree forest.
+
+```{r fig-random-forest-oob-1000, fig.cap="Out-of-bag error rate as a function of the number of trees for the 1,000-tree heart disease forest. The curve flattens, showing that the OOB error has converged."}
+model <- randomForest(hd ~ ., data=data.imputed, ntree=1000, proximity=TRUE)
+model
+
+oob.error.data <- data.frame(
+  Trees=rep(1:nrow(model$err.rate), times=3),
+  Type=rep(c("OOB", "Healthy", "Unhealthy"), each=nrow(model$err.rate)),
+  Error=c(model$err.rate[,"OOB"],
+    model$err.rate[,"Healthy"],
+    model$err.rate[,"Unhealthy"]))
+
+ggplot(data=oob.error.data, aes(x=Trees, y=Error)) +
+  geom_line(aes(color=Type))
+# ggsave("oob_error_rate_1000_trees.pdf")
+
+## After building a random forest with 1,000 trees, we get the same OOB-error
+## 16.5% and we can see convergence in the graph. So we could have gotten
+## away with only 500 trees, but we wouldn't have been sure that number
+## was enough.
+```
+
+With 1,000 trees the OOB error lands at essentially the same value as with 500 and the curve clearly flattens, confirming that 500 trees would have been enough; we just could not be sure of that until we checked. Next we tune `mtry`, the number of variables considered at each split, by sweeping it from 1 to 10 and recording the final OOB error of each forest.
+
+```{r random-forest-mtry-tuning}
+## If we want to compare this random forest to others with different values for
+## mtry (to control how many variables are considered at each step)...
+oob.values <- vector(length=10)
+for(i in 1:10) {
+  temp.model <- randomForest(hd ~ ., data=data.imputed, mtry=i, ntree=1000)
+  oob.values[i] <- temp.model$err.rate[nrow(temp.model$err.rate),1]
+}
+oob.values
+## find the minimum error
+min(oob.values)
+## find the optimal value for mtry...
+which(oob.values == min(oob.values))
+## create a model for proximities using the best value for mtry
+model <- randomForest(hd ~ .,
+                      data=data.imputed,
+                      ntree=1000,
+                      proximity=TRUE,
+                      mtry=which(oob.values == min(oob.values)))
+```
+
+The loop over `mtry` from 1 to 10 refits the forest for each candidate number of variables per split and records its final OOB error, then picks the value with the lowest error. This is how we tune $m$ in practice rather than relying only on the $\sqrt{p}$ rule of thumb.
+
+> **Tip:** The `mtry` loop is a small grid search over the one knob that distinguishes a random forest from bagging. Because OOB error is nearly free, sweeping `mtry` is cheap and often worthwhile, especially when predictors are correlated and the default may be too large or too small.
+
+Finally, the model is refit with the best `mtry` and its proximity matrix is turned into a distance matrix via `1 - proximity`, which feeds classical multidimensional scaling (`cmdscale`). Figure @fig-random-forest-mds shows the resulting MDS plot, which places each patient in two dimensions so that patients the forest treats as similar sit close together. Coloring by true status shows how cleanly the forest separates healthy from unhealthy patients, a visual companion to the numeric OOB error.
+
+```{r fig-random-forest-mds, fig.cap="Multidimensional scaling of the heart disease patients based on one minus the random forest proximities. Points the forest treats as similar sit close together, and coloring by true status shows how cleanly the forest separates healthy from unhealthy patients."}
+## Now let's create an MDS-plot to show how the samples are related to each
+## other.
+##
+## Start by converting the proximity matrix into a distance matrix.
+distance.matrix <- as.dist(1-model$proximity)
+
+mds.stuff <- cmdscale(distance.matrix, eig=TRUE, x.ret=TRUE)
+
+## calculate the percentage of variation that each MDS axis accounts for...
+mds.var.per <- round(mds.stuff$eig/sum(mds.stuff$eig)*100, 1)
+
+## now make a fancy looking plot that shows the MDS axes and the variation:
+mds.values <- mds.stuff$points
+mds.data <- data.frame(Sample=rownames(mds.values),
+  X=mds.values[,1],
+  Y=mds.values[,2],
+  Status=data.imputed$hd)
+
+ggplot(data=mds.data, aes(x=X, y=Y, label=Sample)) +
+  geom_text(aes(color=Status)) +
+  theme_bw() +
+  xlab(paste("MDS1 - ", mds.var.per[1], "%", sep="")) +
+  ylab(paste("MDS2 - ", mds.var.per[2], "%", sep="")) +
+  ggtitle("MDS plot using (1 - Random Forest Proximities)")
+# ggsave(file="random_forest_mds_plot.pdf")
+```
+
+> **Key idea:** Proximities turn a black-box ensemble into something you can *see*. Two observations are "close" if they often land in the same terminal nodes across the forest, so an MDS plot of `1 - proximity` reveals the structure the forest has learned, including which points sit near the decision boundary.
+
+To recap the workflow: clean and type the data, impute missing values with `rfImpute`, fit a forest and read its OOB error and confusion matrix, add trees until the OOB error stabilizes, tune `mtry` against OOB error, and finally use proximities to visualize the learned structure. The same recipe transfers to most random forest problems you will meet.

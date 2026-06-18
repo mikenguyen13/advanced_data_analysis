@@ -1,0 +1,39 @@
+# Introduction
+
+```{r}
+#| include: false
+suppressPackageStartupMessages(library(tidyverse))
+```
+
+Every method we have studied so far has shared one feature: we always knew the right answer for at least some of our data. We had a response we cared about, $Y$, and a collection of features, $X$, and our job was to learn the relationship between them so we could predict $Y$ for new observations. That setting is called supervised learning. This chapter opens a different door. We will keep the features $X$ but throw away the response $Y$, and ask a question that sounds almost philosophical at first: with no answer key in hand, what can the data tell us about itself?
+
+This short chapter sets up the rest of the unsupervised part of the book. By the end you will understand what makes a learning problem "unsupervised," why these problems are both harder and more open-ended than the supervised ones, and what two broad families of techniques we will use to attack them.
+
+## From Supervised to Unsupervised Learning
+
+Up until now, we have covered supervised learning methods. In that setting we have a set of $n$ observations of $p$ features, $X^T = (X_1, \dots, X_p)$, and for each observation we also observe a response $Y$. The goal is to predict $Y$ from $X$ as accurately as possible.^[Regression and classification are both supervised: in regression $Y$ is numeric, in classification $Y$ is a label. What unites them is that a true $Y$ exists for the training data.]
+
+The word "supervised" is more than a label. The response $Y$ acts like a teacher standing over the model's shoulder: it tells the model when a prediction is right and when it is wrong, usually through some loss function, and we can measure how well the lesson was learned by checking performance with cross-validation or a held-out validation sample.
+
+> **Key idea:** In supervised learning the response $Y$ supervises the model. It defines what "correct" means, which is exactly what lets us tune models and compare them on an honest scale.
+
+Now we shift our attention to unsupervised learning. We still have a set of $n$ observations of $p$ features $X$, but there is no $Y$. Nothing tells the model what the right answer is, because there is no designated right answer. Instead of prediction, our goal is to find structure in these features: groups that hang together, directions along which the data vary the most, or a simpler description of a complicated cloud of points.
+
+> **Intuition:** Supervised learning is like studying with the answer key beside you. Unsupervised learning is like being handed a stack of unlabeled photographs and asked to sort them into meaningful piles. Nobody tells you what the piles should be, and two thoughtful people might sort them differently.
+
+This freedom comes at a price. Because there is no $Y$, there is usually no single number that tells us whether we have done a good job. We cannot compute a test error against a known truth, so judging the result often relies on subject-matter knowledge, visualization, and the usefulness of the structure we uncover.^[This is why unsupervised methods are sometimes called exploratory: they are frequently a first step that suggests hypotheses or features, rather than a final answer in themselves.]
+
+> **Warning:** Without a response to validate against, it is easy to "find" structure that is really just noise. Always sanity-check unsupervised results against domain knowledge and, where possible, assess their stability before reading too much into them.
+
+> **When to use this:** Reach for unsupervised learning when you have no labels but suspect the data has hidden organization, when labels are too expensive to collect, or when you want to compress or summarize many features before feeding them into a downstream model.
+
+## What We Will Cover
+
+We will focus on two general types of unsupervised learning. The first looks for structure among the *observations* (rows), and the second looks for structure among the *features* (columns).
+
+1.  [Cluster Analysis] (i.e., data segmentation), which partitions the observations into groups that are similar within a group and different across groups. This is the tool you want when you suspect your data contains distinct subpopulations, such as customer segments or cell types.
+2.  [Dimension Reduction], which replaces many correlated features with a smaller set of new features that retain most of the information. This is the tool you want when $p$ is large and you need a compact, often visualizable, summary of the data.
+
+> **Tip:** These two families are complementary and often used together. A common workflow is to apply dimension reduction first to denoise and shrink the feature space, then cluster in that reduced space.
+
+With the distinction between supervised and unsupervised learning in hand, and a map of the two families ahead of us, we are ready to start with clustering.

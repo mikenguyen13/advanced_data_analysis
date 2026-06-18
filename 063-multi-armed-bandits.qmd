@@ -1,0 +1,351 @@
+# Multi-Armed Bandits
+
+```{r}
+#| include: false
+suppressPackageStartupMessages(library(tidyverse))
+```
+
+Picture a row of slot machines in a casino. Each machine pays out at its own unknown rate, and you have a fixed number of coins to spend. Every pull of a lever (an "arm") gives you a payout drawn from that machine's hidden distribution, and nothing else. You do not get to see what the other machines would have paid on that same turn. Your goal is to walk away with as much money as possible. The catch is that the only way to learn which machine is best is to spend coins finding out, and every coin spent learning is a coin you did not spend on the machine you already suspect is best.
+
+This is the multi-armed bandit problem, and it is the cleanest setting in which to study a tension that runs through all of sequential decision making: the pull between exploration (gathering information about arms you are unsure of) and exploitation (cashing in on the arm that currently looks best). The name comes from the slang "one-armed bandit" for a slot machine; a bank of them is a multi-armed bandit.^[The earliest formal treatment is usually credited to Robbins (1952), though the problem was discussed during the Second World War as a model for allocating effort across competing research projects.]
+
+The reason this toy problem matters is that the same structure appears everywhere a system makes repeated choices and learns only from the choice it made. Which of five ad creatives to show. Which headline to put on an article. Which dosage to try next in an adaptive experiment. In each case you commit to one option, observe a noisy reward, and never see the counterfactual. By the end of this chapter you will understand how to measure how well an algorithm handles this, and you will have three concrete strategies, epsilon-greedy, Upper Confidence Bound, and Thompson sampling, with a runnable simulation that pits them against each other.
+
+> **Intuition:** If you always exploit, you may lock onto an arm that looked good early by luck and never discover the truly best one. If you always explore, you waste pulls on arms you already know are bad. Good bandit algorithms explore aggressively when they are uncertain and taper off as evidence accumulates.
+
+This chapter treats the stochastic, context-free bandit: the arms' reward distributions are fixed and do not depend on any side information. When each round comes with features that should shape the choice, you have a contextual bandit, covered in Chapter \@ref(contextual-bandits). The methods here are the building blocks that the contextual version generalizes.
+
+## The stochastic k-armed bandit
+
+We have $k$ arms, indexed $a \in \{1, 2, \dots, k\}$. Each arm $a$ has a fixed but unknown reward distribution with mean
+$$
+q_*(a) = \mathbb{E}[R \mid A = a],
+$$
+where $A$ is the arm we choose and $R$ is the reward we receive. The quantity $q_*(a)$ is called the action value of arm $a$: it is the average reward you would get if you pulled that arm forever.
+
+At each time step $t = 1, 2, \dots, T$ we select an arm $A_t$ and observe a reward $R_t$ drawn independently from the distribution of arm $A_t$. The number $T$ is the horizon. Because we only ever see the reward of the arm we pulled, we must estimate the action values from data. The natural estimate is the sample mean of rewards observed from arm $a$ up to time $t$:
+$$
+Q_t(a) = \frac{\sum_{s=1}^{t-1} R_s \,\mathbb{1}[A_s = a]}{\sum_{s=1}^{t-1} \mathbb{1}[A_s = a]},
+$$
+where $\mathbb{1}[\cdot]$ is the indicator function. Write $N_t(a) = \sum_{s=1}^{t-1} \mathbb{1}[A_s = a]$ for the number of times arm $a$ has been pulled before time $t$. As $N_t(a)$ grows, $Q_t(a)$ converges to $q_*(a)$ by the law of large numbers.
+
+A convenient fact: the sample mean can be updated online without storing every reward. If $Q_n$ is the average of the first $n$ rewards from an arm and a new reward $R_{n+1}$ arrives,
+$$
+Q_{n+1} = Q_n + \frac{1}{n+1}\bigl(R_{n+1} - Q_n\bigr).
+$$
+This "old estimate plus a step toward the new observation" form is the same shape as the update rules used throughout reinforcement learning.
+
+> **Note:** We will run our demos with **Bernoulli arms**, where each reward is $0$ or $1$ and $q_*(a)$ is simply the probability that arm $a$ returns a $1$. This is the model for click-through rates, conversion rates, and any success/failure outcome. The estimate $Q_t(a)$ is then just the observed success rate of arm $a$.
+
+## Regret: how we keep score
+
+We need a yardstick. The obvious one, total reward collected, is hard to read because it depends on the unknown arm values. Instead we measure how much worse we did than an oracle that knew the best arm from the start. Let
+$$
+q_* = \max_a q_*(a)
+$$
+be the value of the best arm. The expected cumulative regret after $T$ rounds is
+$$
+\mathcal{R}(T) = \sum_{t=1}^{T} \bigl(q_* - \mathbb{E}[q_*(A_t)]\bigr) = T q_* - \sum_{t=1}^{T} \mathbb{E}[q_*(A_t)].
+$$
+Regret is the total reward we gave up by not always playing the best arm. It can never be negative, and an algorithm that found and stuck to the best arm immediately would have regret zero. Lower is better.
+
+It is often cleaner to write regret in terms of the gaps $\Delta_a = q_* - q_*(a)$, the shortfall of arm $a$ relative to the best. If $N_T(a)$ is the number of times arm $a$ was pulled over the whole run, then
+$$
+\mathcal{R}(T) = \sum_{a} \Delta_a \, \mathbb{E}[N_T(a)].
+$$
+This decomposition says something important: regret comes entirely from pulling suboptimal arms, weighted by how bad each one is. To keep regret low you must pull a poor arm only a small number of times, and the worse it is (large $\Delta_a$), the fewer pulls you can afford.
+
+> **Key idea:** A good algorithm has regret that grows **sublinearly** in $T$, meaning $\mathcal{R}(T)/T \to 0$. Linear regret means a fixed fraction of every round is wasted forever, which is what happens if you keep exploring at a constant rate. Sublinear regret means the per-round penalty shrinks as you learn.
+
+Lai and Robbins (1985) proved that no algorithm can beat regret of order $\log T$ for this problem: any reasonable strategy must pull each suboptimal arm at least about $\log T$ times to be statistically sure it is suboptimal. The good algorithms below achieve this logarithmic rate; the naive one does not.
+
+## Epsilon-greedy
+
+The simplest workable strategy is epsilon-greedy. Fix a small probability $\varepsilon \in (0, 1)$. At each step, with probability $1 - \varepsilon$ pull the arm with the highest current estimate (exploit), and with probability $\varepsilon$ pull an arm chosen uniformly at random (explore):
+$$
+A_t = \begin{cases}
+\arg\max_a Q_t(a) & \text{with probability } 1 - \varepsilon, \\
+\text{uniform random arm} & \text{with probability } \varepsilon.
+\end{cases}
+$$
+
+The appeal is that it is trivial to implement and it never stops exploring, so it cannot get permanently stuck on a wrong arm. The drawback follows from the same fact: with a fixed $\varepsilon$, the algorithm wastes a fraction $\varepsilon$ of its pulls on random arms forever, even long after it has identified the best one. That gives regret of order $\varepsilon T$, which is linear. You pay a constant tax per round.
+
+> **Warning:** A fixed $\varepsilon$ guarantees linear regret. To recover the logarithmic rate you must let $\varepsilon$ decay over time, for example $\varepsilon_t \propto 1/t$. In practice a small constant such as $\varepsilon = 0.1$ is a common, reasonable default when the horizon is short or when you expect arm values to drift, because it keeps a steady trickle of exploration.
+
+A second weakness of epsilon-greedy is that its exploration is undirected: when it explores, it picks uniformly among all arms, including ones it already knows are terrible. It does not focus its exploration on the arms it is most uncertain about. The next two methods fix exactly this.
+
+## Optimistic initialization
+
+Before adding more machinery, there is a cheap trick worth knowing. Optimistic initialization seeds every arm's estimate with a value higher than any plausible true value, for Bernoulli arms you might set $Q_1(a) = 1$ for all $a$. Then run a purely greedy policy (no random exploration). Because every untried arm looks fantastic, the greedy rule is forced to try each arm at least once, and each disappointing reward pulls that arm's estimate down toward reality. Exploration happens automatically as a side effect of optimism, then fades as the estimates settle.
+
+> **Intuition:** Optimism in the face of uncertainty: assume an arm is great until it proves otherwise. This single idea, "act as if the unknown is good," is the seed of the UCB algorithm below, which makes the optimism precise and time-aware rather than a one-time initialization.
+
+The limitation is that optimistic initialization only drives early exploration. Once the inflated initial values wash out, the policy is greedy and will not revisit a discarded arm, so it is fragile if rewards are nonstationary. It is best seen as a complement to other ideas rather than a standalone solution.
+
+## Upper Confidence Bound (UCB1)
+
+The trouble with greedy methods is that they trust their point estimate $Q_t(a)$ and ignore how uncertain it is. An arm pulled twice with estimate $0.5$ and an arm pulled two hundred times with estimate $0.5$ are very different situations: the first might really be excellent and we just have not seen it yet. Upper Confidence Bound methods act on the optimistic edge of what is plausible, not the center.
+
+The reasoning rests on a concentration inequality. Hoeffding's inequality says that for independent rewards bounded in $[0,1]$ with sample mean $Q_t(a)$ over $N_t(a)$ pulls,
+$$
+\Pr\bigl(q_*(a) > Q_t(a) + u\bigr) \le e^{-2 N_t(a) u^2}.
+$$
+This bounds the chance that the true value exceeds our estimate by more than $u$. If we want this failure probability to shrink like $t^{-4}$ (a schedule that turns out to give the right exploration rate), we set $e^{-2 N_t(a) u^2} = t^{-4}$ and solve for the confidence width $u$:
+$$
+-2 N_t(a) u^2 = -4 \log t \quad\Longrightarrow\quad u = \sqrt{\frac{2 \log t}{N_t(a)}}.
+$$
+The UCB1 algorithm of Auer, Cesa-Bianchi, and Fischer (2002) then pulls the arm with the largest optimistic value, the estimate plus this width:
+$$
+A_t = \arg\max_a \left[ Q_t(a) + c \sqrt{\frac{\log t}{N_t(a)}} \right],
+$$
+with the constant $c = \sqrt{2}$ recovering the derivation above (any $c > 0$ is a valid tuning knob).
+
+Read the formula as two competing terms. The first, $Q_t(a)$, is the exploitation term: it favors arms that have paid well. The second, the square-root exploration bonus, is large when $N_t(a)$ is small (we have barely tried this arm) and shrinks as we pull it more; the $\log t$ in the numerator slowly revives the bonus over time so that a long-neglected arm eventually gets reconsidered. An arm is selected either because it looks good or because we are unsure about it, and the bonus quantifies exactly how unsure.
+
+> **Key idea:** UCB needs no random coin flips. Its exploration is **directed**: the bonus channels pulls toward arms whose value is genuinely uncertain, not uniformly across all arms. This is why UCB achieves regret of order $\log T$, matching the Lai-Robbins lower bound, while fixed epsilon-greedy does not.
+
+A practical detail: the bonus is infinite when $N_t(a) = 0$, so UCB1 begins by pulling each arm once to initialize. After that the formula takes over.
+
+## Thompson sampling
+
+A different and older idea, due to Thompson (1933), is fully Bayesian. Instead of a single point estimate per arm, keep a probability distribution over each arm's unknown value, and at each step pick an arm by drawing a sample from each distribution and playing the arm with the highest draw. Arms we are unsure about have wide distributions, so they sometimes draw a high sample and get explored; arms we have pinned down have narrow distributions and get played only when they really are best. Exploration emerges from the randomness of the posterior, scaled automatically by uncertainty.
+
+For Bernoulli arms the math is especially clean because the Beta distribution is the conjugate prior for the Bernoulli likelihood. Start each arm with a prior $\text{Beta}(\alpha_a, \beta_a)$, the uniform prior $\text{Beta}(1, 1)$ being a standard uninformative choice. The Beta-Bernoulli update is simply bookkeeping of successes and failures: after observing reward $R_t$ from arm $a$,
+$$
+\alpha_a \leftarrow \alpha_a + R_t, \qquad \beta_a \leftarrow \beta_a + (1 - R_t).
+$$
+So $\alpha_a - 1$ counts the successes seen on arm $a$ and $\beta_a - 1$ counts the failures. The posterior mean is $\alpha_a / (\alpha_a + \beta_a)$, and the posterior tightens as the counts grow. At each round the action rule is:
+$$
+\theta_a \sim \text{Beta}(\alpha_a, \beta_a) \;\text{ for each } a, \qquad A_t = \arg\max_a \theta_a.
+$$
+
+> **Intuition:** Thompson sampling plays each arm in proportion to the posterior probability that it is the best arm. This is sometimes called probability matching. It is a remarkably natural rule: act in proportion to how likely you think each option is to be optimal.
+
+Thompson sampling also achieves logarithmic regret (Agrawal and Goyal 2012), is trivial to implement for Bernoulli arms, and tends to perform very well empirically, often beating UCB in practice. It extends cleanly to other reward models by swapping in the appropriate conjugate pair (for example, Gaussian rewards with a Gaussian prior).
+
+## A runnable comparison in base R
+
+Let us put the three methods on the same footing. We simulate a $k = 5$ armed Bernoulli bandit, run each algorithm for the same horizon on the same arm values, average over many independent replications to smooth out noise, and compare cumulative regret. Everything below is base R.
+
+```{r multi-armed-bandits-setup}
+set.seed(2025)
+
+# True success probabilities for k = 5 Bernoulli arms.
+# Arm 4 (index 4) is the best at 0.75.
+true_p <- c(0.20, 0.45, 0.55, 0.75, 0.30)
+k      <- length(true_p)
+q_star <- max(true_p)          # value of the best arm
+horizon <- 1000                # rounds per run
+n_runs  <- 200                 # independent replications to average over
+
+# Pull arm a: return a Bernoulli(true_p[a]) reward.
+pull <- function(a) rbinom(1, size = 1, prob = true_p[a])
+```
+
+Each policy is a function that plays one full run of length `horizon` and returns the per-step regret it incurred. We then average these regret curves across `n_runs` runs.
+
+```{r multi-armed-bandits-policies}
+# --- Epsilon-greedy ---------------------------------------------------------
+run_epsilon_greedy <- function(epsilon = 0.1) {
+  Q <- rep(0, k)            # value estimates
+  N <- rep(0, k)            # pull counts
+  regret_step <- numeric(horizon)
+  for (t in seq_len(horizon)) {
+    if (runif(1) < epsilon) {
+      a <- sample.int(k, 1)                 # explore
+    } else {
+      a <- which.max(Q)                     # exploit (ties: first max)
+    }
+    r <- pull(a)
+    N[a] <- N[a] + 1
+    Q[a] <- Q[a] + (r - Q[a]) / N[a]        # incremental sample mean
+    regret_step[t] <- q_star - true_p[a]
+  }
+  regret_step
+}
+
+# --- UCB1 -------------------------------------------------------------------
+run_ucb1 <- function(c = sqrt(2)) {
+  Q <- rep(0, k)
+  N <- rep(0, k)
+  regret_step <- numeric(horizon)
+  for (t in seq_len(horizon)) {
+    if (any(N == 0)) {
+      a <- which(N == 0)[1]                 # pull each arm once first
+    } else {
+      ucb <- Q + c * sqrt(log(t) / N)
+      a <- which.max(ucb)
+    }
+    r <- pull(a)
+    N[a] <- N[a] + 1
+    Q[a] <- Q[a] + (r - Q[a]) / N[a]
+    regret_step[t] <- q_star - true_p[a]
+  }
+  regret_step
+}
+
+# --- Thompson sampling (Beta-Bernoulli) -------------------------------------
+run_thompson <- function() {
+  alpha <- rep(1, k)        # Beta(1,1) uniform prior per arm
+  beta_ <- rep(1, k)
+  regret_step <- numeric(horizon)
+  for (t in seq_len(horizon)) {
+    theta <- rbeta(k, alpha, beta_)         # one posterior draw per arm
+    a <- which.max(theta)
+    r <- pull(a)
+    alpha[a] <- alpha[a] + r
+    beta_[a] <- beta_[a] + (1 - r)
+    regret_step[t] <- q_star - true_p[a]
+  }
+  regret_step
+}
+```
+
+Now average each policy's cumulative regret over the replications.
+
+```{r multi-armed-bandits-simulate}
+# Average the cumulative regret curve of a policy over n_runs runs.
+average_cumulative_regret <- function(policy) {
+  acc <- numeric(horizon)
+  for (i in seq_len(n_runs)) {
+    acc <- acc + cumsum(policy())
+  }
+  acc / n_runs
+}
+
+set.seed(2025)
+reg_eps  <- average_cumulative_regret(function() run_epsilon_greedy(0.1))
+reg_ucb  <- average_cumulative_regret(function() run_ucb1(sqrt(2)))
+reg_ts   <- average_cumulative_regret(run_thompson)
+```
+
+### The regret curves
+
+Figure @fig-multi-armed-bandits-regret shows the average cumulative regret of the three policies as a function of the round $t$. A flatter curve is better: it means the policy stopped paying for mistakes. The dashed grey line is the linear-regret reference that epsilon-greedy with a fixed $\varepsilon$ trends toward, since it never stops exploring at a constant rate.
+
+```{r fig-multi-armed-bandits-regret, fig.width=7, fig.height=5, out.width="90%", fig.cap="Average cumulative regret over 200 runs for a 5-armed Bernoulli bandit (best arm value 0.75, horizon 1000). UCB and Thompson sampling bend toward sublinear (logarithmic) growth, while fixed epsilon-greedy keeps accruing regret at a roughly constant rate."}
+tt <- seq_len(horizon)
+ymax <- max(reg_eps, reg_ucb, reg_ts)
+
+plot(tt, reg_eps, type = "l", lwd = 2, col = "#D55E00",
+     xlab = "Round t", ylab = "Cumulative regret",
+     main = "Cumulative regret by policy",
+     ylim = c(0, ymax))
+lines(tt, reg_ucb, lwd = 2, col = "#0072B2")
+lines(tt, reg_ts,  lwd = 2, col = "#009E73")
+
+# Linear-regret reference line through the epsilon-greedy endpoint.
+abline(a = 0, b = reg_eps[horizon] / horizon, lty = 2, col = "grey60")
+
+legend("topleft", bty = "n", lwd = 2,
+       col = c("#D55E00", "#0072B2", "#009E73", "grey60"),
+       lty = c(1, 1, 1, 2),
+       legend = c("epsilon-greedy (0.1)", "UCB1", "Thompson sampling",
+                  "linear reference"))
+```
+
+The two directed-exploration methods (UCB and Thompson sampling) flatten out as they zero in on the best arm, while epsilon-greedy keeps climbing in a near-straight line because its $10\%$ random exploration never switches off.
+
+### Summary table
+
+Table @tbl-multi-armed-bandits-summary reports, for each policy, the total cumulative regret at the horizon, the average reward per round, and the percentage of rounds in which the best arm was actually played. The optimal-play percentage is the clearest single diagnostic: a good policy converges to pulling the best arm almost every round.
+
+```{r tbl-multi-armed-bandits-summary}
+# Re-run once per policy tracking which arm was best to compute "% optimal".
+optimal_arm <- which.max(true_p)
+
+summarize_policy <- function(policy_step_and_arm) {
+  opt_hits <- numeric(n_runs)
+  total_reward <- numeric(n_runs)
+  final_regret <- numeric(n_runs)
+  for (i in seq_len(n_runs)) {
+    out <- policy_step_and_arm()
+    opt_hits[i]     <- mean(out$arms == optimal_arm)
+    total_reward[i] <- sum(out$reward)
+    final_regret[i] <- sum(out$regret)
+  }
+  c(final_regret = mean(final_regret),
+    reward_per_round = mean(total_reward) / horizon,
+    pct_optimal = 100 * mean(opt_hits))
+}
+
+# Variants that also record the chosen arm and reward each step.
+eg_track <- function(epsilon = 0.1) {
+  Q <- rep(0, k); N <- rep(0, k)
+  arms <- integer(horizon); reward <- numeric(horizon); regret <- numeric(horizon)
+  for (t in seq_len(horizon)) {
+    a <- if (runif(1) < epsilon) sample.int(k, 1) else which.max(Q)
+    r <- pull(a); N[a] <- N[a] + 1; Q[a] <- Q[a] + (r - Q[a]) / N[a]
+    arms[t] <- a; reward[t] <- r; regret[t] <- q_star - true_p[a]
+  }
+  list(arms = arms, reward = reward, regret = regret)
+}
+ucb_track <- function(c = sqrt(2)) {
+  Q <- rep(0, k); N <- rep(0, k)
+  arms <- integer(horizon); reward <- numeric(horizon); regret <- numeric(horizon)
+  for (t in seq_len(horizon)) {
+    a <- if (any(N == 0)) which(N == 0)[1] else which.max(Q + c * sqrt(log(t) / N))
+    r <- pull(a); N[a] <- N[a] + 1; Q[a] <- Q[a] + (r - Q[a]) / N[a]
+    arms[t] <- a; reward[t] <- r; regret[t] <- q_star - true_p[a]
+  }
+  list(arms = arms, reward = reward, regret = regret)
+}
+ts_track <- function() {
+  alpha <- rep(1, k); beta_ <- rep(1, k)
+  arms <- integer(horizon); reward <- numeric(horizon); regret <- numeric(horizon)
+  for (t in seq_len(horizon)) {
+    a <- which.max(rbeta(k, alpha, beta_))
+    r <- pull(a); alpha[a] <- alpha[a] + r; beta_[a] <- beta_[a] + (1 - r)
+    arms[t] <- a; reward[t] <- r; regret[t] <- q_star - true_p[a]
+  }
+  list(arms = arms, reward = reward, regret = regret)
+}
+
+set.seed(7)
+summary_tab <- rbind(
+  `epsilon-greedy (0.1)` = summarize_policy(function() eg_track(0.1)),
+  `UCB1`                 = summarize_policy(function() ucb_track(sqrt(2))),
+  `Thompson sampling`    = summarize_policy(ts_track)
+)
+summary_df <- data.frame(
+  Policy             = rownames(summary_tab),
+  `Final regret`     = round(summary_tab[, "final_regret"], 1),
+  `Reward / round`   = round(summary_tab[, "reward_per_round"], 3),
+  `% optimal pulls`  = round(summary_tab[, "pct_optimal"], 1),
+  check.names = FALSE, row.names = NULL
+)
+
+knitr::kable(
+  summary_df,
+  caption = "Performance over 200 runs (horizon 1000). Lower final regret is better; reward per round and the share of rounds that played the best arm (true best value 0.75) are higher-is-better. Thompson sampling leads on all three measures. UCB still pays a visible exploration cost at this short horizon, the price of the log t bonus that buys it the lower asymptotic regret rate."
+)
+```
+
+Thompson sampling reaches the best arm on the largest share of rounds and leaves the least regret on the table. UCB's final regret is higher than epsilon-greedy's at this horizon of $1000$: its exploration bonus is still actively probing uncertain arms early on, which is exactly the investment that gives it logarithmic (rather than linear) regret as the horizon grows. Extend the run and the UCB curve flattens while a fixed-$\varepsilon$ curve keeps rising, so the ranking eventually reverses. This is a useful reminder that asymptotic guarantees and short-horizon behavior can disagree.
+
+## Practical guidance and pitfalls
+
+The choice among these methods is rarely about asymptotic regret bounds, since UCB and Thompson sampling share the same logarithmic rate. It is about engineering fit. Thompson sampling is usually the first thing to reach for: it is a few lines of code for Bernoulli arms, it has no tuning constant to set, it tends to win empirically, and its randomized choices spread load naturally across a fleet of servers. UCB is attractive when you want a deterministic, auditable rule (useful when a decision must be explained or reproduced) and when you can tolerate tuning the exploration constant $c$. Epsilon-greedy earns its place as a baseline and in short-horizon or rapidly-drifting problems where its constant exploration is a feature rather than a bug.
+
+Several traps catch people moving from the textbook to a real system.
+
+> **Warning:** A fixed $\varepsilon$ gives linear regret. If you use epsilon-greedy for a long-running system, decay $\varepsilon$ over time (for example $\varepsilon_t = \min(1, c/t)$) or accept that you are paying a permanent exploration tax.
+
+The first trap is nonstationarity. All the regret guarantees here assume arm values are fixed. Real click-through rates drift with the season, the news cycle, and the user population. A sample mean $Q_t(a)$ that averages over all of history responds ever more sluggishly to change, since each new reward moves it by only $1/N_t(a)$. The fix is to forget the distant past: use a constant step size, $Q_{n+1} = Q_n + \beta(R_{n+1} - Q_n)$ with fixed $\beta \in (0,1)$, or a sliding window. For Thompson sampling, apply a small decay to the Beta counts each round so old evidence fades.
+
+The second trap is delayed feedback. The clean model assumes the reward for round $t$ arrives before round $t+1$. In practice a conversion may take hours to register, so the algorithm chooses many arms before learning their outcomes. Batched and delayed-feedback variants exist; the practical rule of thumb is that more delay means you should explore a little more, because your estimates lag reality.
+
+The third trap is non-binary or unbounded rewards. UCB1 as derived assumes rewards in $[0,1]$ (that bound is what makes Hoeffding's inequality apply). If your reward is revenue in dollars, either scale it into $[0,1]$ using a known maximum or switch to a variant designed for sub-Gaussian rewards. For Thompson sampling, replace the Beta-Bernoulli pair with the conjugate model that matches your reward distribution.
+
+A final, easy mistake is evaluating a bandit like an A/B test. A bandit deliberately stops sampling the losing arms, so by the end of a run you have very little data on the arms it abandoned, and a naive significance test on that imbalanced data is misleading. If you need both to optimize and to draw rigorous statistical conclusions about every arm, look at off-policy evaluation and explore/exploit designs built for inference, not at the raw bandit logs.
+
+## Connection to contextual bandits and reinforcement learning
+
+The bandits in this chapter are context-free: the best arm is the same on every round. Add a feature vector $x_t$ that arrives before each choice and lets the best arm vary by situation (this user, this time of day) and you have a contextual bandit, the subject of Chapter \@ref(contextual-bandits). The three strategies here carry over directly: epsilon-greedy still flips a coin, UCB becomes LinUCB by putting a confidence ellipsoid around a linear reward model, and Thompson sampling places a posterior over the model parameters instead of over a single value per arm.
+
+Go one step further and let your action change the *state* of the world, so that today's choice affects tomorrow's options, and you have left bandits entirely for full reinforcement learning, where the action-value update gains a term for future reward. The incremental update $Q \leftarrow Q + \alpha(\text{target} - Q)$ you met in this chapter is precisely the seed that grows into temporal-difference learning and Q-learning.
+
+## Further reading
+
+The standard textbook treatment, and the source of the action-value and incremental-update framing used here, is Sutton and Barto, *Reinforcement Learning: An Introduction*, 2nd edition (2018), especially Chapter 2. A thorough, modern, theory-focused reference is Lattimore and Szepesvari, *Bandit Algorithms* (2020). The classics worth knowing by name are Robbins (1952) for the original formulation, Lai and Robbins (1985) for the logarithmic regret lower bound, Auer, Cesa-Bianchi, and Fischer (2002) for UCB1, Thompson (1933) for the sampling method that now bears his name, and Agrawal and Goyal (2012) for its modern regret analysis. Russo, Van Roy, Kazerouni, Osband, and Wen, "A Tutorial on Thompson Sampling" (2018), is an accessible deep dive on the Bayesian approach.

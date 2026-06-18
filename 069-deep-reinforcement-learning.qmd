@@ -1,0 +1,388 @@
+# Deep Reinforcement Learning
+
+```{r}
+#| include: false
+suppressPackageStartupMessages(library(tidyverse))
+```
+
+Imagine teaching a dog a new trick without ever showing it what to do. You cannot demonstrate the trick and you cannot label each movement as right or wrong. All you can do is hand out treats when the dog happens to do something good. Over many attempts the dog figures out, on its own, what earns treats. Reinforcement learning (RL) is the mathematical version of that story. An agent acts in an environment, receives a numeric reward, and must discover good behavior purely through trial and error.
+
+This setting is fundamentally different from supervised learning. In supervised learning a teacher provides the correct answer for every example. In RL the agent is never told the right action; it only sees a scalar reward after acting, and it must work backward from rewards to figure out which actions were worth taking. Deep reinforcement learning (deep RL) is the version of this problem where the value function or the policy is represented by a neural network, which lets the same algorithms scale from small grids to high dimensional inputs such as images or board states.^[The neural network is doing exactly what it does elsewhere in this book: approximating a function that is too large to write down as a table. In RL the function being approximated is a value or a policy, and the training signal comes from the agent's own experience rather than a fixed labeled dataset.]
+
+> **Intuition:** Supervised learning answers "what is the label for this input?" Reinforcement learning answers "what should I do now so that things go well later?" The second question is harder because the consequences of an action can show up many steps in the future.
+
+By the end of this chapter you will understand the core objects of RL (Markov decision processes, value functions, and policies), the two main families of methods (value based and policy based), and the deep learning variants that made RL practical on large problems. The chapter builds intuition first, then the math, then a fully runnable demonstration: a tabular Q-learning agent on a small gridworld implemented in base R, which exposes every moving part without hiding anything inside a library. The chapter fits naturally after the neural network and contextual bandit material, and it sets up the ideas behind techniques such as the alignment of large language models.
+
+## Where reinforcement learning fits in a modern workflow
+
+Most production machine learning is supervised: a fixed dataset of inputs and labels, a loss, and a model fit by minimizing that loss. RL applies when the decision you make now changes the data you see next, and when feedback is delayed. Recommendation systems that affect what a user clicks next, inventory and pricing systems, robotics and control, game playing, and the reinforcement learning from human feedback (RLHF) stage used to align large language models are all RL shaped problems.
+
+The distinguishing features that should make you reach for RL are:
+
+- Sequential decisions, where actions have downstream consequences (credit assignment over time).
+- Feedback that is evaluative (a reward telling you how good your action was) rather than instructive (a label telling you the right action).
+- A need to balance exploration (gathering information) against exploitation (using what you already know).
+
+If your problem has none of these (you have labels, decisions are one shot, and the data distribution does not depend on your model), supervised learning is simpler, more sample efficient, and easier to debug. A useful middle ground is contextual bandits (covered in its own chapter), which keeps the exploration problem but drops the sequential, multi step structure.
+
+> **When to use this:** Reach for RL when the decision you make now changes the data you see next and feedback is delayed. If feedback is immediate and decisions do not affect future inputs, use supervised learning. If decisions are one shot but you still need exploration, use bandits. RL is the right tool only when delayed, sequential credit assignment is genuinely the problem you face.
+
+## Markov decision processes
+
+The standard formalism is the Markov decision process (MDP), a tuple $(\mathcal{S}, \mathcal{A}, P, R, \gamma)$:
+
+- $\mathcal{S}$ is the set of states.
+- $\mathcal{A}$ is the set of actions.
+- $P(s' \mid s, a)$ is the transition probability of moving to state $s'$ after taking action $a$ in state $s$.
+- $R(s, a)$ is the expected immediate reward.
+- $\gamma \in [0, 1)$ is a discount factor that trades off immediate against future reward.
+
+The Markov property says the next state and reward depend only on the current state and action, not on the full history.^[This is a strong assumption, and it is what makes the math tractable. When the raw observation is not Markov (for example, a single video frame does not reveal velocity), practitioners restore the property by stacking recent frames or feeding observations through a recurrent network so the state summarizes enough history.] A policy $\pi(a \mid s)$ is a distribution over actions given a state. Think of the policy as the agent's strategy: given where it is, it tells the agent how to choose what to do. The agent interacts with the environment to produce a trajectory $s_0, a_0, r_0, s_1, a_1, r_1, \dots$, and the quantity it wants to maximize is the expected discounted return
+
+$$
+G_t = \sum_{k=0}^{\infty} \gamma^k\, r_{t+k}.
+$$
+
+The discount $\gamma$ keeps the sum finite and encodes a preference for sooner rewards. With $\gamma$ near $0$ the agent is myopic; with $\gamma$ near $1$ it plans far ahead.
+
+> **Intuition:** The discount factor is like compound interest in reverse. A reward received $k$ steps from now is worth only $\gamma^k$ as much as the same reward received right now. A patient agent ($\gamma$ close to $1$) treats distant rewards as nearly as valuable as immediate ones; an impatient agent ($\gamma$ close to $0$) cares almost only about the very next reward.
+
+### Value functions and the Bellman equations
+
+The state value function under a policy $\pi$ is the expected return from a state,
+
+$$
+V^\pi(s) = \mathbb{E}_\pi\!\left[ G_t \mid s_t = s \right],
+$$
+
+In words, $V^\pi(s)$ answers "if I start here and follow this strategy, how much total reward should I expect?" The action value (Q) function asks a slightly more specific question: the expected return from taking a particular action $a$ in state $s$ and then following $\pi$,
+
+$$
+Q^\pi(s, a) = \mathbb{E}_\pi\!\left[ G_t \mid s_t = s, a_t = a \right].
+$$
+
+Both satisfy recursive Bellman equations, which follow by splitting the return into the immediate reward plus the discounted return from the next state:
+
+$$
+Q^\pi(s, a) = R(s, a) + \gamma \sum_{s'} P(s' \mid s, a) \sum_{a'} \pi(a' \mid s')\, Q^\pi(s', a').
+$$
+
+The goal is the optimal policy $\pi^*$ whose value dominates every other policy. Its action value $Q^*$ satisfies the Bellman optimality equation, where the inner expectation over the next action is replaced by a maximum:
+
+$$
+Q^*(s, a) = R(s, a) + \gamma \sum_{s'} P(s' \mid s, a) \max_{a'} Q^*(s', a').
+$$
+
+Once $Q^*$ is known, acting optimally is trivial: pick $\pi^*(s) = \arg\max_a Q^*(s, a)$. This is why so much of RL focuses on estimating $Q^*$.
+
+> **Key idea:** The Bellman equation turns a hard global problem (optimize behavior over an entire infinite future) into a local, recursive one (the value of a state equals the immediate reward plus the discounted value of where you land next). Almost every algorithm in this chapter is a way to solve some version of that recursion from sampled experience.
+
+## Value based methods: Q-learning
+
+When the transition model $P$ and reward $R$ are known, you can solve the Bellman optimality equation by dynamic programming (value iteration or policy iteration). In most real problems the model is unknown, so the agent must learn from sampled experience. Q-learning is the canonical model free method. It maintains an estimate $Q(s, a)$ and updates it after each transition $(s, a, r, s')$ using the temporal difference (TD) error:
+
+$$
+Q(s, a) \leftarrow Q(s, a) + \alpha \Big[\, r + \gamma \max_{a'} Q(s', a') - Q(s, a) \,\Big],
+$$
+
+where $\alpha \in (0, 1]$ is the learning rate. The bracketed term is the TD error: the difference between the bootstrapped target $r + \gamma \max_{a'} Q(s', a')$ and the current estimate. "Bootstrapping" here means the update uses the current (imperfect) estimate of the next state's value to improve the estimate of this state, rather than waiting for the true return.^[This is what separates temporal difference methods from Monte Carlo methods. Monte Carlo waits until the episode ends and uses the actual observed return; TD updates immediately using its own prediction of the future. TD trades a little bias for much lower variance and the ability to learn online, step by step.]
+
+> **Intuition:** Each Q-learning update nudges the current estimate a fraction $\alpha$ of the way toward a slightly better target. If the target is consistently higher than the current value, the estimate climbs; if lower, it falls. Repeat over enough visits and the estimates settle onto $Q^*$. Q-learning is off policy, meaning it learns about the greedy policy while the data may come from a different (exploratory) behavior policy. Under standard conditions (every state action pair visited infinitely often and a suitably decaying $\alpha$), tabular Q-learning converges to $Q^*$ (Watkins and Dayan, 1992).
+
+To ensure exploration, a common behavior policy is $\varepsilon$-greedy: with probability $1 - \varepsilon$ take the greedy action $\arg\max_a Q(s, a)$, and with probability $\varepsilon$ take a uniformly random action. Decaying $\varepsilon$ over time shifts the agent from exploring early to exploiting later.
+
+> **Note:** The off policy property is what lets $\varepsilon$-greedy work without biasing the result. The agent behaves randomly some of the time to gather information, yet it still learns the value of acting greedily, because the $\max$ in the target always refers to the best action regardless of what action was actually taken.
+
+### Deep Q-Networks (DQN)
+
+Tabular Q-learning stores one number per state action pair, which is impossible when states are images or other high dimensional vectors.^[A single Atari screen has $84 \times 84$ pixels with several intensity levels; the number of distinct states is astronomically larger than any table could hold, and most states are never seen twice. A network instead generalizes across similar states, so experience in one situation improves the estimate for related situations the agent has never encountered.] A Deep Q-Network replaces the table with a neural network $Q(s, a; \theta)$ and fits $\theta$ by minimizing the squared TD error. Naively training this is unstable, so DQN (Mnih et al., 2015) added two ideas that are now standard:
+
+1. Experience replay: store transitions $(s, a, r, s')$ in a buffer and train on random minibatches sampled from it. This breaks the temporal correlation between consecutive samples and reuses data.
+2. A target network: a periodically updated copy $Q(\cdot; \theta^-)$ used to compute the bootstrap target, which stops the target from moving every gradient step.
+
+The loss minimized on a minibatch is
+
+$$
+L(\theta) = \mathbb{E}_{(s,a,r,s')}\Big[\big(\, r + \gamma \max_{a'} Q(s', a'; \theta^-) - Q(s, a; \theta) \,\big)^2\Big].
+$$
+
+> **Warning:** Combining a neural network with bootstrapped TD targets is dangerous. Because the same network produces both the prediction and the target, an update can chase a target that it just shifted, sending the values off to infinity. Experience replay and the target network exist precisely to tame this feedback loop.
+
+The following sketch shows the structure of a DQN training step in keras. It is kept `eval=FALSE` because it is meant as a reference, not a runnable demo: a full agent also needs an environment loop, and the keras backend is not assumed available in this build.
+
+```{r dqn-keras-sketch, eval=FALSE}
+library(keras)
+
+# Q-network: maps a state vector to one Q-value per action.
+build_q_network <- function(state_dim, n_actions) {
+  keras_model_sequential() |>
+    layer_dense(units = 64, activation = "relu",
+                input_shape = state_dim) |>
+    layer_dense(units = 64, activation = "relu") |>
+    layer_dense(units = n_actions, activation = "linear")
+}
+
+online_net <- build_q_network(state_dim = 4, n_actions = 2)
+target_net <- build_q_network(state_dim = 4, n_actions = 2)
+target_net |> set_weights(get_weights(online_net))
+
+online_net |> compile(optimizer = optimizer_adam(1e-3), loss = "mse")
+
+# One gradient step on a minibatch drawn from the replay buffer.
+dqn_train_step <- function(batch, gamma = 0.99) {
+  # batch: list with states, actions, rewards, next_states, done
+  q_next   <- predict(target_net, batch$next_states, verbose = 0)
+  max_next <- apply(q_next, 1, max)
+  targets_for_taken <- batch$rewards + gamma * max_next * (1 - batch$done)
+
+  q_now <- predict(online_net, batch$states, verbose = 0)
+  idx <- cbind(seq_len(nrow(q_now)), batch$actions + 1L) # actions 0-indexed
+  q_now[idx] <- targets_for_taken  # only the taken action gets a new target
+
+  online_net |> fit(batch$states, q_now, epochs = 1, verbose = 0)
+}
+
+# Periodically: target_net |> set_weights(get_weights(online_net))
+```
+
+## Policy based methods
+
+So far the agent has learned a value and then read off a policy by taking the action with the highest value. There is a more direct route. Policy based methods skip the value table and parameterize the policy itself as $\pi_\theta(a \mid s)$, then optimize the expected return $J(\theta) = \mathbb{E}_{\pi_\theta}[G_0]$ by gradient ascent. This is attractive when the action space is continuous or very large (where taking a $\max$ over actions is awkward or impossible), and when a stochastic policy is genuinely desirable, for example in games where being predictable is a weakness.
+
+> **Key idea:** Value based methods learn "how good is each action?" and act greedily. Policy based methods learn "what should I do?" directly and adjust that mapping to earn more reward. The two views are complementary, and actor-critic methods, below, combine them.
+
+### The policy gradient and REINFORCE
+
+The policy gradient theorem gives an expression for $\nabla_\theta J$ that does not require differentiating through the environment dynamics:
+
+$$
+\nabla_\theta J(\theta) = \mathbb{E}_{\pi_\theta}\!\left[ \sum_{t \ge 0} \nabla_\theta \log \pi_\theta(a_t \mid s_t)\, G_t \right].
+$$
+
+The intuition is the log likelihood trick: increase the log probability of actions that led to high return and decrease it for actions that led to low return, weighted by how good the return was. It is reinforcement in the literal sense, make the good actions more likely next time. REINFORCE (Williams, 1992) is the Monte Carlo estimate of this gradient. It runs full episodes, computes the realized return $G_t$ from each step, and takes an ascent step. The estimator is unbiased but high variance, so a state dependent baseline $b(s_t)$ is subtracted (it does not change the expectation):
+
+$$
+\nabla_\theta J(\theta) = \mathbb{E}_{\pi_\theta}\!\left[ \sum_{t \ge 0} \nabla_\theta \log \pi_\theta(a_t \mid s_t)\, \big(G_t - b(s_t)\big) \right].
+$$
+
+A natural choice of baseline is an estimate of $V(s_t)$, which leads directly to actor-critic methods.
+
+### Actor-critic methods
+
+Actor-critic methods keep an actor (the policy $\pi_\theta$) and a critic (a value estimate $V_w$ or $Q_w$). The critic supplies a low variance learning signal to the actor, typically the advantage
+
+$$
+A(s_t, a_t) = Q(s_t, a_t) - V(s_t) \approx r_t + \gamma V_w(s_{t+1}) - V_w(s_t),
+$$
+
+which measures how much better action $a_t$ was than the policy's average behavior in state $s_t$. A positive advantage means "that action beat expectations, do more of it"; a negative advantage means the opposite. The actor update becomes $\nabla_\theta \log \pi_\theta(a_t \mid s_t)\, A(s_t, a_t)$ and the critic is fit to reduce its own TD error.
+
+> **Intuition:** Think of the actor as a student trying actions and the critic as a coach. The coach does not dictate moves; it just says "that was better than I expected" or "worse than I expected," and the student adjusts. Because the coach's running expectation absorbs most of the variability, the feedback is far less noisy than raw returns. Modern algorithms in this family (A2C, PPO, SAC) add tricks to stay stable, such as clipping the size of each policy update (PPO, Schulman et al., 2017). PPO in particular is the workhorse behind the RLHF stage of instruction tuned language models.
+
+## Comparing the method families
+
+Table @tbl-deep-reinforcement-learning-method-families summarizes how the main approaches differ and when each is a reasonable default.
+
+| Property | Value based (Q-learning, DQN) | Policy gradient (REINFORCE) | Actor-critic (A2C, PPO, SAC) |
+|---|---|---|---|
+| What is learned | Action value $Q(s,a)$ | Policy $\pi_\theta(a\mid s)$ | Policy plus value critic |
+| Action spaces | Discrete | Discrete or continuous | Discrete or continuous |
+| On vs off policy | Off policy | On policy | Either, depending on variant |
+| Sample efficiency | Higher (replay reuses data) | Lower (Monte Carlo returns) | Medium to high |
+| Gradient variance | Not applicable | High | Reduced by the critic |
+| Stochastic policy | Indirect (via $\varepsilon$-greedy) | Native | Native |
+| Typical failure mode | Overestimation, instability | High variance, slow | Critic bias, tuning sensitivity |
+| Good default for | Discrete control, pixels | Simple continuous tasks, teaching | Most large scale problems |
+
+: Comparison of the three main reinforcement learning method families across what they learn, the action spaces they handle, sample efficiency, and typical failure modes. {#tbl-deep-reinforcement-learning-method-families}
+
+## Exploration strategies
+
+Exploration is the part of RL with no supervised analog. A greedy agent that always exploits its current estimates can lock onto a suboptimal action before it has tried the better one, a problem with no equivalent in supervised learning, where the dataset is fixed and never depends on the model's choices.
+
+> **Warning:** The exploration versus exploitation tradeoff is unavoidable. Too little exploration and the agent commits early to a mediocre policy; too much and it keeps gambling on random actions instead of using what it has learned. Almost every exploration method below is a different way to schedule the shift from the first regime to the second.
+
+Several standard strategies manage this tradeoff:
+
+- $\varepsilon$-greedy: random action with probability $\varepsilon$, otherwise greedy. Simple and widely used; decay $\varepsilon$ over time.
+- Boltzmann (softmax) exploration: sample actions with probability $\propto \exp(Q(s,a)/\tau)$, where temperature $\tau$ controls randomness.
+- Optimistic initialization: start $Q$ values high so unvisited actions look attractive and get tried.
+- Upper confidence bound (UCB) and Thompson sampling: pick actions by an optimistic or posterior sampled estimate, which is the dominant idea in bandits and carries over to RL.
+- Intrinsic motivation: add a bonus for visiting novel states, useful when external reward is sparse.
+
+## Runnable demo: tabular Q-learning on a gridworld
+
+The cleanest way to internalize Q-learning is to watch it solve a small gridworld with nothing but base R. The environment is a 4 by 4 grid. The agent starts in the top left, the goal is the bottom right, and one cell is a trap. Each step gives a small negative reward (to encourage short paths), reaching the goal gives a large positive reward, and the trap gives a large negative reward. The agent can move up, down, left, or right; moves into a wall leave it in place.
+
+> **Tip:** Read the next four chunks as one story. The first defines the environment (geometry, transitions, rewards), the second is the learning loop, the third reads the learned policy off the table, and the fourth plots the learning curve. Everything is plain base R plus `ggplot2`, so you can step through it line by line and inspect the `Q` matrix at any point.
+
+```{r grid-setup}
+.libPaths(c("C:/Users/miken/R/library-4.4", .libPaths()))
+set.seed(1)
+
+# Grid geometry: 4x4, states numbered 1..16 row-major.
+n_rows <- 4L
+n_cols <- 4L
+n_states <- n_rows * n_cols
+actions <- c("up", "down", "left", "right")
+n_actions <- length(actions)
+
+start_state <- 1L            # top-left
+goal_state  <- n_states      # bottom-right (16)
+trap_state  <- 11L           # one penalty cell
+
+# Convert between linear index and (row, col).
+to_rc <- function(s) c(row = ((s - 1L) %/% n_cols) + 1L,
+                       col = ((s - 1L) %% n_cols) + 1L)
+to_state <- function(r, c) (r - 1L) * n_cols + c
+
+# Deterministic transition: returns the next state for a (state, action).
+step_state <- function(s, a) {
+  rc <- to_rc(s); r <- rc["row"]; c <- rc["col"]
+  if (a == "up")    r <- max(1L, r - 1L)
+  if (a == "down")  r <- min(n_rows, r + 1L)
+  if (a == "left")  c <- max(1L, c - 1L)
+  if (a == "right") c <- min(n_cols, c + 1L)
+  as.integer(to_state(r, c))
+}
+
+# Reward and termination for landing in a state.
+reward_of <- function(s) {
+  if (s == goal_state) return(10)
+  if (s == trap_state) return(-10)
+  -0.1   # step cost
+}
+is_terminal <- function(s) s == goal_state || s == trap_state
+```
+
+With the environment defined, the Q-learning loop is short. The agent runs many episodes; in each it acts $\varepsilon$-greedily, applies the TD update, and decays $\varepsilon$.
+
+```{r q-learning-train}
+gamma   <- 0.95     # discount
+alpha   <- 0.5      # learning rate
+n_episodes <- 500L
+max_steps  <- 100L
+eps_start  <- 1.0
+eps_end    <- 0.05
+eps_decay  <- 0.99
+
+# Q-table: rows are states, columns are actions.
+Q <- matrix(0, nrow = n_states, ncol = n_actions,
+            dimnames = list(NULL, actions))
+
+epsilon <- eps_start
+returns_per_episode <- numeric(n_episodes)
+
+for (ep in seq_len(n_episodes)) {
+  s <- start_state
+  total_reward <- 0
+
+  for (t in seq_len(max_steps)) {
+    # epsilon-greedy action choice
+    if (runif(1) < epsilon) {
+      a_idx <- sample.int(n_actions, 1L)
+    } else {
+      a_idx <- which.max(Q[s, ])      # ties: first max
+    }
+    a <- actions[a_idx]
+
+    s_next <- step_state(s, a)
+    r <- reward_of(s_next)
+    total_reward <- total_reward + r
+
+    # Q-learning TD update
+    best_next <- if (is_terminal(s_next)) 0 else max(Q[s_next, ])
+    td_target <- r + gamma * best_next
+    Q[s, a_idx] <- Q[s, a_idx] + alpha * (td_target - Q[s, a_idx])
+
+    s <- s_next
+    if (is_terminal(s)) break
+  }
+
+  returns_per_episode[ep] <- total_reward
+  epsilon <- max(eps_end, epsilon * eps_decay)
+}
+
+cat("Final epsilon:", round(epsilon, 3), "\n")
+```
+
+The learned greedy policy is read directly off the Q-table. The next chunk prints it as an arrow grid so you can see the agent routing toward the goal and around the trap.
+
+```{r show-policy}
+arrow_of <- c(up = "^", down = "v", left = "<", right = ">")
+
+policy_grid <- matrix("", nrow = n_rows, ncol = n_cols)
+for (s in seq_len(n_states)) {
+  rc <- to_rc(s)
+  if (s == goal_state) {
+    policy_grid[rc["row"], rc["col"]] <- "G"
+  } else if (s == trap_state) {
+    policy_grid[rc["row"], rc["col"]] <- "X"
+  } else {
+    best_a <- actions[which.max(Q[s, ])]
+    policy_grid[rc["row"], rc["col"]] <- arrow_of[best_a]
+  }
+}
+
+cat("Learned greedy policy (S=start, G=goal, X=trap):\n\n")
+policy_grid[to_rc(start_state)["row"], to_rc(start_state)["col"]] <- "S"
+for (r in seq_len(n_rows)) {
+  cat(" ", paste(policy_grid[r, ], collapse = "  "), "\n")
+}
+```
+
+Finally, the learning curve. Plotting return against episode shows the agent improving from random behavior (frequently hitting the trap or wandering) to a stable, near optimal return. A moving average smooths the per episode noise. Figure @fig-deep-reinforcement-learning-reward-curve shows this trajectory.
+
+```{r fig-deep-reinforcement-learning-reward-curve, fig.cap="Episode return for tabular Q-learning on the gridworld. The raw return is noisy because of exploration; the moving average shows steady improvement and convergence.", fig.width=7, fig.height=4.5}
+library(ggplot2)
+
+ma <- function(x, k = 20L) {
+  as.numeric(stats::filter(x, rep(1 / k, k), sides = 1))
+}
+
+df <- data.frame(
+  episode = seq_along(returns_per_episode),
+  ret     = returns_per_episode,
+  smooth  = ma(returns_per_episode, 20L)
+)
+
+ggplot(df, aes(episode)) +
+  geom_line(aes(y = ret), color = "grey70", linewidth = 0.4) +
+  geom_line(aes(y = smooth), color = "steelblue", linewidth = 1.1,
+            na.rm = TRUE) +
+  labs(x = "Episode", y = "Total reward",
+       title = "Q-learning on a 4x4 gridworld",
+       subtitle = "Grey: per-episode return. Blue: 20-episode moving average.") +
+  theme_minimal(base_size = 12)
+```
+
+The arrow grid shows the payoff: every cell points along a sensible route toward the goal `G`, and the cells next to the trap `X` steer around it rather than into it. The same loop, with the table swapped for a neural network and a replay buffer, is exactly DQN. Keeping the demo tabular makes the convergence visible: the policy arrows and the rising reward curve are the whole story of value based RL on one screen.
+
+> **Note:** The fitted policy reflects the reward you wrote, not your unstated intentions. If you had forgotten the small per step penalty, the agent would have no reason to prefer short paths and might wander indefinitely. This small example already illustrates the single most important lesson in applied RL: the reward function is the specification.
+
+## Practical guidance and pitfalls
+
+RL projects fail in characteristic ways, and most of the failures are foreseeable. The following points collect the lessons that save the most time in practice, roughly in the order you will run into them:
+
+- Start tabular or small. If your state space is small, a table converges fast and is trivial to debug. Move to function approximation only when you must.
+- Reward design dominates outcomes. Agents optimize the reward you write, not the one you meant. Sparse rewards make learning hard; dense shaping rewards can introduce unintended shortcuts (reward hacking). Test that the optimal policy under your reward is the behavior you actually want.
+- Discounting is a modeling choice. A $\gamma$ too close to $1$ slows learning and can destabilize bootstrapping; too small makes the agent shortsighted. Tune it.
+- Exploration must be sufficient and must decay. Too little exploration converges to a suboptimal policy; too much never exploits. Anneal $\varepsilon$ or temperature.
+- Deep RL is unstable and sample hungry. The deadly triad (function approximation, bootstrapping, and off policy data together) can cause divergence. Replay buffers, target networks, gradient clipping, and reward or observation normalization exist to fight this. Expect to need many more samples than supervised learning, and seed multiple runs because variance across seeds is large.
+- Watch for overestimation. The $\max$ in the Q target biases value estimates upward. Double Q-learning (van Hasselt, 2010; van Hasselt et al., 2016) decouples action selection from evaluation to reduce this.
+- Evaluate with a separate greedy policy. Training return includes exploration noise. Periodically run the greedy policy with exploration off to measure true progress.
+- When not to use RL. If you can collect labels and decisions are not sequential, prefer supervised learning. If decisions are one shot with exploration, prefer bandits. RL pays off when delayed, sequential credit assignment is the actual problem.
+
+> **Tip:** Before scaling up, get a tiny version working end to end and confirm the agent solves it. The gridworld in this chapter is a fine starting harness: if a new algorithm cannot beat a 4 by 4 grid, the bug is in the algorithm, not the problem size.
+
+To summarize the chapter in one line: RL formalizes learning from evaluative, delayed feedback as an MDP, value based and policy based methods are two routes to solving it, and the deep variants scale those routes to large inputs at the cost of stability and sample efficiency. The gridworld demo shows the value based route in full, and the same loop with a network in place of the table is the foundation of everything from Atari agents to the alignment of large language models.
+
+## Further reading
+
+- Sutton and Barto (2018), Reinforcement Learning: An Introduction (2nd ed.). The standard textbook covering MDPs, TD learning, policy gradients, and exploration.
+- Watkins and Dayan (1992), Q-learning. The convergence result for tabular Q-learning.
+- Williams (1992), Simple statistical gradient-following algorithms for connectionist reinforcement learning. The REINFORCE estimator.
+- Mnih et al. (2015), Human-level control through deep reinforcement learning. The DQN paper introducing replay and target networks.
+- van Hasselt et al. (2016), Deep reinforcement learning with double Q-learning. Addressing overestimation.
+- Schulman et al. (2017), Proximal policy optimization algorithms. The PPO objective widely used in actor-critic and RLHF.
+- Lillicrap et al. (2016), Continuous control with deep reinforcement learning. DDPG for continuous action spaces.

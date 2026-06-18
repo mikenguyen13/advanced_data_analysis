@@ -1,0 +1,328 @@
+# Parallel Computing
+
+```{r}
+#| include: false
+suppressPackageStartupMessages(library(tidyverse))
+```
+
+Most of the analyses in this book run in a single, uninterrupted line of computation: the computer does one thing, finishes it, and moves on to the next. That is fine when each step is quick. It becomes painful when you have to repeat the same calculation thousands of times, fit hundreds of models for cross-validation, or grind through a data set too large to chew in one sitting. This chapter is about a simple idea for those situations: if a job can be split into pieces that do not depend on each other, you can hand the pieces to several workers and let them run at the same time. That is parallel computing.
+
+The intuition is the one you already use when you cook a big meal with friends. One person chops vegetables while another boils water and a third sets the table. Nothing finishes faster because any single task got easier; it finishes faster because the tasks happen simultaneously. Parallel computing applies the same "divide and conquer" logic to computation, and modern laptops already have the hardware for it: a machine with eight CPU cores can, in principle, do eight independent things at once.
+
+By the end of the chapter you will understand when parallelism actually helps (and when it does not), the two ways R sets up parallel workers, and four practical tools for running code in parallel: `multidplyr` for splitting a data frame across workers, the base `parallel` package, the `foreach` and `doParallel` combination for parallel loops, and `rslurm` for sending work to a computing cluster. This material sits naturally at the end of the book because it is not a modeling method in itself; it is a way to make every method you have already learned run faster on large problems.
+
+## When parallelism helps {-}
+
+Before reaching for parallel tools, it is worth knowing what is actually slowing your program down. Following [*Matt Jones*](https://nceas.github.io/oss-lessons/parallel-computing-in-r/parallel-computing-in-r.html), the time a computation takes is usually limited by one of four resources:
+
+-   CPU bound: the processor is the bottleneck because the work involves heavy arithmetic (fitting many models, simulating, optimizing).
+-   Memory bound: the data barely fit (or do not fit) in RAM, so the machine spends its time juggling memory.
+-   I/O bound: the program waits on reading from or writing to disk.
+-   Network bound: the program waits on data transferred over a network.
+
+Parallel computing mainly helps with the first case, CPU-bound work, where you have a lot of independent arithmetic to do and enough cores to do it on. If your job is waiting on a slow disk or a slow network, adding more workers will not speed it up and can even make things worse by competing for the same limited resource.
+
+> **When to use this:** Reach for parallelism when the same calculation is repeated many times over independent inputs, and each calculation is itself non-trivial. Cross-validation folds, bootstrap resamples, a grid of hyperparameters, and per-group summaries are textbook examples. If the steps depend on each other in sequence (each one needs the previous one's result), there is nothing to parallelize.
+
+By default, R (like Python) runs on a single core: it computes serially, one step after another.^[A "core" is an independent processing unit inside your CPU. A modern laptop typically has 4 to 16 cores. Running serially means only one of them is doing your work while the rest sit idle.] When the iterative part of an analysis is large and the iterations do not depend on one another, we can break the work into chunks and process them at the same time, which shortens the total wall-clock time.
+
+> **Warning:** Parallelism is not free. Setting up workers, copying data to them, and collecting their results all take time and memory. For small or fast tasks, this overhead can exceed the time you save, leaving the parallel version slower than the plain serial one. Parallelize the big, repetitive jobs, not the quick ones.
+
+## Directors, workers, and backends {-}
+
+Every parallel setup in R has the same two roles, and naming them makes the rest of the chapter easier to follow.
+
+1.  Director: the main R session that hands out tasks and manages the shared resources (processors, RAM, network bandwidth).
+2.  Workers: the additional R processes that carry out the tasks the director assigns and send results back.
+
+The *backend* is simply the channel through which the director and workers talk to each other. R offers two kinds, and the difference between them explains a lot of the behavior you will see later.
+
+Table @tbl-parallel-computing-backends summarizes the two backends.
+
+| Type  | Available on                          | Works across machines in a cluster | How workers get their environment                                                       |
+|-------|---------------------------------------|------------------------------------|-----------------------------------------------------------------------------------------|
+| FORK  | Unix machines (Linux, macOS)          | No                                 | Workers share the director's environment (data, loaded packages, functions) directly    |
+| PSOCK | Unix and Windows (the default)        | Yes                                | The director's environment is copied to each worker as a fresh, separate process         |
+
+: Comparison of the FORK and PSOCK parallel backends in R, showing where each is available, whether it works across machines, and how workers obtain their environment. {#tbl-parallel-computing-backends}
+
+FORK works by cloning the running R process, so the workers already have everything the director had and only need to send their outputs back. That sharing makes it efficient, roughly 40% faster than PSOCK in common cases, but it is only available on Unix-like systems. PSOCK starts brand-new, empty R sessions and copies over whatever they need, which is slower and more memory-hungry but works everywhere, including Windows, and across separate machines.
+
+> **Key idea:** FORK shares; PSOCK copies. On macOS or Linux, FORK is usually the better default. On Windows you are limited to PSOCK, which is why the Windows examples in this chapter explicitly load packages and ship data to each worker: a fresh PSOCK worker starts knowing nothing.
+
+> **Tip:** Because PSOCK workers start empty, a very common bug is "could not find function" or "object not found" errors inside parallel code. The fix is to make sure each worker has the packages and variables it needs. The tools below all provide a way to do this.
+
+With the vocabulary in place, the rest of the chapter walks through four tools, moving from the most convenient (a data frame interface) to the most general (a full computing cluster).
+
+## multidplyr
+
+If you already think in `dplyr` verbs, `multidplyr` is the gentlest entry point: it lets you split a data frame across workers and run familiar `dplyr` operations on each piece in parallel, then gather the results back together.
+
+Figure @fig-parallel-computing-multidplyr-workflow sketches the idea: a data frame is split into groups, each group is shipped to a separate worker, the same `dplyr` operation runs on every worker at once, and the pieces are gathered back into one result.
+
+```{r fig-parallel-computing-multidplyr-workflow, echo=FALSE, fig.cap="The multidplyr workflow: a data frame is partitioned across workers, the same dplyr operation runs on each piece in parallel, and the per-worker results are collected back into a single data frame. Figure by Business Science."}
+knitr::include_graphics("images/multidplyr.png")
+```
+
+There are two situations where this pays off:
+
+1.  A large data set that you can break into smaller pieces and analyze piece by piece.
+2.  A data set on which you need to run several independent analyses (for example, fitting one model per group).
+
+> **Note:** An older walkthrough by [Business Science](https://www.business-science.io/code-tools/2016/12/18/multidplyr.html#figure1) is no longer available; the examples below follow the package author's current interface.
+
+The first step is to create a cluster of workers and tell each one which libraries it will need. Remember that on a PSOCK backend each worker starts empty, so loading `dplyr` on the cluster is not optional.
+
+```{r}
+library(multidplyr)
+
+cluster <- new_cluster(parallel::detectCores() - 2) # use all cores except 2
+cluster_library(cluster, "dplyr") # load libraries on every worker
+```
+
+> **Tip:** Leaving a couple of cores free (`detectCores() - 2`) keeps your machine responsive while the job runs and avoids starving the operating system. Using every core can make the whole computer sluggish.
+
+How you get data onto the workers depends on where the data live. The more efficient approach, when your data are spread across several files, is to have each worker read a different file directly, so the raw data never has to pass through the director.
+
+```{r, eval = FALSE}
+# Give each worker a different filename
+cluster_assign_each(cluster, filename = c("a.csv", "b.csv", "c.csv", "d.csv"))
+
+# Each worker loads its own file with vroom
+cluster_send(cluster, my_data <- vroom::vroom(filename))
+
+# Wrap the per-worker my_data as a single partitioned data frame
+my_data <- party_df(cluster, "my_data")
+```
+
+If the files already sit together in a folder, you can let `multidplyr` hand them out for you:
+
+```{r, eval = FALSE}
+files <- dir(path, full.names = TRUE)
+cluster_assign_partition(cluster, files = files)
+```
+
+The second approach applies when the data are already loaded in your director session as one data frame. Here you `partition()` the rows across the workers. If your analysis needs all rows of a group to stay on the same worker (for example, a per-group summary or model), call `group_by()` before `partition()` so groups are never split across workers.
+
+```{r}
+library(nycflights13)
+
+flight_dest <- flights %>% group_by(dest) %>% partition(cluster)
+flight_dest
+```
+
+Now the usual `dplyr` verbs run on each worker in parallel. Once the per-worker results are ready, `collect()` brings them back to the director and reassembles them into a single data frame.
+
+```{r}
+flight_dest %>%
+  summarise(delay = mean(dep_delay, na.rm = TRUE), n = n()) %>%
+  collect()
+```
+
+The output is one row per destination, showing the average departure delay and the number of flights, exactly what an ordinary `dplyr` pipeline would produce, but computed across several workers. The `collect()` step is what turns the scattered, per-worker pieces back into the tidy result you want.
+
+When you are finished, it is good housekeeping to remove the cluster and detach the package so the worker processes are released.
+
+```{r}
+rm(cluster)
+detach(package:multidplyr)
+rm(list = ls())
+```
+
+## parallel
+
+The base `parallel` package is more general than `multidplyr`: it is not tied to data frames, so you can parallelize arbitrary computations. The following example, adapted from [Blas M. Benito](https://www.blasbenito.com/post/02_parallelizing_loops_with_r/), first makes sure a handful of packages are installed and loaded.
+
+```{r}
+#automatic install of packages if they are not installed already
+list.of.packages <- c(
+  "foreach",
+  "doParallel",
+  "ranger",
+  "palmerpenguins",
+  "tidyverse",
+  "kableExtra"
+  )
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+
+if(length(new.packages) > 0){
+  install.packages(new.packages, dep=TRUE)
+}
+
+#loading packages
+for(package.i in list.of.packages){
+  suppressPackageStartupMessages(
+    library(
+      package.i,
+      character.only = TRUE
+      )
+    )
+}
+
+#loading example data
+data("penguins")
+```
+
+The workflow with `parallel` always follows the same shape: detect the cores, build a cluster, register it, do the work, and stop the cluster. The comments below label each of these steps. The small example computes square roots in parallel using `foreach` with the `%dopar%` operator (more on `foreach` in the next section); the point here is the cluster lifecycle around it.
+
+```{r}
+n.cores <- parallel::detectCores() - 2 # use all cores except 2
+
+#create the cluster
+my.cluster <- parallel::makeCluster(
+  n.cores,
+  type = "PSOCK" # alternatively, we can use FORK
+  )
+
+#check cluster definition (optional)
+print(my.cluster)
+
+#register it to be used by %dopar%
+doParallel::registerDoParallel(cl = my.cluster)
+
+#check if it is registered (optional)
+foreach::getDoParRegistered()
+
+#how many workers are available? (optional)
+foreach::getDoParWorkers()
+
+x <- foreach(
+  i = 1:10,
+  .combine = 'c'
+) %dopar% {
+    sqrt(i)
+}
+
+# when done, stop cluster
+parallel::stopCluster(cl = my.cluster)
+```
+
+> **Warning:** Always call `stopCluster()` when you are done. Each worker is a live R process; if you forget to stop the cluster, those processes linger in the background and keep consuming memory.
+
+A common pattern is to parallelize an `lapply()`. The function `parLapply()` is the parallel twin of `lapply()`: it applies a function to each element of a list, but spreads the elements across workers. The example below, following [Jens Moll-Elsborg](https://towardsdatascience.com/getting-started-with-parallel-programming-in-r-d5f801d43745), builds a list of four large numeric vectors and computes each one's mean in parallel.
+
+> **Note:** The original example used vectors of length `1e9`. Under PSOCK each of those vectors (about 4 GB) must be copied to a worker, which can exhaust memory on a typical machine. We use `1e7` here so the example runs reliably while illustrating the same idea; raise it on a machine with ample RAM.
+
+```{r}
+# Generate data
+data <- 1:1e7
+data_list <- list("1" = data,
+                  "2" = data,
+                  "3" = data,
+                  "4" = data)
+
+
+library(parallel)
+cl <- parallel::makeCluster(detectCores() - 2)
+parallel::parLapply(cl,
+                    data_list,
+                    mean)
+
+# Close cluster
+parallel::stopCluster(cl)
+```
+
+The result is a list of four means, one per input vector, each computed on a separate worker. [Blas Benito](https://www.blasbenito.com/post/02_parallelizing_loops_with_r/) gives a fuller example of the same machinery applied to tuning random forest hyperparameters in parallel, which is a natural fit because each hyperparameter setting can be evaluated independently.
+
+## doParallel
+
+The `foreach` package gives loops a parallel form, and `doParallel` is the adapter that connects `foreach` to a `parallel` cluster. The idea is to write a loop with `foreach(...) %dopar% { ... }` and let the registered backend run the iterations across workers. The `.combine` argument says how to stitch the per-iteration results together (`c` for a vector, `rbind` to stack rows, and so on).
+
+The example reuses the `data_list` from above and computes each element's mean, this time gathering the results into a matrix with `rbind`.
+
+```{r}
+library(doParallel)
+library(parallel)
+library(foreach)
+
+# Detect the number of available cores and create cluster
+cl <- parallel::makeCluster(detectCores() - 2) # use all cores except 2
+
+# Activate cluster for foreach library
+doParallel::registerDoParallel(cl)
+
+
+r <- foreach::foreach(i = 1:length(data_list),
+                      .combine = rbind) %dopar% {
+                          mean(data_list[[i]])
+                      }
+
+
+# Stop cluster to free up resources
+parallel::stopCluster(cl)
+```
+
+> **Intuition:** `%dopar%` runs the loop body in parallel across the registered workers, while its sibling `%do%` runs the same loop serially. Switching between them is a one-word change, which makes `foreach` a convenient way to develop a loop serially and then parallelize it once it works.
+
+The two cleanup chunks below unload the packages loaded during these examples, returning the session to a clean state.
+
+```{r}
+pacman::p_unload(pacman::p_loaded(), character.only = TRUE)
+```
+
+```{r}
+# detach(package:parallel)
+```
+
+## rslurm
+
+Everything so far has run on the cores of a single machine. To go further, research computing often uses a *cluster*: many separate machines (nodes) coordinated by a scheduler. Slurm is one of the most common schedulers, and the [`rslurm`](https://cran.r-project.org/web/packages/rslurm/vignettes/rslurm.html) package lets you send R work to a Slurm cluster without leaving R.
+
+> **When to use this:** Single-machine tools like `parallel` are enough until your job outgrows one computer's cores or memory. When that happens (very large simulations, sweeping a huge parameter grid) `rslurm` distributes the work across the cluster's nodes for you.
+
+In short, `rslurm` does two things:
+
+-   It automatically divides the workload over multiple nodes.
+-   It combines and retrieves the outputs from those nodes.
+
+The pattern is to write the function you want to run, build a data frame whose rows are the argument combinations, and pass both to `slurm_apply()`. Here `test_func` draws a million normal samples and returns their mean and standard deviation, and `pars` holds ten parameter combinations to evaluate.
+
+> **Note:** We pass `submit = FALSE` so the example only writes the Slurm submission scripts rather than trying to submit to a live scheduler. On a real cluster you would set `submit = TRUE` (or submit the generated script yourself), which is why the follow-up chunks that retrieve results are marked `eval = FALSE` here: they need an actual Slurm job to have run.
+
+```{r}
+test_func <- function(par_mu, par_sd) {
+    samp <- rnorm(10 ^ 6, par_mu, par_sd)
+    c(s_mu = mean(samp), s_sd = sd(samp))
+}
+
+
+pars <- data.frame(par_mu = 1:10,
+                   par_sd = seq(0.1, 1, length.out = 10))
+head(pars, 3)
+
+
+library(rslurm)
+sjob <- slurm_apply(test_func, pars, jobname = 'test_apply',
+                    nodes = 2, cpus_per_node = 2, submit = FALSE)
+```
+
+With `submit = FALSE`, `rslurm` writes a `_rslurm_[jobname]` folder containing the submission script. The typical workflow is then to move that folder to the cluster, run `sbatch submit.sh` there, and move it back to your working directory once the job finishes. Each node writes its own `results_*.RDS` file.
+
+Once the job has run, `get_slurm_out()` collects the per-node results into a single object:
+
+```{r, eval = FALSE}
+# the results from all the nodes
+res <- get_slurm_out(sjob, outtype = 'table', wait = FALSE) # wait = TRUE pauses execution until the Slurm job finishes
+# use outtype = 'raw' if you want a simple vector
+head(res, 3)
+```
+
+When you no longer need the temporary files, clean them up:
+
+```{r, eval = FALSE}
+cleanup_files(sjob)
+```
+
+Finally, because each node starts its own R session (the same "empty worker" problem as PSOCK, now across machines), you must tell `rslurm` which functions and packages each node needs. The `global_objects` argument ships named objects to every node, and `pkgs` lists packages to load there.
+
+```{r, eval = FALSE}
+sjob <- slurm_apply(function(a, b) c(func1(a),func2(b)),
+                    data.frame(a, b),
+                    global_objects = c("func1", "func2"),
+                    pkgs = c("tidyverse", "doParallel"),
+                    nodes = 2, cpus_per_node = 2)
+```
+
+## Summary {-}
+
+Parallel computing speeds up CPU-bound work by splitting independent tasks across several workers and running them at once. The same two ideas recur in every tool: a director hands out work to workers, and the backend (FORK on Unix, PSOCK everywhere) determines whether those workers share or copy the director's environment. For data-frame work in `dplyr` style, `multidplyr` partitions rows across workers. For general computation on one machine, the `parallel` package and the `foreach`/`doParallel` pair turn `apply`-style calls and loops parallel. When a single machine is not enough, `rslurm` distributes the work across a Slurm cluster. In every case, remember the two recurring traps: workers that start empty need their packages and data sent to them, and the overhead of parallelism only pays off on large, repetitive jobs.

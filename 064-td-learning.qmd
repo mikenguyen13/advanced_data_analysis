@@ -1,0 +1,314 @@
+# Monte Carlo and Temporal-Difference Learning
+
+```{r}
+#| include: false
+suppressPackageStartupMessages(library(tidyverse))
+```
+
+Suppose you are dropped into an unfamiliar building and told there is an exit somewhere, with a small reward waiting outside. Nobody hands you a floor plan. You can only walk around, occasionally bump into a wall, and eventually stumble out the door. Do this many times and something useful happens: you start to sense which corridors lead somewhere good and which dead-end, long before you can articulate the building's layout. You learn to act well without ever writing down a map.
+
+That is the situation this chapter studies. In the language of Markov decision processes, the "map" is the transition model (where each action takes you) together with the reward function (what each move pays). When you know both, you can solve for the optimal behavior by dynamic programming: value iteration and policy iteration sweep through the known dynamics and compute the best policy directly. But in most real problems the dynamics are unknown. A robot does not know in advance how its motors interact with a slippery floor; a recommendation agent does not know how a user will react to a new layout. The agent has to learn purely from experience, one transition at a time. This is the *model-free* setting, and it is where Monte Carlo and temporal-difference (TD) methods live.
+
+The two ideas in the title sit at opposite ends of a spectrum. Monte Carlo methods wait until an episode finishes and then learn from the total reward actually collected: honest but patient. Temporal-difference methods update after every single step, using their own current guess of the future as a stand-in for the rest of the episode: a guess that bootstraps off another guess. That sounds circular, and the surprising fact, made precise below, is that it works, often far better than waiting. By the end of the chapter you will understand the TD update and the TD error, see why SARSA and Q-learning differ by a single symbol yet behave differently near danger, and have a runnable base-R agent that learns to walk along a cliff without falling off.
+
+> **Note:** This chapter assumes you have met the Markov decision process (MDP) and the Bellman equations, for instance through value iteration on a known model. Here the model is unknown. Everything is learned from sampled experience: tuples of state, action, reward, and next state.
+
+## Notation and the prediction problem {#td-notation}
+
+We work with a finite MDP. At each time step $t$ the agent is in a state $S_t \in \mathcal{S}$, takes an action $A_t \in \mathcal{A}$, receives a scalar reward $R_{t+1} \in \mathbb{R}$, and moves to a new state $S_{t+1}$. A *policy* $\pi(a \mid s)$ gives the probability of choosing action $a$ in state $s$. The agent's goal is to maximize the expected *return*, the discounted sum of future rewards
+
+$$
+G_t \;=\; R_{t+1} + \gamma R_{t+2} + \gamma^2 R_{t+3} + \cdots \;=\; \sum_{k=0}^{\infty} \gamma^k R_{t+k+1},
+$$
+
+where the *discount factor* $\gamma \in [0,1]$ trades off immediate against later reward. A value of $\gamma$ near $0$ makes the agent myopic; near $1$ it cares about the distant future.
+
+Two value functions summarize how good things are under a policy $\pi$:
+
+$$
+v_\pi(s) = \mathbb{E}_\pi[\,G_t \mid S_t = s\,], \qquad
+q_\pi(s,a) = \mathbb{E}_\pi[\,G_t \mid S_t = s,\, A_t = a\,].
+$$
+
+The *state-value* $v_\pi(s)$ is the expected return from $s$ onward; the *action-value* $q_\pi(s,a)$ is the expected return after committing to action $a$ in $s$ and following $\pi$ afterward. Because the model is unknown, action-values are the more useful object: if you know $q$, you can act greedily by picking $\arg\max_a q(s,a)$ without ever consulting a transition model. Learning $v_\pi$ or $q_\pi$ for a fixed $\pi$ is the *prediction* problem; improving $\pi$ toward the optimal policy $\pi_*$ is the *control* problem.
+
+> **Key idea:** When the dynamics are unknown, action-values $q(s,a)$ are worth more than state-values $v(s)$, because choosing the best action from $q$ needs no model, whereas choosing from $v$ requires knowing where each action would take you.
+
+## Monte Carlo: learn from complete returns {#td-monte-carlo}
+
+The most direct way to estimate $v_\pi(s)$ is to take its definition literally. Run the policy, record the return that actually followed each visit to $s$, and average those returns. By the law of large numbers the average converges to the expectation. This is the Monte Carlo (MC) idea, and it requires only the ability to sample episodes, not any knowledge of transition probabilities.
+
+Concretely, suppose state $s$ was visited and the episode that followed yielded return $G$. The *every-visit* MC estimate maintains a running average
+
+$$
+V(s) \;\leftarrow\; V(s) + \alpha \,\bigl[\, G - V(s) \,\bigr],
+$$
+
+where $\alpha$ is a step size (using $\alpha = 1/N(s)$, with $N(s)$ the visit count, recovers the exact sample mean). The quantity $G - V(s)$ is the error between the realized return and the current estimate, and we nudge $V(s)$ a fraction of the way toward $G$.
+
+The defining feature, and the catch, is that $G$ is only known once the episode terminates. Monte Carlo cannot learn from an unfinished episode, and it cannot be used at all in a setting that never ends. It is also high variance: a single episode's return depends on every random action and transition along the way, so estimates wobble.^[The flip side is that Monte Carlo is unbiased. Each sampled return is an honest draw from the true return distribution, so the only error is variance, which averaging drives down. TD trades some of this away, accepting bias from bootstrapping in exchange for much lower variance.]
+
+> **Intuition:** Monte Carlo is like grading a chess move only by who won the game. Correct on average, but you must play to the end, and a single blunder elsewhere can wrongly tar a good move.
+
+## Temporal-difference learning: bootstrap from the next step {#td-zero}
+
+Temporal-difference learning keeps the averaging idea but refuses to wait. The insight is that the return obeys a recursive relationship, the Bellman equation: $G_t = R_{t+1} + \gamma G_{t+1}$. We cannot observe $G_{t+1}$, but we already maintain an estimate of its expectation, namely $V(S_{t+1})$. So we substitute the estimate for the unknown and update immediately after one step. This is the TD(0) update:
+
+$$
+V(S_t) \;\leftarrow\; V(S_t) + \alpha \,\underbrace{\bigl[\, R_{t+1} + \gamma V(S_{t+1}) - V(S_t) \,\bigr]}_{\displaystyle \delta_t},
+$$
+
+The bracketed quantity $\delta_t$ is the *TD error*. It compares two estimates of the same thing: the one-step *target* $R_{t+1} + \gamma V(S_{t+1})$, which mixes a real observed reward with a bootstrapped guess of the rest, against the current estimate $V(S_t)$. If the target exceeds the estimate, $S_t$ was better than we thought and we raise its value; if lower, we lower it.
+
+> **Key idea:** The TD error $\delta_t = R_{t+1} + \gamma V(S_{t+1}) - V(S_t)$ is the engine of reinforcement learning. It measures surprise: the gap between what you expected and what one real step plus your own forecast now tell you. Every algorithm in this chapter is, at bottom, a rule for reducing TD error.
+
+Replacing the full return $G_t$ with the bootstrapped target $R_{t+1} + \gamma V(S_{t+1})$ has three consequences. First, you can learn online, after every step, even in problems that never terminate. Second, the target depends on only one random reward and transition rather than the whole future, so its variance is far lower than Monte Carlo's. Third, the target is biased while $V$ is still wrong, because it leans on a guess. In practice the variance reduction usually dominates, and TD methods tend to learn faster on Markov problems. Both MC and TD(0) converge to $v_\pi$ under standard step-size conditions, but they take different routes there.
+
+> **Note:** The Robbins-Monro conditions on the step size, $\sum_t \alpha_t = \infty$ and $\sum_t \alpha_t^2 < \infty$, guarantee convergence for the prediction problem. A constant $\alpha$ violates the second condition and so does not fully converge; instead it tracks a moving target, which is exactly what you want in a nonstationary environment.
+
+### TD(lambda) and eligibility traces, conceptually {#td-lambda}
+
+TD(0) looks one step ahead; Monte Carlo looks all the way to the end. There is a whole family in between. The $n$-step return $G_t^{(n)} = R_{t+1} + \gamma R_{t+2} + \cdots + \gamma^{n-1} R_{t+n} + \gamma^n V(S_{t+n})$ uses $n$ real rewards before bootstrapping. TD(0) is $n=1$; Monte Carlo is $n = \infty$.
+
+TD($\lambda$) blends all of these at once. It forms a geometrically weighted average of every $n$-step return, controlled by a single parameter $\lambda \in [0,1]$:
+
+$$
+G_t^\lambda \;=\; (1-\lambda) \sum_{n=1}^{\infty} \lambda^{\,n-1} G_t^{(n)}.
+$$
+
+At $\lambda = 0$ only the one-step return survives and we recover TD(0); at $\lambda = 1$ the average collapses to the full return and we recover Monte Carlo. The practical implementation does not literally compute that infinite sum. Instead it keeps an *eligibility trace* $e(s)$ for each state: a short-term memory that spikes when a state is visited and then fades by a factor $\gamma\lambda$ each step. When a TD error occurs, every state is updated in proportion to its current trace, so credit flows backward to recently visited states. This lets a single surprising reward at the goal propagate to the steps that led there, rather than seeping back one state per episode.
+
+> **Intuition:** Eligibility traces answer "who deserves credit for this surprise?" A state visited one step ago is highly eligible; a state visited twenty steps ago, only faintly. The trace is the fading footprint the agent leaves behind, and the TD error is splashed back along it.
+
+## Control: SARSA and Q-learning {#td-control}
+
+Prediction estimates the value of a fixed policy. Control improves the policy. The standard recipe is *generalized policy iteration*: alternate between estimating action-values $Q(s,a)$ and acting greedily with respect to them. To keep exploring, the agent does not act purely greedily but follows an *$\varepsilon$-greedy* policy: with probability $1-\varepsilon$ take $\arg\max_a Q(s,a)$, and with probability $\varepsilon$ take a uniformly random action. The two famous control algorithms differ only in how they form the TD target.
+
+SARSA is *on-policy*. Its name lists the tuple it uses: $(S_t, A_t, R_{t+1}, S_{t+1}, A_{t+1})$. It actually chooses the next action $A_{t+1}$ from its current ($\varepsilon$-greedy) policy and uses that action's value in the target:
+
+$$
+Q(S_t, A_t) \;\leftarrow\; Q(S_t, A_t) + \alpha \,\bigl[\, R_{t+1} + \gamma\, Q(S_{t+1}, A_{t+1}) - Q(S_t, A_t) \,\bigr].
+$$
+
+Because $A_{t+1}$ is drawn from the same policy the agent follows, SARSA evaluates and improves the policy it is genuinely using, exploration included.
+
+Q-learning is *off-policy*. It targets the value of the *best* next action regardless of what it actually does next:
+
+$$
+Q(S_t, A_t) \;\leftarrow\; Q(S_t, A_t) + \alpha \,\bigl[\, R_{t+1} + \gamma \max_{a} Q(S_{t+1}, a) - Q(S_t, A_t) \,\bigr].
+$$
+
+The $\max$ over actions makes the target track the greedy (optimal) policy even while the agent behaves $\varepsilon$-greedily. So Q-learning learns about a policy it does not follow: it explores with randomness but learns the value of acting greedily.
+
+> **Key idea:** SARSA and Q-learning differ by one symbol in the target. SARSA uses $Q(S_{t+1}, A_{t+1})$, the value of the action it will take. Q-learning uses $\max_a Q(S_{t+1}, a)$, the value of the best action it could take. On-policy versus off-policy hinges entirely on that choice.
+
+This difference is not cosmetic. SARSA's target accounts for the fact that the agent will sometimes explore and land somewhere bad, so it learns a policy that is cautious in the presence of its own randomness. Q-learning assumes greedy behavior in the target and so learns the optimal policy's values, even though its random exploration occasionally pushes it into trouble. The cliff-walking demo below makes the consequence vivid: SARSA prefers a safe detour, Q-learning hugs the cliff edge.
+
+## A runnable demo: cliff walking {#td-demo}
+
+We implement both algorithms in base R on the cliff-walking gridworld of Sutton and Barto (2018, Example 6.6). The grid is 4 rows by 12 columns. The start is the bottom-left cell and the goal is the bottom-right. The entire bottom row between them is a cliff. Every step costs $-1$. Stepping into the cliff costs $-100$ and teleports the agent back to the start. Actions are the four moves up, down, left, right; moving into an outer wall leaves the agent in place.
+
+The optimal path (in terms of total reward) runs straight along the row just above the cliff. But that path is risky for an exploring agent: a single random step downward falls off. We will see the two algorithms resolve this tension differently.
+
+```{r td-learning-setup}
+set.seed(1301)
+
+# Cliff-walking environment ------------------------------------------------
+n_rows <- 4L
+n_cols <- 12L
+n_states <- n_rows * n_cols
+n_actions <- 4L  # 1=up, 2=right, 3=down, 4=left
+
+# Map (row, col) with row 1 at the BOTTOM to a state index 1..48.
+rc_to_state <- function(row, col) (row - 1L) * n_cols + col
+start_state <- rc_to_state(1L, 1L)
+goal_state  <- rc_to_state(1L, n_cols)
+# Cliff cells: bottom row, columns 2..11.
+cliff_states <- rc_to_state(1L, 2L:(n_cols - 1L))
+
+# Given a state and action, return list(next_state, reward, done).
+step_env <- function(s, a) {
+  row <- (s - 1L) %/% n_cols + 1L
+  col <- (s - 1L) %%  n_cols + 1L
+  if (a == 1L) row <- min(row + 1L, n_rows)  # up
+  if (a == 2L) col <- min(col + 1L, n_cols)  # right
+  if (a == 3L) row <- max(row - 1L, 1L)      # down
+  if (a == 4L) col <- max(col - 1L, 1L)      # left
+  s2 <- rc_to_state(row, col)
+  if (s2 %in% cliff_states) {
+    return(list(next_state = start_state, reward = -100, done = FALSE))
+  }
+  if (s2 == goal_state) {
+    return(list(next_state = s2, reward = -1, done = TRUE))
+  }
+  list(next_state = s2, reward = -1, done = FALSE)
+}
+
+# epsilon-greedy action selection from a Q-row.
+eps_greedy <- function(qrow, epsilon) {
+  if (runif(1) < epsilon) {
+    sample.int(n_actions, 1L)
+  } else {
+    which.max(qrow)  # ties: first max, deterministic
+  }
+}
+```
+
+The two learners share almost all of their code. We write one function with a flag selecting the target.
+
+```{r td-learning-agents}
+run_agent <- function(method = c("sarsa", "qlearning"),
+                      n_episodes = 500L,
+                      alpha = 0.5, gamma = 1.0, epsilon = 0.1,
+                      max_steps = 1000L) {
+  method <- match.arg(method)
+  Q <- matrix(0, nrow = n_states, ncol = n_actions)
+  ep_reward <- numeric(n_episodes)
+
+  for (ep in seq_len(n_episodes)) {
+    s <- start_state
+    a <- eps_greedy(Q[s, ], epsilon)
+    total <- 0
+    done <- FALSE
+    steps <- 0L
+
+    while (!done && steps < max_steps) {
+      steps <- steps + 1L
+      res <- step_env(s, a)
+      s2 <- res$next_state; r <- res$reward; done <- res$done
+      total <- total + r
+
+      if (method == "sarsa") {
+        a2 <- eps_greedy(Q[s2, ], epsilon)         # on-policy next action
+        target <- r + gamma * Q[s2, a2] * (!done)
+      } else {
+        a2 <- eps_greedy(Q[s2, ], epsilon)         # behaviour is still eps-greedy
+        target <- r + gamma * max(Q[s2, ]) * (!done)  # off-policy: greedy target
+      }
+      Q[s, a] <- Q[s, a] + alpha * (target - Q[s, a])
+      s <- s2; a <- a2
+    }
+    ep_reward[ep] <- total
+  }
+  list(Q = Q, ep_reward = ep_reward)
+}
+
+set.seed(1301)
+sarsa <- run_agent("sarsa")
+set.seed(1301)
+qlearn <- run_agent("qlearning")
+```
+
+### Learning curves {#td-demo-curve}
+
+Figure @fig-td-learning-curve shows the reward collected per episode, smoothed with a trailing moving average so the trend is visible through the exploration noise. Both agents improve quickly. The instructive part is the steady state: Q-learning learns the optimal (shorter, riskier) path and so would score best if it never explored, but its $\varepsilon$-greedy exploration occasionally tips it off the cliff, dragging its online reward down. SARSA learns a safer path that keeps it away from the edge, so its online performance during learning is actually higher.
+
+```{r fig-td-learning-curve, fig.cap="Reward per episode (trailing 10-episode moving average) for SARSA and Q-learning on cliff walking. SARSA earns more online because it learns a safe path that tolerates its own exploration, while Q-learning's optimal-but-risky path costs it occasional falls off the cliff.", fig.width=7, fig.height=4.5}
+moving_avg <- function(x, k = 10L) {
+  out <- rep(NA_real_, length(x))
+  for (i in seq_along(x)) {
+    lo <- max(1L, i - k + 1L)
+    out[i] <- mean(x[lo:i])
+  }
+  out
+}
+
+sm_s <- moving_avg(sarsa$ep_reward)
+sm_q <- moving_avg(qlearn$ep_reward)
+
+plot(sm_s, type = "l", lwd = 2, col = "#1b7837",
+     ylim = c(-150, 0), xlab = "Episode",
+     ylab = "Reward per episode (10-ep moving avg)",
+     main = "Cliff walking: SARSA vs Q-learning")
+lines(sm_q, lwd = 2, col = "#762a83")
+abline(h = -13, lty = 3, col = "grey50")  # optimal greedy path return
+legend("bottomright",
+       legend = c("SARSA (on-policy)", "Q-learning (off-policy)",
+                  "optimal greedy return (-13)"),
+       col = c("#1b7837", "#762a83", "grey50"),
+       lwd = c(2, 2, 1), lty = c(1, 1, 3), bty = "n")
+```
+
+### The learned policies {#td-demo-policy}
+
+To see *why* the curves differ, we extract the greedy policy from each $Q$ table and draw the grid. Figure @fig-td-learning-policies overlays both. Each arrow is the greedy action in that cell. Q-learning steers along the row directly above the cliff (the optimal path); SARSA climbs one extra row first, buying a safety margin against an unlucky random step.
+
+```{r fig-td-learning-policies, fig.cap="Greedy policies recovered from the learned action-values. Left: SARSA takes the safe route, stepping up and away from the cliff edge. Right: Q-learning takes the optimal route hugging the cliff. 'S' marks start, 'G' goal, and shaded cells are the cliff.", fig.width=7, fig.height=4}
+arrow_for <- function(a) c("↑", "→", "↓", "←")[a]  # up,right,down,left
+
+draw_policy <- function(Q, title) {
+  plot(NA, xlim = c(0.5, n_cols + 0.5), ylim = c(0.5, n_rows + 0.5),
+       xlab = "", ylab = "", axes = FALSE, main = title, asp = 1)
+  for (s in seq_len(n_states)) {
+    row <- (s - 1L) %/% n_cols + 1L
+    col <- (s - 1L) %%  n_cols + 1L
+    rect(col - 0.5, row - 0.5, col + 0.5, row + 0.5, border = "grey80",
+         col = if (s %in% cliff_states) "grey85" else "white")
+    if (s %in% cliff_states) {
+      text(col, row, "X", col = "grey50")
+    } else if (s == start_state) {
+      text(col, row, "S", font = 2)
+    } else if (s == goal_state) {
+      text(col, row, "G", font = 2)
+    } else {
+      text(col, row, arrow_for(which.max(Q[s, ])), cex = 1.1)
+    }
+  }
+}
+
+par(mfrow = c(2, 1), mar = c(1, 1, 2, 1))
+draw_policy(sarsa$Q,  "SARSA (on-policy): safe path")
+draw_policy(qlearn$Q, "Q-learning (off-policy): optimal path")
+par(mfrow = c(1, 1))
+```
+
+### Numerical comparison {#td-demo-table}
+
+Table @tbl-td-learning-compare summarizes the contrast quantitatively, reporting the average online reward over the final 100 training episodes (when exploration is still on) for each method. The pattern is the classic result from Sutton and Barto (2018): SARSA's online reward is higher even though Q-learning has learned the genuinely optimal policy.
+
+```{r tbl-td-learning-compare}
+final_window <- function(x, k = 100L) mean(tail(x, k))
+
+comp <- data.frame(
+  Property = c("Policy learned about", "Target uses",
+               "Path on this task", "Mean reward, last 100 ep",
+               "Behaviour when exploration off"),
+  SARSA = c("the policy it follows (on-policy)",
+            "Q(S', A') with A' ~ eps-greedy",
+            "safe (one row above cliff)",
+            sprintf("%.1f", final_window(sarsa$ep_reward)),
+            "safe path"),
+  `Q-learning` = c("the greedy/optimal policy (off-policy)",
+                   "max_a Q(S', a)",
+                   "optimal (along cliff edge)",
+                   sprintf("%.1f", final_window(qlearn$ep_reward)),
+                   "optimal path"),
+  check.names = FALSE
+)
+
+knitr::kable(
+  comp,
+  caption = "SARSA versus Q-learning on cliff walking. SARSA collects more reward during learning because its on-policy target accounts for exploratory missteps; Q-learning's off-policy target learns the optimal path but pays for occasional exploratory falls.",
+  booktabs = TRUE
+)
+```
+
+## Practical guidance and pitfalls {#td-pitfalls}
+
+The demo is small, but the choices it exposes recur at every scale. A few practical points are worth carrying forward.
+
+Choose on-policy or off-policy by what you need. Use SARSA (or its expected-value cousin, Expected SARSA) when the cost of exploratory mistakes during deployment is real, for instance a physical robot that should not learn a policy assuming it never slips. Use Q-learning when you can explore freely (in simulation, say) and want the optimal policy regardless of how you gathered the data. Off-policy learning is also what lets you learn from logged or historical experience, which on-policy methods cannot reuse cleanly.
+
+> **When to use this:** Reach for TD control over Monte Carlo whenever episodes are long, never-ending, or you need to learn online. Prefer Monte Carlo when the environment is not really Markov in your state representation, since MC does not rely on the bootstrapping assumption that the next state's value is a valid summary of the future.
+
+Set the step size and exploration with care. A constant $\alpha$ (we used $0.5$) never fully converges but adapts to change, which is usually what you want; if you need convergence to a fixed answer, decay $\alpha$ over time. Exploration $\varepsilon$ governs the safe-versus-optimal gap directly: as $\varepsilon \to 0$, SARSA's safe path converges to the same optimal path Q-learning already prefers, because there are no more random missteps to guard against. Many implementations anneal $\varepsilon$ from high to low so the agent explores early and exploits late.
+
+Watch for maximization bias. The $\max$ in Q-learning's target systematically overestimates action-values when those values are noisy, because the maximum of noisy estimates is biased upward. Double Q-learning fixes this by keeping two value tables and using one to select the action and the other to evaluate it. Be aware too that the convergence guarantees in this chapter are for the *tabular* case, one entry per state-action pair. The moment you replace the table with a function approximator and combine it with bootstrapping and off-policy updates (the "deadly triad"), stability is no longer free; this is the territory of the deep reinforcement learning chapter.
+
+> **Warning:** Do not read the cliff-walking result as "SARSA is better than Q-learning." Q-learning learned the better *policy*; SARSA earned more *during training* because it was being judged while still exploring. With exploration turned off at deployment, Q-learning's policy wins. The lesson is to match the algorithm to whether mistakes made while learning actually count.
+
+Finally, mind credit assignment over long horizons. One-step TD propagates a reward backward only one state per episode, so a sparse goal reward can take many episodes to reach the start. This is exactly the gap eligibility traces (TD($\lambda$)) close, and in sparse-reward problems a moderate $\lambda$ (around $0.8$ to $0.9$) often learns dramatically faster than TD(0) at little extra cost.
+
+## Further reading {#td-further-reading}
+
+The definitive treatment is Sutton and Barto, *Reinforcement Learning: An Introduction* (2nd edition, 2018), whose Chapters 5, 6, and 12 cover Monte Carlo methods, temporal-difference learning, and eligibility traces respectively; the cliff-walking example used here is their Example 6.6. The original TD(0) analysis is Sutton (1988), "Learning to Predict by the Methods of Temporal Differences." Q-learning and its convergence proof are due to Watkins (1989) and Watkins and Dayan (1992). For a graduate-level, more mathematical perspective, see Bertsekas and Tsitsiklis, *Neuro-Dynamic Programming* (1996), and Szepesvari, *Algorithms for Reinforcement Learning* (2010). For maximization bias and its remedy, see van Hasselt (2010) on Double Q-learning.

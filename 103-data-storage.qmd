@@ -1,0 +1,438 @@
+# Data Storage
+
+```{r}
+#| include: false
+suppressPackageStartupMessages(library(tidyverse))
+```
+
+Before you can analyze data, you have to put it somewhere. For a small project that "somewhere" might be a single CSV file on your laptop, but as soon as the data grows, gets shared between collaborators, or has to be queried quickly while it keeps changing, you need a real database. A database is just an organized system for storing data and getting it back out again, but the way it organizes that data has large consequences for speed, flexibility, and how easy the system is to learn.
+
+This chapter introduces the two broad families of databases you will meet in practice, structured and unstructured, explains the trade-offs between them in plain terms, and then walks through a concrete unstructured example, MongoDB, including how to set it up and how to read and write data from Python. By the end you should be able to say, for a given project, which kind of database fits and why, and you should be comfortable reading the basic create, read, update, and delete operations that every database needs to support.
+
+> **Key idea:** There is no single "best" database. The right choice depends on the shape of your data, how fast you need answers, and how much the structure of your records is likely to change over time.
+
+Table @tbl-data-storage-structured-vs-unstructured summarizes the main differences. Read it as a quick reference; the sections that follow unpack each row in words.
+
+|                  | [Structured Databases]                                         | [Unstructured Databases]                                                    |
+|------------------|----------------------------------------------------------------|-----------------------------------------------------------------------------|
+| Structure        | every element has the same number of attributes (i.e., column) | Different elements can have different number of attributes (more efficient) |
+| Latency          | Slower                                                         | Faster                                                                      |
+| Ease of learning | Easy                                                           | Harder, more steep                                                          |
+| Storage Volume   | Not appropriate for strong Big Data                            | handle Big Data well                                                        |
+| Data Types       | numerical, texture                                             | any (e.g., audio, video)                                                    |
+| Examples         | MySQL, PostgreSQL                                              | MongoDB, Neo4j                                                              |
+
+: Comparison of structured and unstructured databases across structure, latency, ease of learning, storage volume, supported data types, and representative examples. {#tbl-data-storage-structured-vs-unstructured}
+
+## Structured Databases
+
+A structured database, often called a relational database, stores data in tables that look much like a spreadsheet. Every row is one record, and every record has exactly the same columns (the attributes). If your "customers" table has columns for name, address, and phone number, then every customer row carries those three fields, no more and no less. This rigid, predictable shape is enforced by a schema, a fixed definition of what columns exist and what type of value each one holds.^[The word "schema" just means the blueprint of the table: the column names and the data type of each column, fixed in advance. Adding a new column later usually means changing the schema for the whole table.]
+
+That rigidity is a strength. Because the structure is known ahead of time, the database can check that incoming data is well formed, it can guarantee that relationships between tables stay consistent, and it gives you a powerful, standardized query language, SQL, to ask questions of the data. Relational databases are also the easiest family to learn, which is why they are the default in most introductory courses and most business applications. Popular examples include MySQL and PostgreSQL.
+
+The same rigidity is also the main limitation. Forcing every record into identical columns is awkward when records genuinely differ from one another, and the bookkeeping that keeps everything consistent tends to make these systems slower and harder to scale when the data gets very large.
+
+> **When to use this:** Reach for a structured database when your data is naturally tabular, the columns are stable, and correctness and consistency matter more than raw speed at massive scale. Most accounting, inventory, and transactional systems fit here.
+
+## Unstructured Databases
+
+An unstructured database (the term used loosely here for the broader NoSQL family) relaxes the rule that every record must share the same columns. Two records stored side by side can carry different fields entirely: one customer document might record a loyalty number while another omits it and instead lists three phone numbers. Nothing has to be declared in advance.
+
+This flexibility buys two things. First, it is more efficient when records are sparse or irregular, because you do not waste space storing empty columns for fields a record does not use. Second, these systems are built to scale out across many machines, which lets them handle genuinely large data and a wide range of data types, including audio and video, not just numbers and text. They also tend to have lower latency, meaning faster responses, for the kinds of read and write patterns they are designed around.
+
+The cost is a steeper learning curve and less of the automatic consistency checking that relational databases give you for free. Because there is no fixed schema, the discipline of keeping data clean shifts from the database onto you and your application code.
+
+> **Intuition:** A structured database is like a paper form where every box is labeled and must be filled in. An unstructured database is like a stack of index cards where each card can say whatever it needs to. Forms are easy to total up; index cards are easy to adapt.
+
+> **When to use this:** Reach for an unstructured database when records vary a lot from one another, when the data is very large or includes rich media, or when you expect the structure to keep evolving. Document stores like MongoDB and graph databases like Neo4j are common choices.
+
+With that contrast in hand, the rest of the chapter looks at one unstructured database in detail so the abstract trade-offs become concrete.
+
+### MongoDB
+
+MongoDB is a document database. Instead of rows in a table, it stores documents, which are flexible records written in a JSON-like format of field-and-value pairs. Documents that belong together (all your customers, say) are grouped into a collection, and collections live inside a database. So the hierarchy reads database, then collection, then document, roughly paralleling database, then table, then row in the relational world.^[A MongoDB document looks like a Python dictionary or a JSON object: `{ "name": "John", "address": "Highway 37" }`. The keys are field names and the values can be strings, numbers, lists, or even nested documents.]
+
+#### Setting up the environment
+
+The examples below assume MongoDB is running locally inside a virtual machine, which is a common way to get a clean, reproducible setup. The commands here are shell commands you type in a terminal, not R or Python.
+
+To work with the virtual machine, move into the project directory and bring the box up:
+
+```
+cd m103
+cd m103-vagrant-env
+```
+
+The following commands manage the lifecycle of the virtual machine. Run them in order the first time, then use `vagrant ssh` to get inside whenever you want to work:
+
+- `vagrant up` starts the virtual machine.
+- `vagrant provision` brings up the environment (installs and configures what the box needs).
+- `vagrant ssh` connects you to the machine over SSH so you have a shell inside it.
+- `mongod --version` checks which MongoDB version is installed.
+- `validate_box` confirms the box is running properly.
+- `exit` leaves the box.
+- `vagrant halt` stops the virtual machine.
+
+Inside the box, the central program is `mongod`, the main daemon process of MongoDB. A daemon is just a long-running background program that waits for work.^[The naming is easy to mix up: `mongod` (with a trailing "d" for "daemon") is the database server itself, while `mongo` is the interactive shell client you use to talk to it.] You run `mongod` to start the server, and your application then uses a driver (a small library, such as `pymongo` for Python) to communicate with it.
+
+There are two programs to keep straight. The server, `mongod`, and the shell, `mongo`, which connects to the server. From the `mongo` shell you can inspect and manage databases:
+
+- `show dbs` lists the databases.
+- To shut the server down cleanly: `use admin`, then `db.shutdownServer()`, then `exit`.
+
+When you launch the server with `mongod`, a few options control how it behaves. The most common ones are:
+
+- `--port` tells MongoDB which port to listen on (the default is 27017).
+- `--dbpath` sets the location where the database files are stored.
+- `--logpath` sets the location of a logfile for `mongod` to write information to.
+- `--fork` runs `mongod` as a background process rather than an active one that blocks the shell.
+
+Figure @fig-data-storage-mongod-startup shows a typical `mongod` startup command together with these options in a terminal.
+
+```{r fig-data-storage-mongod-startup, echo=FALSE, fig.cap="A terminal session launching the mongod server with the common startup options that control the port, data path, logfile, and forked background operation."}
+knitr::include_graphics("images/daemon.PNG")
+```
+
+> **Warning:** If you use `--fork`, you must also set `--logpath`. A forked process detaches from your terminal, so it needs a logfile to send its output to; without one, MongoDB will refuse to start.
+
+As a worked example, the following sets up `mongod` on port 30000, points its data path at a local directory called `first_mongod`, and forks the process so it does not block the shell. First create the directory, then start the server:
+
+```
+mkdir first_mongod
+mongod --port 30000 --dbpath first_mongod --logpath first_mongod/mongod.log --fork
+```
+
+With the server running, connect to it from the `mongo` shell on the same port:
+
+```
+mongo --port 30000
+```
+
+#### Working with MongoDB from Python
+
+Once a server is running, most real work happens from a program rather than the shell. The block below uses `pymongo`, the official Python driver, to walk through the full set of everyday operations: connecting, creating a database and collection, inserting documents, querying them in various ways, sorting and limiting results, updating, and finally deleting. Reading it top to bottom is a good tour of what any database needs to let you do, often called CRUD: create, read, update, delete.
+
+> **Tip:** In MongoDB you do not explicitly create a database or collection before using it. The moment you insert the first document, MongoDB creates the database and collection for you. Listing databases before that first insert will not show the new one.
+
+> **Note:** The chunk below is set to `eval = FALSE` because running it requires a live MongoDB server listening on `localhost:27017` and the `pymongo` package, neither of which is available when the book is built. Read it as an annotated reference; each `#%%` marks a separate, self-contained operation you could run on your own server.
+
+A few details worth noticing as you read: a query is itself a document, so `{ "address": "Park Lane 38" }` means "find documents whose address equals this." The second argument to `find` is a projection that chooses which fields to return, where `1` includes a field and `0` excludes it. Operators like `$gt` (greater than) and `$regex` (regular-expression match) let you express richer conditions, and `$set` inside an update tells MongoDB to change only the named field rather than replace the whole document.
+
+```{python, eval = FALSE}
+
+import pymongo
+
+#%% Create a Database
+myclient = pymongo.MongoClient("mongodb://localhost:27017/")
+
+mydb = myclient["mydatabase"]
+
+#%% Check if database exists
+
+#check if a database exist by listing all databases in you system
+print(myclient.list_database_names())
+
+#check a specific database by name
+dblist = myclient.list_database_names()
+if "mydatabase" in dblist:
+  print("The database exists.")
+
+#%% Insert Into Collection
+#The first parameter of the insert_one() method is a dictionary containing the name(s) and value(s) of each field in the document you want to insert.
+
+
+myclient = pymongo.MongoClient("mongodb://localhost:27017/")
+mydb = myclient["mydatabase"]
+mycol = mydb["customers"]
+
+mydict = { "name": "John", "address": "Highway 37" }
+
+x = mycol.insert_one(mydict)
+
+#%% Return the _id field
+mydict = { "name": "Peter", "address": "Lowstreet 27" }
+
+x = mycol.insert_one(mydict)
+
+print(x.inserted_id)
+
+#%% Insert Multiple documents
+import pymongo
+
+myclient = pymongo.MongoClient("mongodb://localhost:27017/")
+mydb = myclient["mydatabase"]
+mycol = mydb["customers"]
+
+mylist = [
+  { "name": "Amy", "address": "Apple st 652"},
+  { "name": "Hannah", "address": "Mountain 21"},
+  { "name": "Michael", "address": "Valley 345"},
+  { "name": "Sandy", "address": "Ocean blvd 2"},
+  { "name": "Betty", "address": "Green Grass 1"},
+  { "name": "Richard", "address": "Sky st 331"},
+  { "name": "Susan", "address": "One way 98"},
+  { "name": "Vicky", "address": "Yellow Garden 2"},
+  { "name": "Ben", "address": "Park Lane 38"},
+  { "name": "William", "address": "Central st 954"},
+  { "name": "Chuck", "address": "Main Road 989"},
+  { "name": "Viola", "address": "Sideway 1633"}
+]
+
+x = mycol.insert_many(mylist)
+
+#print list of the _id values of the inserted documents:
+print(x.inserted_ids)
+
+#%% Insert Multiple Documents, with Specified IDs
+import pymongo
+
+myclient = pymongo.MongoClient("mongodb://localhost:27017/")
+mydb = myclient["mydatabase"]
+mycol = mydb["customers"]
+
+mylist = [
+  { "_id": 1, "name": "John", "address": "Highway 37"},
+  { "_id": 2, "name": "Peter", "address": "Lowstreet 27"},
+  { "_id": 3, "name": "Amy", "address": "Apple st 652"},
+  { "_id": 4, "name": "Hannah", "address": "Mountain 21"},
+  { "_id": 5, "name": "Michael", "address": "Valley 345"},
+  { "_id": 6, "name": "Sandy", "address": "Ocean blvd 2"},
+  { "_id": 7, "name": "Betty", "address": "Green Grass 1"},
+  { "_id": 8, "name": "Richard", "address": "Sky st 331"},
+  { "_id": 9, "name": "Susan", "address": "One way 98"},
+  { "_id": 10, "name": "Vicky", "address": "Yellow Garden 2"},
+  { "_id": 11, "name": "Ben", "address": "Park Lane 38"},
+  { "_id": 12, "name": "William", "address": "Central st 954"},
+  { "_id": 13, "name": "Chuck", "address": "Main Road 989"},
+  { "_id": 14, "name": "Viola", "address": "Sideway 1633"}
+]
+
+x = mycol.insert_many(mylist)
+
+#print list of the _id values of the inserted documents:
+print(x.inserted_ids)
+
+#%% Find One
+
+import pymongo
+
+myclient = pymongo.MongoClient("mongodb://localhost:27017/")
+mydb = myclient["mydatabase"]
+mycol = mydb["customers"]
+
+x = mycol.find_one()
+
+print(x)
+
+#%% Find All
+
+
+import pymongo
+
+myclient = pymongo.MongoClient("mongodb://localhost:27017/")
+mydb = myclient["mydatabase"]
+mycol = mydb["customers"]
+
+for x in mycol.find():
+  print(x)
+
+#%% Return Only Some Fields
+
+import pymongo
+
+myclient = pymongo.MongoClient("mongodb://localhost:27017/")
+mydb = myclient["mydatabase"]
+mycol = mydb["customers"]
+
+for x in mycol.find({},{ "_id": 0, "name": 1, "address": 1 }):
+  print(x)
+
+#%% Example exclude "address"
+
+import pymongo
+
+myclient = pymongo.MongoClient("mongodb://localhost:27017/")
+mydb = myclient["mydatabase"]
+mycol = mydb["customers"]
+
+for x in mycol.find({},{ "address": 0 }):
+  print(x)
+
+
+#%% get error if you specify both
+import pymongo
+
+myclient = pymongo.MongoClient("mongodb://localhost:27017/")
+mydb = myclient["mydatabase"]
+mycol = mydb["customers"]
+
+for x in mycol.find({},{ "name": 1, "address": 0 }):
+  print(x)
+
+
+#%%  Filter the Result
+
+import pymongo
+
+myclient = pymongo.MongoClient("mongodb://localhost:27017/")
+mydb = myclient["mydatabase"]
+mycol = mydb["customers"]
+
+myquery = { "address": "Park Lane 38" }
+
+mydoc = mycol.find(myquery)
+
+for x in mydoc:
+  print(x)
+
+
+#%% Advanced Query
+
+import pymongo
+
+myclient = pymongo.MongoClient("mongodb://localhost:27017/")
+mydb = myclient["mydatabase"]
+mycol = mydb["customers"]
+
+myquery = { "address": { "$gt": "S" } } # o find the documents where the "address" field starts with the letter "S" or higher (alphabetically), use the greater than modifier: {"$gt": "S"}:
+
+mydoc = mycol.find(myquery)
+
+for x in mydoc:
+  print(x)
+
+#%% Filter With Regular Expressions
+import pymongo
+
+myclient = pymongo.MongoClient("mongodb://localhost:27017/")
+mydb = myclient["mydatabase"]
+mycol = mydb["customers"]
+
+myquery = { "address": { "$regex": "^S" } } #Find documents where the address starts with the letter "S":
+
+mydoc = mycol.find(myquery)
+
+for x in mydoc:
+  print(x)
+
+
+#%% Sort the Result
+
+import pymongo
+
+myclient = pymongo.MongoClient("mongodb://localhost:27017/")
+mydb = myclient["mydatabase"]
+mycol = mydb["customers"]
+
+mydoc = mycol.find().sort("name") #method takes one parameter for "fieldname" and one parameter for "direction" (ascending is the default direction).
+
+for x in mydoc:
+  print(x)
+
+#%% Sort Descending
+
+import pymongo
+
+myclient = pymongo.MongoClient("mongodb://localhost:27017/")
+mydb = myclient["mydatabase"]
+mycol = mydb["customers"]
+
+mydoc = mycol.find().sort("name", -1) #Sort the result reverse alphabetically by name:
+
+for x in mydoc:
+  print(x)
+
+#%% Delete Document
+
+import pymongo
+
+myclient = pymongo.MongoClient("mongodb://localhost:27017/")
+mydb = myclient["mydatabase"]
+mycol = mydb["customers"]
+
+myquery = { "address": "Mountain 21" } #delete document with address "Mountain 21"
+
+mycol.delete_one(myquery)
+
+#%% Delete Many Documents
+import pymongo
+
+myclient = pymongo.MongoClient("mongodb://localhost:27017/")
+mydb = myclient["mydatabase"]
+mycol = mydb["customers"]
+
+myquery = { "address": {"$regex": "^S"} } #Delete all documents were the address starts with the letter S:
+
+x = mycol.delete_many(myquery)
+
+print(x.deleted_count, " documents deleted.")
+
+#%% Delete All Documents in a Collection
+import pymongo
+
+myclient = pymongo.MongoClient("mongodb://localhost:27017/")
+mydb = myclient["mydatabase"]
+mycol = mydb["customers"]
+
+x = mycol.delete_many({}) # Delete all documents in the "customers" collection:
+
+print(x.deleted_count, " documents deleted.")
+
+#%% Delete Collection
+
+import pymongo
+
+myclient = pymongo.MongoClient("mongodb://localhost:27017/")
+mydb = myclient["mydatabase"]
+mycol = mydb["customers"] #Delete the "customers" collection:
+
+mycol.drop()
+# The drop() method returns true if the collection was dropped successfully, and false if the collection does not exist.
+
+#%% Update Collection
+# If the query finds more than one record, only the first occurrence is updated.
+import pymongo
+
+myclient = pymongo.MongoClient("mongodb://localhost:27017/")
+mydb = myclient["mydatabase"]
+mycol = mydb["customers"]
+
+myquery = { "address": "Valley 345" } #Change the address from "Valley 345" to "Canyon 123":
+newvalues = { "$set": { "address": "Canyon 123" } }
+
+mycol.update_one(myquery, newvalues)
+
+#print "customers" after the update:
+for x in mycol.find():
+  print(x)
+
+#%% Update Many
+  #o update all documents that meets the criteria of the query, use the update_many() method.
+
+myclient = pymongo.MongoClient("mongodb://localhost:27017/")
+mydb = myclient["mydatabase"]
+mycol = mydb["customers"]
+
+myquery = { "address": { "$regex": "^S" } } #Update all documents where the address starts with the letter "S":
+newvalues = { "$set": { "name": "Minnie" } }
+
+x = mycol.update_many(myquery, newvalues)
+
+print(x.modified_count, "documents updated.")
+
+#%% Limit the Result
+# Limit the result to only return 5 documents:
+import pymongo
+
+myclient = pymongo.MongoClient("mongodb://localhost:27017/")
+mydb = myclient["mydatabase"]
+mycol = mydb["customers"]
+
+myresult = mycol.find().limit(5)
+
+#print the result:
+for x in myresult:
+  print(x)
+```
+
+Taken together, these operations are the vocabulary of working with any database: connect, write some records, ask questions of them with filters and projections, reorder and trim the answers, change records in place, and remove what you no longer need. The syntax differs across systems, but once you recognize this create-read-update-delete pattern, picking up a new database becomes mostly a matter of learning its dialect.

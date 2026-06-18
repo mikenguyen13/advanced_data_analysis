@@ -1,0 +1,53 @@
+# Ethics
+
+```{r}
+#| include: false
+suppressPackageStartupMessages(library(tidyverse))
+```
+
+Every model we have built in this book learns from data, and data is never a neutral record of the world. It is collected by people, shaped by the choices they made about what to measure and whom to include, and then fed into algorithms that will go on to make or influence real decisions: who gets a loan, which job applications a recruiter sees first, how a medical risk score is computed. When a model performs well on a held-out test set we are tempted to call it a success. But a model can be accurate in the aggregate and still treat individuals or whole groups unfairly. Thinking about ethics is how we close that gap between "the numbers look good" and "this system is doing the right thing for the people it touches."
+
+This chapter steps back from the mechanics of fitting and tuning to ask a different question: when our models are wrong, or even when they are technically right, who gets hurt, and why? The single idea that ties the chapter together is bias, by which we mean systematic error that pushes a model's predictions in a direction that disadvantages some people relative to others. Bias is not the same as random noise. Noise averages out; bias does not. It is baked into the data or the modeling pipeline, so collecting more of the same data or training a bigger model often makes it worse rather than better.
+
+> **Key idea:** A model can only ever be as fair as the data and the assumptions behind it. If unfairness enters before the algorithm runs, no amount of clever optimization will remove it, and a more powerful model may simply reproduce that unfairness more confidently.
+
+We will first build intuition for where bias comes from, separating problems that live in the data itself from problems that arise when a model ignores context that a human would naturally take into account. Then we will look at a small set of practical tools you can fold into your own workflow to catch these problems early, while there is still time to do something about them.
+
+## Where bias comes from
+
+It helps to sort the sources of bias into two broad families. The first family is already present in the dataset before any modeling begins. The second family is introduced by the modeling process itself, usually because the model is asked to reason about the world with less information than a person would have. Keeping these two families distinct matters because they call for different remedies: data-level bias is fixed by changing what or how you collect and label, while technical bias is fixed by changing how the model is designed, deployed, and supervised.
+
+### Pre-existing and dataset biases
+
+This first family of biases is, in a sense, inherited. The model did not create the problem; it absorbed it from data that was already skewed by how it came into existence. Three patterns show up again and again.
+
+Sampling bias occurs when the data you trained on does not represent the population the model will actually be used on. A credit-scoring model trained mostly on applicants from wealthy neighborhoods has simply never seen the people it will later judge in poorer ones, so its predictions there are guesses dressed up as evidence.^[Sampling bias is closely related to the idea of a non-representative sample in classical statistics, but it bites harder in machine learning because flexible models will confidently extrapolate into regions of the input space they never saw during training.]
+
+Exclusion bias is what happens when relevant data or features are dropped, often for reasons that seem innocent at the time. Deleting records with missing values, or discarding a variable that looked unimportant, can quietly remove the very subgroup the model most needs to learn about.
+
+Prejudice bias appears when the data reflects existing social prejudices and the model dutifully learns them as if they were facts. If historical hiring data shows that one group was rarely promoted, a model trained to imitate past decisions will learn to recommend the same pattern, encoding yesterday's discrimination into tomorrow's automated decisions.
+
+> **Warning:** A model that achieves high accuracy by faithfully reproducing biased historical decisions is not "objective." It is automating and scaling up the bias it was trained on, often while lending it the false authority of a number.
+
+### Technical and contextual biases
+
+The second family of biases is introduced by the modeling process rather than inherited from the data. The most common form arises when machine learning is built without considering contextual cues that a human would naturally recognize. A person reviewing a borderline case brings in background knowledge, common sense, and an awareness of circumstances that never made it into the feature matrix. A model sees only the columns it was given. When those columns leave out context that genuinely matters, the model can reach conclusions that are locally consistent with its inputs yet plainly wrong to anyone who understands the situation.
+
+> **Intuition:** Think of the model as an extremely diligent reader who has only ever seen the spreadsheet, never the world the spreadsheet was trying to describe. It will find every pattern in those numbers, including the ones that are artifacts of what was left out.
+
+The practical lesson is that fairness is not only a data-cleaning problem. Even with perfectly representative data, a model deployed without human oversight in a setting that depends on context can cause harm. This is why the tools in the next section emphasize ongoing assessment and explanation, not a one-time fix.
+
+## Tools to help
+
+Recognizing that bias exists is the first step; the harder part is catching it in your own work before it reaches the people your model affects. Fortunately you do not have to build that scrutiny from scratch. A number of tools and practices are designed to be added to an ordinary modeling workflow, and they fall roughly into auditing, explanation, and process discipline. The following options are a good starting point.
+
+- Algorithmic Impact Assessments. A structured review, carried out before deployment, that documents who a system affects, what could go wrong, and how those risks will be monitored. Treat it the way an engineer treats a safety review: a deliberate pause to ask "what if this is wrong?" while changes are still cheap to make.
+- FairML. An end-to-end toolbox for auditing predictive models, useful for probing which inputs are driving a model's decisions and whether sensitive attributes are exerting influence they should not.
+- LIME. A method for explaining individual predictions in human-readable terms, covered in detail in Chapter \@ref(explainable-ai). When you can see *why* a model made a particular call, biased reasoning becomes much easier to spot.
+- Deon. A lightweight command-line tool that adds ethics checklists to your projects, so that questions about data provenance, fairness, and downstream impact become a routine, version-controlled part of the work rather than an afterthought.
+
+> **Tip:** The cheapest time to find an ethical problem is before deployment, and the cheapest way to find it is to make the questions routine. Adding a checklist like Deon to your project, or scheduling an impact assessment as a required step, turns ethics from a vague aspiration into a concrete item on your to-do list.
+
+## Takeaways
+
+The throughline of this chapter is that bias is a property of the whole pipeline, not just the algorithm at its center. Bias that is already present in the data, through skewed sampling, dropped records, or inherited prejudice, will be learned and amplified unless you intervene at the data level. Bias introduced by the modeling process, usually by stripping away context a human would use, calls instead for better design and genuine human oversight. In both cases, accuracy on a test set is not a certificate of fairness. The tools above, auditing frameworks, model-explanation methods like LIME, and ethics checklists, give you practical ways to interrogate your own models early and often, so that the systems you build help the people they are meant to serve rather than quietly working against some of them.

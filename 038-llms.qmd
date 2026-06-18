@@ -1,0 +1,671 @@
+# Large Language Models and Foundation Models
+
+```{r}
+#| include: false
+suppressPackageStartupMessages(library(tidyverse))
+```
+
+A language model assigns probabilities to sequences of text. For a
+prediction-focused course, the value is direct: once you can score how likely a
+piece of text is, you can predict the next token, fill in blanks, classify
+documents by comparing likelihoods, or generate text by sampling. **Large
+language models** (LLMs) are the same idea scaled up by orders of magnitude in
+data, parameters, and compute, trained once and then reused across many tasks.
+That reuse pattern is what people mean by a foundation model.
+
+This chapter builds the concept from the ground up. We start with what a language
+model is mathematically, trace the path from simple counting models to
+Transformer decoders, describe how these models are pretrained and then adapted,
+and end with a runnable base R demonstration that builds a small n-gram language
+model, generates text, and measures perplexity.
+
+The reassuring news for anyone coming from the rest of this book is that nothing
+here is conceptually new at its core. A language model is a conditional
+probability estimator, the same object you have fit all along, just pointed at
+text and scaled up dramatically. By the end you will be able to say precisely
+what an LLM computes, why "next-token prediction" is enough to learn a great deal
+about language, how perplexity measures a model's quality, and how a pretrained
+model gets adapted to a specific task. The small n-gram model at the end makes
+all of this concrete: it is a complete language model you can read line by line,
+and it behaves, in miniature, exactly like the giants.
+
+> **Intuition:** If you can estimate "given what came before, what comes next?"
+> then prediction, classification, fill-in-the-blank, and generation are all the
+> same machine used in different ways. Everything in this chapter is a variation
+> on that single estimate.
+
+## What a Language Model Is
+
+Let a piece of text be a sequence of tokens $x_1, x_2, \dots, x_T$. A language
+model defines a probability distribution over such sequences. Using the chain
+rule of probability, any joint distribution factorizes exactly into a product of
+conditional distributions:
+
+$$
+p(x_1, x_2, \dots, x_T) = \prod_{t=1}^{T} p(x_t \mid x_1, \dots, x_{t-1})
+= \prod_{t=1}^{T} p(x_t \mid x_{<t}),
+$$
+
+where $x_{<t}$ denotes all tokens before position $t$. This factorization is not
+an approximation. It is the definition of a joint distribution written one token
+at a time. A model that estimates each factor $p(x_t \mid x_{<t})$ is called an
+autoregressive language model, because it predicts the next token from the
+tokens it has already seen.^[A token is the unit a model reads and predicts.
+For now you can think of it as roughly a word; the section on tokenization below
+explains why real models use subword pieces instead.]
+
+> **Key idea:** The chain rule turns the impossible-looking task of modeling whole
+> documents into a sequence of ordinary one-step prediction problems. Estimate
+> $p(x_t \mid x_{<t})$ well at every position and you have, by construction, a
+> model of the entire sequence.
+
+### Next-Token Prediction
+
+Training an autoregressive model is a supervised learning problem in disguise.
+The input is the context $x_{<t}$, the target is the next token $x_t$, and the
+labels come for free from the text itself. No human annotation is needed, which
+is what makes it possible to train on enormous corpora. The model outputs a
+probability distribution over the vocabulary $V$ at each position, and we want
+that distribution to place high probability on the token that actually came next.
+
+> **Note:** This is why LLMs train on text scraped from the open web, books, and
+> code without paying for labels. The "label" for each position is simply the
+> word that already follows it. Self-supervision of this kind is what makes
+> training on trillions of tokens possible.
+
+### Cross-Entropy Loss
+
+The standard training objective is the cross-entropy loss, which is the
+average negative log-likelihood of the observed tokens under the model. For a
+single sequence,
+
+$$
+\mathcal{L} = -\frac{1}{T} \sum_{t=1}^{T} \log p(x_t \mid x_{<t}).
+$$
+
+Minimizing this loss is the same as maximizing the likelihood the model assigns
+to real text. The logarithm is taken in natural base here, though base 2 is also
+common (the two differ only by a constant factor of $\log 2$).^[Negative
+log-likelihood is the same loss you have seen for logistic regression and softmax
+classifiers elsewhere in the book. A language model is, at each position, a
+classifier over the vocabulary, so it inherits exactly that objective.]
+
+### Perplexity
+
+The headline evaluation metric for a language model is perplexity (PPL),
+defined as the exponential of the average negative log-likelihood:
+
+$$
+\mathrm{PPL} = \exp\!\left( -\frac{1}{T} \sum_{t=1}^{T} \log p(x_t \mid x_{<t}) \right)
+= \exp(\mathcal{L}).
+$$
+
+Perplexity has a clean interpretation. If a model has perplexity $k$ on some
+text, it is on average as uncertain as if it had to choose uniformly among $k$
+equally likely tokens at each step. A perplexity of 1 means perfect prediction;
+a perplexity equal to the vocabulary size means the model learned nothing beyond
+a uniform guess. Lower is better. Because perplexity is a deterministic function
+of cross-entropy, reducing the loss and reducing perplexity are the same goal.
+
+> **Intuition:** Read perplexity as an "effective number of guesses." A perplexity
+> of 5 means the model is about as confused as someone flipping fairly between 5
+> options at each word. Cutting perplexity in half means the model has genuinely
+> narrowed down its choices.
+
+> **Warning:** Perplexity is only comparable across models that share the same
+> tokenization and vocabulary. A model that splits text into more, smaller tokens
+> faces an easier per-token prediction and can post a lower perplexity without
+> being a better model. Never compare perplexity numbers across different
+> tokenizers.
+
+## From N-grams to Transformer Decoders
+
+The definitions above tell us what to estimate; they say nothing about how. The
+hard part of $p(x_t \mid x_{<t})$ is that the context $x_{<t}$ grows without
+bound: by the thousandth word, the model must condition on the previous nine
+hundred ninety-nine. No method can store a separate probability for every
+possible history, so every model family makes a compromise in how it summarizes
+that context. The history of language modeling is largely the history of better
+and better summaries, and the three families below mark the main steps.
+
+### N-gram Models
+
+The oldest approach truncates the context to the previous $n-1$ tokens, an
+$n$-th order Markov assumption:
+
+$$
+p(x_t \mid x_{<t}) \approx p(x_t \mid x_{t-n+1}, \dots, x_{t-1}).
+$$
+
+A bigram model ($n = 2$) conditions on one previous token, a trigram
+($n = 3$) on two. The conditional probabilities are estimated by counting how
+often each continuation follows each context in a training corpus and
+normalizing. N-gram models are fast and transparent, but they suffer from data
+sparsity (most long contexts are never seen) and they cannot capture
+dependencies beyond the fixed window. Smoothing techniques such as add-one
+(Laplace) smoothing are used to avoid assigning zero probability to unseen
+continuations.^[Without smoothing, a single unseen continuation makes the
+sequence probability zero and the perplexity infinite. Add-one smoothing pretends
+every continuation was seen one extra time, which guarantees nonzero
+probabilities everywhere.] The runnable demo at the end of the chapter builds
+exactly this kind of model, so the summary here will become concrete shortly.
+
+### Neural Language Models
+
+Instead of counting discrete contexts, a neural language model maps each
+token to a dense vector (an embedding) and uses a neural network to predict the
+next token. Early versions used feed-forward networks over a fixed window;
+recurrent networks (RNNs, LSTMs) then allowed the context to be summarized into a
+hidden state that is carried forward step by step, in principle removing the
+fixed-window limit. Recurrent models struggle with very long dependencies and are
+hard to parallelize across positions, because each step must wait for the
+previous one to finish.
+
+> **Key idea:** Neural models replace counting with learning. Similar contexts
+> map to similar vectors, so the model can generalize to histories it never saw,
+> the exact weakness that sinks n-grams.
+
+### Transformer Decoders
+
+Modern LLMs are Transformer decoders. Rather than a recurrent hidden state,
+they use self-attention so that each position can read directly from every
+earlier position in a single step. To preserve the autoregressive property, the
+attention is causally masked: position $t$ may attend to positions
+$1, \dots, t$ but not to anything in the future. Stacking many masked
+self-attention and feed-forward layers gives a model that predicts
+$p(x_t \mid x_{<t})$ with a rich, learned summary of the entire prior context.
+The attention mechanism, multi-head attention, and positional information are
+covered in the Attention and Transformers material and in the chapter on BERT,
+which uses the encoder half of the same architecture. The decoder used by LLMs is
+that architecture with causal masking and a next-token objective.
+
+> **Intuition:** Self-attention lets every word "look back" at every earlier word
+> in one step and decide which ones matter, instead of squeezing all of history
+> through a single running hidden state. Because the lookups happen in parallel,
+> these models train efficiently on the huge corpora that scaling demands.
+
+### Tokenization
+
+Models do not operate on raw characters or whole words. They operate on
+tokens produced by a subword tokenizer. Two common schemes are **Byte Pair
+Encoding** (BPE), which starts from characters and greedily merges the most
+frequent adjacent pairs into a fixed-size vocabulary, and WordPiece, which
+makes similar merges guided by likelihood. Subword tokenization keeps the
+vocabulary small while still representing rare and novel words by composing them
+from known pieces. Every probability and perplexity figure is defined relative to
+this token vocabulary, which is why comparisons require a shared tokenizer.
+
+## Pretraining and the Foundation-Model Paradigm
+
+The defining recipe is pretrain then adapt. A model is first pretrained once,
+at great expense, on a broad corpus using the next-token objective. The result is
+a general-purpose foundation model. It is then adapted, cheaply, to many
+downstream tasks. The cost of learning language is paid once and amortized across
+every later use.
+
+> **When to use this:** The foundation-model pattern pays off whenever you have a
+> task with limited labeled data but plenty of related unlabeled text. Instead of
+> training from scratch, you start from a model that already understands language
+> and nudge it toward your task. This is the text analogue of the transfer
+> learning idea used with pretrained image networks.
+
+### Scaling Laws
+
+A central empirical finding is that the loss of a Transformer language model falls
+smoothly and predictably as you increase three quantities: the number of model
+parameters, the size of the training dataset, and the amount of compute. Kaplan
+et al. (2020) reported that test loss follows approximate power-law relationships
+in each of these factors over many orders of magnitude. This means you can
+forecast how much better a larger model will be before training it, which turns
+model design into something closer to an engineering calculation.^[A power law
+means the loss falls by a roughly constant fraction each time you multiply a
+resource by a constant factor. Plotted on log-log axes it looks like a straight
+line, which is what makes extrapolation feasible.]
+
+Hoffmann et al. (2022), the Chinchilla study, refined this picture for a
+fixed compute budget. The earlier work tended to make models very large relative
+to the data they were trained on. Chinchilla showed that, for a given amount of
+compute, parameters and training tokens should be scaled roughly in proportion,
+so many models of that era were undertrained: smaller models trained on more data
+matched or beat larger models trained on less. The practical lesson is that data
+and model size must be balanced, not just made big.
+
+> **Tip:** If you ever have a fixed compute budget for training a model from
+> scratch, the Chinchilla finding is the rule to remember: spend it on a smaller
+> model fed more data rather than a giant model that never sees enough text.
+
+### Emergent In-Context Learning
+
+A striking property of large models is in-context learning. Without any
+gradient updates, a sufficiently large pretrained model can perform a new task
+when the task is described or demonstrated inside its input. You provide a few
+input-output examples in the prompt (few-shot), and the model continues the
+pattern. This behavior tends to appear or sharpen as scale increases and is not
+explicitly trained for; it falls out of next-token prediction on diverse text.
+It is the mechanism behind much of how LLMs are used in practice today.
+
+## Adaptation Methods
+
+Once you have a pretrained foundation model, several routes turn it into a useful
+predictor for your problem. They differ in how many parameters they change and
+how much labeled data and compute they require, and they form a ladder from
+heaviest to lightest: full fine-tuning changes everything, parameter-efficient
+methods change a sliver, and prompting changes nothing at all. The right rung
+depends on how much labeled data, compute, and per-task isolation you need.
+
+### Full Fine-Tuning
+
+The most direct method updates all of the model's parameters by continuing
+training on your labeled task data. It can reach high accuracy but is expensive in
+memory and compute, and it produces a full separate copy of the model for each
+task.
+
+### Parameter-Efficient Fine-Tuning
+
+Parameter-efficient fine-tuning (PEFT) freezes most of the pretrained weights
+and trains only a small number of new ones. Adapters insert small trainable
+layers between existing layers. LoRA (Low-Rank Adaptation) freezes the
+original weight matrices and learns a low-rank update for each, so the number of
+trainable parameters drops by orders of magnitude while accuracy stays close to
+full fine-tuning. PEFT makes it feasible to maintain many task-specific
+adaptations of one shared base model.
+
+> **When to use this:** Reach for PEFT (LoRA in particular) when you want
+> fine-tuned quality but cannot afford to store or serve a full model copy per
+> task. You keep one frozen base model and a tiny set of swappable adapters, one
+> per task.
+
+### Prompting and Few-Shot Learning
+
+The lightest-weight adaptation changes nothing in the model. You craft an input
+(a prompt) that frames the task, optionally including a handful of worked
+examples (few-shot) or none at all (zero-shot). This relies on the
+in-context learning described above. It is fast to try and requires no training,
+though it is sensitive to how the prompt is written.^[Because no weights change,
+prompting is the cheapest thing to try first. Its main cost is that small changes
+in wording, example order, or formatting can swing results, so prompts deserve
+the same careful evaluation as any other modeling choice.]
+
+### Instruction Tuning
+
+A raw pretrained model predicts plausible continuations, which is not the same as
+following a user's request. Instruction tuning fine-tunes the model on a
+collection of tasks phrased as instructions paired with desired responses. The
+result generalizes to following new instructions it was not explicitly trained
+on, making the model far more usable as a general assistant.
+
+### Reinforcement Learning from Human Feedback
+
+Reinforcement learning from human feedback (RLHF) aligns model outputs with
+human preferences in two conceptual stages. First, humans compare pairs of model
+responses, and a reward model is trained to predict which response a human
+would prefer. Second, the language model (the policy) is optimized to produce
+responses that score highly under that reward model, typically with a policy
+optimization algorithm, while a penalty keeps it from drifting too far from the
+original model. Ouyang et al. (2022), the InstructGPT work, showed that this
+procedure can make a smaller aligned model more helpful than a much larger
+unaligned one. The takeaway is that alignment to preferences, not just scale,
+drives perceived quality.
+
+> **Note:** Instruction tuning and RLHF are why a chat assistant feels so
+> different from a raw pretrained model. The base model only predicts plausible
+> text; these two steps teach it to predict text that a person actually asked for
+> and would rate highly.
+
+## Retrieval, Context, and Risks for Prediction
+
+Adaptation makes a model useful; this section covers what still limits it once
+deployed. A model's knowledge is fixed at training time, it can only read a
+bounded amount of input, and it can state falsehoods fluently. The tools and
+cautions below address each of those facts, and they matter most precisely when
+you are using an LLM as a predictor whose outputs feed real decisions.
+
+### Retrieval-Augmented Generation
+
+A pretrained model's knowledge is frozen at training time and stored implicitly in
+its weights. Retrieval-augmented generation (RAG) addresses this by fetching
+relevant documents from an external store at query time and placing them in the
+model's input, so the model can condition on up-to-date or proprietary
+information it never memorized. RAG separates knowledge (in the retrievable store)
+from reasoning (in the model), which makes facts easier to update and to cite.
+
+> **When to use this:** RAG is the standard answer when a model must work with
+> information it could not have memorized: documents written after training,
+> private internal data, or facts that change often. You update the document
+> store, not the model weights.
+
+### Context Windows
+
+A model can only condition on a bounded number of tokens at once, its **context
+window**. Anything outside the window is invisible to the model. Window sizes have
+grown substantially, but they remain finite, and very long contexts cost more
+compute and can dilute the model's attention to the most relevant parts. Context
+length sets a hard limit on how much retrieved text, history, or document you can
+feed in at once.
+
+### Hallucination and Factuality
+
+Because the model is trained to produce fluent, probable continuations, it can
+generate statements that are confident and well-formed but false. This is called
+hallucination. The model has no built-in mechanism to check claims against
+ground truth, so fluency is not evidence of accuracy. For any prediction task
+where correctness matters, outputs must be verified, and grounding the model with
+retrieval reduces but does not eliminate the problem.
+
+> **Warning:** Confidence and correctness are independent in an LLM. A smooth,
+> assured-sounding answer can be entirely wrong. Never treat fluency as a proxy
+> for truth, and build a verification step into any pipeline where mistakes have
+> consequences.
+
+### Calibration and Evaluation
+
+For prediction use, two properties deserve scrutiny. Calibration asks whether
+the model's stated or implied confidence matches its actual accuracy; a
+well-calibrated model that says it is 70 percent sure is right about 70 percent of
+the time. Alignment procedures such as RLHF can improve helpfulness while
+degrading calibration, so a model may sound more certain than it should.
+Factuality asks whether claims are true. Evaluation therefore goes beyond
+perplexity: held-out task accuracy, calibration curves, and task-specific
+benchmarks are all needed, and human review remains important where stakes are
+high.
+
+### Limitations to Keep in Mind
+
+LLMs are powerful but bounded. They can reflect biases present in their training
+data, they are sensitive to prompt wording, they can be expensive to run, and
+their behavior can change between versions. Treat them as one component in a
+prediction pipeline whose outputs are measured and validated like any other
+model, not as an oracle.
+
+## A Runnable N-gram Language Model in Base R
+
+The demonstration below builds everything from the chain-rule definition using
+only base R. We define a small corpus inline, fit bigram and trigram models with
+add-one smoothing, inspect a conditional next-token distribution, generate a
+short sample, and compute perplexity on held-out text. This is the same machinery
+as a large model in miniature: estimate $p(x_t \mid x_{<t})$, then use it to
+score and to sample.
+
+> **Key idea:** Watch for one thread running through every chunk below. We first
+> estimate the conditional next-token distribution, then reuse that same estimate
+> two ways: sampling from it to generate text, and reading off its value on real
+> text to compute perplexity. A trillion-parameter model does nothing different in
+> kind; it only estimates that distribution far more accurately.
+
+```{r ngram-setup}
+set.seed(123)
+
+# A small training corpus defined inline. Each string is one "sentence".
+train_corpus <- c(
+  "the cat sat on the mat",
+  "the dog sat on the log",
+  "the cat ran to the dog",
+  "the dog ran to the cat",
+  "a cat and a dog sat on the mat",
+  "the cat and the dog ran on the log",
+  "the mat was on the floor",
+  "the log was near the mat",
+  "a dog sat near the cat",
+  "the cat sat near the log"
+)
+
+# Held-out text the model never saw during training, for perplexity.
+test_corpus <- c(
+  "the cat sat on the log",
+  "a dog ran to the mat"
+)
+
+# Tokenizer: lowercase, split on whitespace, and wrap each sentence with
+# special start/end markers so the model can learn how sentences begin and end.
+BOS <- "<s>"   # beginning of sentence
+EOS <- "</s>"  # end of sentence
+
+tokenize <- function(sentence) {
+  words <- strsplit(tolower(trimws(sentence)), "\\s+")[[1]]
+  c(BOS, words, EOS)
+}
+
+train_tokens <- lapply(train_corpus, tokenize)
+
+# Vocabulary is every distinct token seen in training, including the markers.
+vocab <- sort(unique(unlist(train_tokens)))
+V <- length(vocab)
+V
+```
+
+```{r ngram-fit}
+# Count n-grams. For an n-gram model we need counts of the full n-gram and
+# counts of the (n-1)-token context that precedes the final token.
+ngram_counts <- function(token_lists, n) {
+  context_counts <- list()  # count of each context
+  ngram_counts   <- list()  # count of context + next token
+
+  for (toks in token_lists) {
+    if (length(toks) < n) next
+    for (i in seq_len(length(toks) - n + 1)) {
+      gram    <- toks[i:(i + n - 1)]
+      context <- paste(gram[-n], collapse = " ")
+      full    <- paste(gram, collapse = " ")
+      context_counts[[context]] <-
+        (if (is.null(context_counts[[context]])) 0 else context_counts[[context]]) + 1
+      ngram_counts[[full]] <-
+        (if (is.null(ngram_counts[[full]])) 0 else ngram_counts[[full]]) + 1
+    }
+  }
+  list(context = context_counts, ngram = ngram_counts)
+}
+
+bigram_model  <- ngram_counts(train_tokens, 2)
+trigram_model <- ngram_counts(train_tokens, 3)
+
+# Add-one (Laplace) smoothed conditional probability p(word | context).
+# Smoothing keeps unseen continuations from getting probability zero, which
+# would make perplexity infinite the moment we hit a novel pair.
+ngram_prob <- function(model, context, word, vocab_size) {
+  full         <- paste(c(context, word), collapse = " ")
+  ctx_key      <- paste(context, collapse = " ")
+  count_full   <- if (is.null(model$ngram[[full]])) 0 else model$ngram[[full]]
+  count_ctx    <- if (is.null(model$context[[ctx_key]])) 0 else model$context[[ctx_key]]
+  (count_full + 1) / (count_ctx + vocab_size)
+}
+
+# Sanity check: probabilities over the whole vocabulary sum to 1 for any context.
+probs_check <- sapply(vocab, function(w) ngram_prob(bigram_model, "the", w, V))
+sum(probs_check)
+```
+
+Table @tbl-llms-ngram-table lists the eight most probable continuations of
+the context word "the" under the smoothed bigram model.
+
+```{r tbl-llms-ngram-table}
+# Top next-token probabilities for the context "the" under the bigram model.
+context_word <- "the"
+next_probs <- sapply(vocab, function(w)
+  ngram_prob(bigram_model, context_word, w, V))
+next_probs <- sort(next_probs, decreasing = TRUE)
+
+top_table <- data.frame(
+  next_token  = names(next_probs),
+  probability = round(as.numeric(next_probs), 4),
+  row.names   = NULL
+)
+knitr::kable(
+  head(top_table, 8),
+  caption = "Top eight bigram continuations of the context word 'the' with their smoothed conditional probabilities."
+)
+```
+
+Figure @fig-llms-ngram-figure shows the smoothed bigram distribution over
+the eight most likely continuations of the context word "the", the same
+conditional next-token estimate that every step below reuses.
+
+```{r fig-llms-ngram-figure, fig.cap = "Bigram conditional next-token distribution given the context word 'the' (top 8 continuations)."}
+top8 <- head(top_table, 8)
+op <- par(mar = c(7, 4, 3, 1))
+barplot(
+  height    = top8$probability,
+  names.arg = top8$next_token,
+  las       = 2,
+  col       = "steelblue",
+  ylab      = "p(next token | 'the')",
+  main      = "Bigram distribution after 'the'"
+)
+par(op)
+```
+
+```{r ngram-generate}
+# Generate text by sampling one token at a time from the bigram model,
+# starting at the BOS marker and stopping at EOS or a length cap.
+generate_text <- function(model, vocab, vocab_size, max_len = 15) {
+  sentence <- c(BOS)
+  for (i in seq_len(max_len)) {
+    context <- sentence[length(sentence)]
+    probs   <- sapply(vocab, function(w)
+      ngram_prob(model, context, w, vocab_size))
+    probs   <- probs / sum(probs)
+    nxt     <- sample(vocab, size = 1, prob = probs)
+    if (nxt == EOS) break
+    sentence <- c(sentence, nxt)
+  }
+  paste(sentence[sentence != BOS & sentence != EOS], collapse = " ")
+}
+
+generated <- replicate(3, generate_text(bigram_model, vocab, V))
+generated
+```
+
+Table @tbl-llms-ngram-perplexity reports the held-out perplexity of the
+three models, and the same numbers are drawn as bars in the figure that follows.
+
+```{r tbl-llms-ngram-perplexity}
+# Perplexity on held-out text: exp of the average negative log-likelihood,
+# exactly the definition from the start of the chapter.
+perplexity <- function(model, n, test_lists, vocab_size) {
+  total_logprob <- 0
+  total_tokens  <- 0
+  for (toks in test_lists) {
+    if (length(toks) < n) next
+    for (i in seq_len(length(toks) - n + 1)) {
+      gram    <- toks[i:(i + n - 1)]
+      context <- gram[-n]
+      word    <- gram[n]
+      p       <- ngram_prob(model, context, word, vocab_size)
+      total_logprob <- total_logprob + log(p)
+      total_tokens  <- total_tokens + 1
+    }
+  }
+  exp(-total_logprob / total_tokens)
+}
+
+test_tokens <- lapply(test_corpus, tokenize)
+
+ppl_bigram  <- perplexity(bigram_model,  2, test_tokens, V)
+ppl_trigram <- perplexity(trigram_model, 3, test_tokens, V)
+
+# A unigram baseline: ignore context entirely and use smoothed token frequencies.
+unigram_counts <- table(unlist(train_tokens))
+unigram_prob <- function(word, vocab_size) {
+  c_w <- if (is.na(unigram_counts[word])) 0 else unigram_counts[word]
+  (c_w + 1) / (sum(unigram_counts) + vocab_size)
+}
+ppl_unigram <- {
+  lp <- 0; nt <- 0
+  for (toks in test_tokens) {
+    body <- toks[toks != BOS]
+    for (w in body) { lp <- lp + log(unigram_prob(w, V)); nt <- nt + 1 }
+  }
+  exp(-lp / nt)
+}
+
+knitr::kable(
+  data.frame(
+    model      = c("unigram", "bigram", "trigram"),
+    perplexity = round(c(ppl_unigram, ppl_bigram, ppl_trigram), 3)
+  ),
+  caption = "Held-out perplexity of the unigram, bigram, and trigram models on the test corpus."
+)
+```
+
+Figure @fig-llms-ngram-ppl-figure compares held-out perplexity across the
+unigram, bigram, and trigram models, making the effect of conditioning on more
+context visible at a glance.
+
+```{r fig-llms-ngram-ppl-figure, fig.cap = "Held-out perplexity decreases as the n-gram order increases on this small corpus. Lower perplexity means the model is less surprised by the held-out text."}
+ppl_vals <- c(unigram = ppl_unigram, bigram = ppl_bigram, trigram = ppl_trigram)
+op <- par(mar = c(4, 4, 3, 1))
+barplot(
+  height    = ppl_vals,
+  col       = c("grey70", "steelblue", "darkorange"),
+  ylab      = "Held-out perplexity",
+  xlab      = "Model order",
+  main      = "Perplexity vs n-gram order"
+)
+par(op)
+```
+
+The pattern is the one to remember. Conditioning on more context (moving from
+unigram to bigram to trigram) lowers perplexity because the model is less
+surprised by real text, which is exactly the signal that drives the much larger
+neural and Transformer models in the rest of this part of the book. The only
+things that change at scale are how the conditional distribution
+$p(x_t \mid x_{<t})$ is parameterized and how much data and compute go into
+estimating it.
+
+## Code You Would Run with Real Models
+
+The base R demo above is for understanding. In practice you would call a
+pretrained model through a library. The snippets below are not executed here,^[They
+require the Python `transformers` and `peft` packages plus a downloaded model and
+a deep-learning backend, none of which are part of this book's build, so they are
+marked `eval = FALSE`.] but they show the shape of the workflow. Notice that the
+quantities are the same ones we defined by hand: the library returns a
+cross-entropy `loss`, and perplexity is just `exp(loss)`.
+
+```{python, eval = FALSE}
+# Scoring text and generating with a pretrained Transformer decoder (Python).
+from transformers import AutoTokenizer, AutoModelForCausalLM
+import torch
+
+tokenizer = AutoTokenizer.from_pretrained("gpt2")
+model = AutoModelForCausalLM.from_pretrained("gpt2")
+
+text = "The cat sat on the"
+inputs = tokenizer(text, return_tensors="pt")
+
+with torch.no_grad():
+    out = model(**inputs, labels=inputs["input_ids"])
+
+# Cross-entropy loss, then perplexity = exp(loss), the same definition used above.
+loss = out.loss.item()
+perplexity = torch.exp(out.loss).item()
+
+# Greedy continuation.
+generated = model.generate(**inputs, max_new_tokens=10)
+print(tokenizer.decode(generated[0]))
+```
+
+```{r, eval = FALSE}
+# A parameter-efficient fine-tuning sketch (conceptual, Python via reticulate
+# or run directly in Python). LoRA freezes the base weights and learns small
+# low-rank updates, so only a tiny fraction of parameters are trained.
+# from peft import LoraConfig, get_peft_model
+# config = LoraConfig(r = 8, lora_alpha = 16, target_modules = c("q_proj", "v_proj"))
+# model  = get_peft_model(base_model, config)
+# Train `model` on your labeled task as usual; only the adapters update.
+```
+
+## Further Reading
+
+- Vaswani, A., Shazeer, N., Parmar, N., Uszkoreit, J., Jones, L., Gomez, A. N.,
+  Kaiser, L., and Polosukhin, I. (2017). Attention Is All You Need.
+  *Advances in Neural Information Processing Systems*.
+- Brown, T. B., et al. (2020). Language Models Are Few-Shot Learners (GPT-3).
+  *Advances in Neural Information Processing Systems*.
+- Kaplan, J., McCandlish, S., Henighan, T., Brown, T. B., Chess, B., Child, R.,
+  Gray, S., Radford, A., Wu, J., and Amodei, D. (2020). Scaling Laws for Neural
+  Language Models. *arXiv preprint*.
+- Hoffmann, J., et al. (2022). Training Compute-Optimal Large Language Models
+  (Chinchilla). *Advances in Neural Information Processing Systems*.
+- Ouyang, L., et al. (2022). Training Language Models to Follow Instructions with
+  Human Feedback (InstructGPT). *Advances in Neural Information Processing
+  Systems*.

@@ -1,0 +1,289 @@
+# Ensemble Learning
+
+```{r}
+#| include: false
+suppressPackageStartupMessages(library(tidyverse))
+```
+
+Ask a single expert a hard question and you get one answer, shaped by that expert's blind spots. Ask a room full of people with different backgrounds and average their guesses, and the average is often closer to the truth than almost any individual in the room. This is the famous observation behind the "wisdom of crowds": when individual errors are not all pointing the same way, they tend to cancel when you pool them. Ensemble learning is the machine learning version of that idea. Instead of betting everything on one model, we train several, then combine their predictions into a single verdict that is usually more accurate and more stable than any one model on its own.
+
+The appeal is practical. In applied work the gap between a good single model and a careful ensemble is frequently the gap between a respectable result and a winning one. Nearly every winning entry in predictive modeling competitions over the last two decades has been an ensemble of some kind, and the same techniques quietly power production systems where a fraction of a percent of accuracy translates into real money. The reason this works is not magic, and it is not "more models are always better." It rests on a precise statistical argument about how errors combine, which this chapter develops from scratch.
+
+> **Intuition:** Combining models helps for the same reason that averaging repeated noisy measurements helps. If each measurement is unbiased but noisy, the average is still unbiased but less noisy. The catch, and the entire art of ensembles, is that model errors are usually correlated, so they do not cancel as cleanly as independent measurements would. Most of the engineering goes into making the members disagree in useful ways.
+
+This book already covers the three workhorse ensemble families in their own chapters: bagging (Chapter \@ref(bagging)), which builds many models on bootstrap resamples and averages them; boosting (Chapter \@ref(boosting)), which builds models in sequence so each one corrects its predecessor; and stacking (Chapter \@ref(model-stacking)), which trains a meta-model to learn how to weight a set of base learners. Random forests (Chapter \@ref(random-forests)) are a specialized, decorrelated form of bagging. This chapter steps back from any single recipe and gives the unifying view: why combining works at all, what "diversity" means mathematically, and how the simplest combiners (voting and averaging) already capture most of the intuition. Read it as the conceptual glue that ties those other chapters together.
+
+By the end you will be able to state the bias-variance and decorrelation arguments precisely, derive the Condorcet jury result that explains majority voting, and run a small simulation in base R that combines several genuinely different base learners and watches the ensemble beat every one of its members.
+
+## Why combine models at all
+
+Let the truth be a target $y$ and let a model produce a prediction $\hat f(x)$ at input $x$. For regression we measure error with squared loss; for classification with misclassification rate. The case for ensembles looks slightly different in each, so we take them in turn.
+
+### Averaging reduces variance
+
+Fix an input $x$ and suppose we have $M$ regression models $\hat f_1(x), \dots, \hat f_M(x)$. The simplest ensemble is the plain average,
+$$
+\bar f(x) = \frac{1}{M} \sum_{m=1}^{M} \hat f_m(x).
+$$
+Decompose the expected squared error of any predictor into the standard bias-variance pieces, where the expectation is over the randomness in the training data that produced the models:
+$$
+\mathbb{E}\bigl[(\hat f(x) - y)^2\bigr] = \underbrace{\bigl(\mathbb{E}[\hat f(x)] - y\bigr)^2}_{\text{bias}^2} + \underbrace{\operatorname{Var}\bigl(\hat f(x)\bigr)}_{\text{variance}} + \sigma^2,
+$$
+with $\sigma^2$ the irreducible noise. Now compare a single member to the average. If every member has the same mean prediction $\mu(x)$, then the average has the *same bias*: $\mathbb{E}[\bar f(x)] = \mu(x)$. Averaging does not move the bias term. What it changes is the variance.
+
+Suppose each member has variance $\operatorname{Var}(\hat f_m(x)) = v$, and any two distinct members have correlation $\rho$ between their predictions. Then the variance of the average is
+$$
+\operatorname{Var}\bigl(\bar f(x)\bigr) = \frac{1}{M^2} \left( \sum_{m} v + \sum_{m \neq m'} \rho v \right) = \rho v + \frac{1 - \rho}{M}\, v.
+$$
+This compact formula is the heart of ensemble theory, so it is worth reading slowly. As the number of members $M$ grows, the second term vanishes and the variance floors out at $\rho v$. Two extremes make the point:
+
+- If the members were perfectly correlated ($\rho = 1$), the variance stays at $v$ no matter how many you add. Combining identical models buys nothing.
+- If the members were uncorrelated ($\rho = 0$), the variance shrinks to $v / M$. With enough independent members the variance can be driven toward zero.
+
+> **Key idea:** Averaging leaves bias unchanged and drives variance from $v$ down toward $\rho v$. The leftover floor is set by the *correlation between members*, not by how many you have. This is why every successful ensemble method is, at bottom, a scheme for making its members less correlated while keeping each one reasonably accurate.
+
+The term $\rho v$ is why you cannot just train the same logistic regression a thousand times and call it an ensemble: those thousand models are nearly identical, $\rho \approx 1$, and you have gained nothing. Bagging lowers $\rho$ by training on different resamples; random forests push $\rho$ lower still by randomizing the features each split may use; using altogether different model families (a tree, a linear model, a nearest-neighbor rule) lowers $\rho$ because the models make structurally different mistakes.
+
+### The wisdom of crowds, made precise
+
+For classification the relevant result is older than machine learning. The Marquis de Condorcet, writing in 1785 about juries and voting, proved what is now called the Condorcet jury theorem. Suppose $M$ voters each decide a binary question correctly with the same probability $p$, independently of one another, and we take the majority vote. Let $X$ be the number of correct voters; then $X \sim \text{Binomial}(M, p)$, and the majority is correct when more than half the voters are right:
+$$
+P(\text{majority correct}) = \sum_{k = \lfloor M/2 \rfloor + 1}^{M} \binom{M}{k} p^{k} (1-p)^{M-k}.
+$$
+The theorem says that if each voter is better than a coin flip ($p > 1/2$), then this probability increases with $M$ and tends to $1$ as $M \to \infty$. If each voter is worse than a coin flip ($p < 1/2$), the majority is worse than any individual and tends to $0$. The boundary case $p = 1/2$ leaves the majority at a coin flip.
+
+> **Intuition:** A committee of mediocre-but-better-than-chance jurors who think independently will, by majority vote, approach certainty as the committee grows. The same arithmetic that makes a jury reliable makes a voting ensemble of weak classifiers strong. This is exactly the promise that boosting cashes in, turning many "weak learners" into one strong one (Chapter \@ref(boosting)).
+
+The two pillars, the variance formula for regression and the Condorcet theorem for classification, share one assumption that does all the work: independence, or at least low correlation, between members. Real models are never independent, because they learn from the same data and often the same signal. Everything practical about ensembles is a negotiation with that fact.
+
+### The bias-variance-diversity view
+
+There is a clean identity that unifies the regression story. For an averaged ensemble $\bar f$, the squared error can be written as the average member error minus a diversity term. Writing $\bar y$ for the target and dropping the noise term for clarity,
+$$
+\bigl(\bar f(x) - y\bigr)^2 = \frac{1}{M}\sum_{m} \bigl(\hat f_m(x) - y\bigr)^2 - \frac{1}{M}\sum_{m} \bigl(\hat f_m(x) - \bar f(x)\bigr)^2.
+$$
+This is the ambiguity decomposition of Krogh and Vedelsby (1995). The first term is the average error of the members. The second term, the ambiguity or diversity, measures how much the members disagree with the ensemble. Because it is subtracted, *more disagreement lowers the ensemble error*, provided it does not come at the cost of making the individual members much worse. This is the formal statement of the tension every ensemble navigates: you want members that are individually accurate (small first term) yet collectively diverse (large second term). Pushing on one tends to hurt the other.
+
+> **Note:** Diversity is not a free parameter you can crank to infinity. Random predictions are maximally diverse and useless. The useful kind of diversity comes from models that are each competent but err in different regions of the input space.
+
+## Ways to combine
+
+Once you have a set of trained members, combining them is its own design choice. The methods form a short ladder from simple to learned.
+
+Averaging (regression) and voting (classification) are the unweighted baselines. Hard voting takes the majority predicted class; soft voting averages the predicted class probabilities and then picks the largest, which usually beats hard voting because it uses the models' confidence. Plain averaging is the regression analogue and is the right default when your members are of comparable quality.
+
+Weighted averaging and weighted voting assign each member a weight $w_m \ge 0$ with $\sum_m w_m = 1$, giving more say to better members:
+$$
+\bar f(x) = \sum_{m=1}^{M} w_m\, \hat f_m(x).
+$$
+The weights might come from validation accuracy, or from solving a small constrained least-squares problem on held-out predictions. Be careful: weights fit on the same data the members were trained on will overfit, which is precisely the trap stacking is designed to avoid.
+
+Stacking (blending) replaces the fixed combiner with a learned one. A meta-learner is trained on the members' *out-of-fold* predictions to discover the best way to combine them, which can include down-weighting redundant members to zero. Stacking is the most powerful combiner and the most prone to overfitting if the out-of-sample discipline is not maintained. It gets its own treatment in Chapter \@ref(model-stacking).
+
+The three big families differ mainly in how they generate diversity, not in how they combine. Table @tbl-ensemble-learning-families lays out the comparison.
+
+```{r tbl-ensemble-learning-families, echo=FALSE}
+fam <- data.frame(
+  Family = c("Bagging", "Random forest", "Boosting", "Stacking", "Voting / averaging"),
+  `How members are built` = c(
+    "Same learner on bootstrap resamples",
+    "Bagged trees with random feature subsets per split",
+    "Same learner fit sequentially on residuals / reweighted data",
+    "Several different learners on the full data",
+    "Several different learners on the full data"),
+  `Source of diversity` = c(
+    "Resampling the rows",
+    "Resampling rows and features",
+    "Reweighting toward hard cases",
+    "Different model families",
+    "Different model families"),
+  `Trained` = c("Parallel", "Parallel", "Sequential", "Two-stage", "Parallel"),
+  `Mainly reduces` = c("Variance", "Variance", "Bias (and variance)", "Both", "Variance"),
+  check.names = FALSE
+)
+knitr::kable(fam, caption = "A unifying view of the main ensemble families. They share a combiner but differ in how they manufacture diversity among members and in which part of the error they target.")
+```
+
+Table @tbl-ensemble-learning-families shows that bagging and random forests attack variance by perturbing the data, boosting attacks bias by chasing residuals in sequence, and stacking and voting attack both by mixing different model families. The simple voting and averaging combiners in this chapter sit in the last row: they are the most transparent way to exploit diversity across unlike learners.
+
+## A worked simulation: an ensemble of unlike learners
+
+The cleanest demonstration of the wisdom-of-crowds effect is to combine learners that are genuinely different in kind, so their mistakes are decorrelated, and watch the ensemble beat each member. We will generate a two-class problem with nonlinear structure and noise, train four base learners that each capture the data in a different way, then combine them by soft voting (averaging predicted probabilities) for the final prediction. We deliberately use only base R and the pre-installed `class`, `e1071`, and `tree` packages.
+
+First the data. The two classes live on interleaving regions so that no single simple boundary separates them, which forces the members to make different errors.
+
+```{r ensemble-learning-setup, message=FALSE, warning=FALSE}
+suppressPackageStartupMessages({
+  library(class)    # k-nearest neighbours
+  library(e1071)    # naive Bayes
+  library(tree)     # classification tree
+})
+
+set.seed(7)
+
+# Generate a noisy two-class problem with nonlinear structure.
+make_data <- function(n) {
+  x1 <- runif(n, -3, 3)
+  x2 <- runif(n, -3, 3)
+  # True log-odds: a linear trend, a wave, and an interaction term, so that
+  # no single member family can capture all of the structure on its own.
+  score <- 0.9 * x1 + 0.9 * x2 + 1.6 * sin(1.5 * x1) - 0.5 * x1 * x2
+  prob  <- 1 / (1 + exp(-score))
+  y     <- factor(ifelse(runif(n) < prob, "A", "B"))
+  data.frame(x1 = x1, x2 = x2, y = y)
+}
+
+train <- make_data(600)
+test  <- make_data(2000)
+
+table(train$y)
+```
+
+Now we fit four members of different families: logistic regression (a linear boundary), a classification tree (axis-aligned splits), k-nearest neighbors (local, nonparametric), and naive Bayes (a probabilistic generative model). Each returns a probability that an observation belongs to class `"A"`, which is what soft voting averages.
+
+```{r ensemble-learning-members}
+# Member 1: logistic regression. P(y = A).
+m_logit <- glm(y ~ x1 + x2, data = train, family = binomial)
+p_logit <- predict(m_logit, newdata = test, type = "response")
+# glm models the second factor level ("B") as the success; convert to P(A).
+p_logit <- 1 - p_logit
+
+# Member 2: classification tree.
+m_tree <- tree(y ~ x1 + x2, data = train)
+p_tree <- predict(m_tree, newdata = test)[, "A"]
+
+# Member 3: k-nearest neighbours (k = 21), with class proportions as prob.
+k <- 21
+knn_out <- knn(train = train[, c("x1", "x2")],
+               test  = test[, c("x1", "x2")],
+               cl    = train$y, k = k, prob = TRUE)
+# knn returns the proportion of votes for the winning class; convert to P(A).
+win_prop <- attr(knn_out, "prob")
+p_knn <- ifelse(knn_out == "A", win_prop, 1 - win_prop)
+
+# Member 4: naive Bayes.
+m_nb <- naiveBayes(y ~ x1 + x2, data = train)
+p_nb <- predict(m_nb, newdata = test, type = "raw")[, "A"]
+
+# Collect member probabilities of class "A".
+P <- cbind(logit = p_logit, tree = p_tree, knn = p_knn, nb = p_nb)
+head(round(P, 3))
+```
+
+The ensemble is the row-wise average of these probabilities, with the predicted class being whichever side of $0.5$ the average lands on. We also measure how correlated the members' probability outputs are, since the variance formula told us that low correlation is what makes combining pay off.
+
+```{r ensemble-learning-combine}
+truth <- test$y
+
+# Soft-voting ensemble: average the four P(A) columns.
+p_ens   <- rowMeans(P)
+pred_ens <- factor(ifelse(p_ens > 0.5, "A", "B"), levels = c("A", "B"))
+
+# Per-member predicted classes and accuracies.
+acc <- function(prob) {
+  pred <- factor(ifelse(prob > 0.5, "A", "B"), levels = c("A", "B"))
+  mean(pred == truth)
+}
+member_acc <- apply(P, 2, acc)
+ens_acc    <- mean(pred_ens == truth)
+
+# Average pairwise correlation between member probability outputs.
+cor_mat   <- cor(P)
+avg_cor   <- mean(cor_mat[upper.tri(cor_mat)])
+
+round(member_acc, 4)
+round(c(ensemble = ens_acc, avg_member_correlation = avg_cor), 4)
+```
+
+The members' probability outputs are correlated but far from identical (different families really do disagree), and the averaged ensemble edges out all of them. The results are collected in Table @tbl-ensemble-learning-accuracy.
+
+```{r tbl-ensemble-learning-accuracy, echo=FALSE}
+res <- data.frame(
+  Model = c("Logistic regression", "Classification tree",
+            "k-NN (k = 21)", "Naive Bayes", "Soft-voting ensemble"),
+  `Test accuracy` = round(c(member_acc["logit"], member_acc["tree"],
+                            member_acc["knn"], member_acc["nb"], ens_acc), 4),
+  check.names = FALSE
+)
+knitr::kable(
+  res,
+  caption = "Test-set accuracy of four different base learners and their soft-voting ensemble on the simulated two-class problem. The ensemble beats every individual member because the members' errors are only partially correlated."
+)
+```
+
+Table @tbl-ensemble-learning-accuracy shows the payoff: averaging four accurate, partially decorrelated learners produces a classifier better than the best member and more robust than any single one, since it does not depend on having guessed the right model family in advance.
+
+It helps to see this geometrically. Figure @fig-ensemble-learning-boundaries plots the decision boundary of each member alongside the ensemble's, over a grid of inputs. The members carve the space up in visibly different ways: logistic regression draws a straight line, the tree makes rectangular cuts, k-NN follows a jagged local contour, and the ensemble blends these into a boundary that tracks the true curved structure better than any single member.
+
+```{r fig-ensemble-learning-boundaries, fig.cap="Decision boundaries on the simulated data. Each of the four base learners (logistic regression, tree, k-NN, naive Bayes) partitions the input space differently; the soft-voting ensemble (bottom right) blends them into a smoother boundary that follows the true structure more faithfully. Points are a sample of the training data, shaded by class.", fig.width=9, fig.height=6}
+# Build a prediction grid.
+gx <- seq(-3, 3, length.out = 120)
+grid <- expand.grid(x1 = gx, x2 = gx)
+
+g_logit <- 1 - predict(m_logit, newdata = grid, type = "response")
+g_tree  <- predict(m_tree, newdata = grid)[, "A"]
+g_knn_o <- knn(train = train[, c("x1", "x2")], test = grid,
+               cl = train$y, k = k, prob = TRUE)
+g_knn   <- ifelse(g_knn_o == "A", attr(g_knn_o, "prob"),
+                  1 - attr(g_knn_o, "prob"))
+g_nb    <- predict(m_nb, newdata = grid, type = "raw")[, "A"]
+g_ens   <- (g_logit + g_tree + g_knn + g_nb) / 4
+
+panels <- list(
+  "Logistic regression" = g_logit,
+  "Classification tree"  = g_tree,
+  "k-NN (k = 21)"        = g_knn,
+  "Naive Bayes"          = g_nb,
+  "Soft-voting ensemble" = g_ens
+)
+
+# Sample some training points to overlay.
+set.seed(1)
+samp <- train[sample(nrow(train), 150), ]
+pt_col <- ifelse(samp$y == "A", "#1b9e77", "#d95f02")
+
+op <- par(mfrow = c(2, 3), mar = c(3, 3, 2, 1), mgp = c(1.8, 0.6, 0))
+for (nm in names(panels)) {
+  z <- matrix(panels[[nm]], nrow = length(gx))
+  image(gx, gx, z, col = hcl.colors(20, "Blue-Red 3"),
+        xlab = "x1", ylab = "x2", main = nm, zlim = c(0, 1))
+  contour(gx, gx, z, levels = 0.5, add = TRUE, lwd = 2, drawlabels = FALSE)
+  points(samp$x1, samp$x2, pch = 19, cex = 0.5, col = pt_col)
+}
+# Final empty panel kept blank for layout symmetry.
+plot.new()
+par(op)
+```
+
+Figure @fig-ensemble-learning-boundaries makes the decorrelation argument tangible: the members really do disagree about where the boundary lies, and the ensemble's boundary is the consensus that survives their disagreement.
+
+## When ensembles help, and when they do not
+
+The theory tells you exactly when to expect a gain and when not to.
+
+> **When to use this:** Reach for an ensemble when (1) you have several models that are each better than chance, (2) they make *different* mistakes (low correlation), and (3) a small, stable accuracy gain is worth extra compute and reduced interpretability. If any of these fails, the ensemble may not help.
+
+The strongest practical lever is diversity. You manufacture it by varying the data (bagging, random subspaces), varying the algorithm (mixing model families, as in the demo above), or varying the sequence (boosting). Combining ten tuned gradient-boosted models that were all trained the same way gives far less than combining a boosted model, a random forest, a regularized linear model, and a neural net, because the latter set disagrees more.
+
+A few pitfalls recur often enough to call out.
+
+> **Warning:** Averaging strongly correlated members buys almost nothing. The variance floor is $\rho v$; if $\rho$ is near $1$, you have paid for $M$ models and kept the variance of one.
+
+> **Warning:** A bad member can drag down a plain average. Voting and averaging assume members are at least better than chance (the $p > 1/2$ condition in Condorcet). Including a member that is worse than random, or one that is systematically biased in the same direction as the others, can move the ensemble the wrong way. Use weighting or stacking to suppress weak members, and validate the combination, not just the members.
+
+> **Warning:** Fitting combination weights (or a stacking meta-learner) on the same data used to train the members leaks information and overfits. Always weight or stack on held-out or out-of-fold predictions. This is the single most common ensemble mistake.
+
+Two further considerations are operational rather than statistical. Ensembles cost more at training and inference time, since you must run every member, which can matter for latency-sensitive deployment. And they are harder to explain: a stakeholder can follow one decision tree but not a weighted blend of four models, so plan for interpretability tooling (Chapter \@ref(interpretable-machine-learning)) if explanations are required. None of these is a reason to avoid ensembles, but each is a reason to be deliberate.
+
+A useful closing perspective: the deepest theoretical reason no single algorithm is always best is the "no free lunch" result (Wolpert and Macready, 1997). Averaged over all possible problems, every learner is equally good. Ensembles are a hedge against not knowing which inductive bias your problem rewards. By blending several biases you avoid betting the whole result on one guess about the structure of the world, which is why a well-built ensemble is so often the safe and the strong choice at once.
+
+## Further reading
+
+- Dietterich (2000), *Ensemble Methods in Machine Learning*, a concise survey of why and how ensembles work, including the statistical, computational, and representational arguments for combining.
+- Breiman (1996), *Bagging Predictors*, and Breiman (2001), *Random Forests*, the founding papers for the variance-reduction-by-resampling view.
+- Freund and Schapire (1997), *A Decision-Theoretic Generalization of On-Line Learning and an Application to Boosting*, the AdaBoost paper that turns weak learners into strong ones.
+- Wolpert (1992), *Stacked Generalization*, and Breiman (1996), *Stacked Regressions*, which put learned combination on a firm footing.
+- Krogh and Vedelsby (1995), *Neural Network Ensembles, Cross Validation, and Active Learning*, the source of the ambiguity (bias-variance-diversity) decomposition.
+- Hastie, Tibshirani, and Friedman (2009), *The Elements of Statistical Learning*, chapters on model averaging, bagging, and boosting for the unified statistical treatment.
+- Zhou (2012), *Ensemble Methods: Foundations and Algorithms*, a book-length, modern reference covering diversity, combination rules, and advanced methods.
+- Condorcet (1785), *Essai sur l'application de l'analyse a la probabilite des decisions rendues a la pluralite des voix*, the original jury theorem behind majority voting.

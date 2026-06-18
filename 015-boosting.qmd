@@ -1,0 +1,1708 @@
+# Boosting
+
+```{r}
+#| include: false
+suppressPackageStartupMessages(library(tidyverse))
+```
+
+Imagine you are trying to predict house prices and your first model is a small, blunt decision tree. It captures the broad pattern (bigger houses cost more) but it misses many details, and its errors are large for certain neighborhoods. A natural human reaction would be to look at where the model went wrong and build a second, focused model that specializes in fixing those mistakes, then a third that fixes what is still wrong, and so on. Boosting is exactly this idea made precise: it builds a sequence of simple models, each one trained to correct the errors left behind by the models before it.
+
+This stands in contrast to bagging and random forests (Chapter \@ref(random-forests)), where many trees are grown *independently* on bootstrap samples and then averaged. Boosting grows trees *sequentially*: each new tree depends strongly on the trees already built, because it is fit to what they got wrong. There are no bootstrap samples in classic boosting; instead, we repeatedly fit small trees to the *residuals* (the leftover error), not to the original response $Y$ directly.
+
+The phrase you will hear in the literature is that boosting "learns slowly." Rather than fitting one large tree that tries to capture everything at once (sometimes called "fitting the data hard"), boosting nudges the model in the right direction a little at a time, scaling each new tree by a small shrinkage factor $\lambda$. Learning slowly turns out to be a feature, not a bug: it concentrates effort on the parts of the problem that are still poorly fit and it guards against overfitting.
+
+In this chapter you will build up boosting from its conceptual core to its modern, production-grade implementations. We start with the intuition (gradient descent and slow learning), then give the precise algorithms for regression and classification, work through the original AdaBoost, generalize to gradient boosting, and finish with the libraries you will actually use in practice (`gbm`, `xgboost`, `lightgbm`, and `h2o`), along with the interpretation tools (variable importance, partial dependence, and LIME) that make a boosted model explainable.
+
+> **Key idea:** Boosting combines many "weak" learners (models that are only slightly better than guessing) into one strong "committee," by training each new learner to fix the mistakes of the current ensemble.
+
+A few facts worth keeping in mind from the start. Boosting was originally designed for classification (the classic algorithm is AdaBoost.M1 [@freund1997b], and it is sometimes called hypothesis boosting), but it extends naturally to regression. It is widely regarded as one of the best off-the-shelf predictors available.^[Gradient boosted trees routinely win tabular-data competitions and serve as strong baselines in industry precisely because they require little preprocessing and tune to high accuracy.]
+
+When should you reach for boosting, and what are the tradeoffs? The following lists summarize the practical case.
+
+Boosting tends to offer:
+
+-   Good predictive accuracy, often state of the art on tabular data.
+
+-   Several hyperparameters to tune, which gives you a lot of flexibility.
+
+-   Little need for preprocessing.
+
+-   Built-in handling of missing data in many implementations (no imputation needed).
+
+The costs to weigh against those benefits are:
+
+-   Because it relentlessly drives down training error, a gradient boosting machine (GBM) can overemphasize outliers and overfit. Cross-validation (Chapter \@ref(cross-validation)) is the main defense.
+
+-   It can be computationally expensive, especially during a large grid search over hyperparameters.
+
+Underneath all of this, the general framework of boosting is a stagewise additive model built from $B$ regression trees, which connects it directly to the additive models of Chapter \@ref(generalized-additive-models):
+
+$$
+f(x) = \sum_{b=1}^B f^b (x)
+$$
+
+The rest of the chapter unpacks how those component functions $f^b$ are chosen and combined.
+
+## Gradient Descent
+
+Before the algorithms, it helps to name the engine that drives modern boosting: gradient descent. Gradient descent is a general recipe for minimizing a function by repeatedly taking a small step in the direction that decreases it fastest (the negative gradient). Gradient boosting is, quite literally, gradient descent applied in "function space," where each step is a new tree.
+
+The reasons this framing matters:
+
+-   Gradient boosting can be generalized to minimize many different loss functions (for example mean squared error or mean absolute error), not just one.
+
+-   The core idea is to tweak the model iteratively to minimize a cost function.
+
+-   It works for any differentiable loss function, which is what lets us swap in losses suited to regression, classification, or ranking.
+
+> **Intuition:** If the loss is a hill you want to walk down, the gradient points uphill. Boosting reads off the (negative) gradient at the current model, fits a tree to it, and takes a small downhill step scaled by the learning rate.
+
+If you would like a careful walk-through of the underlying optimization, you can refer to the first book for [more detail](https://bookdown.org/mike/data_analysis/non-linear-regression.html?q=gradient%20d#steepest-descent).
+
+## Tuning
+
+Boosting gives you several knobs, and getting good performance is largely a matter of setting them sensibly. Here are the main ones, with what each controls:
+
+-   Number of trees: how many sequential trees to grow.
+
+-   Depth of trees: how many splits $d$ each tree is allowed (this controls how much interaction between variables a single tree can capture).
+
+-   Learning rate (shrinkage): smaller values reduce overfitting but require more trees and longer fitting time.
+
+-   Subsampling: training each tree on a random subset of the data adds randomness that can reduce overfitting; tune it with cross-validation (Chapter \@ref(cross-validation)).
+
+We will see these same parameters reappear under slightly different names in every library later in the chapter.
+
+## Regression Boosting
+
+With the intuition in place, here is the precise algorithm for boosting regression trees. Read it as "start from nothing, then repeatedly fit a small tree to the current residuals and add a shrunken version of it back in."
+
+1.  Set $\hat{f}(x) = 0$ and $r_i = y_i \forall i$ (in the training set)
+
+2.  For $b = 1, \dots, B$ repeat
+
+    1.  Fit a tree $\hat{f}^b$ with $d$ splits ($d + 1$ terminal nodes) to the training data $(X,r)$
+
+    2.  Update $\hat{f}$ by adding in a shrunken version of the new tree $\hat{f}(x) \leftarrow \hat{f}(x) + \lambda \hat{f}^b (x)$
+
+    3.  Update the residuals $r_i \leftarrow r_i - \lambda \hat{f}^b (x_i)$
+
+3.  Final boosted model $\hat{f}(x) = \sum_{b=1}^B \lambda \hat{f}^b (x)$
+
+<br>
+
+Notice how step 2.3 makes the algorithm self-correcting: after each tree is added, the residuals shrink in the regions that tree explained well, so the next tree is automatically drawn to whatever is still poorly fit.
+
+This algorithm has three tuning parameters, and understanding how they interact is most of what you need to use boosting well:
+
+1.  $B$: the number of trees. Boosting *can* overfit if $B$ is too large, so we use cross-validation (Chapter \@ref(cross-validation)) to select $B$.
+2.  $\lambda$: the shrinkage parameter, which controls the rate at which boosting learns. Typical values are 0.01 or 0.001 (the best choice depends on the data at hand). The smaller the $\lambda$, the larger $B$ must be to achieve good performance.
+3.  $d$: the number of splits in each tree. Surprisingly, $d = 1$ often works well, in which case we call the tree a "stump." With $d = 1$, the boosted ensemble is fitting an additive model, since each term involves only one variable. More generally, $d$ is the interaction depth and controls the interaction order of the boosted model (since $d$ splits can involve at most $d$ variables).
+
+> **Note:** The inverse relationship between $\lambda$ and $B$ is the single most important thing to internalize. Halving the learning rate roughly doubles the number of trees you need. Slow learners are more accurate but more expensive.
+
+<br>
+
+## Classification Boosting
+
+Boosting was born in the classification setting, so it is worth seeing the idea there directly. Consider a two-class problem coded so that $Y \in \{ -1, 1\}$, with a vector of predictors $X$.
+
+We have a classifier $G(X)$ that predicts either $-1$ or $1$. Its error rate on the training sample is the fraction of misclassified points:
+
+$$
+\bar{err} = \frac{1}{n} \sum_{i=1}^n I(y_i \neq G(x_i))
+$$
+
+A *weak classifier* is one whose error rate is only slightly better than random guessing. The boosting strategy is to sequentially apply a weak classification algorithm, producing a sequence of weak classifiers $G_m(x), m = 1, \dots, M$ (here $M$ plays the role that $B$ did above). Each one is deliberately simple; the power comes from how they are combined.
+
+Their predictions are combined through a weighted majority vote to produce the final prediction:
+
+$$
+G(x) = sign (\sum_{m=1}^M \alpha_m G_m (x))
+$$
+
+where the weights $\alpha_m, m = 1, \dots, M$ are computed by the boosting algorithm and give the highest influence to the best classifiers. So a confident, accurate weak learner gets a loud vote, and a barely-better-than-chance one gets a quiet one.
+
+The other half of the mechanism is reweighting the *data*. At each boosting step, weights $w_1, \dots, w_n$ are attached to the training observations $(x_i, y_i), i = 1, \dots, n$. To start, the weights are equal, $w_i = \frac{1}{n}$, so there is no preference at the first step.
+
+After each iteration, the weights are updated: observations that classifier $G_{m-1}(x)$ got wrong have their weights increased, and those it got right have their weights decreased. As the iterations continue, observations that are hard to classify accumulate ever more influence, so each successive classifier is forced to concentrate on the cases its predecessors kept missing.
+
+> **Intuition:** Boosting is like a study group where, after every quiz, you spend more time on the questions the group keeps getting wrong, and you trust the answers of whoever has been most reliable so far.
+
+<br>
+
+### Why boosting works so well
+
+It is reasonable to ask *why* this procedure should produce such accurate predictors. The cleanest explanation comes from viewing boosting as a basis function expansion (Chapter \@ref(basis-function-representations)):
+
+$$
+f(x) = \sum_{m=1}^M \beta_m b(x; \gamma_m)
+$$
+
+where
+
+-   $\beta_m$ are the expansion coefficients
+
+-   $b(x, \gamma)$ are simple functions of the multivariate inputs $x$ and parameters $\gamma$
+
+From this angle, boosting is simply a way of fitting an additive expansion in which the basis functions are the individual classifiers $G_m(x) \in \{ -1, 1\}$.
+
+To fit such a model, we would like to minimize some loss function averaged over the training data (for example, squared error loss):
+
+$$
+\min_{\{\beta_m , \gamma_m \}^M_1} \sum_{i=1}^n L (y_i, \sum_{m=1}^M  \beta_m b(x_i; \gamma_m))
+$$
+
+For most loss functions $L(y, f(x))$ and basis functions $b(x; \gamma)$, solving this jointly over all $M$ terms at once is computationally intensive. The trick that makes boosting tractable is to instead solve a much easier subproblem: fitting just a single basis function at a time,
+
+$$
+\min_{\{\beta, \gamma\}} \sum_{i=1}^n L(y_i, \beta b (x_i; \gamma))
+$$
+
+We then approximate the full minimization by sequentially adding new basis functions to the expansion without going back to readjust the parameters and coefficients already in place. This procedure is called forward stagewise additive modeling: at each iteration $m$, we solve for the optimal basis function $b(x, \gamma_m)$ and coefficient $\beta_m$ to add to the current expansion $f_{m-1}(x)$, obtaining $f_m(x)$, and we repeat while holding the previously added terms fixed.^[Freezing the earlier terms is what keeps the problem cheap and what makes boosting "greedy." It is also why boosting is robust: no single step can undo the accumulated progress.]
+
+A concrete example makes this tangible. With squared error loss,
+
+$$
+L(y, f(x)) = (y - f(x))^2
+$$
+
+the loss of adding one more term becomes
+
+$$
+\begin{aligned}
+L(y_i, f_{m-1}(x_i) + \beta_m b(x_i; \gamma_m) &= (y_i - f_{m-1}(x_i) - \beta_mb(x_i; \gamma_m))^2 \\
+&= (r_{im} - \beta_mb(x_i; \gamma_m))^2
+\end{aligned}
+$$
+
+where $r_{im} = y_i - f_{m-1}(x)$ is the residual of the current model on the $i$-th observation. In words: the next term $\beta_m b(x; \gamma_m)$ is just the one that best fits the current residuals. This is precisely the regression boosting algorithm from the previous section, now derived rather than asserted.
+
+<br>
+
+## AdaBoost
+
+AdaBoost was the first boosting algorithm, and it remains the cleanest example of the reweighting idea in action. Its logic can be stated in three sentences:
+
+1.  It combines "weak learners" (often stumps) to make classifications.
+2.  Each stump gets a different weight in the final vote.
+3.  Each stump is built sequentially, focused on the previous stump's mistakes.
+
+<br>
+
+Here is the precise procedure, AdaBoost.M1:
+
+1.  Initialize the observation weights $w_i = \frac{1}{N}, i = 1, \dots, N$
+
+2.  For $m = 1$ to M
+
+    1.  Fit a classifier $G_m(x)$ to the training data with weights $w_i$
+
+    2.  Calculate $err_m = \frac{\sum_{i=1}^{N} w_i I(y_i \neq G_m(x_i))}{\sum_{i=1}^N w_i}$
+
+    3.  Calculate $\alpha_m = \log (\frac{1 - err_m}{err_m})$
+
+    4.  Set $w_i \leftarrow w_i \times \exp(\alpha_m \times I (y_i \neq G_m(x_i))), i = 1, \dots, N$
+
+3.  $G(x) = sign(\sum_{m=1}^M \alpha_m G_m(x))$
+
+Reading the steps together: a low-error classifier earns a large $\alpha_m$ (a loud vote in step 3), and step 2.4 multiplies up the weights of exactly the points it misclassified, so the next round leans into them.
+
+It is not obvious at first, but AdaBoost.M1 is equivalent to forward stagewise modeling using the loss function [@hastie2001a, 10.4]
+
+$$
+L(y, f(x)) = \exp(-y f(x))
+$$
+
+which is the "exponential loss." This loss is closely related to the binomial negative log-likelihood (deviance), although the two behave differently with finite, real-world data. The exponential loss is attractive mainly because it makes the computation in step 2 fall out cleanly.
+
+> **Note:** AdaBoost did not start from "let's minimize exponential loss." It was designed first and only later understood as stagewise minimization of that loss. This after-the-fact view is what opened the door to generalizing it.
+
+There are, of course, many other loss functions. We typically choose one because
+
+-   it is robust to certain data properties (for example, outliers), or
+
+-   it makes the computation easier.
+
+The key generalization is this: when a loss function is differentiable, we can use its gradient to guide the optimization. That observation is the foundation of gradient boosting (gradient boosting models, "GBM"; formerly known as Multiple Additive Regression Trees, or MART), which is the subject of the next section.
+
+<br>
+
+## Gradient Boosting
+
+Gradient boosting generalizes AdaBoost from one special loss to *any* differentiable loss, by replacing "reweight the misclassified points" with "fit the next tree to the negative gradient of the loss." This single change is what makes the method so flexible.
+
+A few orienting points before the algorithm:
+
+-   It is a generalization of [AdaBoost].
+
+-   The algorithm XGBoost has become one of the standard implementations of gradient boosting and is available in both R and Python.
+
+    -   It uses Newton-Raphson for its optimization (a second-order Taylor approximation of the loss) instead of plain gradient descent.
+
+    -   This improves efficiency in more complicated settings than the original gradient boosting algorithms.
+
+-   Additional regularization, built-in cross-validation, and handling of missing data are standard features of modern implementations.
+
+It helps to contrast gradient boosting with AdaBoost directly. Gradient boosting starts with a single leaf, an initial guess shared by all samples. As in AdaBoost, each new tree is built from the previous trees' errors, and the trees are scaled before being added. But there are two differences: gradient boosting scales every tree by the same amount (the learning rate), and each tree can be larger than a stump.
+
+> **Intuition:** Scaling each tree by the learning rate means taking a small, deliberate step in the right direction rather than a giant leap. Many small steps reach a better place than a few large ones.
+
+<br>
+
+### Gradient Boost Regression
+
+Here is the regression algorithm written out. The structure mirrors the regression boosting algorithm from before, but step 2.1 now computes a *pseudo-residual* from the gradient of the loss, which is what lets us use losses other than squared error.
+
+Input: Data $\{(x_i, y_i)\}^n_{i=1}$ and a differentiable Loss Function $L(y_i, F(x))$ (e.g., Regression: squared residual: $0.5(\text{Observed} - \text{Predicted})^2$ )
+
+Step 1: Initialize model with a constant value: $F_0(x) = \underset{\gamma}{\operatorname{argmin}} \sum_{i=1}^n L(y_i, \gamma)$
+
+Step 2: for $m = 1 \to M$ (number of trees):
+
+1.  Compute the (pseudo) residual: $r_{im} = - [ \frac{\partial L( y_i, F(x_i))}{\partial F(x_i)}]_{F(x) = F_{m-1}(x)}$ for $i = 1, \dots, n$ (where $\frac{\partial L( y_i, F(x_i))}{\partial F(x_i)}$ is the gradient, ergo the name gradient boost)
+2.  Fit a regression tree to the $r_{im}$ values and create terminal regions $R_{jm}$ for $j = 1, \dots, J_m$
+3.  For $j = 1, \dots, J_m$ compute $\gamma_{jm} = \underset{\gamma}{\operatorname{argmin}} \sum_{x_i \in R_{ij}} L(y_i, F_{m-1}(x_i) + \gamma)$
+4.  Update $F_m (x) = F_{m-1}(x) + \nu \sum_{j=1}^{J_m} \gamma_{jm} I(x \in R_{jm})$ where $\nu$ is the learning rate (0 to 1) (smaller value means slower learning rate)
+
+Output: $F_M(x)$
+
+For squared error loss, the pseudo-residual in step 2.1 reduces exactly to the ordinary residual $y_i - F_{m-1}(x_i)$, which is why the earlier regression algorithm is a special case of this one.
+
+<br>
+
+Let us see it in action. The `gbm` package fits gradient boosted models in R. We will start with the familiar `Boston` housing data, predicting median home value (`medv`) from the other variables. The `distribution = "gaussian"` argument selects squared error loss for this regression problem.
+
+```{r boosting-boston-relinf, message=FALSE, warning=FALSE, fig.cap="Relative influence of each predictor in the gbm boosted model for the Boston housing data, ranked from most to least important."}
+library(gbm)
+library(ISLR2)
+library(tree)
+
+set.seed(1)
+train <- sample(1:nrow(Boston), nrow(Boston)/2)
+boston.test <- Boston[-train, "medv"]
+
+boost.boston <-
+    gbm(
+        medv ~ .,
+        data = Boston[train, ],
+        distribution = "gaussian", # because this is regression setting
+        # distribution = "bernoulli", # use this for classification
+        n.trees = 5000, # number of trees
+        interaction.depth = 4 # limits the depth of each tree
+    )
+
+summary(boost.boston) #rm and lstate are most important
+```
+
+The `summary()` output ranks the variables by relative influence, shown in Figure @fig-boosting-boston-relinf. Here `rm` (average number of rooms) and `lstat` (percent lower-status population) dominate, which matches the intuition that house size and neighborhood drive price.
+
+For a fuller workflow (tuning, visualization, and prediction), we follow an example by the [University of Cincinnati](http://uc-r.github.io/gbm_regression), using the larger Ames housing data set. First, we load the packages that support the workflow.
+
+```{r}
+library(rsample)      # data splitting
+library(gbm)          # basic implementation
+library(xgboost)      # a faster implementation of gbm
+library(caret)        # an aggregator package for performing many machine learning models
+library(h2o)          # a java-based platform
+library(pdp)          # model visualization
+library(ggplot2)      # model visualization
+library(lime)         # model visualization
+library(AmesHousing)
+```
+
+It is worth knowing the personality of the `gbm` implementation before we lean on it. The `gbm` package:
+
+-   can handle up to 1024 factor levels,
+
+-   supports many loss functions,
+
+-   has no automated early stopping, and
+
+-   offers internal cross-validation that can be combined with parallelization.
+
+We split the Ames data into training (70%) and test (30%) sets, using a fixed seed so the results are reproducible.
+
+```{r}
+# Create training (70%) and test (30%) sets for the AmesHousing::make_ames() data.
+# Use set.seed for reproducibility
+
+set.seed(123)
+ames_split <- initial_split(AmesHousing::make_ames(), prop = .7)
+ames_train <- training(ames_split)
+ames_test  <- testing(ames_split)
+```
+
+Now we fit a first model. Note the deliberately slow learning rate (`shrinkage = 0.001`) paired with a large number of trees (`n.trees = 10000`) and shallow stumps (`interaction.depth = 1`). The `cv.folds = 5` argument turns on 5-fold cross-validation so we can read off how many trees we actually need.
+
+```{r}
+# for reproducibility
+set.seed(123)
+
+# train GBM model
+gbm.fit <- gbm(
+  formula = Sale_Price ~ .,
+  distribution = "gaussian",
+  data = ames_train,
+  n.trees = 10000,
+  interaction.depth = 1,
+  shrinkage = 0.001,
+  cv.folds = 5,
+  n.cores = NULL, # will use all cores by default
+  verbose = FALSE
+  )
+
+# print results
+print(gbm.fit)
+```
+
+The cross-validation error tells us the best number of trees and, taking its square root, the cross-validated RMSE in dollars.
+
+```{r fig-boosting-gbm-perf-slow, fig.cap="Cross-validated loss as a function of the number of trees for the slow-learning gbm fit on the Ames data, with the optimal number of trees marked by the dashed line."}
+# get MSE and compute RMSE
+sqrt(min(gbm.fit$cv.error))
+## [1] 29133.33
+
+# plot loss function as a result of n trees added to the ensemble
+gbm.perf(gbm.fit, method = "cv")
+```
+
+Figure @fig-boosting-gbm-perf-slow shows the loss falling as trees are added, with the optimal point marked. Because the learning rate is so small, the curve is still descending after many thousands of trees: a small learning rate can demand a great many trees.
+
+#### Tuning
+
+Since a tiny learning rate forces a huge tree count, the natural next move is to trade some of that slowness for speed: raise the learning rate (which lets us use fewer trees) and let each tree be a little deeper. The following model uses `shrinkage = 0.1` and `interaction.depth = 3`.
+
+```{r fig-boosting-gbm-perf-fast, fig.cap="Cross-validated loss versus number of trees for the faster, deeper gbm fit (shrinkage 0.1, interaction depth 3) on the Ames data."}
+# for reproducibility
+set.seed(123)
+
+# train GBM model
+gbm.fit2 <- gbm(
+  formula = Sale_Price ~ .,
+  distribution = "gaussian",
+  data = ames_train,
+  n.trees = 5000,
+  interaction.depth = 3,
+  shrinkage = 0.1,
+  cv.folds = 5,
+  n.cores = NULL, # will use all cores by default
+  verbose = FALSE
+  )
+
+# find index for n trees with minimum CV error
+min_MSE <- which.min(gbm.fit2$cv.error)
+
+# get MSE and compute RMSE
+sqrt(gbm.fit2$cv.error[min_MSE])
+## [1] 23112.1
+
+# plot loss function as a result of n trees added to the ensemble
+gbm.perf(gbm.fit2, method = "cv")
+```
+
+Figure @fig-boosting-gbm-perf-fast shows that the faster, deeper model reaches a noticeably lower cross-validated RMSE with far fewer trees. Tuning one parameter at a time like this is instructive, but in practice we search the parameter space jointly with a grid search.
+
+```{r}
+# create hyperparameter grid
+hyper_grid <- expand.grid(
+  shrinkage = c(.01, .1, .3),
+  interaction.depth = c(1, 3, 5),
+  n.minobsinnode = c(5, 10, 15),
+  bag.fraction = c(.65, .8, 1),
+  optimal_trees = 0,               # a place to dump results
+  min_RMSE = 0                     # a place to dump results
+)
+
+# total number of combinations
+nrow(hyper_grid)
+```
+
+Before running the (slow) search, it is worth knowing what patterns to expect in the results. From experience with this data:
+
+-   the top models do not use a learning rate of 0.3 (small incremental steps usually work best),
+
+-   the top models are not stumps (there are likely interactions that deeper trees can capture),
+
+-   adding a stochastic component (`bag.fraction` \< 1) tends to help (which hints at local minima in the loss gradient), and
+
+-   the top models do not use a large minimum number of observations per node (`n.minobsinnode = 15`), so smaller nodes can capture pockets of unusual points.
+
+The grid search itself loops over every combination, fits a model, and records the optimal number of trees and the validation RMSE. It is set to `eval = FALSE` here because it is slow to run.
+
+```{r, eval = FALSE}
+# randomize data
+random_index <- sample(1:nrow(ames_train), nrow(ames_train))
+random_ames_train <- ames_train[random_index, ]
+
+# grid search
+for(i in 1:nrow(hyper_grid)) {
+
+  # reproducibility
+  set.seed(123)
+
+  # train model
+  gbm.tune <- gbm(
+    formula = Sale_Price ~ .,
+    distribution = "gaussian",
+    data = random_ames_train,
+    n.trees = 5000,
+    interaction.depth = hyper_grid$interaction.depth[i],
+    shrinkage = hyper_grid$shrinkage[i],
+    n.minobsinnode = hyper_grid$n.minobsinnode[i],
+    bag.fraction = hyper_grid$bag.fraction[i],
+    train.fraction = .75,
+    n.cores = NULL, # will use all cores by default
+    verbose = FALSE
+  )
+
+  # add min training error and trees to grid
+  hyper_grid$optimal_trees[i] <- which.min(gbm.tune$valid.error)
+  hyper_grid$min_RMSE[i] <- sqrt(min(gbm.tune$valid.error))
+}
+
+hyper_grid %>%
+  dplyr::arrange(min_RMSE) %>%
+  head(10)
+```
+
+Having found a promising region, we can zoom in with a finer grid around the best values.
+
+```{r, eval=FALSE}
+# modify hyperparameter grid
+hyper_grid <- expand.grid(
+  shrinkage = c(.01, .05, .1),
+  interaction.depth = c(3, 5, 7),
+  n.minobsinnode = c(5, 7, 10),
+  bag.fraction = c(.65, .8, 1),
+  optimal_trees = 0,               # a place to dump results
+  min_RMSE = 0                     # a place to dump results
+)
+
+# total number of combinations
+nrow(hyper_grid)
+```
+
+Then we repeat the search over the refined grid.
+
+```{r, eval=FALSE}
+# grid search
+for(i in 1:nrow(hyper_grid)) {
+
+  # reproducibility
+  set.seed(123)
+
+  # train model
+  gbm.tune <- gbm(
+    formula = Sale_Price ~ .,
+    distribution = "gaussian",
+    data = random_ames_train,
+    n.trees = 6000,
+    interaction.depth = hyper_grid$interaction.depth[i],
+    shrinkage = hyper_grid$shrinkage[i],
+    n.minobsinnode = hyper_grid$n.minobsinnode[i],
+    bag.fraction = hyper_grid$bag.fraction[i],
+    train.fraction = .75,
+    n.cores = NULL, # will use all cores by default
+    verbose = FALSE
+  )
+
+  # add min training error and trees to grid
+  hyper_grid$optimal_trees[i] <- which.min(gbm.tune$valid.error)
+  hyper_grid$min_RMSE[i] <- sqrt(min(gbm.tune$valid.error))
+}
+
+hyper_grid %>%
+  dplyr::arrange(min_RMSE) %>%
+  head(10)
+```
+
+Once the search identifies the best combination, we retrain a single final model on the full training set using those parameters.
+
+```{r}
+# for reproducibility
+set.seed(123)
+
+# train GBM model
+gbm.fit.final <- gbm(
+  formula = Sale_Price ~ .,
+  distribution = "gaussian",
+  data = ames_train,
+  n.trees = 483,
+  interaction.depth = 5,
+  shrinkage = 0.1,
+  n.minobsinnode = 5,
+  bag.fraction = .65,
+  train.fraction = 1,
+  n.cores = NULL, # will use all cores by default
+  verbose = FALSE
+  )
+```
+
+#### Visualization
+
+A trained boosting model is accurate but, on its own, opaque. The next few tools turn it back into something a human can reason about: which variables matter, how each variable affects the prediction, and why a particular prediction came out the way it did.
+
+##### Variable importance
+
+The first question is usually: which variable has the largest influence on the response? The `summary()` method answers this by relative influence, as plotted in Figure @fig-boosting-gbm-final-relinf.
+
+```{r boosting-gbm-final-relinf, fig.cap="Relative influence of the top predictors in the final tuned gbm model for the Ames housing data."}
+par(mar = c(5, 8, 1, 1))
+summary(
+  gbm.fit.final,
+  cBars = 10,
+  method = relative.influence, # also can use permutation.test.gbm
+  las = 2
+  )
+```
+
+The `vip` package produces a similar ranking with a cleaner default plot, shown in Figure @fig-boosting-gbm-vip.
+
+```{r boosting-gbm-vip, fig.cap="Variable importance for the final tuned gbm model, produced by the vip package."}
+vip::vip(gbm.fit.final)
+```
+
+##### Partial dependence plots
+
+Variable importance tells you *which* variables matter but not *how*. Partial dependence plots (PDPs) and individual conditional expectation (ICE) curves fill that gap:
+
+-   PDPs show how the average prediction changes as a feature varies over its range, averaging out the other features.
+
+-   ICE curves are an extension that shows the same thing for each observation separately, which can reveal interactions that the averaged PDP hides.
+
+The PDP in Figure @fig-boosting-gbm-pdp shows how predicted sale price rises with above-grade living area.
+
+```{r fig-boosting-gbm-pdp, fig.cap="Partial dependence of predicted sale price on above-grade living area (Gr_Liv_Area) for the final gbm model."}
+# PDP
+gbm.fit.final %>%
+  partial(pred.var = "Gr_Liv_Area", n.trees = gbm.fit.final$n.trees, grid.resolution = 100) %>%
+  autoplot(rug = TRUE, train = ames_train) +
+  scale_y_continuous(labels = scales::dollar)
+```
+
+Figure @fig-boosting-gbm-ice draws the ICE curves, both in their raw form and centered so every curve starts at the same point, which makes differences in slope easier to compare.
+
+```{r fig-boosting-gbm-ice, warning=FALSE, fig.cap="Individual conditional expectation curves for above-grade living area, shown non-centered (left) and centered (right) for the final gbm model."}
+ice1 <- gbm.fit.final %>%
+  partial(
+    pred.var = "Gr_Liv_Area",
+    n.trees = gbm.fit.final$n.trees,
+    grid.resolution = 100,
+    ice = TRUE
+    ) %>%
+  autoplot(rug = TRUE, train = ames_train, alpha = .1) +
+  ggtitle("Non-centered") +
+  scale_y_continuous(labels = scales::dollar)
+
+ice2 <- gbm.fit.final %>%
+  partial(
+    pred.var = "Gr_Liv_Area",
+    n.trees = gbm.fit.final$n.trees,
+    grid.resolution = 100,
+    ice = TRUE
+    ) %>%
+  autoplot(rug = TRUE, train = ames_train, alpha = .1, center = TRUE) +
+  ggtitle("Centered") +
+  scale_y_continuous(labels = scales::dollar)
+
+gridExtra::grid.arrange(ice1, ice2, nrow = 1)
+```
+
+##### LIME
+
+PDPs and ICE describe the model globally. LIME (Local Interpretable Model-agnostic Explanations) answers a different, local question: *why* did the model produce this particular prediction for this particular house? It does so by fitting a simple, interpretable model in the neighborhood of the observation you care about.
+
+To use LIME with a `gbm` object, we first tell it that this model does regression and how to get predictions out of it.
+
+```{r}
+model_type.gbm <- function(x, ...) {
+  return("regression")
+}
+
+predict_model.gbm <- function(x, newdata, ...) {
+  pred <- predict(x, newdata, n.trees = x$n.trees)
+  return(as.data.frame(pred))
+}
+```
+
+> **Tip:** Below we call `lime::lime()` and `lime::explain()` with their package prefixes. The name `explain` is also defined by `dplyr`, so prefixing avoids a masking conflict that would otherwise break the call when both packages are loaded.
+
+```{r fig-boosting-gbm-lime, warning=FALSE, fig.cap="LIME local explanations for two test observations under the final gbm model, showing the features that most influenced each individual prediction."}
+# get a few observations to perform local interpretation on
+local_obs <- ames_test[1:2, ]
+
+# apply LIME
+explainer <- lime::lime(ames_train, gbm.fit.final)
+explanation <- lime::explain(local_obs, explainer, n_features = 5)
+plot_features(explanation)
+```
+
+Each bar in Figure @fig-boosting-gbm-lime shows how much a feature pushed that specific prediction up or down, which is exactly the kind of explanation you would want to give a stakeholder.
+
+#### Prediction
+
+Finally, the payoff: predictions on held-out data, scored by RMSE.
+
+```{r}
+# predict values for test data
+pred <- predict(gbm.fit.final, n.trees = gbm.fit.final$n.trees, ames_test)
+
+# results
+caret::RMSE(pred, ames_test$Sale_Price)
+```
+
+<br>
+
+### Gradient Boost Classification
+
+The classification version of the algorithm is structurally identical to the regression one; only the loss function changes. For binary classification we use the negative log-likelihood (deviance), which is differentiable and so fits cleanly into the gradient framework.
+
+Input: Data $\{(x_i, y_i)\}^n_{i=1}$ and a differentiable Loss Function $L(y_i, F(x))$ (e.g., Classification: negative log likelihood: $- \sum_{i=1}^N \mathbf{y}_i \times\log (\mathbf{p}) + (1- \mathbf{y}_i) \times \log (1 - \mathbf{p})$ where $y_i$ is the observed value, equivalently, $- \text{Observed} \times \log(\text{odds}) + \log(1 + \exp(\log(\text{odds}))$ which is differentiable)
+
+Step 1: Initialize model with a constant value: $F_0(x) = \underset{\gamma}{\operatorname{argmin}} \sum_{i=1}^n L(y_i, \gamma)$ where $\gamma$ is a log(odds) value
+
+Step 2: for $m = 1 \to M$ (number of trees):
+
+1.  Compute the (pseudo) residual: $r_{im} = - [ \frac{\partial L( y_i, F(x_i))}{\partial F(x_i)}]_{F(x) = F_{m-1}(x)}$ for $i = 1, \dots, n$ (where $\frac{\partial L( y_i, F(x_i))}{\partial F(x_i)}$ is the gradient, ergo the name gradient boost)
+2.  Fit a regression tree to the $r_{im}$ values and create terminal regions $R_{jm}$ for $j = 1, \dots, J_m$
+3.  For $j = 1, \dots, J_m$ compute $\gamma_{jm} = \underset{\gamma}{\operatorname{argmin}} \sum_{x_i \in R_{ij}} L(y_i, F_{m-1}(x_i) + \gamma)$
+4.  Update $F_m (x) = F_{m-1}(x) + \nu \sum_{j=1}^{J_m} \gamma_{jm} I(x \in R_{jm})$ where $\nu$ is the learning rate (0 to 1) (smaller value means slower learning rate)
+
+Output: $F_M(x)$
+
+Because the model works in log-odds space, the optimal leaf value in step 2.3 has a convenient closed form for this loss:
+
+$$
+\frac{\sum \text{Residual}_i}{\sum[\text{Previous Prob}_i \times (1 - \text{Previous Prob}_i)]}
+$$
+
+The numerator pulls the leaf toward the residuals; the denominator, built from the current predicted probabilities, damps the step where the model is already confident.
+
+## Stochastic Gradient Boosting
+
+So far each tree has seen all of the data. Stochastic gradient boosting borrows the randomness that made bagging and random forests (Chapter \@ref(random-forests)) effective: by fitting each tree to a random subsample, we reduce the correlation between successive trees in the boosting sequence, which often improves generalization.
+
+Two common forms of subsampling are:
+
+-   subsample rows (and/or columns) before creating each tree, and
+
+-   subsample columns before each split.
+
+> **Tip:** Setting the row subsample fraction below 1 (the `bag.fraction` argument in `gbm`) is a cheap and reliable regularizer. It is one of the first knobs to try when a boosted model overfits.
+
+## Penalized Gradient Boosting
+
+Another way to control complexity is to penalize the tree parameters directly. L1 regularization (Lasso, Chapter \@ref(lasso-regression)) and L2 regularization (Ridge, Chapter \@ref(ridge-regression)) can both be imposed on the weights inside the trees, shrinking them toward zero and discouraging overly elaborate fits. This is part of what the "regularized boosting" in XGBoost refers to.
+
+## Light Gradient Boosting
+
+As data sets grow, the cost of scanning every observation and every feature at each split becomes the bottleneck. LightGBM (references: @machado2019 and the [original paper](https://papers.nips.cc/paper/2017/hash/6449f44a102fde848669bdd9eb6b76fa-Abstract.html)) attacks that bottleneck with two ideas:
+
+1.  Gradient-based One-Side Sampling (GOSS): a modification of gradient boosting that keeps the training examples with large gradients (the ones the model still gets most wrong) and subsamples the rest, which speeds up learning.
+2.  Exclusive Feature Bundling (EFB): bundling sparse, mostly-zero features that are rarely nonzero at the same time, a form of automatic feature selection that shrinks the effective number of features.
+
+Together these give LightGBM its characteristic profile:
+
+-   faster and more efficient training,
+
+-   lower memory use,
+
+-   often better accuracy,
+
+-   support for parallel, distributed, and GPU learning,
+
+-   the ability to handle big data, and
+
+-   in many settings, an improvement over [XGBoost].
+
+For details, see the [function reference](https://lightgbm.readthedocs.io/en/latest/R/reference/). The following example, adapted from the [LightGBM documentation](https://lightgbm.readthedocs.io/en/latest/R/index.html), runs cross-validation on the bundled mushroom data.
+
+```{r, message=FALSE, message=FALSE}
+library(lightgbm)
+data(agaricus.train, package='lightgbm')
+train <- agaricus.train
+dtrain <- lgb.Dataset(train$data, label = train$label)
+model <- lgb.cv(
+    params = list(
+        objective = "regression"
+        , metric = "l2"
+    )
+    , data = dtrain
+)
+```
+
+The next example, from [GeeksforGeeks](https://www.geeksforgeeks.org/lightgbm-light-gradient-boosting-machine/), is in Python and compares XGBoost against LightGBM on the adult-income data set ([data link](https://www.kaggle.com/lbronchal/breast-cancer-dataset-analysis?select=data.csv)).
+
+> **Note:** The Python comparison below is set to `eval = FALSE`. It depends on a Python environment with `lightgbm`, `xgboost`, `pandas`, and `scikit-learn` installed (via `reticulate`) and on a local copy of the `images/adult.data` file, which are not guaranteed in the build environment. The code is correct and idiomatic; run it locally after installing those packages.
+
+```{r}
+# library(reticulate)
+# py_install("lightgbm")
+# py_install("pandas")
+# py_install("xgboost")
+```
+
+```{python, eval=FALSE}
+#importing standard libraries
+import numpy as np
+import pandas as pd
+from pandas import Series, DataFrame
+
+#import lightgbm and xgboost
+import lightgbm as lgb
+import xgboost as xgb
+
+#loading our training dataset 'adult.csv' with name 'data' using pandas
+data=pd.read_csv('images/adult.data',header=None)
+
+#Assigning names to the columns
+data.columns=['age','workclass','fnlwgt','education','education-num','marital_Status','occupation','relationship','race','sex','capital_gain','capital_loss','hours_per_week','native_country','Income']
+
+#glimpse of the dataset
+data.head()
+
+# Label Encoding our target variable
+from sklearn.preprocessing import LabelEncoder,OneHotEncoder
+l=LabelEncoder()
+l.fit(data.Income)
+
+l.classes_
+data.Income=Series(l.transform(data.Income))  #label encoding our target variable
+data.Income.value_counts()
+
+
+
+#One Hot Encoding of the Categorical features
+one_hot_workclass=pd.get_dummies(data.workclass)
+one_hot_education=pd.get_dummies(data.education)
+one_hot_marital_Status=pd.get_dummies(data.marital_Status)
+one_hot_occupation=pd.get_dummies(data.occupation)
+one_hot_relationship=pd.get_dummies(data.relationship)
+one_hot_race=pd.get_dummies(data.race)
+one_hot_sex=pd.get_dummies(data.sex)
+one_hot_native_country=pd.get_dummies(data.native_country)
+
+#removing categorical features
+data.drop(['workclass','education','marital_Status','occupation','relationship','race','sex','native_country'],axis=1,inplace=True)
+
+
+
+#Merging one hot encoded features with our dataset 'data'
+data=pd.concat([data,one_hot_workclass,one_hot_education,one_hot_marital_Status,one_hot_occupation,one_hot_relationship,one_hot_race,one_hot_sex,one_hot_native_country],axis=1)
+
+#removing duplicate columns
+_, i = np.unique(data.columns, return_index=True)
+data=data.iloc[:, i]
+
+#Here our target variable is 'Income' with values as 1 or 0.
+#Separating our data into features dataset x and our target dataset y
+x=data.drop('Income',axis=1)
+y=data.Income
+
+
+
+#Imputing missing values in our target variable
+y.fillna(y.mode()[0],inplace=True)
+
+#Now splitting our dataset into test and train
+from sklearn.model_selection import train_test_split
+x_train,x_test,y_train,y_test=train_test_split(x,y,test_size=.3)
+
+#The data is stored in a DMatrix object
+#label is used to define our outcome variable
+dtrain=xgb.DMatrix(x_train,label=y_train)
+dtest=xgb.DMatrix(x_test)
+
+#setting parameters for xgboost
+parameters={'max_depth':7, 'eta':1, 'silent':1,'objective':'binary:logistic','eval_metric':'auc','learning_rate':.05}
+
+#training our model
+num_round=50
+from datetime import datetime
+start = datetime.now()
+xg=xgb.train(parameters,dtrain,num_round)
+stop = datetime.now()
+
+#Execution time of the model
+execution_time_xgb = stop-start
+execution_time_xgb
+
+
+#datetime.timedelta( , , ) representation => (days , seconds , microseconds)
+#now predicting our model on test set
+ypred=xg.predict(dtest)
+ypred
+
+
+#Converting probabilities into 1 or 0
+for i in range(0,9769):
+    if ypred[i]>=.5:       # setting threshold to .5
+       ypred[i]=1
+    else:
+       ypred[i]=0
+
+#calculating accuracy of our model
+from sklearn.metrics import accuracy_score
+accuracy_xgb = accuracy_score(y_test,ypred)
+accuracy_xgb
+
+
+
+
+# Light GBM
+
+
+train_data=lgb.Dataset(x_train,label=y_train)
+#setting parameters for lightgbm
+param = {'num_leaves':150, 'objective':'binary','max_depth':7,'learning_rate':.05,'max_bin':200}
+param['metric'] = ['auc', 'binary_logloss']
+
+#Here we have set max_depth in xgb and LightGBM to 7 to have a fair comparison between the two.
+
+#training our model using light gbm
+num_round=50
+start=datetime.now()
+lgbm=lgb.train(param,train_data,num_round)
+stop=datetime.now()
+
+#Execution time of the model
+execution_time_lgbm = stop-start
+execution_time_lgbm
+
+
+#predicting on test set
+ypred2=lgbm.predict(x_test)
+ypred2[0:5]  # showing first 5 predictions
+
+#converting probabilities into 0 or 1
+for i in range(0,9769):
+    if ypred2[i]>=.5:       # setting threshold to .5
+       ypred2[i]=1
+    else:
+       ypred2[i]=0
+
+#calculating accuracy
+accuracy_lgbm = accuracy_score(ypred2,y_test)
+accuracy_lgbm
+y_test.value_counts()
+
+from sklearn.metrics import roc_auc_score
+
+#calculating roc_auc_score for xgboost
+auc_xgb =  roc_auc_score(y_test,ypred)
+auc_xgb
+
+
+
+#calculating roc_auc_score for light gbm.
+auc_lgbm = roc_auc_score(y_test,ypred2)
+auc_lgbm
+comparison_dict = {
+    "accuracy score":(accuracy_lgbm,accuracy_xgb),
+    "auc score":(auc_lgbm,auc_xgb),
+    "execution time":(execution_time_lgbm,execution_time_xgb)
+    }
+
+#Creating a dataframe 'comparison_df' for comparing the performance of Lightgbm and xgb.
+comparison_df = DataFrame(comparison_dict)
+comparison_df.index= ['LightGBM','xgboost']
+comparison_df
+
+```
+
+## XGBoost
+
+XGBoost (Extreme Gradient Boosting), also known as regularized boosting, is the implementation that made gradient boosting a competition and industry staple. Its advantages over the original algorithm come from a combination of statistical and engineering improvements:
+
+-   built-in L1/L2 regularization,
+
+-   [parallel processing](http://zhanpengfang.github.io/418home.html), which it achieves by:
+
+    1.  parallelizing node building at each level,
+
+    2.  parallelizing split finding on each node, and
+
+    3.  parallelizing split finding at each level across features,
+
+-   high flexibility,
+
+-   handling of missing values,
+
+-   tree pruning, and
+
+-   built-in cross-validation.
+
+### `xgboost`
+
+The R package `xgboost` exposes most of these capabilities. In particular it offers:
+
+-   built-in k-fold cross-validation,
+
+-   stochastic gradient boosting with column and row sampling (both per split and per tree),
+
+-   an efficient linear solver and tree learning algorithm,
+
+-   parallel computation, and
+
+-   various objective functions (regression, classification, and ranking).
+
+One practical wrinkle: `xgboost` works with numeric matrices, so categorical predictors must be one-hot encoded first. Common tools for this are:
+
+-   `Matrix::sparse.model.matrix()`,
+
+-   `caret::dummyVars()`, and
+
+-   `vtreat::designTreatmentsZ()`, which also supports missing values.
+
+We use `vtreat` here to build a "treatment plan" from the training data and apply it consistently to both train and test sets.
+
+```{r}
+# variable names
+features <- setdiff(names(ames_train), "Sale_Price")
+
+# Create the treatment plan from the training data
+treatplan <- vtreat::designTreatmentsZ(ames_train, features, verbose = FALSE)
+
+# Get the "clean" variable names from the scoreFrame
+new_vars <- treatplan %>%
+  magrittr::use_series(scoreFrame) %>%
+  dplyr::filter(code %in% c("clean", "lev")) %>%
+  magrittr::use_series(varName)
+
+# Prepare the training data
+features_train <- vtreat::prepare(treatplan, ames_train, varRestriction = new_vars) %>% as.matrix()
+response_train <- ames_train$Sale_Price
+
+# Prepare the test data
+features_test <- vtreat::prepare(treatplan, ames_test, varRestriction = new_vars) %>% as.matrix()
+response_test <- ames_test$Sale_Price
+
+# dimensions of one-hot encoded data
+dim(features_train)
+## [1] 2051  208
+dim(features_test)
+## [1] 879 208
+```
+
+With a numeric design matrix in hand, we run cross-validated XGBoost. The `xgb.cv()` function reports training and test error at every boosting round, which lets us find the round that minimizes test error.
+
+```{r}
+# reproducibility
+set.seed(123)
+
+xgb.fit1 <- xgb.cv(
+  data = features_train,
+  label = response_train,
+  nrounds = 1000,
+  nfold = 5,
+  eta = 0.3, # learning rate
+  max_depth = 6, # tree depth
+  min_child_weight = 1, # minimum node size
+  objective = "reg:squarederror",  # for regression models
+  verbose = 0               # silent,
+)
+```
+
+The evaluation log in `xgb.fit1$evaluation_log` holds the per-round errors. We can summarize it to find the minimum RMSE and the optimal number of trees for both training and cross-validation.
+
+```{r fig-boosting-xgb-overfit, fig.cap="Training (red) and cross-validated test (blue) RMSE by boosting round for the default XGBoost fit, illustrating overfitting as the number of trees grows."}
+# get number of trees that minimize error
+xgb.fit1$evaluation_log %>%
+  dplyr::summarise(
+    ntrees.train = which(train_rmse_mean == min(train_rmse_mean))[1],
+    rmse.train   = min(train_rmse_mean),
+    ntrees.test  = which(test_rmse_mean == min(test_rmse_mean))[1],
+    rmse.test   = min(test_rmse_mean),
+  )
+##   ntrees.train rmse.train ntrees.test rmse.test
+## 1          965  0.5022836          60  27572.31
+
+# plot error vs number trees
+ggplot(xgb.fit1$evaluation_log) +
+  geom_line(aes(iter, train_rmse_mean), color = "red") +
+  geom_line(aes(iter, test_rmse_mean), color = "blue")
+```
+
+In Figure @fig-boosting-xgb-overfit, the red (training) curve keeps falling while the blue (test) curve flattens and then turns up: a textbook picture of overfitting as trees accumulate. Rather than guessing the right number of rounds, we can let XGBoost stop on its own once the test error stops improving, using `early_stopping_rounds`. Figure @fig-boosting-xgb-earlystop shows the result.
+
+```{r fig-boosting-xgb-earlystop, fig.cap="Training (red) and cross-validated test (blue) RMSE by boosting round when XGBoost uses early stopping, which halts training once the test error stops improving."}
+# reproducibility
+set.seed(123)
+
+xgb.fit2 <- xgb.cv(
+  data = features_train,
+  label = response_train,
+  nrounds = 1000,
+  nfold = 5,
+  objective = "reg:squarederror",  # for regression models
+  verbose = 0,               # silent,
+  early_stopping_rounds = 10 # stop if no improvement for 10 consecutive trees
+)
+
+# plot error vs number trees
+ggplot(xgb.fit2$evaluation_log) +
+  geom_line(aes(iter, train_rmse_mean), color = "red") +
+  geom_line(aes(iter, test_rmse_mean), color = "blue")
+```
+
+#### Tuning
+
+XGBoost has its own set of tuning parameters, which map onto the general boosting knobs from earlier:
+
+-   `eta`: learning rate.
+
+-   `max_depth`: tree depth.
+
+-   `min_child_weight`: minimum number of observations in each terminal node.
+
+-   `subsample`: fraction of training rows sampled for each tree.
+
+-   `colsample_bytrees`: fraction of columns sampled for each tree.
+
+We can bundle these into a `params` list and pass it to `xgb.cv()`.
+
+```{r}
+# create parameter list
+  params <- list(
+    eta = .1,
+    max_depth = 5,
+    min_child_weight = 2,
+    subsample = .8,
+    colsample_bytree = .9
+  )
+
+# reproducibility
+set.seed(123)
+
+# train model
+xgb.fit3 <- xgb.cv(
+  params = params,
+  data = features_train,
+  label = response_train,
+  nrounds = 1000,
+  nfold = 5,
+  objective = "reg:squarederror",  # for regression models
+  verbose = 0,               # silent,
+  early_stopping_rounds = 10 # stop if no improvement for 10 consecutive trees
+)
+
+# assess results
+xgb.fit3$evaluation_log %>%
+  dplyr::summarise(
+    ntrees.train = which(train_rmse_mean == min(train_rmse_mean))[1],
+    rmse.train   = min(train_rmse_mean),
+    ntrees.test  = which(test_rmse_mean == min(test_rmse_mean))[1],
+    rmse.test   = min(test_rmse_mean),
+  )
+```
+
+As with `gbm`, the systematic approach is a grid search over these parameters.
+
+```{r}
+# create hyperparameter grid
+hyper_grid <- expand.grid(
+  eta = c(.01, .05, .1, .3),
+  max_depth = c(1, 3, 5, 7),
+  min_child_weight = c(1, 3, 5, 7),
+  subsample = c(.65, .8, 1),
+  colsample_bytree = c(.8, .9, 1),
+  optimal_trees = 0,               # a place to dump results
+  min_RMSE = 0                     # a place to dump results
+)
+
+nrow(hyper_grid)
+```
+
+> **Warning:** This grid has hundreds of combinations, and a full search over it can take roughly six hours. The loop below is therefore set to `eval = FALSE`. In practice, start with a coarse grid and refine.
+
+```{r, eval=FALSE}
+# grid search
+for(i in 1:nrow(hyper_grid)) {
+
+  # create parameter list
+  params <- list(
+    eta = hyper_grid$eta[i],
+    max_depth = hyper_grid$max_depth[i],
+    min_child_weight = hyper_grid$min_child_weight[i],
+    subsample = hyper_grid$subsample[i],
+    colsample_bytree = hyper_grid$colsample_bytree[i]
+  )
+
+  # reproducibility
+  set.seed(123)
+
+  # train model
+  xgb.tune <- xgb.cv(
+    params = params,
+    data = features_train,
+    label = response_train,
+    nrounds = 5000,
+    nfold = 5,
+    objective = "reg:squarederror",  # for regression models
+    verbose = 0,               # silent,
+    early_stopping_rounds = 10 # stop if no improvement for 10 consecutive trees
+  )
+
+  # add min training error and trees to grid
+  hyper_grid$optimal_trees[i] <- which.min(xgb.tune$evaluation_log$test_rmse_mean)
+  hyper_grid$min_RMSE[i] <- min(xgb.tune$evaluation_log$test_rmse_mean)
+}
+
+hyper_grid %>%
+  dplyr::arrange(min_RMSE) %>%
+  head(10)
+```
+
+Once the search points to good values, we train the final model with `xgboost()` (the non-cross-validated fitting function) on the full training data.
+
+```{r}
+# parameter list
+params <- list(
+  eta = 0.01,
+  max_depth = 5,
+  min_child_weight = 5,
+  subsample = 0.65,
+  colsample_bytree = 1
+)
+
+# train final model
+xgb.fit.final <- xgboost(
+  params = params,
+  data = features_train,
+  label = response_train,
+  nrounds = 1576,
+  objective = "reg:squarederror",
+  verbose = 0
+)
+```
+
+#### Visualization
+
+The same interpretation tools we used for `gbm` apply here, with XGBoost-specific functions.
+
+##### Variable Importance
+
+XGBoost reports three importance measures, each answering a slightly different question:
+
+-   Gain: the relative contribution of a feature to the model (this is the analogue of `gbm::relative.influence`).
+
+-   Cover: the relative number of observations associated with a feature.
+
+-   Frequency: how often a feature is used to split, as a percentage.
+
+Gain is usually the most informative, so Figure @fig-boosting-xgb-importance plots the top ten features by gain.
+
+```{r fig-boosting-xgb-importance, fig.cap="Top ten features by gain for the final XGBoost model on the Ames housing data."}
+# create importance matrix
+importance_matrix <- xgb.importance(model = xgb.fit.final)
+
+# variable importance plot
+xgb.plot.importance(importance_matrix, top_n = 10, measure = "Gain")
+```
+
+##### Partial dependence plots
+
+PDPs and ICE curves work for XGBoost too, using the one-hot encoded feature names. This chunk is set to `eval = FALSE` simply to keep the build time down; the code is correct and can be run locally.
+
+```{r, eval=FALSE}
+pdp <- xgb.fit.final %>%
+  partial(pred.var = "Gr_Liv_Area_clean", n.trees = 1576, grid.resolution = 100, train = features_train) %>%
+  autoplot(rug = TRUE, train = features_train) +
+  scale_y_continuous(labels = scales::dollar) +
+  ggtitle("PDP")
+
+ice <- xgb.fit.final %>%
+  partial(pred.var = "Gr_Liv_Area_clean", n.trees = 1576, grid.resolution = 100, train = features_train, ice = TRUE) %>%
+  autoplot(rug = TRUE, train = features_train, alpha = .1, center = TRUE) +
+  scale_y_continuous(labels = scales::dollar) +
+  ggtitle("ICE")
+
+gridExtra::grid.arrange(pdp, ice, nrow = 1)
+```
+
+##### LIME
+
+Local explanations work the same way, except the observations must be one-hot encoded with the same treatment plan before they are explained. Figure @fig-boosting-xgb-lime shows the resulting explanations.
+
+```{r fig-boosting-xgb-lime, warning=FALSE, fig.cap="LIME local explanations for two test observations under the final XGBoost model, using the one-hot encoded features."}
+# one-hot encode the local observations to be assessed.
+local_obs_onehot <- vtreat::prepare(treatplan, local_obs, varRestriction = new_vars)
+
+# apply LIME
+explainer <- lime::lime(data.frame(features_train), xgb.fit.final)
+explanation <- lime::explain(local_obs_onehot, explainer, n_features = 5)
+plot_features(explanation)
+```
+
+#### Prediction
+
+And the final test-set evaluation:
+
+```{r}
+# predict values for test data
+pred <- predict(xgb.fit.final, features_test)
+
+# results
+caret::RMSE(pred, response_test)
+## [1] 21319.3
+```
+
+### `h2o`
+
+The `h2o` package is a Java-based platform aimed at scaling gradient boosting to large data and distributed compute. Its notable features are:
+
+-   distributed and parallelized computation,
+
+-   automatic early stopping,
+
+-   stochastic gradient boosting with column and row sampling,
+
+-   support for exponential families and many loss functions,
+
+-   grid search,
+
+-   the ability to scale to any dataset size (because it is data-distributed),
+
+-   histogram approximations of continuous variables,
+
+-   dynamic binning, and
+
+-   unlimited factor levels.
+
+> **Note:** Every `h2o` chunk in this section is set to `eval = FALSE`. They require a running H2O cluster started by `h2o.init()` (a separate Java process), which is an external dependency that the book build does not assume. The code is correct and idiomatic; start the cluster locally with `h2o.init()` to run it. The `## ` lines show representative output from a prior run.
+
+To use `h2o` you first start a local cluster.
+
+```{r, eval=FALSE}
+# start up
+h2o.no_progress()
+h2o.init(max_mem_size = "5g")
+```
+
+Then convert the data to an H2O frame and fit a baseline GBM with cross-validation.
+
+```{r, eval=FALSE}
+# create feature names
+y <- "Sale_Price"
+x <- setdiff(names(ames_train), y)
+
+# turn training set into h2o object
+train.h2o <- as.h2o(ames_train)
+
+# training basic GBM model with defaults
+h2o.fit1 <- h2o.gbm(
+  x = x,
+  y = y,
+  training_frame = train.h2o,
+  nfolds = 5
+)
+
+# assess model results
+h2o.fit1
+```
+
+A second fit turns on early stopping with a generous tree budget, so the algorithm decides how many trees it actually needs.
+
+```{r, eval=FALSE}
+# training basic GBM model with defaults
+h2o.fit2 <- h2o.gbm(
+  x = x,
+  y = y,
+  training_frame = train.h2o,
+  nfolds = 5,
+  ntrees = 5000,
+  stopping_rounds = 10,
+  stopping_tolerance = 0,
+  seed = 123
+)
+
+# model stopped after xx trees
+h2o.fit2@parameters$ntrees
+## [1] 3828
+
+# cross validated RMSE
+h2o.rmse(h2o.fit2, xval = TRUE)
+## [1] 24684.09
+```
+
+#### Tuning
+
+For the full list of parameters, see the [H2O.ai GBM tuning guide](http://docs.h2o.ai/h2o/latest-stable/h2o-docs/data-science/gbm.html#gbm-tuning-guide). The main parameters group naturally into three families:
+
+-   Tree complexity:
+
+    -   `ntrees`: number of trees to train,
+
+    -   `max_depth`: depth of each tree,
+
+    -   `min_rows`: minimum observations per terminal node.
+
+-   Learning rate:
+
+    -   `learn_rate`: rate at which to descend the loss gradient,
+
+    -   `learn_rate_annealing`: start with a high `learn_rate`, then gradually reduce it as trees are added.
+
+-   Stochasticity:
+
+    -   `sample_rate`: row sample rate per tree,
+
+    -   `col_sample_rate`: column sample rate per tree.
+
+H2O gives you two grid-search strategies. The first is a full (Cartesian) grid search over every combination.
+
+```{r, eval = FALSE}
+# about 90 mins
+# create training & validation sets
+split <- h2o.splitFrame(train.h2o, ratios = 0.75)
+train <- split[[1]]
+valid <- split[[2]]
+
+# create hyperparameter grid
+hyper_grid <- list(
+  max_depth = c(1, 3, 5),
+  min_rows = c(1, 5, 10),
+  learn_rate = c(0.01, 0.05, 0.1),
+  learn_rate_annealing = c(.99, 1),
+  sample_rate = c(.5, .75, 1),
+  col_sample_rate = c(.8, .9, 1)
+)
+
+# perform grid search
+grid <- h2o.grid(
+  algorithm = "gbm",
+  grid_id = "gbm_grid1",
+  x = x,
+  y = y,
+  training_frame = train,
+  validation_frame = valid,
+  hyper_params = hyper_grid,
+  ntrees = 5000,
+  stopping_rounds = 10,
+  stopping_tolerance = 0,
+  seed = 123
+  )
+
+# collect the results and sort by our model performance metric of choice
+grid_perf <- h2o.getGrid(
+  grid_id = "gbm_grid1",
+  sort_by = "mse",
+  decreasing = FALSE
+  )
+grid_perf
+```
+
+From the grid we pull the best model and check its validation performance.
+
+```{r, eval = FALSE}
+# Grab the model_id for the top model, chosen by validation error
+best_model_id <- grid_perf@model_ids[[1]]
+best_model <- h2o.getModel(best_model_id)
+
+# Now let's get performance metrics on the best model
+h2o.performance(model = best_model, valid = TRUE)
+## H2ORegressionMetrics: gbm
+## ** Reported on validation data. **
+##
+## MSE:  362098307
+## RMSE:  19028.88
+## MAE:  12427.99
+## RMSLE:  0.1403692
+## Mean Residual Deviance :  362098307
+```
+
+The second strategy is a random discrete grid search. Because the number of combinations explodes as you add hyperparameters, sampling combinations at random (rather than trying them all) finds a good-enough model far faster, even if not the absolute best one.
+
+```{r, eval=FALSE}
+# random grid search criteria
+search_criteria <- list(
+  strategy = "RandomDiscrete",
+  stopping_metric = "mse",
+  stopping_tolerance = 0.005,
+  stopping_rounds = 10,
+  max_runtime_secs = 60*60
+  )
+
+# perform grid search
+grid <- h2o.grid(
+  algorithm = "gbm",
+  grid_id = "gbm_grid2",
+  x = x,
+  y = y,
+  training_frame = train,
+  validation_frame = valid,
+  hyper_params = hyper_grid,
+  search_criteria = search_criteria, # add search criteria
+  ntrees = 5000,
+  stopping_rounds = 10,
+  stopping_tolerance = 0,
+  seed = 123
+  )
+
+# collect the results and sort by our model performance metric of choice
+grid_perf <- h2o.getGrid(
+  grid_id = "gbm_grid2",
+  sort_by = "mse",
+  decreasing = FALSE
+  )
+grid_perf
+```
+
+Again we extract and evaluate the top model.
+
+```{r,eval=FALSE}
+# Grab the model_id for the top model, chosen by validation error
+best_model_id <- grid_perf@model_ids[[1]]
+best_model <- h2o.getModel(best_model_id)
+
+# Now let's get performance metrics on the best model
+h2o.performance(model = best_model, valid = TRUE)
+## H2ORegressionMetrics: gbm
+## ** Reported on validation data. **
+##
+## MSE:  515072025
+## RMSE:  22695.2
+## MAE:  13841.13
+## RMSLE:  0.1427291
+## Mean Residual Deviance :  515072025
+```
+
+With the preferred settings chosen, we retrain a final model on the full training data.
+
+```{r, eval=FALSE}
+# train final model
+h2o.final <- h2o.gbm(
+  x = x,
+  y = y,
+  training_frame = train.h2o,
+  nfolds = 5,
+  ntrees = 10000,
+  learn_rate = 0.01,
+  learn_rate_annealing = 1,
+  max_depth = 3,
+  min_rows = 10,
+  sample_rate = 0.75,
+  col_sample_rate = 1,
+  stopping_rounds = 10,
+  stopping_tolerance = 0,
+  seed = 123
+)
+
+# model stopped after xx trees
+h2o.final@parameters$ntrees
+## [1] 9385
+
+# cross validated RMSE
+h2o.rmse(h2o.final, xval = TRUE)
+## [1] 23218.45
+```
+
+#### Visualization
+
+H2O provides its own interpretation functions, mirroring what we did with `gbm` and `xgboost`.
+
+##### Variable Importance
+
+```{r, eval=FALSE}
+h2o.varimp_plot(h2o.final, num_of_features = 10)
+```
+
+##### Partial dependence plots
+
+We can build PDP and ICE plots with the `pdp` package by supplying a small prediction wrapper that converts H2O output back to a vector.
+
+```{r, eval=FALSE}
+pfun <- function(object, newdata) {
+  as.data.frame(predict(object, newdata = as.h2o(newdata)))[[1L]]
+}
+
+pdp <- h2o.final %>%
+  partial(
+    pred.var = "Gr_Liv_Area",
+    pred.fun = pfun,
+    grid.resolution = 20,
+    train = ames_train
+    ) %>%
+  autoplot(rug = TRUE, train = ames_train, alpha = .1) +
+  scale_y_continuous(labels = scales::dollar) +
+  ggtitle("PDP")
+
+ice <- h2o.final %>%
+  partial(
+    pred.var = "Gr_Liv_Area",
+    pred.fun = pfun,
+    grid.resolution = 20,
+    train = ames_train,
+    ice = TRUE
+    ) %>%
+  autoplot(rug = TRUE, train = ames_train, alpha = .1, center = TRUE) +
+  scale_y_continuous(labels = scales::dollar) +
+  ggtitle("ICE")
+
+gridExtra::grid.arrange(pdp, ice, nrow = 1)
+```
+
+H2O also has a native partial-plot function.
+
+```{r, eval=FALSE}
+h2o.partialPlot(h2o.final, data = train.h2o, cols = "Overall_Qual")
+```
+
+One practical difference: `h2o`'s native function draws categorical levels alphabetically, whereas `pdp` respects the factor's level order, which usually makes the plot easier to interpret.
+
+```{r, eval=FALSE}
+pdp <- h2o.final %>%
+  partial(
+    pred.var = "Overall_Qual",
+    pred.fun = pfun,
+    grid.resolution = 20,
+    train = as.data.frame(ames_train)
+    ) %>%
+  autoplot(rug = TRUE, train = ames_train, alpha = .1) +
+  scale_y_continuous(labels = scales::dollar) +
+  ggtitle("PDP")
+
+ice <- h2o.final %>%
+  partial(
+    pred.var = "Overall_Qual",
+    pred.fun = pfun,
+    grid.resolution = 20,
+    train = as.data.frame(ames_train),
+    ice = TRUE
+    ) %>%
+  autoplot(rug = TRUE, train = ames_train, alpha = .1, center = TRUE) +
+  scale_y_continuous(labels = scales::dollar) +
+  ggtitle("ICE")
+
+gridExtra::grid.arrange(pdp, ice, nrow = 1)
+```
+
+##### LIME
+
+```{r, eval=FALSE}
+# apply LIME
+explainer <- lime::lime(ames_train, h2o.final)
+explanation <- lime::explain(local_obs, explainer, n_features = 5)
+plot_features(explanation)
+```
+
+#### Prediction
+
+Finally, evaluation and prediction on new data.
+
+```{r, eval=FALSE}
+# convert test set to h2o object
+test.h2o <- as.h2o(ames_test)
+
+# evaluate performance on new data
+h2o.performance(model = h2o.final, newdata = test.h2o)
+## H2ORegressionMetrics: gbm
+##
+## MSE:  407532539
+## RMSE:  20187.44
+## MAE:  12683.01
+## RMSLE:  0.100829
+## Mean Residual Deviance :  407532539
+
+# predict with h2o.predict
+h2o.predict(h2o.final, newdata = test.h2o)
+##    predict
+## 1 130114.9
+## 2 162136.7
+## 3 263438.5
+## 4 484853.0
+## 5 219152.9
+## 6 208616.2
+##
+## [879 rows x 1 column]
+
+# predict values with predict
+predict(h2o.final, test.h2o)
+```
+
+<br>
+
+## Partial Dependence Plots
+
+We have used partial dependence plots throughout the chapter; this section gives the formal definition behind them. PDPs are one of the main ways to interpret parameter effects from tree-based models (for example bagging and boosting).
+
+The setup: consider a subvector $X_S$ of $l < p$ of the input predictor space $X$, indexed by $S \subset \{ 1, \dots, p \}$. Let $C$ be its complement, so that $S \cup C = \{1, \dots, p \}$. Writing $f(X) = f(X_S, X_C)$, the partial dependence of $f(X)$ on the variables of interest $X_S$ is defined as the average over the other variables:
+
+$$
+f_S(X_S) = E_{X_C} f(X_S, X_C)
+$$
+
+which is the marginal average of $f$. This is a useful description of the effect of the chosen subset on $f(X)$ as long as the elements of $X_S$ do not interact strongly with the elements of $X_C$.
+
+In practice we estimate this expectation by plugging in the observed values of the other variables and averaging:
+
+$$
+\bar{f}_S(X_S) = \frac{1}{n} \sum_{i=1}^n f(X_S, x_{iC})
+$$
+
+where $\{ x_{1C}, \dots, x_{nC}\}$ are the values of $X_C$ in the training data.
+
+A few points about interpreting this estimate:
+
+-   Computing it can be expensive in general, but for decision trees $\bar{f}_S(X_S)$ can be computed efficiently directly from the tree structure.
+
+-   A PDP represents the effect of $X_S$ on $f(X)$ *after accounting for* the average effects of the other variables $X_C$.
+
+-   You cannot read it as the effect of $X_S$ on $f(X)$ while *ignoring* $X_C$, unless $X_S$ and $X_C$ are independent ($X_S \perp X_C$).
+
+> **Warning:** PDPs can mislead when the variable of interest is correlated with, or interacts with, the variables being averaged out. ICE curves and accumulated local effects (ALE) plots are useful complements when that is a concern.
+
+To make this concrete, Figure @fig-boosting-boston-pdp shows the PDPs for the two most important variables from our `gbm` Boston model, giving each variable's marginal effect on the response after integrating out the others.
+
+```{r fig-boosting-boston-pdp, fig.cap="Partial dependence of predicted median house value on the average number of rooms (rm) and on the percentage of lower-status population (lstat) for the gbm Boston model."}
+plot(boost.boston, i = "rm") # median house prices increase with rm
+plot(boost.boston, i = "lstat") # median house prices decrease with lstate
+```
+
+The plots in Figure @fig-boosting-boston-pdp confirm the expected directions: predicted median house price rises with the average number of rooms (`rm`) and falls as the percentage of lower-status population (`lstat`) increases.
+
+Finally, we evaluate the model's test-set MSE.
+
+```{r}
+set.seed(1)
+train <- sample(1:nrow(Boston), nrow(Boston)/2)
+
+yhat.boost <-
+    predict(boost.boston, newdata = Boston[-train, ], n.trees = 5000)
+mean((yhat.boost - boston.test) ^ 2)
+```
+
+That analysis used the default shrinkage of $\lambda = 0.001$. Shrinkage is a tuning parameter, so it is worth trying a different value; here we use a faster learning rate of $\lambda = 0.2$.
+
+```{r}
+boost.boston <-
+    gbm(
+        medv ~ .,
+        data = Boston[train, ],
+        distribution = "gaussian",
+        n.trees = 5000,
+        interaction.depth = 4,
+        shrinkage = 0.2,
+        verbose = F
+    )
+yhat.boost <-
+    predict(boost.boston, newdata = Boston[-train, ], n.trees = 5000)
+mean((yhat.boost - boston.test) ^ 2)
+```
+
+In this case the larger shrinkage (faster learning) gives a lower test MSE, a reminder that the best learning rate is data-dependent and worth tuning rather than assuming.
+
+## Takeaways
+
+A few ideas are worth carrying out of this chapter:
+
+-   Boosting builds models sequentially, each correcting the errors of the ensemble so far, in contrast to the independent, averaged trees of bagging and random forests.
+
+-   "Learning slowly" with a small learning rate and many trees is the central design choice; the learning rate $\lambda$ and the number of trees $B$ trade off against each other.
+
+-   AdaBoost reweights misclassified points; gradient boosting generalizes this to fit each new tree to the negative gradient of any differentiable loss, which is why it handles regression, classification, and ranking alike.
+
+-   In practice you will reach for `xgboost`, `lightgbm`, or `h2o`, which add regularization, early stopping, subsampling, and scalable computation on top of the basic algorithm.
+
+-   A boosted model is not a black box: variable importance, partial dependence and ICE plots, and LIME together let you explain both the global behavior of the model and individual predictions.

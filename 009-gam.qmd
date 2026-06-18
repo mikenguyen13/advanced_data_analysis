@@ -1,0 +1,343 @@
+# Generalized Additive Models
+
+```{r}
+#| include: false
+suppressPackageStartupMessages(library(tidyverse))
+```
+
+Linear regression is easy to fit and easy to read: each coefficient tells you how the response changes when one predictor moves by one unit, holding the rest fixed. The price for that simplicity is the assumption that every effect is a straight line. Real relationships are rarely so obedient. Wages rise with age and then taper off near retirement; the effect of a neighborhood's poverty rate on house prices is steep at first and then flattens. We could chase these curves with polynomials, splines, or kernel smoothers (covered in the earlier chapters on [Smoothing splines], [Kernel Smoothing], and [Local Regression]), but those tools are usually presented one predictor at a time. Generalized additive models, or GAMs, are the natural way to put several such smooth pieces together in a single, interpretable model.
+
+The idea is to keep the additive structure of linear regression but to replace each straight line with a flexible curve. We learn a separate smooth function for each predictor and then add the pieces up:
+
+$$
+E(Y|X_1,X_2,\dots,X_p)= \alpha + f_1(X_1) + f_2(X_2)+ \dots + f_p(X_p)
+$$
+
+where $f_j(.),j = 1,\dots, p$ are unspecified smooth (nonparametric) functions.^[Unspecified means we do not commit to a parametric form like $\beta_j X_j$ or $\beta_j X_j^2$ in advance. We let the data choose the shape of each curve, subject to a smoothness penalty introduced later.]
+
+> **Key idea:** A GAM trades the global slope of linear regression for a sum of flexible, predictor-specific curves. It is more expressive than a linear model, yet because the effects still add up you can read off and plot what each predictor does on its own.
+
+This is what the name records: we call the model *additive* because we keep a separate $f_j$ for each $X_j$ and sum them, and *generalized* because (as we will see) the same idea extends to non-Gaussian responses through a link function. Two properties make the additive form attractive at once. We can fit a complicated curve for each feature, and we can still interpret the model by examining one curve at a time.
+
+Writing the model for a single observation, with an explicit error term, gives the form you will recognize from ordinary regression:
+
+$$
+y_i = \alpha + \sum_{j=1}^p f_j (x_{ij}) + \epsilon_i
+$$
+
+where $\epsilon$ is usually chosen to follow a Gaussian distribution.
+
+By this point in the book, several of the moving parts should look familiar, and it is worth naming the connections explicitly. If each function $f_j(.)$ were written as a basis expansion, then we would be back at least squares, GAMs are not a break from regression so much as a flexible generalization of it. A general way to fit each function is a "scatterplot smoother" (for example, a cubic [Smoothing splines] or [Kernel Smoothing]) applied through an algorithm that estimates all $p$ functions simultaneously. And a transformation of the mean response (a link function), exactly as in [Generalized linear models](https://bookdown.org/mike/data_analysis/generalized-linear-models.html), can be layered on top to handle responses that are not continuous.
+
+> **Intuition:** Think of a GAM as a relay team. Each predictor gets its own smoother to capture its private nonlinear effect, and the link function and additive structure stitch the contributions into one prediction.
+
+## From regression to classification: the link function
+
+The additive idea is not limited to predicting a continuous outcome. Consider a two-group classification problem handled by logistic regression. The quantity we want to model is the conditional probability of the positive class,
+
+$$
+\mu(X) = P(Y=1|X)
+$$
+
+A probability lives between 0 and 1, so we do not model it directly. As in ordinary logistic regression, we model its log-odds, and we let the right-hand side be an additive sum of smooth functions:
+
+$$
+\log(\frac{\mu(X)}{1- \mu(X)}) = \alpha + f_1 (X_1) + \dots + f_p(X_p)
+$$
+
+where each $f_j$ is an unspecified smooth function. The logit on the left is the *link*: it maps a probability onto the whole real line so that the additive predictor on the right is free to take any value.
+
+In general, we relate the conditional mean response to the additive function of the predictors through a link function $g$:
+
+$$
+g(\mu(X)) = \alpha + f_1(X_1) + \dots + f_p(X_p)
+$$
+
+The choice of $g$ depends on the type of response, and the common cases are exactly those from generalized linear models. The following are the links you will reach for most often:
+
+-   $g(\mu) = \mu$, the identity link, for continuous Gaussian responses.
+
+-   $g(\mu) = logit(\mu)$ or $g(\mu) = probit(\mu)$, as in the [glm](https://bookdown.org/mike/data_analysis/generalized-linear-models.html) case for binary and binomial data (the probit function is the inverse Gaussian cumulative distribution function, $probit (\mu) = \Phi^{-1}(\mu)$).
+
+-   $g(\mu) = \log(\mu)$, for Poisson count data.
+
+> **Note:** Choosing the link for a GAM follows the same logic as choosing it for a GLM. Match the link to the distribution of the response, then let the smooth functions handle the shape of each predictor's effect.
+
+The functions $f_j$ themselves need not all be nonlinear. Any one of them can be nonlinear, linear, or some other parametric form, and you can mix these freely within a single model. This flexibility lets you build *semi-parametric* models that model some effects rigidly and others loosely. The following are three useful patterns, each combining parametric and nonparametric pieces:
+
+-   $g(\mu) = X^T \beta + \alpha_k + f(Z)$, a semi-parametric model, where
+
+    -   $X$ is a vector of predictors to be modeled linearly,
+
+    -   $\alpha_k$ is the effect for the $k$-th level of a qualitative input $V$,
+
+    -   and the effect of the predictor $Z$ is modeled nonparametrically.
+
+-   $g(\mu) = f(X) + g_k(Z)$, where $k$ indexes the levels of a qualitative input $V$ and thus creates an interaction term with $Z$, $g(V,Z) =g_k(Z)$.
+
+-   $g(\mu)= f(X)+g(Z,W)$, where $g$ is a nonparametric function in two features, $Z$ and $W$ (a smooth surface rather than a curve).
+
+> **When to use this:** Reach for a semi-parametric GAM when theory or prior work tells you a particular effect is linear, but you suspect other predictors bend. Modeling the known effect linearly saves degrees of freedom and sharpens interpretation, while the smooth terms absorb the curves you cannot pin down in advance.
+
+## Fitting Additive Models
+
+How do we actually estimate a sum of smooth functions? We start, as so often, by writing down what "a good fit" should mean and then minimizing it. We choose each $f_j$ to be a smoother and minimize a penalized residual sum of squares:
+
+$$
+PRSS(\alpha, f_1,\dots, f_p) = \sum_{i=1}^n (y_i - \alpha- \sum_{j=1}^p f_j(x_{ij}))^2 + \sum_{j=1}^p \lambda_j \int f''_j (t_j)^2 dt_j
+$$
+
+where the $\lambda_j \ge 0$ are tuning parameters. The first term rewards fitting the data; the second penalizes wiggliness, since $\int f''_j(t)^2 dt$ is large when $f_j$ curves sharply. Each $\lambda_j$ sets the trade-off for one predictor: large $\lambda_j$ forces $f_j$ toward a straight line, while $\lambda_j = 0$ lets it bend as much as the data demand.^[This is the same smoothness penalty used for a single [Smoothing splines]. A GAM simply applies it once per predictor and ties the pieces together additively.]
+
+> **Intuition:** The penalty is a dial for honesty. Turn $\lambda_j$ up and the curve must justify every wiggle with strong evidence; turn it down and the curve is free to follow noise.
+
+It turns out that the minimizer of this criterion is not some exotic object: it is an additive cubic spline model, with each function $f_j$ a cubic spline in $X_j$ that has knots at each of the unique values of $x_{ij}, i = 1, \dots, n$. The penalty is what keeps such a richly knotted spline from overfitting.
+
+One technical wrinkle is worth flagging before we fit. This solution is not unique because $\alpha$ is not identifiable without another constraint: you could add a constant to $\alpha$ and subtract it from one of the $f_j$ without changing any prediction. To pin it down, we require each smooth to be centered, $\sum_{i=1}^n f_j(x_{ij})=0 \; \forall j$, which forces $\hat{\alpha}= ave(y_i)$. The intercept absorbs the overall level, and each curve describes only deviations from it. Uniqueness of the rest of the solution then depends on the design:
+
+-   If $\mathbf{X} = \{x_{ij}\}$ is of full column rank, then the minimizer is unique.
+
+-   If this is not the case (that is, $\mathbf{X'X}$ is singular), then the linear portions of the components $f_j$ cannot be uniquely determined, but the nonlinear parts can.
+
+> **Warning:** When predictors are collinear, do not over-interpret the straight-line part of any individual curve. The bend of the curve is still trustworthy, but the linear tilt can be shuffled between correlated predictors without changing the fit.
+
+### The Backfitting Algorithm for Additive Models
+
+There is no closed-form formula that solves all $p$ smoothers at once, so we fit the model with a simple iterative scheme called *backfitting*. The intuition is one of polite turn-taking: to update one function, hold the others fixed, strip their contributions out of the response, and smooth what remains. Concretely, let $S_j$ be the cubic smoothing spline for the $j$-th function. We apply it to the *partial residuals* $\{y_i - \hat{\alpha} - \sum_{k \neq j}\hat{f}(x_{ik}) \}^n_1$, viewed as a function of $x_{ij}$, to obtain the new estimate $\hat{f}_j$. We repeat this for each predictor, always using the current estimates of the other functions when forming the residuals, and we keep cycling until the estimates $\hat{f}_j$ stabilize.
+
+> **Intuition:** Backfitting is "explain what's left over." Each curve takes a turn explaining the part of the response that the other curves have not yet accounted for, and the curves keep refining one another until nothing changes.
+
+Written out as a procedure, the algorithm has two steps. Step 1 initializes the intercept to the mean and every curve to zero:
+
+$$
+\hat{\alpha} = \frac{1}{N}\sum_{1}^N y_i, \hat{f}_j \equiv 0, \forall i, j
+$$
+
+Step 2 cycles through the predictors $j = 1,2, \dots, p, \dots, 1, 2, \dots, p, \dots$, smoothing the partial residuals and then re-centering each updated curve:
+
+$$
+\hat{f}_j \leftarrow S_j [\{ y_i - \hat{\alpha}- \sum_{k \neq j} \hat{f}_k (x_{ik})\}^N_1]
+$$
+
+$$
+\hat{f}_j \leftarrow \hat{f}_j - \frac{1}{N} \sum_{i=1}^N \hat{f}_j (x_{ij})
+$$
+
+The cycle continues until the functions $\hat{f}_j$ change by less than a prespecified threshold. The re-centering line is just the identifiability constraint from above, enforced at every update so that each curve keeps describing deviations from $\hat\alpha$.
+
+Two features of backfitting make it a workhorse rather than a one-off recipe. First, it is *modular*: any smoother can take the place of $S_j$, so you can mix and match the right tool for each predictor. The available choices include the following.
+
+-   Other univariate regression smoothers, for example local polynomial regression and [Kernel Smoothing].
+
+-   Linear regression operators yielding polynomial fits, piecewise constant fits, parametric spline fits, or Fourier series fits.
+
+-   Smoothers for second or higher-order interactions, or periodic smoothers for seasonal effects.
+
+Second, backfitting gives us an honest accounting of model complexity. If we evaluate the smoother at the training points, it can be represented by the $n \times n$ smoother matrix $\mathbf{S}_j$, and the effective degrees of freedom for the $j$-th term can be estimated from $trace(\mathbf{S}_j) -1$. This is the number we report when we say a term "uses about 4 degrees of freedom," and it lets us compare a smooth term against, say, a quartic polynomial on a common scale.
+
+## Fitting Generalized Additive Models
+
+So far the response has been Gaussian and the loss has been squared error. When the response is binary, count, or otherwise non-Gaussian, we swap squared error for the negative log-likelihood, exactly as generalized linear models do, and we maximize a *penalized log-likelihood* instead. The fitting strategy combines the backfitting procedure with a likelihood maximizer: the weighted linear regression component that a GLM would solve is replaced by a weighted backfitting algorithm, @hastie2001a (section 9.2).
+
+> **Key idea:** A GAM is to a GLM what an additive model is to linear regression. Keep the GLM machinery (link function, iteratively reweighted fitting) and replace the linear predictor with a sum of smooths.
+
+### Local Scoring Algorithm
+
+The concrete algorithm for the logistic case is called *local scoring*. It wraps backfitting inside the same iteratively reweighted least squares loop you saw for logistic regression: at each pass we form a working response and weights from the current fit, then run a weighted additive fit on them.
+
+Step 1 initializes the intercept to the log-odds of the overall positive rate and sets every curve to zero. Compute $\hat{\alpha} = \log [\frac{\bar{y}}{1- \bar{y}}]$, where $\bar{y} = ave(y_i)$ is the sample proportion of ones, and set $\hat{f}_j\equiv 0 \; \forall j$.
+
+Step 2 defines the current additive predictor and the implied fitted probabilities, $\hat{\eta}_i = \hat{\alpha} + \sum_j \hat{f}_j(x_{ij})$ and $\hat{p}_i = \frac{1}{1 + \exp(-\hat{\eta}_i)}$, and then iterates the following three substeps:
+
+1.  Construct the working target variable: $z_i = \hat{\eta}_i + \frac{y_i - \hat{p}_i}{\hat{p}_i(1-\hat{p}_i)}$.
+2.  Construct weights $w_i = \hat{p}_i (1-\hat{p}_i)$.
+3.  Fit an additive model to the targets $z_i$ with weights $w_i$, using a weighted backfitting algorithm. This gives new estimates $\hat{\alpha}, \hat{f}_j, \forall j$.
+
+Step 3 continues step 2 until the change in the functions falls below a pre-specified threshold.
+
+> **Note:** The working target $z_i$ is a local linear approximation to the link applied to the response, and the weights $w_i$ are the variance of a Bernoulli draw with probability $\hat p_i$. Observations whose probabilities are near 0 or 1 carry little weight, which is the same reweighting that drives standard logistic regression.
+
+## Summary
+
+GAMs occupy a useful middle ground: more flexible than linear models, more interpretable than a black box. Table @tbl-gam-pros-cons weighs what you gain against what you give up.
+
++----------------------------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Pros                                                                                                                                                     | Cons                                                                                                                                                                                                    |
++==========================================================================================================================================================+=========================================================================================================================================================================================================+
+| we can fit a nonlinear $f_j$ to each $X_j$ and automatically model nonlinear relationships (which we can't do under standard linear regression)          | Model is restricted to be additive. Technically, we can include interactions, but we have to make them manually, and we can only do so with low-dimensional interaction terms as additive functions |
++----------------------------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| The nonlinear fits can make more accurate predictions                                                                                                | Difficult to fit in high dimensions (because all variables have to be fit)                                                                                                                              |
++----------------------------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Since the model is additive, we can examine the effect of each $X_j$ on $Y$ individually while holding all of the other variables fixed (interprebility) |                                                                                                                                                                                                         |
++----------------------------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| The smoothness of the function $f_j$ for the variable $X_j$ can be summarized by df                                                                      |                                                                                                                                                                                                         |
++----------------------------------------------------------------------------------------------------------------------------------------------------------+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+
+: Advantages and limitations of generalized additive models. {#tbl-gam-pros-cons}
+
+> **When to use this:** GAMs shine when you have a moderate number of predictors, you expect smooth nonlinear effects, and you still need to explain each effect to a stakeholder. If interactions dominate or the predictor count is very large, a tree-based method or a model that learns interactions automatically may serve you better.
+
+The chief limitation, additivity, can be relaxed at a cost. An extension of GAM that includes random effects is called the Generalized Additive Mixed Model (GAMM), useful when observations are grouped or correlated (you can refer to [this book](https://highstat.com/index.php/beginner-s-guide-to-generalized-additive-models-with-r)).
+
+## Application
+
+Two worked examples follow. The first uses the `gam` package to fit and compare several GAMs on a wage dataset, including a logistic GAM for a binary outcome. The second uses `mgcv` to fit a single smooth on housing data and to evaluate it on a held-out test set. As you read the code, watch how each `s(...)` term corresponds to one of the smooth functions $f_j$ from the theory above, and how plotting the model shows those curves directly.
+
+> **Warning:** Both the `gam` and `mgcv` packages export a function called `gam()` and a smoother called `s()`. Whichever package is loaded last wins. In the examples below the order is intentional; if you mix the two in your own session, call them explicitly (for example `gam::gam` and `gam::s`, or `mgcv::gam` and `mgcv::s`) to avoid silently using the wrong one.
+
+### Example 1
+
+\[@james2013, 7.8\]
+
+We begin by fitting the model two ways. First we use `lm` with natural splines, then we refit with smoothing splines through the `gam` package. Figure @fig-gam-wage-smoothing-splines plots the three smooth-spline components, and Figure @fig-gam-wage-natural-splines plots the natural-spline fit for comparison; both show a gently rising `year` effect and a hump-shaped `age` effect.
+
+```{r, warning=FALSE}
+library(ISLR2)
+attach(Wage)
+library (splines)
+
+# we want to predict for a grid of values for age
+agelims <- range (age)
+age.grid <- seq (from = agelims[1], to = agelims [2])
+
+# since gam is just linear regresion with transformation of inputs, we can also use lm in R
+gam1 <- lm(wage ~ ns(year, 4) + ns(age, 5) + education, data = Wage) # using natural splines
+
+library(gam)
+# gam and mgcv both define gam() and s(); this example uses the gam package, so
+# make sure it wins the search path even if mgcv was attached elsewhere.
+if ("package:mgcv" %in% search()) detach("package:mgcv")
+gam.m3 <-
+    gam(wage ~ s(year, 4) + s(age, 5) + education, data = Wage) # using smoothing splines
+```
+
+```{r fig-gam-wage-smoothing-splines, warning=FALSE, fig.cap="Smoothing-spline components of the GAM for wage. Each panel shows the estimated smooth effect of year, age, and education, with pointwise standard-error bands."}
+par(mfrow = c(1, 3))
+plot(gam.m3, se = T, col = "blue")
+```
+
+```{r fig-gam-wage-natural-splines, warning=FALSE, fig.cap="Natural-spline components of the wage model fitted with lm. The estimated effect of year is close to linear, while the effect of age is clearly curved."}
+par(mfrow = c(1, 3))
+plot.Gam(gam1, se = T, col = "red") # the function of year is rather linear
+```
+
+The natural-spline fit in Figure @fig-gam-wage-natural-splines already hints that the `year` effect is close to a straight line. We can test this formally by comparing three nested models with an F-test.
+
+```{r, warning=FALSE}
+if ("package:mgcv" %in% search()) detach("package:mgcv")
+gam.m1 <- gam(wage ~ s(age, 5) + education, data = Wage)
+gam.m2 <- gam(wage ~ year + s(age, 5) + education, data = Wage)
+anova(gam.m1, gam.m2, gam.m3, test = "F") # model 2 is the best one
+
+summary(gam.m3)
+
+preds <- predict(gam.m2, newdata = Wage)
+```
+
+The `anova` comparison and the `summary` output tell the same story in two ways. The F-test prefers the model with a linear `year` term and a smooth `age` term (model 2), and the "Anova for Nonparametric Effects" block in the summary confirms it: the nonlinear part of `age` is strongly significant, while the nonlinear part of `year` is not. In words, age bends the wage curve but year is essentially a straight-line effect, which is exactly what the plotted curves show.
+
+We can also build a GAM from local-regression smoothers. Figure @fig-gam-wage-local-regression replaces the smoothing spline on `age` with a `lo` local-regression term.
+
+```{r fig-gam-wage-local-regression, warning=FALSE, fig.cap="GAM for wage using a local-regression smoother for age. The year term is a degree-four spline and the age term is a loess fit with span 0.7."}
+if ("package:mgcv" %in% search()) detach("package:mgcv")
+gam.lo <- gam(wage ~ s(year, df = 4) + lo(age, span = 0.7) + education, data = Wage)
+par(mfrow = c(1, 3))
+plot.Gam(gam.lo , se = T, col = "green")
+```
+
+Local regression can also model a two-dimensional smooth surface in `year` and `age` jointly, as shown in Figure @fig-gam-wage-interaction-surface.
+
+```{r gam-wage-interaction-surface, warning=FALSE, fig.cap="Two-dimensional local-regression surface for the joint effect of year and age on wage, fitted as a single bivariate loess term."}
+if ("package:mgcv" %in% search()) detach("package:mgcv")
+# using local regression as building blocks for GAM
+gam.lo.i <-
+    gam(wage ~ lo(year, age, span = .05) + education, data = Wage)
+
+library(akima)
+par(mfrow = c(1, 2))
+plot(gam.lo.i)
+```
+
+The additive idea extends to a binary outcome through a logistic link. Figure @fig-gam-wage-logistic fits a logistic GAM for the indicator that wage exceeds 250.
+
+```{r fig-gam-wage-logistic, warning=FALSE, fig.cap="Components of a logistic GAM for the probability that wage exceeds 250, with a linear year term and a smooth age term."}
+if ("package:mgcv" %in% search()) detach("package:mgcv")
+gam.lr <- gam(I(wage > 250) ~ year + s(age, df = 5) + education,
+              family = binomial,
+              data = Wage)
+par(mfrow = c(1, 3))
+plot(gam.lr, se = T, col = "green")
+```
+
+Table @tbl-gam-wage-education-cross cross-tabulates education against the high-wage indicator, which motivates dropping the sparse lowest education level before refitting.
+
+```{r tbl-gam-wage-education-cross, warning=FALSE}
+knitr::kable(
+  table(Wage$education, I(Wage$wage > 25)),
+  caption = "Cross-tabulation of education level against the indicator that wage exceeds 25."
+)
+```
+
+Figure @fig-gam-wage-logistic-subset refits the logistic GAM after excluding the lowest education category.
+
+```{r fig-gam-wage-logistic-subset, warning=FALSE, fig.cap="Logistic GAM for the high-wage indicator after excluding the lowest education category, which removes the unstable estimates caused by its empty cell."}
+if ("package:mgcv" %in% search()) detach("package:mgcv")
+gam.lr.s <- gam(
+    I(wage > 25) ~ year + s(age, df = 5) + education,
+    family = binomial,
+    data = Wage,
+    subset = (education != "1. < HS Grad")
+)
+par(mfrow = c(1, 3))
+plot(gam.lr.s, se = T, col = "green")
+```
+
+### Example 2
+
+Spline regression makes you choose where to place the knots by hand. To sidestep [Spline Regression]'s requirement for specifying the knots, we can use a GAM, which selects the smoothness automatically through its penalty. Here we fit a single smooth of `medv` on `lstat` with `mgcv` and check how well it generalizes to a held-out test set.
+
+Figure @fig-gam-boston-smooth shows the estimated smooth term, and Table @tbl-gam-boston-performance reports its accuracy on the held-out test set.
+
+```{r fig-gam-boston-smooth, fig.cap="Estimated smooth effect of lstat on the median home value medv from an mgcv GAM fitted on the Boston training set, with a pointwise standard-error band."}
+library(tidyverse)
+library(caret)
+# Load the data
+data("Boston", package = "MASS")
+# Split the data into training and test set
+set.seed(123)
+training.samples <- Boston$medv %>%
+    caret::createDataPartition(p = 0.8, list = FALSE)
+train.data  <- Boston[training.samples,]
+test.data <- Boston[-training.samples,]
+
+attach(train.data)
+
+library(mgcv)
+# Build the model
+model <- gam(medv ~ s(lstat), data = train.data)
+plot(model)
+```
+
+```{r tbl-gam-boston-performance}
+# Make predictions
+predictions <- model %>% predict(test.data)
+# Model performance
+knitr::kable(
+  data.frame(
+    RMSE = RMSE(predictions, test.data$medv),
+    R2 = R2(predictions, test.data$medv)
+  ),
+  caption = "Test-set root-mean-squared error and R-squared for the Boston GAM with a single smooth of lstat."
+)
+```
+
+Figure @fig-gam-boston-ggplot overlays the same smooth on the training scatterplot using `stat_smooth`.
+
+```{r fig-gam-boston-ggplot, fig.cap="Training-set scatterplot of medv against lstat with an overlaid GAM smooth fitted through stat_smooth, showing the same curved relationship as the mgcv fit."}
+ggplot(train.data, aes(lstat, medv) ) +
+  geom_point() +
+  stat_smooth(method = gam, formula = y ~ s(x))
+detach(train.data)
+```
+
+The fitted curve bends sharply where `lstat` is low and flattens as `lstat` grows, a nonlinearity that a single straight line would miss entirely, and the test-set $R^2$ in Table @tbl-gam-boston-performance quantifies how much of that signal carries over to new data. Notice that we never told `mgcv` how many knots to use or where to put them: the penalty did that work for us, which is the practical payoff of the smoothness criterion from the start of this chapter.

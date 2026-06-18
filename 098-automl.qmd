@@ -1,0 +1,386 @@
+# Automated Machine Learning (AutoML)
+
+```{r}
+#| include: false
+suppressPackageStartupMessages(library(tidyverse))
+```
+
+```{r automl-setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
+```
+
+Suppose a colleague drops a clean tabular dataset on your desk and asks for the best predictive model you can build by tomorrow morning. A practiced data scientist runs the same loop every time: try a penalized linear model, a couple of tree ensembles, maybe a small neural network; tune each one's knobs; decide how to encode the categorical columns and what to do about missing values; compare everything honestly on held-out data; and ship the winner. The loop is mechanical enough that you could almost write it down as an algorithm. Automated Machine Learning (AutoML) is the attempt to do exactly that: turn the search over preprocessing, model family, and hyperparameters into an optimization problem that a computer can solve while you sleep.
+
+The promise is appealing and the danger is real, so it is worth being precise about what AutoML actually optimizes. It does not invent new model families or discover causal structure. It searches a space you defined, using a budget you set, to minimize an estimate of generalization error you chose. Everything good and everything bad about AutoML follows from that one sentence. The good: it explores far more combinations than a human would, without fatigue or favoritism toward the method you happen to know best. The bad: if the search space is wrong, the budget is too small, or the error estimate is optimistic, AutoML will confidently hand you a model that looks excellent on your validation data and disappoints in production.
+
+This chapter develops the idea from the ground up. We start with the central formalism, the Combined Algorithm Selection and Hyperparameter optimization (CASH) problem, which unifies "which model" and "which settings" into a single objective. We then look at how that objective is actually searched (random search, Bayesian optimization, and a brief note on neural architecture search), how meta-learning lets a system warm-start from past experience instead of starting cold, and how the major tools (`h2o` AutoML and auto-sklearn) put the pieces together. A runnable base-R demonstration builds a miniature AutoML system that searches over several model families with nested cross-validation and reports a leaderboard, so the mechanics are concrete rather than magical. We close with the pitfalls that separate a useful AutoML run from a misleading one. This chapter leans on the Hyperparameter Optimization chapter for the inner search and on the Feature Engineering chapter for the preprocessing pieces; AutoML is, in a sense, those two chapters wrapped in an outer loop together with model selection.
+
+> **Note:** A companion chapter, "Scalable Machine Learning with h2o," covers the `h2o.automl()` interface and a base-R leaderboard at the engine level. This chapter is the conceptual counterpart: what AutoML is optimizing, how the search works, and why it can mislead. The two are meant to be read together.
+
+## The pipeline AutoML automates {#automl-pipeline}
+
+Before formalizing anything, it helps to name the parts. A supervised learning pipeline is a function from raw data to predictions, built by composing a few stages. AutoML systems differ in how many of these stages they automate, but the menu is always some subset of the following.
+
+- Feature preprocessing. Imputation of missing values, encoding of categorical variables, scaling of numeric columns, and optional feature construction or selection. This is the subject of the Feature Engineering chapter; AutoML treats the choices there (which imputer, which encoder) as decisions to be searched, not fixed in advance.
+- Model selection. Choosing the learning algorithm itself: elastic-net GLM, random forest, gradient boosting, k-nearest neighbors, a small neural network, and so on. Each is a different inductive bias, and which one fits best is data-dependent.
+- Hyperparameter optimization. Tuning the continuous and discrete knobs of whichever model is selected: the penalty $\lambda$ of a GLM, the depth and learning rate of a booster, the number of neighbors $k$. This is the subject of the Hyperparameter Optimization chapter.
+- Ensembling. Combining several trained models, usually by stacking, so the final prediction is better than any single member.
+- Neural architecture search (NAS). When the model family is a neural network, the architecture itself (depth, width, connectivity) becomes a hyperparameter. We treat this briefly because it is computationally heavy and largely separate from tabular AutoML.
+
+> **Key idea:** AutoML is not one algorithm. It is an outer optimization loop that treats the choice of preprocessing, model, and hyperparameters as a single joint decision, scored by an estimate of generalization error.
+
+The reason these stages cannot be optimized independently is interaction. The best learning rate for a booster depends on its depth; the best model family depends on how the features were encoded; whether to standardize depends on whether the model is distance-based (k-nearest neighbors cares, trees do not). Optimizing each stage in isolation and gluing the winners together can produce a pipeline that no stage would have chosen jointly. The next section makes this joint view precise.
+
+## The CASH problem {#automl-cash}
+
+The formalism that organizes AutoML is the Combined Algorithm Selection and Hyperparameter optimization problem, introduced by Thornton, Hutter, Hoos, and Leyton-Brown (2013). The name is a mouthful but the idea is clean: stop treating "pick a model" and "tune it" as two steps, and treat them as one search over a single combined space.
+
+Let $\mathcal{A} = \{A^{(1)}, A^{(2)}, \dots, A^{(R)}\}$ be a set of candidate learning algorithms (the model families plus, in full generality, the preprocessing operators). Each algorithm $A^{(j)}$ has its own hyperparameter space $\Lambda^{(j)}$, which may be continuous (a learning rate), integer (a tree depth), or categorical (a kernel type), and may itself be conditional: a parameter exists only when another takes a certain value.^[Conditional hyperparameters are the rule, not the exception. The number of trees only matters if you chose a tree ensemble; the kernel bandwidth only matters if you chose a kernel method. The search space is therefore a tree of choices, not a flat box, which is part of what makes CASH harder than ordinary hyperparameter tuning.] A single point in the combined space is a pair $(A^{(j)}, \boldsymbol\lambda)$ with $\boldsymbol\lambda \in \Lambda^{(j)}$: a choice of algorithm together with a full setting of its knobs.
+
+Given a dataset $\mathcal{D}$ split into $K$ cross-validation folds $\mathcal{D} = \mathcal{D}^{(1)} \cup \cdots \cup \mathcal{D}^{(K)}$, write $\mathcal{L}\big(A^{(j)}_{\boldsymbol\lambda}, \mathcal{D}_{\text{train}}, \mathcal{D}_{\text{valid}}\big)$ for the loss (misclassification rate, RMSE, deviance, whatever you chose) obtained when algorithm $A^{(j)}$ with hyperparameters $\boldsymbol\lambda$ is trained on $\mathcal{D}_{\text{train}}$ and scored on $\mathcal{D}_{\text{valid}}$. The CASH problem is to find the algorithm-and-hyperparameter pair that minimizes the cross-validated loss:
+
+$$
+(A^{\star}, \boldsymbol\lambda^{\star}) \;=\; \operatorname*{arg\,min}_{A^{(j)} \in \mathcal{A},\; \boldsymbol\lambda \in \Lambda^{(j)}}
+\; \frac{1}{K} \sum_{k=1}^{K} \mathcal{L}\Big(A^{(j)}_{\boldsymbol\lambda}, \, \mathcal{D} \setminus \mathcal{D}^{(k)}, \, \mathcal{D}^{(k)}\Big).
+$$
+
+Read it slowly. The inner part is exactly the $K$-fold cross-validation estimate of generalization error for one fixed pipeline. The outer $\arg\min$ ranges over every algorithm and every legal hyperparameter setting at once. That single $\arg\min$ over a union of heterogeneous spaces is what makes CASH the right abstraction: it refuses to separate "which model" from "which settings," because the best settings depend on the model and the best model depends on its settings.
+
+> **Intuition:** Picture a vast, lumpy landscape whose horizontal coordinates are "which algorithm" and "what hyperparameters," and whose height is cross-validated error. The landscape is not even connected in a simple way: moving from the random-forest region to the GLM region crosses a boundary where the very meaning of the coordinates changes. CASH asks for the lowest point in this whole strange landscape, and AutoML is the machinery for searching it without evaluating every point.
+
+One trick collapses the union of spaces into a single space, which is how tools implement CASH in practice. Introduce a top-level categorical hyperparameter $\theta$ whose value names the chosen algorithm, so $\theta \in \{1, \dots, R\}$, and make every algorithm-specific parameter conditional on $\theta$. Then the combined space is one (structured, conditional) hyperparameter space
+
+$$
+\Lambda \;=\; \{\theta\} \,\cup\, \Lambda^{(1)} \cup \cdots \cup \Lambda^{(R)},
+$$
+
+and CASH becomes an ordinary, if high-dimensional and conditional, hyperparameter optimization problem over $\Lambda$. This is precisely why the same optimizers used for hyperparameter tuning (random search, Bayesian optimization) apply directly to model selection: once you write model choice as a hyperparameter, selecting a model is just tuning $\theta$.
+
+> **Warning:** The objective above minimizes cross-validated loss, which is an *estimate* of generalization error, not the truth. Search hard enough over enough pipelines and you will find one whose cross-validation score is low partly by luck. This is overfitting the validation procedure itself, and it is the defining hazard of AutoML. We return to it in the pitfalls section, and the demonstration measures it directly.
+
+## Searching the CASH space {#automl-search}
+
+The CASH objective tells us what to minimize; it says nothing about how. Every entry on the right-hand side requires training a full model, which can take seconds to hours, so the search must be sample-efficient: find a good pipeline in as few evaluations as the budget allows. Three approaches dominate, in increasing sophistication.
+
+### Grid and random search
+
+The simplest strategy fixes a finite list of pipelines and evaluates them all. Grid search lays a regular lattice over each hyperparameter; random search draws each configuration independently from a distribution over $\Lambda$. Bergstra and Bengio (2012) showed that random search is usually the better of the two for the same budget, and the reason is geometric. If only a few of the hyperparameters actually matter (the common case), a grid wastes its budget by repeatedly testing the irrelevant ones at the same few values, whereas random search gives every important dimension many distinct values for the same number of trials.
+
+> **Intuition:** Imagine tuning two knobs where only one affects performance. A $5 \times 5$ grid tests the important knob at just 5 distinct settings (25 runs total). Twenty-five random draws test it at 25 distinct settings. Same cost, five times the resolution where it counts.
+
+Random search is the honest baseline for any AutoML claim. It is trivial to parallelize (every trial is independent), it has no failure modes beyond the budget, and a more clever method that cannot beat random search is not worth its complexity. Its weakness is that it never learns: trial 100 is drawn the same way as trial 1, ignoring everything the first 99 revealed.
+
+### Bayesian optimization
+
+Bayesian optimization (BO) fixes that weakness by building a probabilistic model of the objective and using it to decide where to evaluate next. Treat the cross-validated loss as an unknown function $f(\boldsymbol\lambda)$ that is expensive to query. After observing trials $\mathcal{H}_t = \{(\boldsymbol\lambda_1, y_1), \dots, (\boldsymbol\lambda_t, y_t)\}$ with $y_i = f(\boldsymbol\lambda_i)$, fit a *surrogate* model that gives, for any candidate $\boldsymbol\lambda$, a predicted mean $\mu_t(\boldsymbol\lambda)$ and uncertainty $\sigma_t(\boldsymbol\lambda)$. An *acquisition function* then scores candidates by trading off exploitation (low predicted loss) against exploration (high uncertainty), and the next trial is its maximizer:
+
+$$
+\boldsymbol\lambda_{t+1} \;=\; \operatorname*{arg\,max}_{\boldsymbol\lambda \in \Lambda} \; a\big(\boldsymbol\lambda \mid \mathcal{H}_t\big).
+$$
+
+A common acquisition function is Expected Improvement. With $f^{\star}_t = \min_{i \le t} y_i$ the best loss seen so far, and treating the surrogate's prediction at $\boldsymbol\lambda$ as Gaussian with mean $\mu_t$ and standard deviation $\sigma_t$, the expected improvement over the incumbent is
+
+$$
+\operatorname{EI}(\boldsymbol\lambda) \;=\; \mathbb{E}\big[\max\big(f^{\star}_t - f(\boldsymbol\lambda),\, 0\big)\big]
+\;=\; \big(f^{\star}_t - \mu_t(\boldsymbol\lambda)\big)\,\Phi(z) + \sigma_t(\boldsymbol\lambda)\,\phi(z),
+\qquad z = \frac{f^{\star}_t - \mu_t(\boldsymbol\lambda)}{\sigma_t(\boldsymbol\lambda)},
+$$
+
+where $\Phi$ and $\phi$ are the standard normal CDF and PDF. The first term rewards candidates predicted to beat the incumbent; the second rewards uncertain candidates, since a wide $\sigma_t$ means a real chance of a large improvement. Maximizing EI is cheap because it only queries the surrogate, not the true expensive objective.
+
+The choice of surrogate matters for AutoML specifically. A Gaussian process is the textbook choice but struggles with the conditional, partly-categorical CASH space (the $\theta$ that selects the algorithm). For that reason, the influential auto-sklearn and Auto-WEKA systems use a random-forest surrogate (the SMAC method of Hutter, Hoos, and Leyton-Brown, 2011), which handles categorical and conditional dimensions naturally. Tree-structured Parzen estimators (Bergstra et al., 2011) are another popular surrogate that models $p(\boldsymbol\lambda \mid y)$ rather than $p(y \mid \boldsymbol\lambda)$.
+
+> **Key idea:** Bayesian optimization spends a little computation deciding where to look so it can spend far less computation looking. It pays off when each evaluation (each model fit) is expensive relative to fitting the surrogate, which is exactly the AutoML regime.
+
+### Neural architecture search, briefly
+
+When the model is a neural network, the architecture (how many layers, how wide, which connections) is itself part of $\boldsymbol\lambda$, and searching over architectures is called neural architecture search. The combined space is enormous and each evaluation trains a network, so naive NAS can cost thousands of GPU-days. The field's progress is mostly about making the search cheaper: weight sharing across candidate architectures (ENAS), continuous relaxations that make the architecture differentiable (DARTS, Liu et al., 2019), and predicting a network's final accuracy from a few epochs. NAS matters for images, text, and other domains where architecture is decisive. For the tabular problems most AutoML systems target, a well-tuned gradient boosting machine usually beats a searched network at a fraction of the cost, so we mention NAS for completeness and spend our runnable budget elsewhere.
+
+> **When to use this:** Reach for NAS only when the architecture is genuinely the bottleneck (large-scale vision or language) and you have the compute to match. For tabular data, put the budget into searching model families and their hyperparameters, not into discovering a custom network.
+
+## Meta-learning and warm-starting {#automl-meta}
+
+Everything so far starts each new dataset from scratch, as if no model had ever been fit to any data before. That is wasteful. A human expert facing a new tabular problem does not begin by trying random hyperparameters; they begin near settings that worked on similar problems in the past. Meta-learning is the machinery that gives an AutoML system the same head start.
+
+The setup is to learn *across* datasets. Suppose you have a collection of past datasets $\mathcal{D}_1, \dots, \mathcal{D}_M$, and for each you recorded its meta-features $\mathbf{m}_i \in \mathbb{R}^d$ (number of rows, number of features, fraction missing, class imbalance, simple landmarking scores from fast models) together with the configuration $\boldsymbol\lambda_i^{\star}$ that worked best on it. Given a new dataset with meta-features $\mathbf{m}_{\text{new}}$, the meta-learner finds the past datasets most similar to it,
+
+$$
+\mathcal{N}(\mathbf{m}_{\text{new}}) \;=\; \big\{\, i : \lVert \mathbf{m}_i - \mathbf{m}_{\text{new}} \rVert \text{ is among the } L \text{ smallest} \,\big\},
+$$
+
+and seeds the search with their winning configurations $\{\boldsymbol\lambda_i^{\star} : i \in \mathcal{N}(\mathbf{m}_{\text{new}})\}$ instead of random points. This is *warm-starting*: the optimizer's first few trials are educated guesses drawn from experience, so it spends its budget refining good regions rather than discovering them.
+
+> **Intuition:** Meta-learning is the AutoML system's memory. The first time it sees a wide, sparse, imbalanced dataset it has to search blindly; the hundredth time, it recognizes the type and starts where similar datasets ended up. The similarity is measured in meta-feature space, not in the raw data.
+
+The auto-sklearn system of Feurer et al. (2015) is the canonical example: it precomputed the best configurations on a large bank of OpenML datasets, and at runtime it uses meta-features to pick a handful of those configurations to initialize Bayesian optimization. The reported effect is that the search reaches a good model much earlier in its budget, which matters most when the budget is short. A second, related technique those systems use is post-hoc ensembling: rather than keep only the single best pipeline the search found, build a weighted ensemble from the many pipelines it trained along the way, which are otherwise discarded. The leaderboard the search produces is, conveniently, exactly the pool an ensemble selection method (Caruana et al., 2004) draws from.
+
+## Tools in practice {#automl-tools}
+
+Two open systems anchor the practical landscape, and they make different design choices worth contrasting. Table @tbl-automl-tools-comparison summarizes them alongside the base-R demonstration built later in this chapter, so the moving parts of each are visible side by side.
+
+```{r tbl-automl-tools-comparison, echo=FALSE}
+.libPaths(c("C:/Users/miken/R/library-4.4", .libPaths()))
+suppressPackageStartupMessages(library(knitr))
+tools_tbl <- data.frame(
+  aspect = c("Search strategy", "Surrogate model", "Meta-learning / warm-start",
+             "Final model", "Model families", "Native R access", "Typical use"),
+  h2o = c("Random search over a fixed plan", "None (predefined grid + RS)",
+          "No (fixed search plan)", "Stacked ensemble (default leader)",
+          "GLM, GBM, RF, XRT, deep net", "Yes (`h2o` package)",
+          "Strong tabular baseline from one call"),
+  autosklearn = c("Bayesian optimization (SMAC)", "Random forest (SMAC)",
+                  "Yes (meta-features + OpenML bank)", "Ensemble selection over trials",
+                  "scikit-learn estimators + preprocessors", "No (Python)",
+                  "Sample-efficient search under a budget"),
+  demo = c("Exhaustive grid (CASH)", "None (full enumeration)",
+           "No", "Best pipeline + stacked ensemble",
+           "GLM, elastic net, kNN, tree", "Yes (base R)",
+           "Teaching the CASH mechanics")
+)
+kable(tools_tbl,
+      col.names = c("Aspect", "h2o AutoML", "auto-sklearn", "This chapter's demo"),
+      caption = "Design choices of two production AutoML systems and the base-R demonstration in this chapter, compared across search strategy, surrogate, meta-learning, the form of the final model, the model families considered, native R access, and intended use.")
+```
+
+Table @tbl-automl-tools-comparison draws out the main contrast. `h2o` AutoML follows a fixed, mostly random search plan and always finishes by training a stacked ensemble, which makes it a one-call workhorse for a strong tabular baseline and is covered in detail in the h2o chapter. auto-sklearn instead spends effort on a Bayesian-optimization search seeded by meta-learning and finishes with post-hoc ensemble selection, which makes it more sample-efficient under a tight budget at the cost of more machinery. The base-R demonstration below strips both down to the bones: it enumerates the CASH grid exactly so you can see the objective being minimized with nothing hidden.
+
+The `h2o` call is shown for reference (it needs a running JVM cluster, so it does not execute when the book is built):
+
+```{r automl-h2o-call, eval=FALSE}
+library(h2o)
+h2o.init(nthreads = -1, max_mem_size = "4G")
+
+train_h2o <- as.h2o(train_df)
+train_h2o[["y"]] <- as.factor(train_h2o[["y"]])   # classification needs a factor
+x <- setdiff(colnames(train_h2o), "y")
+
+aml <- h2o.automl(
+  x = x, y = "y", training_frame = train_h2o,
+  max_runtime_secs = 300,   # the budget; or use max_models
+  nfolds = 5,
+  sort_metric = "AUC",
+  seed = 1
+)
+h2o.get_leaderboard(aml, extra_columns = "ALL")   # the ranked pipelines
+best <- aml@leader                                # usually a stacked ensemble
+h2o.shutdown(prompt = FALSE)
+```
+
+The auto-sklearn call is Python (no native R interface), shown so the API parallel is clear:
+
+```{python automl-autosklearn-call, eval=FALSE}
+import autosklearn.classification
+
+automl = autosklearn.classification.AutoSklearnClassifier(
+    time_left_for_this_task=300,      # the budget, in seconds
+    per_run_time_limit=30,
+    metric=autosklearn.metrics.roc_auc,
+    ensemble_size=50,                 # post-hoc ensemble selection
+)
+automl.fit(X_train, y_train)
+print(automl.leaderboard())           # the ranked pipelines
+print(automl.show_models())           # the ensemble it kept
+```
+
+## A runnable demonstration: a miniature AutoML system {#automl-demo}
+
+The fastest way to demystify AutoML is to build one small enough to read in full. The demonstration below implements the CASH problem directly in base R. It defines a search space of four model families with a few hyperparameter settings each, estimates each pipeline's generalization error with cross-validation, ranks them on a leaderboard, and then does the one thing a leaderboard alone cannot: it measures how optimistic the winning cross-validation score is by checking it against a held-out test set. That gap is the validation-overfitting hazard from the warning above, made into a number.
+
+We simulate a binary classification problem with a nonlinear boundary (an interaction term) plus noise features, so that the model families genuinely differ: a plain linear model should trail, a model that can represent the interaction should lead.
+
+```{r automl-search-cash, eval=TRUE}
+.libPaths(c("C:/Users/miken/R/library-4.4", .libPaths()))
+suppressPackageStartupMessages({
+  library(MASS)      # lda
+  library(glmnet)    # elastic-net logistic regression
+  library(class)     # knn
+  library(rpart)     # classification tree
+  library(knitr)
+})
+set.seed(42)
+
+# ---- simulate data: nonlinear boundary (x1*x2) plus two noise features ----
+n  <- 1500
+x1 <- rnorm(n); x2 <- rnorm(n)
+x3 <- rnorm(n); x4 <- rnorm(n)                 # pure noise
+eta <- 1.2 * x1 - 0.9 * x2 + 1.6 * x1 * x2     # interaction => nonlinear
+prob <- 1 / (1 + exp(-eta))
+y    <- rbinom(n, 1, prob)
+dat  <- data.frame(y = factor(y, levels = c(0, 1)), x1, x2, x3, x4)
+feat <- c("x1", "x2", "x3", "x4")
+
+# Hold out a true test set; AutoML only ever sees the "search" portion.
+test_idx   <- sample(seq_len(n), size = 500)
+search_dat <- dat[-test_idx, ]
+test_dat   <- dat[ test_idx, ]
+ns <- nrow(search_dat)
+
+# ---- the CASH search space: a list of (algorithm, hyperparameters) pairs ----
+# Each entry is a closure: given train/validation data frames it returns the
+# validation-set predicted probability of class 1. This is the A_lambda of CASH.
+make_glm <- function(form) function(tr, va) {
+  m <- suppressWarnings(glm(form, data = tr, family = binomial))
+  as.numeric(predict(m, va, type = "response"))
+}
+make_knn <- function(k) function(tr, va) {
+  cl <- knn(tr[, feat], va[, feat], cl = tr$y, k = k, prob = TRUE)
+  pr <- attr(cl, "prob")                       # prob of the winning class
+  ifelse(cl == "1", pr, 1 - pr)
+}
+make_glmnet <- function(alpha) function(tr, va) {
+  xtr <- as.matrix(tr[, feat]); xva <- as.matrix(va[, feat])
+  cv <- cv.glmnet(xtr, tr$y, family = "binomial", alpha = alpha, nfolds = 5)
+  as.numeric(predict(cv, xva, s = "lambda.min", type = "response"))
+}
+make_tree <- function(cp) function(tr, va) {
+  m <- rpart(y ~ x1 + x2 + x3 + x4, data = tr, method = "class",
+             control = rpart.control(cp = cp, minsplit = 20))
+  predict(m, va, type = "prob")[, "1"]
+}
+
+space <- list(
+  list(name = "GLM (additive)",        fit = make_glm(y ~ x1 + x2 + x3 + x4)),
+  list(name = "GLM (interaction)",     fit = make_glm(y ~ x1 * x2 + x3 + x4)),
+  list(name = "Elastic net (a=0.5)",   fit = make_glmnet(0.5)),
+  list(name = "kNN (k=15)",            fit = make_knn(15)),
+  list(name = "kNN (k=45)",            fit = make_knn(45)),
+  list(name = "Tree (cp=0.01)",        fit = make_tree(0.01)),
+  list(name = "Tree (cp=0.001)",       fit = make_tree(0.001))
+)
+
+# ---- K-fold cross-validation: the inner estimate in the CASH objective ----
+K <- 5
+folds <- sample(rep(1:K, length.out = ns))
+
+oof_probabilities <- function(fit_fun) {
+  oof <- numeric(ns)
+  for (k in 1:K) {
+    tr <- search_dat[folds != k, , drop = FALSE]
+    va_idx <- which(folds == k)
+    oof[va_idx] <- fit_fun(tr, search_dat[va_idx, , drop = FALSE])
+  }
+  oof
+}
+
+# ---- scoring metrics ----
+y_search <- as.integer(search_dat$y) - 1L
+auc <- function(pp, truth) {                   # Mann-Whitney form of AUC
+  pos <- pp[truth == 1]; neg <- pp[truth == 0]
+  mean(outer(pos, neg, ">") + 0.5 * outer(pos, neg, "==")) }
+logloss <- function(pp, truth) {
+  pp <- pmin(pmax(pp, 1e-12), 1 - 1e-12)
+  -mean(truth * log(pp) + (1 - truth) * log(1 - pp)) }
+
+# ---- run the CASH search: every pipeline, honestly cross-validated ----
+oof_list <- lapply(space, function(s) oof_probabilities(s$fit))
+names(oof_list) <- vapply(space, function(s) s$name, character(1))
+
+cv_auc <- vapply(oof_list, auc, numeric(1), truth = y_search)
+cv_ll  <- vapply(oof_list, logloss, numeric(1), truth = y_search)
+
+leaderboard <- data.frame(
+  model  = names(oof_list),
+  cv_auc = cv_auc,
+  cv_logloss = cv_ll,
+  row.names = NULL
+)
+leaderboard <- leaderboard[order(-leaderboard$cv_auc), ]
+rownames(leaderboard) <- NULL
+```
+
+The search produced one out-of-fold prediction vector per pipeline; ranking them by cross-validated AUC is the leaderboard. We can now add a stacked ensemble whose metalearner is fit on the out-of-fold predictions (so it never sees a base model scoring data it trained on), and then do the honest thing: refit the leaderboard winner and the ensemble on all the search data and score them on the held-out test set that the search never touched.
+
+```{r tbl-automl-leaderboard, eval=TRUE}
+# ---- stacked ensemble: metalearner on out-of-fold predictions ----
+oof_mat <- as.data.frame(oof_list)
+colnames(oof_mat) <- paste0("m", seq_along(oof_list))
+meta <- glm(y_search ~ ., data = cbind(y_search, oof_mat), family = binomial)
+p_stack_oof <- as.numeric(predict(meta, type = "response"))
+
+# Append the ensemble to the leaderboard.
+leaderboard <- rbind(
+  leaderboard,
+  data.frame(model = "Stacked ensemble",
+             cv_auc = auc(p_stack_oof, y_search),
+             cv_logloss = logloss(p_stack_oof, y_search))
+)
+leaderboard <- leaderboard[order(-leaderboard$cv_auc), ]
+rownames(leaderboard) <- NULL
+
+# ---- the validation-overfitting check: CV score vs. true test score ----
+# Refit each base pipeline on ALL search data, predict the held-out test set.
+y_test <- as.integer(test_dat$y) - 1L
+test_probs <- lapply(space, function(s) s$fit(search_dat, test_dat))
+names(test_probs) <- names(oof_list)
+test_mat <- as.data.frame(test_probs)
+colnames(test_mat) <- paste0("m", seq_along(test_probs))
+p_stack_test <- as.numeric(predict(meta, newdata = test_mat, type = "response"))
+
+test_auc <- c(vapply(test_probs, auc, numeric(1), truth = y_test),
+              "Stacked ensemble" = auc(p_stack_test, y_test))
+leaderboard$test_auc <- test_auc[leaderboard$model]
+leaderboard$optimism <- leaderboard$cv_auc - leaderboard$test_auc
+
+kable(leaderboard, digits = 4,
+      col.names = c("Pipeline", "CV AUC", "CV log-loss", "Test AUC", "Optimism"),
+      caption = "AutoML leaderboard from the base-R CASH search. Pipelines are ranked by cross-validated AUC. The Test AUC column scores each refit pipeline on a held-out set the search never saw, and Optimism is the gap (CV minus test), a direct measure of how much the search overfit the validation procedure.")
+```
+
+Table @tbl-automl-leaderboard shows the structure you should expect from any real AutoML run. The additive GLM and the high-bias models (large $k$, the near-stump tree) trail because they cannot represent the interaction in the data-generating boundary; the GLM with the interaction term, the deeper tree, and the stacked ensemble lead. The two columns the demonstration adds beyond a normal leaderboard are the important ones. The Test AUC confirms whether the cross-validation ranking holds up out of sample, and the Optimism column quantifies the validation-overfitting hazard: because we searched several pipelines and reported the maximum cross-validated score, the winner's CV AUC is biased upward relative to its true test performance. The gap is usually small here because the search space is tiny, but it grows with the number of pipelines searched, which is the point.
+
+Figure @fig-automl-leaderboard-plot makes the same two stories visual: the left panel ranks the pipelines, and the right panel plots cross-validated against held-out AUC so the optimism (the distance below the diagonal) is read off directly.
+
+```{r fig-automl-leaderboard-plot, eval=TRUE, fig.cap="Left: the AutoML leaderboard, pipelines ranked by out-of-fold (cross-validated) AUC, with the stacked ensemble highlighted. Right: cross-validated AUC against held-out test AUC for each pipeline; points below the dashed diagonal scored better in cross-validation than on truly unseen data, the gap being the optimism of the search.", fig.width=9, fig.height=4.2}
+par(mfrow = c(1, 2), mar = c(4, 9, 3, 1))
+
+# Left panel: ranked leaderboard (ascending for a horizontal bar plot).
+lb <- leaderboard[order(leaderboard$cv_auc), ]
+cols <- ifelse(lb$model == "Stacked ensemble", "firebrick", "steelblue")
+bp <- barplot(lb$cv_auc, horiz = TRUE, names.arg = lb$model, las = 1,
+              col = cols, xlim = c(0.5, 1), xlab = "Cross-validated AUC",
+              main = "AutoML leaderboard")
+abline(v = 0.5, lty = 3)   # AUC of a random classifier
+
+# Right panel: CV vs. test AUC, with the y = x reference line.
+par(mar = c(4, 4, 3, 1))
+plot(leaderboard$cv_auc, leaderboard$test_auc, pch = 19,
+     col = ifelse(leaderboard$model == "Stacked ensemble", "firebrick", "steelblue"),
+     xlab = "Cross-validated AUC", ylab = "Held-out test AUC",
+     main = "Optimism of the search",
+     xlim = range(leaderboard$cv_auc, leaderboard$test_auc),
+     ylim = range(leaderboard$cv_auc, leaderboard$test_auc))
+abline(0, 1, lty = 2)
+```
+
+The lesson the demonstration teaches is the one the formalism predicts. The CASH search finds a strong pipeline, the stacked ensemble is hard to beat, and the cross-validation score that picked the winner is mildly optimistic about its true performance. Scale the search space from seven pipelines to seven thousand and the optimism column grows, which is exactly why a held-out test set the search never touches is not optional.
+
+## Practical guidance and pitfalls {#automl-pitfalls}
+
+AutoML is a force multiplier when used with discipline and a trap when used as an oracle. The recurring failure modes are predictable.
+
+- Overfitting the validation procedure. This is the central one, and the demonstration measured it. Every pipeline you evaluate is a chance to get lucky on the validation folds; reporting the maximum over many pipelines biases that maximum upward. The defense is a final test set that the search never sees, used exactly once, and treating the cross-validation score as a selection signal rather than a performance estimate. Nested cross-validation (an outer loop for honest evaluation around the inner CASH search) is the rigorous version.
+
+- Compute cost and diminishing returns. The CASH objective is expensive: every point evaluated is a full model fit with cross-validation. Doubling the budget rarely doubles the gain. Set a wall-clock or model-count budget up front, log the best-so-far against time, and stop when the curve flattens. Bayesian optimization and meta-learning help most when the budget is tight; with a generous budget, random search closes much of the gap.
+
+- Data leakage through preprocessing. If you impute, scale, or select features using the whole dataset before the search, information from the validation folds leaks into training and every score is optimistic. Preprocessing must live *inside* the cross-validation loop, fit on the training portion of each fold only. This is why mature systems treat preprocessing as part of the searched pipeline rather than a fixed step done in advance, a point the Feature Engineering chapter makes in its own right.
+
+- The wrong objective. AutoML minimizes the metric you give it. If you optimize accuracy on an imbalanced problem, you may get a model that ignores the minority class; if you optimize a metric that does not match the business cost, you get a model optimized for the wrong thing. Choose the metric deliberately, and consider class weights or a cost-sensitive loss when the costs are asymmetric.
+
+- Serving cost versus accuracy. AutoML's leader is often a large stacked ensemble that requires every base model at scoring time. The best single model is frequently within a small margin and far cheaper to serve. Compare accuracy against latency and portability, not accuracy alone.
+
+- Reproducibility and seeds. A search with randomized trials or parallel training is only reproducible when seeds are fixed and the environment is pinned. Record the search space, the budget, the seed, and the package versions, or you cannot rerun the result.
+
+> **When to use this:** Reach for AutoML to get a strong baseline quickly, to search more broadly than you would by hand, or to free expert time for the parts of the problem (framing, features, evaluation) that genuinely need judgment. Do not reach for it expecting it to choose the right objective, fix leaky features, or substitute for an honest held-out evaluation. It automates the search, not the thinking around it.
+
+## Further reading {#automl-reading}
+
+- Thornton, Hutter, Hoos, and Leyton-Brown (2013), "Auto-WEKA: Combined Selection and Hyperparameter Optimization of Classification Algorithms," for the CASH formulation used throughout this chapter.
+- Feurer, Klein, Eggensperger, Springenberg, Blum, and Hutter (2015), "Efficient and Robust Automated Machine Learning," for auto-sklearn, meta-learning warm-starts, and ensemble selection.
+- Hutter, Hoos, and Leyton-Brown (2011), "Sequential Model-Based Optimization for General Algorithm Configuration," for the SMAC random-forest surrogate that searches the CASH space.
+- Bergstra and Bengio (2012), "Random Search for Hyper-Parameter Optimization," for why random search is the right baseline.
+- Bergstra, Bardenet, Bengio, and Kegl (2011), "Algorithms for Hyper-Parameter Optimization," for tree-structured Parzen estimators and the Bayesian-optimization view.
+- Caruana, Niculescu-Mizil, Crew, and Ksikes (2004), "Ensemble Selection from Libraries of Models," for the post-hoc ensembling that turns a leaderboard into a final model.
+- Liu, Simonyan, and Yang (2019), "DARTS: Differentiable Architecture Search," and Elsken, Metzen, and Hutter (2019), "Neural Architecture Search: A Survey," for the NAS material.
+- LeDell and Poirier (2020), "H2O AutoML: Scalable Automatic Machine Learning," for the design of `h2o.automl`.
+- Hutter, Kotthoff, and Vanschoren, editors (2019), *Automated Machine Learning: Methods, Systems, Challenges*, for a book-length treatment of the whole field.
+```

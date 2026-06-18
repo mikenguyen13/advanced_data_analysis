@@ -1,0 +1,364 @@
+# Density Estimation
+
+```{r}
+#| include: false
+suppressPackageStartupMessages(library(tidyverse))
+```
+
+Suppose someone hands you a column of numbers: the response times of a web service over a day, the heights of a sample of customers, the brightness of pixels in a batch of images. Before you fit any model, a natural first question is simply, "what does this data look like?" Not the mean, not the variance, but the whole shape: where the values pile up, whether there are one or several peaks, how heavy the tails are, which regions are essentially empty. That shape is the *probability density* $p(x)$, and estimating it from a finite sample is the subject of this chapter.
+
+Density estimation sits quietly underneath a surprising amount of data science. A model that knows $p(x)$ can score a new point by how probable it is, which is the foundation of anomaly detection: rare points live where $p(x)$ is small. It can draw new samples that resemble the training data, which is generation. It can supply the likelihood that statistical inference and Bayesian methods are built on. And it gives the working analyst something more humble but just as valuable: an honest picture of a variable that no summary statistic can capture. A bimodal distribution and a wide unimodal one can share the same mean and standard deviation while telling completely different stories.
+
+This chapter builds up the main tools in order of sophistication. We start with the humble histogram, expose its weaknesses, and fix them with kernel density estimation (KDE), where the central practical problem turns out to be choosing a bandwidth. We then move from these *nonparametric* methods, which let the data speak with few assumptions, to a *parametric* model, the Gaussian mixture, fitted with the expectation-maximization (EM) algorithm. Finally we sketch normalizing flows, the modern neural approach that scales density estimation to high dimensions. Throughout, $p(x)$ is the unknown density we want, and $\hat{p}(x)$ is our estimate of it.
+
+> **Note:** This chapter connects closely to two others. The generative view of density (sampling from $\hat{p}$, scoring likelihoods) is developed further in the Generative Models chapter, where variational autoencoders, GANs, and diffusion models all turn out to be density estimators in disguise. The use of $\hat{p}(x)$ to flag rare points underlies the anomaly and outlier detection discussions elsewhere in the book.
+
+## What we are estimating, and why it is hard {#density-estimation-setup}
+
+We observe an independent and identically distributed sample $x_1, x_2, \ldots, x_n$ drawn from an unknown distribution with density $p(x)$ on $\mathbb{R}^d$. The density is the function whose integral over any region gives the probability of landing there:
+
+$$
+\Pr(X \in A) \;=\; \int_A p(x)\, dx, \qquad p(x) \ge 0, \qquad \int_{\mathbb{R}^d} p(x)\, dx = 1.
+$$
+
+Our goal is an estimate $\hat{p}(x)$ that is close to $p(x)$ everywhere. "Close" is usually measured by a global error such as the mean integrated squared error,
+
+$$
+\mathrm{MISE}(\hat{p}) \;=\; \mathbb{E}\!\left[ \int \bigl( \hat{p}(x) - p(x) \bigr)^2 dx \right],
+$$
+
+which, like any squared-error criterion, decomposes into a bias term and a variance term. That decomposition is the recurring tension of the whole chapter: smooth estimates have low variance but high bias (they wash out real features), while wiggly estimates have low bias but high variance (they invent features that are just noise). Every method below exposes one knob, the bin width, the bandwidth, the number of mixture components, that controls exactly this trade-off.
+
+Density estimation is genuinely harder than regression, and the reason is the curse of dimensionality. To estimate $p(x)$ at a point you need samples *near* that point, and in high dimensions almost no two points are near each other. The volume of a neighborhood grows exponentially with the dimension $d$, so the number of samples needed to fill space grows exponentially too. The best achievable error of a nonparametric estimator degrades from roughly $n^{-2/5}$ in one dimension to $n^{-2/(4+d)}$ in $d$ dimensions, which becomes useless well before $d$ reaches double digits.^[This is why the histogram and KDE in this chapter are presented in one dimension, the parametric Gaussian mixture is the workhorse in moderate dimensions, and normalizing flows are the tool of choice when $d$ is in the hundreds or thousands, as for images.]
+
+> **Key idea:** Density estimation always trades bias against variance, controlled by a single smoothing knob. Too little smoothing tracks noise; too much erases real structure. The art is choosing the knob, and most of this chapter is about how.
+
+## Histograms {#density-estimation-histogram}
+
+The histogram is the oldest density estimator and still the first thing to reach for. Partition the line into bins of width $h$, count how many of the $n$ observations fall in each bin, and divide by $n h$ so the total area is one. For a point $x$ in a bin containing $\nu$ observations,
+
+$$
+\hat{p}_{\text{hist}}(x) \;=\; \frac{\nu}{n\,h}.
+$$
+
+The division by $h$ is what turns a count into a density: it makes the area of each bar equal to the fraction of data it contains, so the bars integrate to one regardless of bin width.
+
+The histogram has two flaws that motivate everything after it. First, it is discontinuous, a staircase, even though most real densities are smooth. Second, and less obviously, it depends on where the bins start, not only on their width. Shift the bin edges by half a bin and a bimodal-looking histogram can collapse to a single hump, or vice versa. The result is an estimate that depends on an arbitrary choice the analyst never meant to make.
+
+The bin width $h$ is the smoothing knob. Wide bins give a blocky, low-variance, high-bias picture; narrow bins give a spiky, high-variance, low-bias one. A common automatic choice is Scott's rule, $h = 3.49\,\hat{\sigma}\,n^{-1/3}$, which minimizes the asymptotic integrated squared error for roughly Gaussian data, where $\hat{\sigma}$ is the sample standard deviation.
+
+> **Intuition:** A histogram answers "how many points landed in this bucket?" The two problems are that the buckets have hard walls (discontinuity) and that someone had to decide where the first wall goes (bin-edge dependence). Kernel density estimation removes both by letting every point carry its own smooth, centered bump.
+
+## Kernel density estimation {#density-estimation-kde}
+
+Kernel density estimation cures the histogram's defects with one idea: instead of dropping each observation into a rigid bin, place a small smooth bump, a *kernel*, centered exactly on the observation, and add the bumps up. Because each bump is centered on its own data point, there are no arbitrary bin edges; because the bumps are smooth, so is the sum.
+
+Formally, with a kernel function $K$ and a bandwidth $h > 0$,
+
+$$
+\hat{p}_h(x) \;=\; \frac{1}{n h} \sum_{i=1}^{n} K\!\left( \frac{x - x_i}{h} \right).
+$$
+
+The kernel $K$ is itself a density: $K(u) \ge 0$ and $\int K(u)\, du = 1$, usually symmetric about zero. The most common choice is the Gaussian kernel $K(u) = (2\pi)^{-1/2} e^{-u^2/2}$, though the Epanechnikov kernel $K(u) = \tfrac{3}{4}(1 - u^2)$ for $|u| \le 1$ is theoretically optimal (it minimizes the asymptotic error among all kernels). In practice the choice of kernel barely matters; the choice of bandwidth dominates everything.
+
+### Why the kernel choice is secondary and the bandwidth is everything {#density-estimation-bias-variance}
+
+A standard asymptotic analysis makes the bias-variance trade-off precise. For a smooth density and a symmetric kernel, the bias of $\hat{p}_h(x)$ is approximately
+
+$$
+\mathbb{E}[\hat{p}_h(x)] - p(x) \;\approx\; \tfrac{1}{2} h^2 \mu_2(K)\, p''(x), \qquad \mu_2(K) = \int u^2 K(u)\, du,
+$$
+
+so the bias grows with $h^2$ and is worst where the true density is sharply curved (large $|p''|$): peaks get flattened and valleys filled in. The variance moves the opposite way,
+
+$$
+\operatorname{Var}\bigl(\hat{p}_h(x)\bigr) \;\approx\; \frac{p(x)\, R(K)}{n h}, \qquad R(K) = \int K(u)^2\, du,
+$$
+
+shrinking as $h$ grows because a wider kernel averages over more points. Squaring the bias, adding the variance, and integrating gives the asymptotic MISE,
+
+$$
+\mathrm{AMISE}(h) \;=\; \underbrace{\frac{R(K)}{n h}}_{\text{variance}} \;+\; \underbrace{\frac{1}{4} h^4 \mu_2(K)^2 \int p''(x)^2\, dx}_{\text{squared bias}}.
+$$
+
+Minimizing over $h$ gives the optimal bandwidth and its rate,
+
+$$
+h_{\text{opt}} \;=\; \left( \frac{R(K)}{\mu_2(K)^2 \, \lVert p'' \rVert^2 \, n} \right)^{1/5} \;\propto\; n^{-1/5},
+$$
+
+so the best bandwidth shrinks slowly with sample size and the resulting error decays like $n^{-4/5}$ in MISE (equivalently $n^{-2/5}$ in root terms). The catch is that $h_{\text{opt}}$ depends on $\int p''^2$, a feature of the unknown density itself, which is why bandwidth selection is a real problem rather than a formula.
+
+> **Warning:** The single most consequential decision in KDE is the bandwidth, not the kernel. A Gaussian and an Epanechnikov kernel at sensible bandwidths give nearly identical estimates; the same kernel at half versus double the bandwidth gives two completely different pictures. Spend your attention on $h$.
+
+### Selecting the bandwidth in practice {#density-estimation-bandwidth}
+
+Because $h_{\text{opt}}$ depends on the unknown density, practical rules estimate it. Three are worth knowing. *Silverman's rule of thumb* plugs a Gaussian reference into the formula above, giving $h = 0.9\, A\, n^{-1/5}$ with $A = \min(\hat{\sigma},\ \mathrm{IQR}/1.34)$; it is fast, the default in many tools, and tends to oversmooth multimodal data because it assumes a single Gaussian. *Cross-validation* picks the $h$ that maximizes the held-out log-likelihood, making no shape assumption but costing more computation. *Plug-in* methods (the Sheather-Jones selector) estimate $\int p''^2$ directly and are generally the most reliable default. In R these are available as `bw.nrd0` (Silverman), `bw.ucv` (cross-validation), and `bw.SJ` (Sheather-Jones).
+
+## Gaussian mixture models and the EM algorithm {#density-estimation-gmm}
+
+Nonparametric methods make few assumptions but pay for it in high dimensions and give no compact description of the density. The parametric alternative assumes a functional form with a fixed number of parameters. The most useful such form is the *Gaussian mixture model* (GMM), which writes the density as a weighted sum of $K$ Gaussian components:
+
+$$
+p(x) \;=\; \sum_{k=1}^{K} \pi_k \, \mathcal{N}(x \mid \mu_k, \Sigma_k), \qquad \pi_k \ge 0, \quad \sum_{k=1}^{K} \pi_k = 1,
+$$
+
+where $\mathcal{N}(x \mid \mu_k, \Sigma_k)$ is the Gaussian density with mean $\mu_k$ and covariance $\Sigma_k$, and the *mixing weight* $\pi_k$ is the prior probability that a point came from component $k$. A mixture of enough Gaussians can approximate essentially any smooth density, while staying parametric: the whole model is described by $K$ triples $(\pi_k, \mu_k, \Sigma_k)$ rather than by all $n$ data points.
+
+The generative story is that each point is produced in two steps: first draw a hidden label $z \in \{1, \ldots, K\}$ with $\Pr(z = k) = \pi_k$, then draw $x$ from the $z$-th Gaussian. We never see $z$; this *latent variable* is what makes fitting interesting.
+
+### Fitting by expectation-maximization {#density-estimation-em}
+
+We want the parameters $\theta = \{\pi_k, \mu_k, \Sigma_k\}$ that maximize the log-likelihood $\ell(\theta) = \sum_{i=1}^n \log \sum_k \pi_k \mathcal{N}(x_i \mid \mu_k, \Sigma_k)$. The log of a sum has no closed-form maximizer, so we use the EM algorithm, which exploits the latent labels. If we knew which component each point came from, fitting would be trivial: just compute each component's sample mean and covariance. EM alternates between guessing those labels softly and refitting.
+
+The E-step computes the *responsibility* $\gamma_{ik}$, the posterior probability that point $i$ came from component $k$ given the current parameters, by Bayes' rule:
+
+$$
+\gamma_{ik} \;=\; \frac{\pi_k\, \mathcal{N}(x_i \mid \mu_k, \Sigma_k)}{\sum_{j=1}^{K} \pi_j\, \mathcal{N}(x_i \mid \mu_j, \Sigma_j)}.
+$$
+
+The M-step updates the parameters as responsibility-weighted versions of the usual estimates, with $N_k = \sum_i \gamma_{ik}$ the effective number of points assigned to component $k$:
+
+$$
+\mu_k \;=\; \frac{1}{N_k}\sum_{i=1}^n \gamma_{ik}\, x_i, \qquad
+\Sigma_k \;=\; \frac{1}{N_k}\sum_{i=1}^n \gamma_{ik}\, (x_i - \mu_k)(x_i - \mu_k)^\top, \qquad
+\pi_k \;=\; \frac{N_k}{n}.
+$$
+
+Iterating E and M is guaranteed to never decrease the log-likelihood, because each EM step maximizes a lower bound (the *expected complete-data log-likelihood*) that touches the true log-likelihood at the current parameters. It converges to a local maximum, not necessarily the global one, so multiple random restarts and a sensible initialization (commonly from k-means) matter in practice. The number of components $K$ is chosen by an information criterion such as the BIC, which balances fit against the parameter count.
+
+> **Intuition:** EM is soft k-means. Hard k-means assigns each point to its nearest center; EM assigns each point fractionally to every component in proportion to how well that component explains it, then moves each component toward the points it is most responsible for. As the model sharpens, the soft assignments harden.
+
+> **Warning:** A Gaussian component can collapse onto a single point, driving its variance to zero and the likelihood to infinity. This is a genuine singularity of the GMM likelihood, not a bug. Guard against it by adding a small ridge to each covariance, capping the minimum variance, or using a Bayesian prior.
+
+## Normalizing flows, conceptually {#density-estimation-flows}
+
+Gaussian mixtures handle moderate dimensions but struggle with the hundreds or thousands of dimensions in images, audio, or embeddings. Normalizing flows are the neural approach that scales. The idea rests on the change-of-variables formula. If $z$ has a simple known density $p_Z$ (a standard Gaussian) and $x = f(z)$ for an invertible, differentiable map $f$, then the density of $x$ is
+
+$$
+p_X(x) \;=\; p_Z\!\bigl(f^{-1}(x)\bigr) \, \left| \det \frac{\partial f^{-1}}{\partial x} \right|,
+$$
+
+where the Jacobian determinant accounts for how $f$ stretches and compresses volume. A normalizing flow makes $f$ a neural network, composed of many invertible layers, and trains it by maximizing the exact log-likelihood of the data under this formula. Because the likelihood is exact and tractable, a trained flow can do all three jobs at once: evaluate $p_X(x)$ for any point (likelihood and anomaly scoring), and generate new samples by drawing $z \sim p_Z$ and pushing it through $f$.
+
+The engineering challenge is designing layers that are simultaneously expressive, invertible, and have a cheap Jacobian determinant, since a general $d \times d$ determinant costs $O(d^3)$. Architectures such as RealNVP and Glow use *coupling layers* that transform half the coordinates as a function of the other half, producing a triangular Jacobian whose determinant is just the product of its diagonal. We treat flows only conceptually here; the Generative Models chapter places them alongside VAEs, GANs, and diffusion models, which trade exact likelihood for other advantages.
+
+> **When to use this:** Use histograms and KDE for one or two dimensions and quick exploration. Use Gaussian mixtures when you want a compact, interpretable density in up to perhaps a few dozen dimensions, or soft clustering as a byproduct. Reach for normalizing flows (or the other deep generative models) only when the dimension is high and you have the data and compute to train a neural network.
+
+## Demonstration: histogram, KDE, and a fitted mixture {#density-estimation-demo}
+
+We now make the comparison concrete. We simulate a clearly multimodal one-dimensional sample, a mixture of three Gaussians, and estimate its density three ways: a histogram, a kernel density estimate, and a Gaussian mixture fitted by an EM algorithm we write from scratch in base R. Plotting all three against the true density shows what each method captures and misses.
+
+```{r density-estimation-em-setup}
+set.seed(1301)
+
+# True density: a three-component Gaussian mixture (the target p(x))
+true_pi <- c(0.35, 0.40, 0.25)
+true_mu <- c(-3.0, 1.0, 5.0)
+true_sd <- c(0.8, 1.2, 0.7)
+
+# Simulate n points by first drawing a component label, then a value
+n <- 800
+z <- sample(seq_along(true_pi), size = n, replace = TRUE, prob = true_pi)
+x <- rnorm(n, mean = true_mu[z], sd = true_sd[z])
+
+# The true density on a grid, for reference in every plot
+grid <- seq(min(x) - 1, max(x) + 1, length.out = 600)
+true_density <- function(t) {
+    rowSums(sapply(seq_along(true_pi), function(k) {
+        true_pi[k] * dnorm(t, true_mu[k], true_sd[k])
+    }))
+}
+true_p <- true_density(grid)
+
+# --- A from-scratch EM algorithm for a 1-D Gaussian mixture ---
+em_gmm <- function(x, K, iters = 200, tol = 1e-6) {
+    n <- length(x)
+    # Initialize: spread means over quantiles, equal weights, global sd
+    mu <- as.numeric(quantile(x, probs = seq(0.1, 0.9, length.out = K)))
+    sigma <- rep(sd(x), K)
+    pi_k <- rep(1 / K, K)
+    ll_old <- -Inf
+
+    for (it in seq_len(iters)) {
+        # E-step: responsibilities gamma_ik (n x K matrix)
+        dens <- sapply(seq_len(K), function(k) pi_k[k] * dnorm(x, mu[k], sigma[k]))
+        denom <- rowSums(dens)
+        gamma <- dens / denom
+
+        # M-step: weighted means, variances, and mixing weights
+        Nk <- colSums(gamma)
+        mu <- colSums(gamma * x) / Nk
+        sigma <- sqrt(colSums(gamma * outer(x, mu, "-")^2) / Nk)
+        sigma <- pmax(sigma, 1e-3) # guard against variance collapse
+        pi_k <- Nk / n
+
+        # Log-likelihood for convergence check
+        ll <- sum(log(denom))
+        if (abs(ll - ll_old) < tol) break
+        ll_old <- ll
+    }
+    list(pi = pi_k, mu = mu, sigma = sigma, loglik = ll, iters = it)
+}
+
+fit <- em_gmm(x, K = 3)
+
+# Density implied by the fitted mixture, evaluated on the grid
+gmm_density <- function(t, fit) {
+    rowSums(sapply(seq_along(fit$pi), function(k) {
+        fit$pi[k] * dnorm(t, fit$mu[k], fit$sigma[k])
+    }))
+}
+gmm_p <- gmm_density(grid, fit)
+```
+
+The EM fit recovers parameters close to the truth. Table @tbl-density-estimation-params compares the true mixture parameters with the estimates, sorted by component mean so they line up.
+
+```{r tbl-density-estimation-params}
+ord <- order(fit$mu)
+param_tab <- data.frame(
+    Component = 1:3,
+    `True weight` = true_pi,
+    `Est. weight` = round(fit$pi[ord], 3),
+    `True mean` = true_mu,
+    `Est. mean` = round(fit$mu[ord], 3),
+    `True SD` = true_sd,
+    `Est. SD` = round(fit$sigma[ord], 3),
+    check.names = FALSE
+)
+knitr::kable(
+    param_tab,
+    caption = "True versus EM-estimated Gaussian mixture parameters. The from-scratch EM algorithm recovers the three components' weights, means, and standard deviations closely from 800 simulated points."
+)
+```
+
+Now we plot the three estimators against the truth. Figure @fig-density-estimation-compare overlays the histogram, the kernel density estimate (with the Sheather-Jones bandwidth), and the fitted Gaussian mixture on the true density.
+
+```{r fig-density-estimation-compare, fig.width = 7, fig.height = 4.5, fig.cap = "Three density estimators on the same multimodal sample. The histogram (gray bars) is blocky and bin-edge dependent; the kernel density estimate (blue) is smooth and tracks all three modes; the fitted Gaussian mixture (red dashed) nearly coincides with the true density (black). All three integrate to one."}
+hist(x,
+    breaks = 30, freq = FALSE, border = "white", col = "grey85",
+    main = "Histogram, KDE, and fitted Gaussian mixture",
+    xlab = "x", ylab = "density", ylim = c(0, max(true_p) * 1.15)
+)
+kde <- density(x, bw = "SJ")
+lines(kde, col = "steelblue", lwd = 2)
+lines(grid, gmm_p, col = "firebrick", lwd = 2, lty = 2)
+lines(grid, true_p, col = "black", lwd = 2)
+legend("topright",
+    legend = c("True density", "KDE (Sheather-Jones)", "Fitted GMM (EM)", "Histogram"),
+    col = c("black", "steelblue", "firebrick", "grey70"),
+    lwd = c(2, 2, 2, 6), lty = c(1, 1, 2, 1), bty = "n", cex = 0.85
+)
+```
+
+The smooth methods clearly beat the histogram: both the KDE and the mixture recover the three peaks, while the histogram's bars depend on where the bin edges happen to fall.
+
+### The bandwidth effect {#density-estimation-bandwidth-demo}
+
+The previous figure used one good bandwidth. To see why bandwidth is the decisive choice in KDE, Figure @fig-density-estimation-bw shows the same sample estimated with three bandwidths: too small (undersmoothed and spiky), automatic via Sheather-Jones (about right), and too large (oversmoothed into a single blob).
+
+```{r fig-density-estimation-bw, fig.width = 7, fig.height = 4.5, fig.cap = "The bandwidth controls everything in KDE. A bandwidth one-fifth of the automatic choice (orange) is noisy and invents spurious wiggles; five times the automatic choice (purple) smears the three modes into one hump; the Sheather-Jones bandwidth (blue) sits between and matches the true density (black)."}
+h_auto <- bw.SJ(x)
+kde_small <- density(x, bw = h_auto / 5)
+kde_auto <- density(x, bw = h_auto)
+kde_large <- density(x, bw = h_auto * 5)
+
+plot(grid, true_p,
+    type = "l", lwd = 2, col = "black",
+    main = "Effect of KDE bandwidth on the same sample",
+    xlab = "x", ylab = "density", ylim = c(0, max(true_p) * 1.25)
+)
+lines(kde_small, col = "darkorange", lwd = 1.5)
+lines(kde_auto, col = "steelblue", lwd = 2)
+lines(kde_large, col = "purple", lwd = 2)
+legend("topright",
+    legend = c(
+        "True density",
+        sprintf("Too small (h = %.2f)", h_auto / 5),
+        sprintf("Sheather-Jones (h = %.2f)", h_auto),
+        sprintf("Too large (h = %.2f)", h_auto * 5)
+    ),
+    col = c("black", "darkorange", "steelblue", "purple"),
+    lwd = 2, bty = "n", cex = 0.85
+)
+```
+
+The lesson is visible at a glance: the orange curve chases individual data points and reports modes that are not real, while the purple curve has smoothed the genuine three-peak structure into a single uninformative bump. Only the middle bandwidth tells the truth.
+
+## A scikit-style flow sketch (not run) {#density-estimation-flow-code}
+
+For completeness, the conceptual training loop for a normalizing flow is shown below. It needs a deep-learning backend, so it is not executed here; it illustrates the change-of-variables loss in idiomatic pseudocode.
+
+```{r density-estimation-flow-sketch, eval = FALSE}
+# Conceptual only: requires the torch backend (not run in this book build).
+# A normalizing flow maximizes the exact log-likelihood via change of variables.
+
+library(torch)
+
+# A coupling layer transforms half the coordinates as a function of the other
+# half, giving a triangular Jacobian whose log-determinant is cheap.
+coupling_forward <- function(x, net) {
+    d <- ncol(x) %/% 2
+    x1 <- x[, 1:d]
+    x2 <- x[, (d + 1):ncol(x)]
+    st <- net(x1) # network outputs scale (s) and shift (t)
+    s <- st$scale
+    t <- st$shift
+    y2 <- x2 * torch_exp(s) + t # affine transform of the second half
+    list(y = torch_cat(list(x1, y2), dim = 2), log_det = s$sum(dim = 2))
+}
+
+# Training: push data to the base space, accumulate log-determinants,
+# and maximize log p(x) = log N(z; 0, I) + sum(log|det J|).
+flow_nll <- function(x, layers) {
+    z <- x
+    log_det_total <- torch_zeros(nrow(x))
+    for (layer in layers) {
+        out <- coupling_forward(z, layer)
+        z <- out$y
+        log_det_total <- log_det_total + out$log_det
+    }
+    log_pz <- distr_normal(0, 1)$log_prob(z)$sum(dim = 2)
+    -(log_pz + log_det_total)$mean() # negative log-likelihood to minimize
+}
+```
+
+## Practical guidance and pitfalls {#density-estimation-guidance}
+
+A few hard-won rules separate a useful density estimate from a misleading one.
+
+Match the method to the dimension. In one or two dimensions, plot a KDE and trust your eyes; in moderate dimensions, fit a Gaussian mixture and select $K$ by BIC; in high dimensions, abandon nonparametric methods and use a parametric or neural model, because the curse of dimensionality makes KDE meaningless. A KDE in ten dimensions is not a slightly-worse estimate, it is essentially no estimate at all.
+
+Respect the support of the variable. KDE and Gaussians put mass on the whole real line, so a kernel estimate of a strictly positive quantity (a price, a duration) will leak probability below zero and create a spurious bump near the boundary. The standard fixes are to transform first (estimate the density of $\log x$ and back-transform with the Jacobian) or to use a boundary-corrected kernel.
+
+Choose the bandwidth deliberately. The default rule (Silverman) oversmooths multimodal data because it assumes one Gaussian; prefer the Sheather-Jones plug-in (`bw.SJ`) or cross-validation (`bw.ucv`) when you suspect multiple modes. Always look at the estimate under two or three bandwidths before believing any feature.
+
+Beware the singularities of the mixture likelihood. A Gaussian component that collapses onto one point sends the likelihood to infinity; regularize the covariances, use several random restarts, and prefer the lower-BIC fit rather than the highest-likelihood one.
+
+Finally, remember what the density is for. If the downstream task is anomaly detection, you do not need the density to be accurate everywhere, only to be reliably small in the tails where anomalies live; a crude global fit with well-behaved tails can beat a wiggly fit that nails the bulk but produces erratic tail values.
+
+Table @tbl-density-estimation-methods summarizes the trade-offs across the four approaches.
+
+```{r tbl-density-estimation-methods}
+methods_tab <- data.frame(
+    Method = c("Histogram", "Kernel density (KDE)", "Gaussian mixture (EM)", "Normalizing flow"),
+    Type = c("Nonparametric", "Nonparametric", "Parametric", "Neural / parametric"),
+    `Smoothing knob` = c("Bin width h", "Bandwidth h", "Components K", "Network capacity"),
+    `Good dimension` = c("1", "1 to 2", "Up to dozens", "Hundreds+"),
+    `Exact likelihood` = c("Yes", "Yes", "Yes", "Yes"),
+    `Can sample` = c("Crudely", "Yes", "Yes", "Yes"),
+    check.names = FALSE
+)
+knitr::kable(
+    methods_tab,
+    caption = "Comparison of density estimation methods. Nonparametric methods make few assumptions but fail in high dimensions; the Gaussian mixture is compact and interpretable in moderate dimensions; normalizing flows scale to high dimensions at the cost of training a neural network."
+)
+```
+
+## Further reading {#density-estimation-further}
+
+Silverman (1986), *Density Estimation for Statistics and Data Analysis*, is the classic and still readable account of histograms and kernel methods, including the bias-variance analysis and the rule-of-thumb bandwidth. Scott (2015), *Multivariate Density Estimation*, extends this to higher dimensions and is the source of Scott's rule. Wand and Jones (1995), *Kernel Smoothing*, give the careful treatment of bandwidth selection, including the Sheather-Jones plug-in.
+
+For mixtures and EM, McLachlan and Peel (2000), *Finite Mixture Models*, is the standard reference, and the original EM paper is Dempster, Laird, and Rubin (1977). Bishop (2006), *Pattern Recognition and Machine Learning*, gives a particularly clear derivation of EM for Gaussian mixtures via the evidence lower bound, connecting it to the variational methods in the Generative Models chapter.
+
+For normalizing flows, Rezende and Mohamed (2015) introduced the framework for variational inference, Dinh, Sohl-Dickstein, and Bengio (2017) presented RealNVP, and the survey by Papamakarios, Nalisnick, Rezende, Mohamed, and Lakshminarayanan (2021), *Normalizing Flows for Probabilistic Modeling and Inference*, is the comprehensive modern overview.

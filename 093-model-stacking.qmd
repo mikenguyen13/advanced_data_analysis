@@ -1,0 +1,409 @@
+# Model Tuning
+
+```{r}
+#| include: false
+suppressPackageStartupMessages(library(tidyverse))
+```
+
+```{r modtuning-setup, cache=FALSE}
+# This chapter's code is illustrative (reference snippets), so it is shown but
+# not executed. cache=FALSE ensures this eval=FALSE setting is applied on every
+# build, even when later chunks are cache hits.
+library("finetune")
+knitr::opts_chunk$set(eval = FALSE)
+```
+
+[@Kuhn_2014] for detail
+
+-   Grid Search
+-   Annealing Search
+
+Advanced techniques in `tidymodels`
+
+Feature embedding methods
+
+-   UMAP
+
+-   isoMAP
+
+-   Effect encodings
+
+Model Tuning
+
+-   Racing methods
+
+-   Bayesian optimization
+
+# Model Stacking
+
+Suppose you have trained several different models on the same problem: a random forest, a neural network, maybe a boosted tree. Each one captures the data in a slightly different way, and each makes its own kinds of mistakes. The natural temptation is to crown a single winner on the validation set and throw the rest away. Model stacking asks a better question: instead of picking one model, can we *combine* them so that the strengths of one cover the weaknesses of another?
+
+Stacking (also called stacked generalization, introduced by @wolpert1992stacked and given its statistical footing by @breiman1996stacked) is an ensemble method that does exactly this. The idea is to train a collection of *base learners* (the candidate models) and then train one more model, the *meta-learner*, whose job is to learn how to best weight and combine the base learners' predictions. The meta-learner does not see the original predictors directly; it sees only what the base models predicted, and it figures out how much to trust each one.
+
+> **Intuition:** Think of stacking as assembling a panel of experts. Each expert (base model) gives an opinion, and a coordinator (the meta-learner) learns from past cases which experts to believe in which situations. A confident, usually-right expert gets a large weight; an expert who merely echoes another gets a small one or none at all.
+
+The one subtlety that makes stacking work (rather than overfit) is *where the meta-learner's training data comes from*. If we trained the meta-learner on predictions the base models made on the same data they were fit on, the base models would look artificially accurate and the meta-learner would learn the wrong lesson. Stacking avoids this by feeding the meta-learner *out-of-sample* predictions, the predictions each base model makes on held-out folds during cross-validation. Those held-out predictions are an honest estimate of how each model behaves on data it has never seen.
+
+> **Key idea:** The meta-learner is trained on out-of-sample (cross-validated) predictions of the base models, not on their in-sample fits. This is what keeps a stack honest.
+
+In this chapter we use the `stacks` package from the `tidymodels` family, which plugs directly into the tuning machinery you have already seen. By the end you will be able to assemble candidate models from tuning results, blend them into a single stacked model, inspect which members survived and with what weights, and evaluate the result on test data. The code below follows the `stacks` [package vignette](https://cran.r-project.org/web/packages/stacks/vignettes/basics.html); the full [source code](https://github.com/tidymodels/stacks) is on GitHub.
+
+The workflow in `stacks` always follows the same six steps. We list them once here as a roadmap and then walk through each in turn:
+
+1.  Define your candidate (ensemble) models, typically as a set of tuning results.
+2.  Initialize an empty `data_stack` object with `stacks()`.
+3.  Add candidate models to the stack with `add_candidates()`.
+4.  Learn how to combine their predictions with `blend_predictions()`.
+5.  Refit the surviving members (those with nonzero stacking coefficients) on the full training data with `fit_members()`.
+6.  `predict()` on new data.
+
+> **Note:** Steps 1 and 3 are where the "ensemble" lives: every tuning configuration you pass in becomes a *candidate* member. Step 4 is where the meta-learner runs. Under the hood `blend_predictions()` fits a penalized (LASSO) regression on the candidates' out-of-sample predictions, so many candidates are shrunk to a coefficient of exactly zero and drop out. The stack keeps only the few that genuinely add value.^[Because the blending model is a LASSO, stacking doubles as automatic model selection: you can throw in dozens of candidates and let the penalty decide which ones earn their place. The penalty strength is itself tuned, which is why you will see a penalty axis when you plot the stack later.]
+
+We start by loading the packages. The `stacks` functions extend the standard `tidymodels` workflow, so we load both.
+
+```{r}
+library(tidymodels)
+library(stacks)
+library(dplyr)
+library(purrr)
+library(tune)
+library(ggplot2)
+```
+
+For a concrete example we use the `tree_frogs` data shipped with `stacks`. These are measurements from a developmental biology experiment on red-eyed tree frog embryos: each row is an embryo, and we record its age, an experimental `treatment`, the time of day, and how quickly it hatched (`latency`). Our prediction target is `reflex`, a three-level factor describing the embryo's developmental stage (`low`, `mid`, `full`). Predicting an ordered developmental class from a handful of measurements is a small, friendly classification problem, exactly the kind of setting where stacking is easy to follow.
+
+We keep only the rows with a recorded hatch time and drop two identifier-like columns (`clutch` and `hatched`) that would leak information or add noise.
+
+```{r}
+data("tree_frogs")
+# subset the data: keep rows with a recorded latency and drop ID-like columns
+tree_frogs <- tree_frogs %>%
+  filter(!is.na(latency)) %>%
+  select(-c(clutch, hatched))
+
+ggplot(tree_frogs) +
+    aes(x = age, y = latency, color = treatment) +
+    geom_point() +
+    labs(x = "Embryo Age (s)", y = "Time to Hatch (s)", col = "Treatment")
+ggplot(tree_frogs) +
+    aes(x = treatment, y = age, color = reflex) +
+    geom_jitter() +
+    labs(y = "Embryo Age (s)",
+         x = "treatment",
+         color = "Response")
+```
+
+The plots show that age, treatment, and reflex stage are related but not perfectly separable, so no single simple rule will classify embryos cleanly. That is good news for an ensemble: there is room for different models to disagree productively.
+
+With the data in hand we set up the usual `tidymodels` scaffolding: a train/test split, cross-validation folds, and a preprocessing recipe. Three details matter for stacking specifically. First, we hold out a genuine test set so that our final evaluation is untouched by any tuning. Second, the cross-validation `folds` are not just for tuning here; they are the source of the out-of-sample predictions the meta-learner will eventually train on. Third, the two control objects, `control_stack_grid()` and `control_stack_resamples()`, tell the tuning functions to *save* those out-of-sample predictions so the stack can use them later.
+
+> **Warning:** Stacking only works if you pass a stack-aware control object (`control_stack_grid()` for `tune_grid()`, or `control_stack_resamples()` for `fit_resamples()`) when you tune each candidate. The default tuning controls discard the per-fold predictions to save memory, and without them `add_candidates()` has nothing to learn from. The control object you choose must match how you tuned the model.
+
+The recipe below creates dummy variables for the categorical predictors (leaving the outcome `reflex` alone) and removes any predictor with zero variance, which would carry no information.
+
+```{r}
+# some setup: resampling and a basic recipe
+set.seed(1)
+
+tree_frogs_split <- initial_split(tree_frogs)
+tree_frogs_train <- training(tree_frogs_split)
+tree_frogs_test  <- testing(tree_frogs_split)
+
+folds <- rsample::vfold_cv(tree_frogs_train, v = 5)
+
+tree_frogs_rec <-
+    recipe(reflex ~ ., data = tree_frogs_train) %>%
+    step_dummy(all_nominal(),-reflex) %>%
+    step_zv(all_predictors())
+
+tree_frogs_wflow <-
+    workflow() %>%
+    add_recipe(tree_frogs_rec)
+ctrl_grid <- control_stack_grid() # same control settings
+ctrl_res <- control_stack_resamples()
+```
+
+### Defining the candidate models
+
+We now build the candidates (step 1 of the roadmap). Each candidate is a *family* of models: we specify a model with some hyperparameters marked `tune()` and let `tune_grid()` evaluate many configurations across the folds. Every configuration that gets evaluated becomes a candidate member the stack can later choose from.
+
+Our first family is a random forest. We tune `mtry` (how many predictors each split considers) and `min_n` (the minimum node size), fixing the number of trees at 500. The random forest is fit directly on the recipe with no extra preprocessing, since tree-based models are insensitive to the scale of predictors.
+
+```{r}
+rand_forest_spec <-
+    rand_forest(mtry = tune(),
+                min_n = tune(),
+                trees = 500) %>%
+    set_mode("classification") %>%
+    set_engine("ranger")
+
+rand_forest_wflow <-
+    tree_frogs_wflow %>%
+    add_model(rand_forest_spec)
+
+rand_forest_res <-
+    tune_grid(
+        object = rand_forest_wflow,
+        resamples = folds,
+        grid = 10,
+        control = ctrl_grid
+    )
+```
+
+Our second family is a single-hidden-layer neural network, fit with the `nnet` engine. Here we tune the number of `hidden_units`, the weight `penalty` (regularization), and the number of training `epochs`. Unlike the random forest, a neural network *is* sensitive to predictor scale, so we extend the recipe with `step_normalize()` to center and scale the predictors before fitting.
+
+> **Tip:** A good stack benefits from candidates that are genuinely *different* in how they reason about the data, not ten flavors of the same model. A random forest (axis-aligned splits) and a neural network (smooth nonlinear boundaries) make complementary errors, which is exactly what gives the meta-learner something useful to combine.
+
+```{r}
+nnet_spec <-
+    mlp(hidden_units = tune(),
+        penalty = tune(),
+        epochs = tune()) %>%
+    set_mode("classification") %>%
+    set_engine("nnet")
+
+nnet_rec <-
+    tree_frogs_rec %>%
+    step_normalize(all_predictors())
+
+nnet_wflow <-
+    tree_frogs_wflow %>%
+    add_model(nnet_spec)
+
+nnet_res <-
+    tune_grid(
+        object = nnet_wflow,
+        resamples = folds,
+        grid = 10,
+        control = ctrl_grid
+    )
+```
+
+### Building the stack
+
+We now have two sets of tuning results, each holding several candidate configurations together with their out-of-sample predictions. The next block runs steps 2 through 5 of the roadmap in a single pipeline: it starts an empty stack, adds both families of candidates, blends them, and refits the survivors.
+
+The chain reads top to bottom as a recipe for an ensemble. `stacks()` creates the empty container. Each `add_candidates()` pours in one tuning result's candidates. `blend_predictions()` is the heart of the method: it fits the LASSO meta-learner on the candidates' out-of-sample predictions and tunes the penalty, zeroing out candidates that do not pull their weight. Finally `fit_members()` takes the candidates that survived with a nonzero coefficient and refits them on the *entire* training set (not just the cross-validation folds), so that the deployed ensemble uses all available data.
+
+```{r}
+tree_frogs_model_st <-
+    # initialize the stack
+    stacks() %>%
+    # add candidate members
+    add_candidates(rand_forest_res) %>%
+    add_candidates(nnet_res) %>%
+    # determine how to combine their predictions
+    blend_predictions() %>%
+    # fit the candidates with nonzero stacking coefficients
+    fit_members()
+
+tree_frogs_model_st
+```
+
+Printing the stack reports how many candidates went in, how many survived the LASSO penalty, and the stacking coefficient (weight) attached to each survivor. Do not be surprised if only a handful remain: the whole point of the penalty is to discard redundant candidates, including ones whose predictions were nearly identical to a candidate already in the stack.^[`stacks` will warn you when it drops a candidate because its predictions duplicate another's. That is expected behavior, not an error: two tuning configurations can easily land on the same effective model.]
+
+### Inspecting the stack
+
+Before trusting the ensemble, it helps to look at what `blend_predictions()` decided. The `autoplot()` method gives three views of the blended stack.
+
+The default plot shows how predictive performance changes as the LASSO penalty varies, which is how the blending step chose its penalty. The `"members"` view shows how many candidates remain in the stack at each penalty. The `"weights"` view shows the stacking coefficient assigned to each surviving member, so you can read off which models the ensemble leans on most.
+
+```{r}
+theme_set(theme_bw())
+autoplot(tree_frogs_model_st)
+autoplot(tree_frogs_model_st, type = "members")
+autoplot(tree_frogs_model_st, type = "weights") # to see penalty
+```
+
+To connect a survivor back to the hyperparameters that produced it, `collect_parameters()` pairs each candidate from a given tuning result with its stacking coefficient. This is how you find out, for example, which `mtry`/`min_n` combination of the random forest the stack actually kept.
+
+```{r}
+collect_parameters(tree_frogs_model_st, "rand_forest_res")
+```
+
+### Predicting and evaluating
+
+With the stack fit, prediction works like any other `tidymodels` model: call `predict()` on new data. Because `reflex` has three classes, asking for `type = "prob"` returns one predicted probability column per class (`.pred_low`, `.pred_mid`, `.pred_full`). We attach those columns to the held-out test set so we can score them against the truth.
+
+```{r}
+tree_frogs_pred <-
+    tree_frogs_test %>%
+    bind_cols(predict(tree_frogs_model_st, ., type = "prob"))
+```
+
+A natural summary for a multiclass classifier is the area under the ROC curve, which measures how well the predicted probabilities rank the classes. We pass all three probability columns (selected with `contains(".pred_")`) and let `yardstick` compute the multiclass AUC against the true `reflex` label.
+
+```{r}
+yardstick::roc_auc(tree_frogs_pred,
+                   truth = reflex,
+                   contains(".pred_"))
+```
+
+> **Note:** AUC near 0.5 means random-quality ranking, while values close to 1 mean near-perfect ranking. For a multiclass outcome, `yardstick` uses the Hand-Till generalization of AUC, averaging the pairwise class comparisons. Use it as a relative yardstick for comparing models rather than an absolute grade.
+
+The real test of stacking is whether the ensemble beats its own members. To check that, we ask for *member* predictions: `predict(..., members = TRUE)` returns the stack's prediction alongside each surviving member's prediction. Here we request class predictions (the default `type`) so we can compute a simple accuracy for each.
+
+```{r}
+member_preds <-
+    tree_frogs_test %>%
+    dplyr::select(reflex) %>%
+    bind_cols(predict(tree_frogs_model_st, tree_frogs_test, members = TRUE))
+```
+
+Finally we compute the classification accuracy of the stack and of every member on the test set. We map over every prediction column (skipping the `reflex` truth column), compare it to the true label, and reshape the result into a tidy table sorted from best to worst.
+
+```{r}
+map_dfr(
+  setNames(setdiff(colnames(member_preds), "reflex"),
+           setdiff(colnames(member_preds), "reflex")),
+  ~ mean(as.character(member_preds$reflex) == as.character(pull(member_preds, .x)))
+) %>%
+  pivot_longer(everything(), names_to = "model", values_to = "accuracy") %>%
+  arrange(desc(accuracy))
+```
+
+The row named `.pred_class` is the stacked ensemble; the rows whose names carry a `rand_forest` or `nnet` suffix are the individual members. The hope is that the ensemble sits at or near the top of this table: by learning how much to trust each member, it tends to match or beat the best single model without our having to know in advance which model that would be. On a small dataset like this one the exact ordering will wobble from run to run, so the honest reading is that stacking buys *robustness*, a predictor that is rarely much worse than the best member and never depends on guessing the winner ahead of time, rather than a guaranteed jump in accuracy.
+
+> **When to use this:** Reach for stacking when you have several reasonable but different models and no clear reason to prefer one, and when a small accuracy gain is worth extra fitting and prediction time. If one model already dominates the others, or if you need a simple, fast, easily explained predictor, a single tuned model is usually the better choice. Stacking trades interpretability and speed for robustness.
+
+To summarize the workflow: tune a diverse set of candidate models while saving their out-of-sample predictions, pour those candidates into a stack, let `blend_predictions()` learn a sparse weighting via a LASSO meta-learner, refit the survivors on all the data, and predict. The payoff is an ensemble that hedges across models instead of betting everything on one.
+
+# Model Deployment
+
+R Microservice is a combination of plumber and docker
+
+-   REST API using plumber
+
+-   Portable software packaged in docker container
+
+DevOps Principles for Data science
+
+-   Continuous Integration
+
+    -   R code in RStudio
+
+    -   CI pipeline triggered for each commit
+
+    -   Automated test: `testthat`
+
+-   Continuous Deployment
+
+    -   `Kubernetes`: Replica Set: 3 copies for redundancy
+
+    -   `Airflow`
+
+Comparing package version with diffify.com
+
+Work better with databases (e.g., Sql), `dbcooper` allows you to work with databases connection just like datatable in R memory.
+
+What do you do on databases?
+
+-   List tables
+
+-   transform tables using dplyr
+
+-   run custom sql commands
+
+`dm` package for multiple relational tables. The package only provides a Shiny app that allows you to visualize relational databases.
+
+`renv`
+
+```{r, eval = FALSE}
+renv::install()
+renv::snapshot()
+# ship
+renv::restore()
+```
+
+`tidymodels`
+
+```{r}
+library(tidymodels)
+
+music_split <- initial_split(spotify)
+
+recipe(popularity ~. , data = training(music_split)) %>% 
+    step_normalize(all_numeric_predictors())
+```
+
+`vetiver`
+
+MLOPs can involve
+
+1.  collect data
+2.  understand and clean data
+3.  train and evaluate model
+4.  deploy model
+5.  monitor model
+
+MLOps
+
+-   versioning
+
+-   storing
+
+-   sharing
+
+-   deploying
+
+`workboots` Prediction Intervals from `tidymodel`
+
+`workboots` checklist
+
+-   Errors are normally distributed
+
+-   Need to time to run
+
+-   This is very powerful. Do you really need it?
+
+```{r, eval = FALSE}
+library(tidymodels)
+
+data("penguins")
+
+penguins <- drop_na(penguins)
+set.seed(1)
+penguins_split <- initial_split(penguins)
+penguins_test  <- testing(penguins_split)
+penguins_train <- training(penguins_split)
+
+# recipe
+rec <- recipe(body_mass_g ~ ., data = penguins_train) %>% 
+    step_dummy(all_nominal())
+
+# workflow
+penguins_wf <- workflow() %>% 
+    add_recipe(rec) %>% 
+    add_model(boost_tree("regression"))
+
+library(workboots)
+# boostrap prediciton interval
+set.seed(1)
+penguins_pred <- 
+    penguins_wf %>% 
+    predict_boots(
+        n = 1000,
+        training_data = penguins_train,
+        new_data = penguins_test,
+        interval = "prediction" # or "confidence" interval
+    )
+
+# results
+penguins_pred %>% 
+    summarise_predictions() %>% 
+    select(-.preds)
+
+# variable importances
+set.seed(1)
+penguins_vi <- 
+    penguins_wf %>% 
+    vi_boots(
+        n = 1000,
+        training_data = penguins_train
+    )
+
+# results
+penguins_vi %>% 
+    summarise_importance() %>% 
+    select(-.importances)
+```

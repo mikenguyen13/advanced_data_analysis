@@ -1,0 +1,435 @@
+# Policy Gradient and Actor-Critic Methods
+
+```{r}
+#| include: false
+suppressPackageStartupMessages(library(tidyverse))
+```
+
+In the previous reinforcement learning chapters the agent learned a value function and then read a policy off it: estimate $Q(s, a)$, then act greedily. That detour through values is not the only way, and sometimes it is the wrong way. Suppose the best action in a state is not "the single highest-value choice" but "choose left $70\%$ of the time and right $30\%$." A greedy reading of a value function cannot express that; it always commits to one action. Or suppose the action is a continuous quantity, such as a steering angle or a dosage, where taking a $\max$ over actions means searching over an infinite set on every step. In these situations it is more natural to skip the value function as the object of interest and instead adjust the policy itself, nudging the probabilities of actions up or down according to how well they turned out.
+
+That is the idea behind policy gradient methods. We write the policy as a parameterized function, $\pi_\theta(a \mid s)$, with tunable parameters $\theta$ (the weights of a small model or a neural network). We define a scalar objective: the expected return when the agent follows that policy. Then we do what the rest of this book does everywhere else, climb the objective by gradient ascent. The twist is that the thing we are differentiating involves an expectation over trajectories that the policy itself generates, so the gradient is not a textbook derivative of a fixed loss. The central result of this chapter, the policy gradient theorem, tells us how to compute that gradient from sampled experience.
+
+> **Intuition:** A policy gradient method does not ask "which action is best?" It asks "in which direction should I shift my action probabilities so that, on average, returns go up?" If an action led to a good outcome, make it more likely; if it led to a bad outcome, make it less likely. The math below is a precise, unbiased way of carrying out that simple instinct.
+
+By the end of the chapter you will understand parameterized policies, the policy gradient theorem and its score-function derivation, the REINFORCE algorithm, why REINFORCE is noisy and how a baseline fixes it, the advantage function, the actor-critic family (with A2C as the concrete case), and the trust-region ideas behind TRPO and PPO that make these methods stable enough for production. A fully runnable base-R demonstration trains REINFORCE on a softmax-policy bandit and shows the average return climbing over training. This chapter sits naturally after the value-based reinforcement learning material and directly underpins the reinforcement learning from human feedback (RLHF) stage used to align large language models, which is built on PPO.
+
+## Why parameterize the policy directly
+
+Value-based methods such as Q-learning store or approximate $Q(s, a)$ and act greedily. That works well when the action set is small and discrete and when a deterministic policy is acceptable. Policy-based methods earn their place in three situations.
+
+The first is continuous or very large action spaces. Taking $\arg\max_a Q(s, a)$ is cheap when there are four actions and impossible when the action is a real-valued vector. A parameterized policy can output the parameters of a distribution (for example, the mean and variance of a Gaussian over steering angles) and sample from it directly, with no maximization step.
+
+The second is stochastic optimal policies. In games with hidden information, or any setting an adversary can exploit, the best policy is genuinely random. Rock-paper-scissors has a unique optimal policy: play each action one third of the time. A greedy value reader cannot represent that; a parameterized stochastic policy can.
+
+The third is smoothness. Value-based methods can change the policy abruptly: a tiny change in estimated values can flip the $\arg\max$ and swing behavior from one action to another. Policy gradients move the action probabilities continuously, which often makes learning more stable, though at the cost of higher variance in the gradient estimate.
+
+> **When to use this:** Reach for policy gradients when actions are continuous, when the optimal policy is stochastic, or when you want smooth policy updates and are willing to accept noisier gradients. If actions are few and discrete and a deterministic greedy policy is fine, value-based methods are usually more sample efficient. Actor-critic methods, introduced later, try to capture the benefits of both.
+
+### Parameterized policies
+
+A parameterized policy is a function $\pi_\theta(a \mid s)$ that gives the probability of action $a$ in state $s$, controlled by parameters $\theta \in \mathbb{R}^d$. The only requirements are that it defines a valid probability distribution over actions for every state and that it is differentiable in $\theta$. Two forms cover most cases.
+
+For discrete actions, the softmax (or Gibbs) policy assigns each action a preference $h_\theta(s, a)$ (a linear function of features, or the output of a network) and normalizes:
+
+$$
+\pi_\theta(a \mid s) = \frac{\exp\!\big(h_\theta(s, a)\big)}{\sum_{a'} \exp\!\big(h_\theta(s, a')\big)}.
+$$
+
+For continuous actions, a common choice is a Gaussian policy whose mean $\mu_\theta(s)$ (and possibly variance) is a function of the state:
+
+$$
+\pi_\theta(a \mid s) = \frac{1}{\sqrt{2\pi}\,\sigma}\exp\!\left(-\frac{(a - \mu_\theta(s))^2}{2\sigma^2}\right).
+$$
+
+The quantity that appears throughout the theory is the gradient of the log-probability, $\nabla_\theta \log \pi_\theta(a \mid s)$, called the score function.^[The name comes from statistics, where the score is the gradient of the log-likelihood with respect to the parameters. It is the same object that appears in maximum-likelihood estimation, which is why fitting a policy by policy gradient looks so much like weighted maximum likelihood: each action is treated as an observation weighted by how good its outcome was.] For the softmax policy with linear preferences $h_\theta(s, a) = \theta^\top \phi(s, a)$, where $\phi(s, a)$ is a feature vector, the score has a clean closed form:
+
+$$
+\nabla_\theta \log \pi_\theta(a \mid s) = \phi(s, a) - \sum_{a'} \pi_\theta(a' \mid s)\, \phi(s, a') = \phi(s, a) - \mathbb{E}_{a' \sim \pi_\theta}\big[\phi(s, a')\big].
+$$
+
+In words, the score is the feature vector of the action you took minus the average feature vector under the current policy. Pushing $\theta$ along this direction makes the chosen action more probable; pushing against it makes it less probable.
+
+## The objective and the policy gradient theorem
+
+Let $\tau = (s_0, a_0, r_0, s_1, a_1, r_1, \dots)$ denote a trajectory generated by following $\pi_\theta$, and let $R(\tau) = \sum_{t \ge 0} \gamma^t r_t$ be its discounted return, with discount $\gamma \in [0, 1]$. The agent wants to maximize the expected return:
+
+$$
+J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta}\big[ R(\tau) \big].
+$$
+
+We would like $\nabla_\theta J(\theta)$ so we can ascend it. The difficulty is that the distribution we are averaging over, the trajectory distribution, depends on $\theta$. We cannot simply move the gradient inside the expectation, because the expectation is itself a function of $\theta$.
+
+### The score-function (log-derivative) trick
+
+The trick that unlocks everything is an identity. For any differentiable distribution $p_\theta(x)$,
+
+$$
+\nabla_\theta p_\theta(x) = p_\theta(x)\, \frac{\nabla_\theta p_\theta(x)}{p_\theta(x)} = p_\theta(x)\, \nabla_\theta \log p_\theta(x),
+$$
+
+which uses $\nabla \log p = (\nabla p)/p$. Apply it to the gradient of an expectation of any function $f(x)$ that does not depend on $\theta$:
+
+$$
+\nabla_\theta \mathbb{E}_{x \sim p_\theta}[f(x)]
+= \nabla_\theta \int p_\theta(x) f(x)\, dx
+= \int \nabla_\theta p_\theta(x)\, f(x)\, dx
+= \int p_\theta(x)\, \nabla_\theta \log p_\theta(x)\, f(x)\, dx,
+$$
+
+which is itself an expectation:
+
+$$
+\nabla_\theta \mathbb{E}_{x \sim p_\theta}[f(x)] = \mathbb{E}_{x \sim p_\theta}\big[ f(x)\, \nabla_\theta \log p_\theta(x) \big].
+$$
+
+The gradient of an expectation became an expectation of a gradient, which we can estimate by sampling. This is the score-function estimator (also called the likelihood-ratio estimator, and in the deep learning literature the REINFORCE estimator).
+
+### Applying it to trajectories
+
+The probability of a trajectory under $\pi_\theta$ factorizes into the (unknown) environment dynamics and the (known) policy:
+
+$$
+p_\theta(\tau) = p(s_0) \prod_{t \ge 0} \pi_\theta(a_t \mid s_t)\, P(s_{t+1} \mid s_t, a_t).
+$$
+
+Take the log and then the gradient with respect to $\theta$. The initial-state term and the transition terms do not depend on $\theta$, so they drop out, leaving only the policy terms:
+
+$$
+\nabla_\theta \log p_\theta(\tau) = \sum_{t \ge 0} \nabla_\theta \log \pi_\theta(a_t \mid s_t).
+$$
+
+This is the key payoff: the gradient of the trajectory log-probability needs only the policy, not the unknown environment model. Substituting into the score-function estimator with $f(\tau) = R(\tau)$ gives the policy gradient theorem in its trajectory form (Williams 1992; Sutton et al. 2000):
+
+$$
+\nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta}\!\left[ \left( \sum_{t \ge 0} \nabla_\theta \log \pi_\theta(a_t \mid s_t) \right) R(\tau) \right].
+$$
+
+> **Key idea:** The policy gradient is an average of score functions weighted by returns. Each action's log-probability is pushed up in proportion to the return of the trajectory it was part of. Good trajectories raise the probability of every action they contain; bad trajectories lower it. No model of the environment is required, because the dynamics canceled out of the gradient.
+
+### Causality: only future rewards matter
+
+The form above is correct but wasteful. An action at time $t$ cannot influence rewards collected before $t$, so weighting $\nabla_\theta \log \pi_\theta(a_t \mid s_t)$ by the full-trajectory return $R(\tau)$ adds noise from rewards that have nothing to do with that action. Removing those terms (they have zero expectation against the score and so do not bias the estimate) gives the reward-to-go form:
+
+$$
+\nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta}\!\left[ \sum_{t \ge 0} \nabla_\theta \log \pi_\theta(a_t \mid s_t)\, G_t \right],
+\qquad G_t = \sum_{k \ge 0} \gamma^k r_{t+k}.
+$$
+
+Here $G_t$ is the return from step $t$ onward, the reward-to-go. This is the form REINFORCE actually uses.
+
+## REINFORCE
+
+REINFORCE (Williams 1992) is the direct Monte Carlo implementation of the policy gradient theorem. Run an episode under the current policy, compute the reward-to-go $G_t$ at each step, and take a gradient ascent step using the sample estimate of the gradient. The per-episode update is
+
+$$
+\theta \leftarrow \theta + \alpha \sum_{t \ge 0} \nabla_\theta \log \pi_\theta(a_t \mid s_t)\, G_t,
+$$
+
+with learning rate $\alpha > 0$. The algorithm is appealingly simple and makes no assumptions about the environment beyond being able to sample from it.
+
+> **Warning:** REINFORCE is unbiased but high variance. Because $G_t$ is a Monte Carlo estimate over an entire (random) future, a single lucky or unlucky episode can produce a large, misleading gradient. In practice plain REINFORCE learns slowly and erratically, which is the entire motivation for the variance-reduction techniques in the next section.
+
+## Variance reduction with a baseline
+
+The fix for the variance problem is a baseline. Subtract from each return a quantity $b(s_t)$ that depends on the state but not on the action taken:
+
+$$
+\nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta}\!\left[ \sum_{t \ge 0} \nabla_\theta \log \pi_\theta(a_t \mid s_t)\, \big( G_t - b(s_t) \big) \right].
+$$
+
+Subtracting the baseline does not change the expected gradient. The reason is that the expected score is zero: for any state,
+
+$$
+\mathbb{E}_{a \sim \pi_\theta}\big[ \nabla_\theta \log \pi_\theta(a \mid s) \big]
+= \sum_a \pi_\theta(a \mid s)\, \frac{\nabla_\theta \pi_\theta(a \mid s)}{\pi_\theta(a \mid s)}
+= \nabla_\theta \sum_a \pi_\theta(a \mid s)
+= \nabla_\theta 1 = 0.
+$$
+
+Because $b(s_t)$ does not depend on $a_t$, its contribution is $b(s_t)$ times this zero expectation, so the estimator stays unbiased for any choice of baseline. What the baseline does change is the variance. The variance-minimizing baseline is close to the expected return from that state, which is exactly the state value $V^\pi(s_t)$. Using the value as the baseline makes the weight $G_t - V^\pi(s_t)$ measure how much better the actual outcome was than what the policy expected on average.
+
+> **Intuition:** Without a baseline, an action that yields a return of $+100$ in a state where every action yields about $+100$ still gets its probability pushed up hard, even though it was not special. The baseline recenters the signal: only the part of the return that exceeds the state's typical value carries information about whether the action was better or worse than usual. Subtracting the mean does not bias the direction of the push, it just removes a large, uninformative common component and shrinks the noise.
+
+### The advantage function
+
+The recentered quantity $G_t - V^\pi(s_t)$ is an estimate of the advantage function,
+
+$$
+A^\pi(s, a) = Q^\pi(s, a) - V^\pi(s),
+$$
+
+the amount by which taking action $a$ in state $s$ and then following $\pi$ beats the average action in that state. Positive advantage means "better than usual, do more of this"; negative means "worse than usual, do less." The policy gradient written with the advantage is the form most modern algorithms target:
+
+$$
+\nabla_\theta J(\theta) = \mathbb{E}_{\tau \sim \pi_\theta}\!\left[ \sum_{t \ge 0} \nabla_\theta \log \pi_\theta(a_t \mid s_t)\, A^\pi(s_t, a_t) \right].
+$$
+
+## Actor-critic methods
+
+REINFORCE with a value baseline needs an estimate of $V^\pi$. The cleanest way to get one is to learn it alongside the policy, and that is the actor-critic idea. Two parameterized functions are trained together:
+
+- The actor is the policy $\pi_\theta(a \mid s)$, updated in the direction of the policy gradient.
+- The critic is a value function $V_w(s)$ with its own parameters $w$, trained to predict returns and used to compute the advantage that weights the actor's update.
+
+Instead of waiting for a full Monte Carlo return $G_t$, the critic lets us bootstrap: replace $G_t$ with the one-step temporal-difference (TD) target $r_t + \gamma V_w(s_{t+1})$. The TD error
+
+$$
+\delta_t = r_t + \gamma V_w(s_{t+1}) - V_w(s_t)
+$$
+
+is a low-variance, biased estimate of the advantage $A^\pi(s_t, a_t)$. The actor and critic are updated each step:
+
+$$
+w \leftarrow w + \alpha_w\, \delta_t\, \nabla_w V_w(s_t),
+\qquad
+\theta \leftarrow \theta + \alpha_\theta\, \delta_t\, \nabla_\theta \log \pi_\theta(a_t \mid s_t).
+$$
+
+> **Key idea:** The critic trades variance for bias. Monte Carlo returns are unbiased but noisy; bootstrapped TD targets are biased (the critic is imperfect) but far less noisy. Actor-critic methods sit on the bias-variance spectrum between pure REINFORCE (all Monte Carlo) and pure dynamic programming (all bootstrap), and that middle ground is usually where learning is fastest.
+
+### A2C
+
+Advantage Actor-Critic (A2C) is the standard synchronous form. It runs several environment copies in parallel, collects a short batch of transitions from each, computes advantages (often with multi-step or generalized advantage estimation), and applies one synchronized update to a shared actor and critic. Running many environments at once decorrelates the data (which stabilizes the gradient, much as a replay buffer does for value-based methods) and keeps hardware busy. A2C is the synchronous counterpart of the earlier asynchronous A3C (Mnih et al. 2016); the synchronous version is simpler and usually performs at least as well.
+
+Table @tbl-policy-gradient-methods compares the methods discussed so far along the dimensions that matter when choosing one.
+
+```{r tbl-policy-gradient-methods, echo=FALSE}
+methods <- data.frame(
+  Method = c("Q-learning (value-based)", "REINFORCE", "REINFORCE + baseline",
+             "A2C (actor-critic)", "PPO (actor-critic)"),
+  `Learns` = c("Action values Q", "Policy only", "Policy + value baseline",
+               "Policy + critic", "Policy + critic"),
+  `Action space` = c("Discrete", "Discrete or continuous",
+                      "Discrete or continuous", "Discrete or continuous",
+                      "Discrete or continuous"),
+  `Gradient variance` = c("n/a (no policy gradient)", "Very high", "High",
+                          "Lower (bootstrapped)", "Lower (bootstrapped)"),
+  `Bias` = c("Low (tabular)", "Unbiased", "Unbiased", "Biased (TD)",
+             "Biased (TD)"),
+  `Update stability` = c("Can be unstable with approximation",
+                         "Erratic", "Better", "Good", "Strong (clipped)"),
+  check.names = FALSE
+)
+knitr::kable(
+  methods,
+  caption = "Comparison of value-based and policy-based reinforcement learning methods along the axes that drive method choice."
+)
+```
+
+## Trust regions and PPO
+
+Plain policy gradient ascent has a subtle hazard: the natural step size in parameter space does not correspond to a sensible step size in policy space. A small change in $\theta$ can produce a large change in the action distribution, and a single overlarge step can collapse the policy to something terrible from which it never recovers. Because the data the agent collects next is generated by the current policy, a bad step poisons all future learning. This is the central failure mode that trust-region methods address.
+
+Trust Region Policy Optimization (TRPO; Schulman et al. 2015) makes the policy improvement explicit and constrains how far the new policy may move from the old one, measured by the Kullback-Leibler (KL) divergence between the two action distributions. It maximizes a surrogate objective built from the probability ratio
+
+$$
+\rho_t(\theta) = \frac{\pi_\theta(a_t \mid s_t)}{\pi_{\theta_{\text{old}}}(a_t \mid s_t)},
+$$
+
+subject to a constraint that the average KL divergence stays below a small threshold. The constraint is what keeps each update inside a region where the surrogate is trustworthy, hence "trust region."
+
+Proximal Policy Optimization (PPO; Schulman et al. 2017) keeps the trust-region spirit but replaces the hard KL constraint with a clipped objective that is far simpler to implement and works with ordinary first-order optimizers. PPO maximizes
+
+$$
+L^{\text{CLIP}}(\theta) = \mathbb{E}_t\Big[ \min\big( \rho_t(\theta)\, \hat{A}_t,\ \operatorname{clip}(\rho_t(\theta),\, 1 - \epsilon,\, 1 + \epsilon)\, \hat{A}_t \big) \Big],
+$$
+
+where $\hat{A}_t$ is an estimated advantage and $\epsilon$ (typically around $0.1$ to $0.2$) sets the clip width. The clip removes any incentive to push the probability ratio far beyond $1 \pm \epsilon$, so even if the raw gradient wants a huge step, the objective flattens and the update stays modest.
+
+> **Note:** PPO is the workhorse behind reinforcement learning from human feedback (RLHF) for large language models. In that setting the policy is the language model, the action is the next token, and the reward comes from a learned model of human preference. The clipping in PPO is what keeps the fine-tuned model from drifting catastrophically far from the pretrained one in a single update. The chapter on aligning large language models builds directly on these ideas.
+
+## A runnable REINFORCE demo in base R
+
+To make the mechanics concrete we train REINFORCE on a softmax-policy bandit, the simplest setting in which the full policy gradient machinery applies. There is a single state, so the policy is a distribution over $K$ actions controlled by preference parameters $\theta \in \mathbb{R}^K$. Each action $a$ pays a stochastic reward with unknown mean $\mu_a$; the agent never sees the means, only sampled rewards. This strips away the environment dynamics and lets us watch the score-function update, the baseline, and the rising return curve in isolation.
+
+The policy is the softmax over preferences, $\pi_\theta(a) = e^{\theta_a} / \sum_{a'} e^{\theta_{a'}}$. For this policy the score function for the sampled action $a$ is $\nabla_\theta \log \pi_\theta(a) = \mathbf{1}_a - \pi_\theta$, where $\mathbf{1}_a$ is the indicator vector for action $a$. We use a running average of observed rewards as the baseline $b$, so each update nudges $\theta$ by $\alpha\,(r - b)\,(\mathbf{1}_a - \pi_\theta)$. The hyperparameters are collected in Table @tbl-policy-gradient-hyperparams.
+
+```{r policy-gradient-hyperparams, echo=FALSE}
+hp <- data.frame(
+  Hyperparameter = c("Number of actions (K)", "True reward means",
+                     "Reward noise (sd)", "Learning rate (alpha)",
+                     "Baseline", "Training steps", "Random seed"),
+  Value = c("4", "0.2, 0.5, 1.0, 1.6", "1.0",
+            "0.1", "running mean reward", "2000", "42"),
+  Role = c("Size of the action set",
+           "Hidden payoffs; action 4 is best",
+           "Stochasticity of each reward",
+           "Step size for gradient ascent",
+           "Variance reduction (subtracted from reward)",
+           "Number of policy-gradient updates",
+           "Reproducibility"),
+  check.names = FALSE
+)
+knitr::kable(
+  hp,
+  caption = "Hyperparameters for the REINFORCE softmax-bandit demonstration."
+)
+```
+
+The code below implements the loop. Each step samples an action from the current softmax policy, draws a noisy reward, forms the advantage `reward - baseline`, and updates the preferences along the score function.
+
+```{r policy-gradient-train}
+set.seed(42)
+
+K          <- 4                       # number of actions
+mu         <- c(0.2, 0.5, 1.0, 1.6)   # hidden mean rewards (action 4 best)
+reward_sd  <- 1.0                     # reward noise
+alpha      <- 0.1                     # learning rate
+n_steps    <- 2000                    # number of updates
+
+softmax <- function(theta) {
+  z <- theta - max(theta)             # subtract max for numerical stability
+  ex <- exp(z)
+  ex / sum(ex)
+}
+
+theta    <- rep(0, K)                 # preferences: uniform policy at start
+baseline <- 0                         # running-mean baseline
+returns  <- numeric(n_steps)          # reward received at each step
+probs_best <- numeric(n_steps)        # probability mass on the best action
+
+for (t in seq_len(n_steps)) {
+  p <- softmax(theta)                 # current policy
+  a <- sample.int(K, size = 1, prob = p)        # sample an action
+  r <- rnorm(1, mean = mu[a], sd = reward_sd)   # observe a noisy reward
+
+  # Score function for softmax: indicator(a) - p
+  grad_logp     <- -p
+  grad_logp[a]  <- grad_logp[a] + 1
+
+  # REINFORCE update with baseline: theta <- theta + alpha * (r - b) * score
+  theta <- theta + alpha * (r - baseline) * grad_logp
+
+  # Update running-mean baseline
+  baseline <- baseline + (r - baseline) / t
+
+  returns[t]    <- r
+  probs_best[t] <- p[which.max(mu)]
+}
+
+# Smooth the noisy per-step reward with a trailing moving average
+moving_avg <- function(x, w = 50) {
+  n <- length(x)
+  out <- rep(NA_real_, n)
+  cs <- cumsum(x)
+  for (i in seq_len(n)) {
+    lo <- max(1, i - w + 1)
+    out[i] <- (cs[i] - if (lo > 1) cs[lo - 1] else 0) / (i - lo + 1)
+  }
+  out
+}
+avg_return <- moving_avg(returns, w = 50)
+
+final_policy <- softmax(theta)
+cat("Final policy (action probabilities):\n")
+print(round(final_policy, 3))
+cat(sprintf("\nProbability on best action (action %d): %.3f\n",
+            which.max(mu), final_policy[which.max(mu)]))
+```
+
+The printed policy concentrates probability on action 4, the action with the highest hidden mean, even though the agent only ever saw noisy samples and never the means themselves. Figure @fig-policy-gradient-return shows the learning curves: the left panel is the moving-average reward climbing toward the best action's mean of $1.6$, and the right panel is the probability mass the policy places on the best action rising from $0.25$ (uniform over four actions) toward $1$.
+
+```{r fig-policy-gradient-return, fig.cap="REINFORCE on a four-armed softmax bandit. Left: 50-step moving-average reward rising toward the best action's mean of 1.6 (dashed line). Right: probability the policy assigns to the best action, starting at the uniform value 0.25 and converging toward 1.", fig.width=9, fig.height=4}
+op <- par(mfrow = c(1, 2), mar = c(4, 4, 3, 1))
+
+plot(avg_return, type = "l", col = "steelblue", lwd = 2,
+     xlab = "Training step", ylab = "Average reward (50-step window)",
+     main = "Average return increases")
+abline(h = max(mu), lty = 2, col = "grey50")
+
+plot(probs_best, type = "l", col = "darkorange", lwd = 2,
+     ylim = c(0, 1),
+     xlab = "Training step", ylab = "P(best action)",
+     main = "Policy concentrates on best action")
+abline(h = 1 / K, lty = 3, col = "grey50")   # uniform starting probability
+
+par(op)
+```
+
+The whole story of policy gradients is on this one figure. The score function pushed probability toward actions that paid more than the baseline and away from actions that paid less, and over two thousand small steps that local rule found the best action without ever computing a value function or taking a maximum over actions.
+
+> **Note:** The baseline matters even in this trivial problem. With rewards centered near $+1$, an estimator without a baseline would push up the probability of whatever action it just sampled simply because the raw reward is positive, regardless of whether that action was actually better than the alternatives. Subtracting the running-mean baseline turns the signal into "better or worse than typical," which is what makes the policy discriminate among actions rather than inflating all of them.
+
+## Deep-network policies
+
+For anything beyond a toy problem the actor and critic are neural networks rather than a handful of preferences, and the gradient is computed by automatic differentiation. The sketch below shows the shape of an A2C-style update with the torch package for R. It is shown for orientation only and is not run as part of this book.
+
+```{r policy-gradient-torch, eval=FALSE}
+library(torch)
+
+# Actor and critic as small multilayer perceptrons sharing the state input.
+make_mlp <- function(in_dim, out_dim) {
+  nn_sequential(
+    nn_linear(in_dim, 64), nn_tanh(),
+    nn_linear(64, 64),     nn_tanh(),
+    nn_linear(64, out_dim)
+  )
+}
+
+state_dim  <- 4    # e.g. CartPole observation
+n_actions  <- 2
+
+actor  <- make_mlp(state_dim, n_actions)   # outputs action logits
+critic <- make_mlp(state_dim, 1)           # outputs state value V(s)
+
+opt <- optim_adam(c(actor$parameters, critic$parameters), lr = 3e-4)
+
+# One synchronous A2C update from a batch of transitions.
+# states: (N x state_dim), actions: (N), returns: (N) discounted reward-to-go
+a2c_update <- function(states, actions, returns) {
+  logits <- actor(states)
+  values <- critic(states)$squeeze(2)
+
+  logp_all  <- nnf_log_softmax(logits, dim = 2)
+  logp_take <- logp_all$gather(2, actions$unsqueeze(2)$to(dtype = torch_long()))$squeeze(2)
+
+  advantage <- (returns - values)$detach()      # stop critic grad into actor
+
+  actor_loss  <- -(logp_take * advantage)$mean()        # policy gradient
+  critic_loss <- nnf_mse_loss(values, returns)          # fit the critic
+  entropy     <- -(logp_all$exp() * logp_all)$sum(dim = 2)$mean()
+
+  loss <- actor_loss + 0.5 * critic_loss - 0.01 * entropy   # entropy bonus
+
+  opt$zero_grad()
+  loss$backward()
+  nn_utils_clip_grad_norm_(c(actor$parameters, critic$parameters), 0.5)
+  opt$step()
+  invisible(loss$item())
+}
+```
+
+The structure mirrors the base-R demo exactly. The actor loss is the negative log-probability of the taken action weighted by the advantage (gradient ascent on the policy objective), the critic loss fits the value function by regression onto returns, and the small entropy bonus discourages the policy from collapsing to a deterministic choice too early. Swapping the Monte Carlo returns for a clipped surrogate objective turns this into PPO.
+
+## Practical guidance and pitfalls
+
+Policy gradient methods are powerful but finicky, and most of the trouble is predictable. The points below collect the lessons that save the most time, roughly in the order you will meet them.
+
+Start with a baseline, always. Plain REINFORCE without a baseline is a teaching device, not a tool; the variance is high enough that learning is slow and unreliable. A state-value baseline (or the running-mean baseline in the demo) costs almost nothing and helps immediately.
+
+Normalize advantages within a batch. Subtracting the batch mean and dividing by the batch standard deviation of the advantages makes the effective step size far more stable across problems and reward scales. This single trick removes a great deal of hyperparameter sensitivity.
+
+Keep an entropy bonus early. Without it the policy can become nearly deterministic before it has explored enough, then it stops sampling the actions it would need to discover something better. A small entropy term in the objective keeps the policy stochastic long enough to explore.
+
+Mind the learning rates. Actor and critic usually need different step sizes, and the actor in particular is sensitive: too large and the policy can collapse in one update, the failure mode that motivated trust-region methods. If a run diverges suddenly after looking healthy, suspect the actor step size first.
+
+Watch the reward scale. Because the gradient is the score weighted by returns, the magnitude of the reward directly scales the gradient. Rewards in the thousands or in tiny fractions both cause trouble; rescaling rewards or normalizing returns fixes it.
+
+Evaluate without exploration noise. Training return includes the randomness of the stochastic policy. To measure real progress, periodically run a near-greedy version (lower the temperature, or take the most probable action) and report that.
+
+Reach for PPO when stability matters. For most practical discrete or continuous control problems, and for RLHF, PPO is the sensible default: it captures the variance reduction of actor-critic and the stability of trust regions with a simple, robust objective. Plain REINFORCE and A2C are worth understanding and are fine on small problems, but PPO is what tends to survive contact with a real task.
+
+> **Tip:** Seed several runs and compare. Variance across random seeds is large for policy gradient methods, large enough that a single run can mislead you about whether a change helped. Reporting the spread across seeds, not a single curve, is standard practice for a reason.
+
+In one line: policy gradient methods optimize a parameterized policy directly by ascending the expected return, the policy gradient theorem makes that gradient an estimable expectation of score functions weighted by returns (or advantages), baselines and critics cut its variance, and trust-region ideas (PPO) keep the updates safe enough to scale all the way up to aligning large language models.
+
+## Further reading
+
+- Sutton and Barto (2018), Reinforcement Learning: An Introduction (2nd ed.). The standard textbook; Chapter 13 covers policy gradient methods, REINFORCE, baselines, and actor-critic in full.
+- Williams (1992), Simple statistical gradient-following algorithms for connectionist reinforcement learning. The original REINFORCE estimator.
+- Sutton, McAllester, Singh, and Mansour (2000), Policy gradient methods for reinforcement learning with function approximation. The policy gradient theorem with function approximation.
+- Konda and Tsitsiklis (2000), Actor-critic algorithms. The foundational analysis of actor-critic methods.
+- Mnih et al. (2016), Asynchronous methods for deep reinforcement learning. Introduces A3C, the asynchronous precursor to A2C.
+- Schulman et al. (2015), Trust region policy optimization. The TRPO algorithm and trust-region motivation.
+- Schulman et al. (2017), Proximal policy optimization algorithms. The PPO clipped objective used widely in control and in RLHF.
+- Schulman et al. (2016), High-dimensional continuous control using generalized advantage estimation. The GAE advantage estimator used with actor-critic methods.

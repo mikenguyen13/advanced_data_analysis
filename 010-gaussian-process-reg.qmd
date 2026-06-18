@@ -1,0 +1,382 @@
+# Gaussian Process Regression
+
+```{r}
+#| include: false
+suppressPackageStartupMessages(library(tidyverse))
+```
+
+Suggested reading:
+
+-   @rasmussen2005
+
+-   @wikle2019 (section 4.2)
+
+Most of the regression methods in earlier chapters start by choosing a *form* for the function we want to learn: a line, a polynomial, a set of spline basis functions, a tree. Gaussian process (GP) regression takes a different starting point. Instead of committing to a particular functional form, we place a probability distribution directly over functions, and then let the data tell us which functions are plausible. The result is a flexible, nonparametric method that not only predicts a value at any new input but also reports how uncertain that prediction is.
+
+The intuition is worth pausing on before any math. Imagine you have measured an unknown function at a handful of input locations. A GP says: "before seeing the data, I believe the underlying function is smooth, and that points close together in input space should have similar output values." Once the data arrive, the GP keeps only the functions consistent with what was observed, and from that shrunken collection it forms a prediction (the average of the surviving functions) and a measure of confidence (how much those functions still disagree). Where you have data, the predictions are confident; where you do not, the uncertainty grows. This honest accounting of uncertainty is one of the main reasons GPs are popular in fields like spatial statistics, the design and analysis of computer experiments, and Bayesian optimization.
+
+In this chapter you will learn what a Gaussian process is and how it differs from an ordinary Gaussian distribution, how the conditioning formula for the multivariate normal gives us a closed-form predictor and prediction variance, why the choice of *covariance function* is the heart of the method, and how to fit a GP in R. The mathematical machinery turns out to be a single, reusable idea: any finite set of values from a GP is jointly multivariate normal, so prediction reduces to conditioning one part of a Gaussian on another.
+
+> **Key idea:** A Gaussian process is a distribution over functions. Prediction with a GP is nothing more than conditioning a (very large) multivariate normal distribution on the values we have observed.
+
+We begin with the model that connects what we observe to the latent function we want to recover.
+
+Under a Gaussian Process (GP), we assume that $Y$ is a random (Gaussian) process that is controlled by a mean function and a covariance function. We rarely observe $Y$ directly; instead we observe noisy measurements of it. The response model writes each observation $z_i$ as the latent value $Y_i$ plus measurement error:
+
+$$
+z_i = Y_i + \epsilon_i, i = 1, \dots, n
+$$
+
+This model rests on three assumptions:
+
+-   $Y$ is a latent process specified by a GP.
+
+-   The $\epsilon_i$ are independent and identically distributed mean-zero observation errors, independent of $Y$, with variance $\sigma_\epsilon^2$.
+
+-   The errors are assumed to be normal (Gaussian), $\epsilon_i \sim iid N (0, \sigma^2_\epsilon)$.^[The independence assumption is the common starting point, but the framework extends naturally to correlated errors by giving them a non-diagonal covariance matrix.]
+
+With the model in place, the natural question is how to turn observed $z_i$ values into a prediction at a new location $x_0$. We start with the simplest sensible candidate: a linear predictor, meaning a prediction built as a weighted sum of the data,
+
+$$
+\hat{Y}(x_0) = k_0 + \sum_{i=1}^n w_i z_i
+$$
+
+where the $w_i$ are weights and $k_0$ is a constant. The whole problem now reduces to choosing good weights. We will pick "optimal" weights in the mean-squared-error sense, and doing that forces us to think carefully about the random process that controls $Y$. The next sections build up exactly the probabilistic structure we need.
+
+## Latent Process Model
+
+The object we are really after is the latent function. We model it as
+
+$$
+Y(x) = f(x)
+$$
+
+where $f(x) \sim GP (m(x), c(x,x'))$ is a random process, specifically a Gaussian process, defined by two ingredients:
+
+-   $m(x)$, the mean function, $m(x) = E[f(x)]$, which says where the function sits on average at each input.
+
+-   $c(x,x')$, the covariance function, $c(x,x')= E[(f(x) - m(x)) (f(x') - m(x'))^T]$, which says how strongly the function values at two inputs $x$ and $x'$ move together.
+
+These two functions play exactly the role that a mean vector and covariance matrix play for an ordinary multivariate normal, which brings us to a distinction that confuses many people the first time they meet it.
+
+> **Intuition:** The difference between a Gaussian *distribution* and a Gaussian *process* is the difference between a distribution over vectors and a distribution over functions.
+
+Spelling that out:
+
+-   A Gaussian distribution is a distribution over vectors. It is fully specified by a mean vector and a covariance matrix (for example, $\mathbf{Y} \sim N(\mathbf{\mu}, \mathbf{\Sigma})$, the familiar multivariate normal).
+
+-   A Gaussian process is a distribution over functions. It is fully specified by a mean function $m$ and a covariance function $c$ (for example, $Y \sim GP(m,c)$). Once you supply those two functions, the GP is completely defined.
+
+## Gaussian Processes
+
+A GP is an infinite-dimensional object: it assigns a joint distribution to the function values at *every* input location at once. That is what lets us make a prediction anywhere in our $x$ domain, provided we know the mean and covariance functions (the data-generating process). In particular, we need to be able to compute the covariance between *any* two $x$ locations.
+
+Working with an infinite-dimensional object sounds intimidating, but in practice we never have to. Two facts rescue us:
+
+-   We only ever have a finite set of data, and we only ever want predictions at a finite set of locations.
+
+-   Any finite collection of GP random variables has a joint Gaussian distribution, that is, a multivariate normal distribution.
+
+> **Key idea:** This second fact is the defining property of a Gaussian process. It means every concrete calculation we do is a finite multivariate-normal calculation, even though the process itself is infinite-dimensional.
+
+So all the work reduces to manipulating ordinary multivariate normals. The next section recalls the one result about multivariate normals that we will use over and over.
+
+## Gaussian Distributions
+
+Suppose we stack two sets of jointly Gaussian variables, $\mathbf{v}$ and $\mathbf{v}_*$, into one vector. Their joint distribution is
+
+$$
+\left(
+\begin{array}
+{c}
+\mathbf{v} \\
+\mathbf{v}_*
+\end{array}
+\right)
+\sim
+Gau
+\left(
+\left(
+\begin{array}
+{c}
+\mathbf{\mu} \\
+\mathbf{\mu}_*
+\end{array}
+\right),
+\left(
+\begin{array}
+{cc}
+\mathbf{\Sigma} & \mathbf{\Sigma}_* \\
+\mathbf{\Sigma}^T & \mathbf{\Sigma}_{**}
+\end{array}
+\right)
+\right)
+$$
+
+where $E(\mathbf{v}) = \mathbf{\mu},E(\mathbf{v}_*) = \mathbf{\mu}_*, \mathbf{\Sigma}= cov(\mathbf{v}, \mathbf{v}), \mathbf{\Sigma}= cov(\mathbf{v}, \mathbf{v}_*),\mathbf{\Sigma}_{**} = cov(\mathbf{v}_*, \mathbf{v}_*)$.
+
+The result we need is the conditional distribution of one block given the other. Partitioning the joint Gaussian gives
+
+$$
+\mathbf{v}_* | \mathbf{v} \sim Gau (\mathbf{\mu}_*+ \mathbf{\Sigma}^T_* \mathbf{\Sigma}^{-1} (\mathbf{v} - \mathbf{\mu}), \mathbf{\Sigma}_{**} - \mathbf{\Sigma}^T_* \mathbf{\Sigma}^{-1} \mathbf{\Sigma}_*)
+$$
+
+> **Note:** Read this formula slowly, because it is the engine of GP prediction. The conditional mean of $\mathbf{v}_*$ is its prior mean $\mathbf{\mu}_*$ plus a correction that pulls it toward the observed $\mathbf{v}$, weighted by how correlated the two blocks are. The conditional variance is the prior variance $\mathbf{\Sigma}_{**}$ *reduced* by an amount reflecting how much the observation explains. Observing $\mathbf{v}$ can only shrink our uncertainty about $\mathbf{v}_*$, never increase it.
+
+With this single tool, GP prediction becomes a matter of identifying which quantities play the roles of $\mathbf{v}$ (the data) and $\mathbf{v}_*$ (the value we want to predict).
+
+## Optimal Linear Prediction
+
+We want to predict $Y(x_0)$, the latent value at some arbitrary input $x_0$, given the data $\mathbf{z} \equiv (z_1, \dots, z_n)^T$. To keep things concrete, assume the mean function $\mu(x)$ is known for all $x$ (for instance, a constant).
+
+Recall that we are looking for a linear predictor that minimizes the mean squared prediction error:
+
+$$
+\begin{aligned}
+\hat{Y} (x_0) &=  k(x_0) + \sum_{i=1}^n w_i (x_0) z_i \\
+&= k(x_0) + \mathbf{w}^T_0 \mathbf{z}
+\end{aligned}
+$$
+
+A standard result is that the optimal linear predictor (under squared error) is also the conditional expectation $E(Y(x_0) |\mathbf{z})$. That is good news, because it means we do not have to solve a separate optimization problem: we can read the answer straight off the conditional distribution $Y(x_0) |\mathbf{z}$, using the multivariate-normal formula from the previous section.
+
+To apply that formula we first write the data model in vector form,
+
+$$
+\mathbf{z} = \mathbf{Y} + \epsilon, \epsilon \sim Gau(\mathbf{0}, \mathbf{C}_\epsilon)
+$$
+
+where $\mathbf{Y}$ and $\epsilon$ are ordered in the same way as the data vector $\mathbf{z}$. We then collect the covariance pieces we will need. The covariance of the latent process at the observed locations is
+
+$$
+cov(\mathbf{Y}, \mathbf{Y}) \equiv \mathbf{C}_y
+$$
+
+the covariance of the measurement errors is
+
+$$
+cov(\epsilon,\epsilon) \equiv \mathbf{C}_\epsilon
+$$
+
+and because $Y$ and $\epsilon$ are independent, the covariance of the *observations* is the sum of the two:
+
+$$
+cov(\mathbf{z}, \mathbf{z}) = \mathbf{C}_y + \mathbf{C}_\epsilon
+$$
+
+We also need the covariance between the target $Y(x_0)$ and the data, and the variance of the target itself:
+
+$$
+\mathbf{c}^T_0 \equiv cov( Y(x_0), \mathbf{z})
+$$
+
+$$
+c_{0,0} \equiv var(Y(x_0))
+$$
+
+Here $\mu_0$ is the mean at $x_0$ and $\mathbf{\mu}$ is the mean vector corresponding to the observations. Writing $\mathbf{C}_z \equiv \mathbf{C}_y + \mathbf{C}_\epsilon$ for the observation covariance, the target and the data are jointly Gaussian:
+
+$$
+\left(
+\begin{array}
+{c}
+Y (x_0) \\
+\mathbf{v}_*
+\end{array}
+\right)
+\sim
+Gau
+\left(
+\left(
+\begin{array}
+{c}
+\mathbf{\mu} \\
+\mathbf{\mu}
+\end{array}
+\right),
+\left(
+\begin{array}
+{cc}
+c_{0,0} & \mathbf{c}^T_0 \\
+\mathbf{c}_0 & \mathbf{C}_{z}
+\end{array}
+\right)
+\right)
+$$
+
+Now we apply the joint/conditional [Gaussian Distributions] formula, matching $Y(x_0)$ to the block we want to predict and $\mathbf{z}$ to the block we condition on:
+
+$$
+Y(x_0)|\mathbf{z} \sim Gau (\mu_0+ \mathbf{c}^T_0 \mathbf{C}_z^{-1}(\mathbf{z}- \mathbf{\mu}), c_{0,0}- \mathbf{c}^T_0 \mathbf{C}_z^{-1} \mathbf{c}_0)
+$$
+
+The predictor is the mean of this conditional distribution,
+
+$$
+\hat{Y}(x_0) = \mu_0 + \mathbf{c}_0^T \mathbf{C}^{-1}_z(\mathbf{z} - \mathbf{\mu})
+$$
+
+and the prediction variance is
+
+$$
+\sigma^2_{Y_0} = c_{0,0} - \mathbf{c}^T_0 \mathbf{C}_z^{-1} \mathbf{c}_0
+$$
+
+This predictor is optimal in the sense that it minimizes the mean squared prediction error,
+
+$$
+MSPE = E[(Y(x_0) - \hat{Y}(x_0))^2]
+$$
+
+Comparing the predictor to the linear form we started with, we can now read off the weights and the constant. The weights are
+
+$$
+\mathbf{w}_0 = \mathbf{c}'_0 \mathbf{C}_z^{-1}
+$$
+
+and the constant is
+
+$$
+k(x_0) = \mu_0 - \mathbf{c}'_0 \mathbf{C}^{-1}_z \mathbf{\mu}
+$$
+
+> **Intuition:** The weights $\mathbf{w}_0$ form an *effective kernel*, just as in [Spline Regression] and [Local Regression]. The prediction at $x_0$ is a weighted average of the observations, where each observation's weight is determined by how covariant it is with the target (through $\mathbf{c}_0$) after accounting for how the observations covary with each other (through $\mathbf{C}_z^{-1}$). Points that are "close" to $x_0$, in the sense the covariance function defines, get more say.
+
+These formulas extend directly to multiple prediction locations, with each location getting its own vector of weights.
+
+> **Warning:** The predictor requires the inverse $\mathbf{C}_z^{-1}$, an $n \times n$ matrix inversion that costs on the order of $n^3$ operations. With many sample locations this becomes the main computational bottleneck of GP regression, and a great deal of research is devoted to approximating it.
+
+One special case is worth noting. When there are no measurement errors (so $z_i = y_i$), we simply replace $\mathbf{C}_z$ with $\mathbf{C}_y$ throughout. In that case the prediction at an observed location returns the observation exactly, with zero variance: the GP interpolates the data.
+
+## Covariance Functions
+
+Everything above assumed we already knew the means and covariances. In practice we do not, and specifying them is where the real modeling happens. To predict at new $x$ locations we must supply two things:
+
+1.  a mean function (usually straightforward, often just a constant), and
+2.  a covariance function that returns a sensible value between *any* two locations (the hard part).
+
+In the real world we hardly ever know the variances and covariances that fill in $\mathbf{C}_y, \mathbf{C}_\epsilon, \mathbf{c}_0, c_{0,0}$. The practical solution mirrors what we did for [Linear Mixed Models](https://bookdown.org/mike/data_analysis/linear-mixed-models.html) (for example, AR and exponential models): we write the covariance function in terms of a few parameters $\mathbf{\theta}$ that can produce a covariance between any pair of coordinates, then estimate those parameters from data.
+
+Not just any function will do. Two requirements shape the choice:
+
+-   Covariance functions must be positive semi-definite. This guarantees that the prediction variances coming out of the formulas above are never negative, which would be nonsensical.
+
+-   Covariance functions should be realistic, encoding the dependence structure we actually believe is present. This can be hard, but a simple and often sufficient assumption is that "nearby" observations (nearby in the same sense as [Kernel Smoothing]) are more dependent than distant ones.
+
+> **Tip:** When in doubt, start from the principle that closeness in input space implies similarity in output. Almost every standard covariance function is just a different mathematical way of encoding that one idea.
+
+To make estimation feasible we usually add a stationarity assumption. A process that is second-order (weakly) stationary has a constant expectation and a covariance that depends only on the *separation* between locations, $h = x - x'$, rather than on the locations themselves:
+
+$$
+c(x,x') = c(h, \mathbf{\theta})
+$$
+
+In two or more dimensions, if the dependence on the separation does not depend on direction (so it depends only on the distance $h = ||\mathbf{h}||$), the covariance function is called isotropic.
+
+Stationarity buys us two practical advantages:
+
+-   It allows a more parsimonious parameterization of the covariance function, since we estimate a function of distance rather than a separate value for every pair of locations.
+
+-   It provides pseudo-replication of the dependence at each lag (many pairs of points share roughly the same separation), which gives estimation something to lean on.
+
+When the inputs have more than one dimension, one classical way to build a valid covariance function is to multiply together valid one-dimensional pieces, giving a separable covariance function. For a two-dimensional input with coordinates $x_1$ and $x_2$,
+
+$$
+c(h_1;h_2) \equiv c(h_1) \times c_2(h_2)
+$$
+
+which is a valid covariance as long as each factor is valid. Separability speeds up the matrix computations mentioned above, but it can be unrealistic for cases like spatio-temporal data, where space and time interact.
+
+To get valid covariance functions in space and time, several families are commonly used. The most popular are listed here:
+
+-   The Matern class, a flexible family with a parameter controlling smoothness.
+
+-   The power exponential, $c(\tau, \theta) = \sigma^2 \exp \{ - \frac{|\tau|}{\theta} \}$, where $\sigma^2$ is the variance parameter and $\theta$ is the dependence (range) parameter that controls how quickly correlation decays with distance.
+
+-   The Gaussian (squared-exponential) class, which produces very smooth functions.
+
+Once a family is chosen, the parameters of the covariance function (and of the mean function) have to be estimated. There are two main routes:
+
+1.  From a frequentist perspective, estimate the parameters with REML or MLE, exactly as in [Linear Mixed Models](https://bookdown.org/mike/data_analysis/linear-mixed-models.html), and predict the random process with BLUP.
+2.  From a Bayesian perspective, treat the GP on $f(x)$ as a prior distribution and update it with the observations $\mathbf{z}$ to get a posterior.
+
+> **Warning:** Whichever route you take, large numbers of data locations make estimation expensive, because of the same high-dimensional covariance matrices $\mathbf{C}_z, \mathbf{C}_y$ (and their inverses) that complicate prediction. Scaling GPs to large data sets is an active research area.
+
+A few connections and special cases are worth keeping in mind:
+
+-   If we model the mean function in terms of covariates, $\mu(x) = \mathbf{w}(x)'\mathbf{\beta}$ where $\mathbf{w}$ is a vector of covariates, the GP becomes a [linear mixed model](https://bookdown.org/mike/data_analysis/linear-mixed-models.html), with the one difference that the covariates must be available at *any* $x$ where we wish to predict.
+
+-   When there is no measurement uncertainty ($\epsilon$), the prediction at an observed location equals the observation exactly. When there is measurement uncertainty, the GP instead filters it, smoothing through the noise.
+
+-   We can also allow non-Gaussian observations conditioned on the GP, exactly as in a [GLMM](https://bookdown.org/mike/data_analysis/nonlinear-and-generalized-linear-mixed-models.html).
+
+> **When to use this:** Reach for GP regression when you want smooth nonparametric predictions *with* honest uncertainty estimates, when your data set is small to moderate in size (so the $n^3$ cost is bearable), and when you have a sensible notion of which inputs should behave similarly. The design and analysis of computer experiments, where each "observation" is an expensive simulation run, is a classic fit.
+
+With the theory assembled, we turn to a worked example.
+
+## Application
+
+This example uses the `GPfit` package; another option for fitting GP models is the `mlegp` package. The setup follows @macdonald2015.
+
+We will fit a GP to noiseless evaluations of a known test function,
+
+$$
+y(x) = \log(x + .1) + sin(5 \pi x)
+$$
+
+so that we can compare the GP's prediction to the truth. The function is wiggly enough to make the example interesting on the unit interval.
+
+Rather than placing our few input points at random or on a uniform grid, we use a space-filling design. A Latin Hypercube design spreads points so that, projected onto any single input axis, they cover the range evenly. The Maximin version goes further by choosing the design that maximizes the minimum distance between points, which avoids clusters and gaps. Space-filling designs like these are the standard choice in the design of computer experiments, where each run is costly and we want every point to earn its keep.
+
+We draw a small Maximin Latin Hypercube sample, evaluate the test function at those points, and fit the GP:
+
+```{r}
+library(GPfit)
+library(lhs)
+
+set.seed(1)
+n = 7
+x = maximinLHS(n ,1) # draw a Maximin Latin Hypercube Sample
+y = matrix(0, n, 1)
+for (i in 1:n){
+    y[i] = log(x[i] + .1 ) + sin(5*pi * x[i])
+}
+
+GPmodel = GP_fit(x,y)
+print(GPmodel)
+```
+
+The printout reports the fitted correlation family (a power exponential), the estimated correlation parameter `beta_hat` (which controls how fast correlation decays with distance), and the estimated process variance `sigma^2_hat`. These are the $\mathbf{\theta}$ parameters of the covariance function, estimated from just seven points.
+
+Next we predict on a dense grid across the input range and overlay the GP fit on the true function:
+
+```{r fig-gaussian-process-reg-fit-vs-truth, fig.cap="Gaussian process fit to seven noiseless evaluations of the test function. Circles are the design points, the blue dashed line is the posterior mean prediction, the red lines mark the approximate 95% prediction band, and the dotted black line is the true function."}
+xvec <- seq(from = 0, to = 1, length.out = 100)
+yvec <- matrix(0,100,1)
+for (i in 1:100){
+    yvec[i] = log(xvec[i] + .1) + sin(5*pi*xvec[i])
+}
+GPpred <- predict(GPmodel,xvec)
+
+# data points are circles
+# prediction is in the bllue
+# 95% CIs (yhat + 2*s) are in red
+plot(GPmodel, range= c(0,1), resolution = 100, colors = c("black","blue","red"), line_type = c(1,2),pch = 1)
+
+# add the true function as a dotted black line
+lines(xvec, yvec, col = "black", lty = 3)
+```
+
+Figure @fig-gaussian-process-reg-fit-vs-truth overlays the fit on the truth. The circles are the seven design points, the blue dashed line is the GP's posterior mean prediction, and the red lines mark the approximate 95% prediction band ($\hat{y} \pm 2s$). The dotted black line is the true function. Notice two things that bring the earlier theory to life. First, the blue prediction passes through (or nearly through) every data point: with noiseless observations the GP interpolates, exactly as the no-measurement-error case predicted. Second, the red band pinches tight near the data points and widens in the gaps between them, which is the conditional-variance formula at work: uncertainty shrinks where we have information and grows where we do not.
+
+## Takeaways
+
+The chapter rests on a handful of ideas that are worth restating compactly:
+
+-   A Gaussian process is a distribution over functions, defined by a mean function and a covariance function, with the property that any finite set of values from it is jointly multivariate normal.
+
+-   Prediction is conditioning. Plugging the data and target into the multivariate-normal conditioning formula yields the optimal predictor $\hat{Y}(x_0) = \mu_0 + \mathbf{c}_0^T \mathbf{C}^{-1}_z(\mathbf{z} - \mathbf{\mu})$ and its variance $\sigma^2_{Y_0} = c_{0,0} - \mathbf{c}^T_0 \mathbf{C}_z^{-1} \mathbf{c}_0$ for free.
+
+-   The covariance function is where the modeling lives. It must be positive semi-definite, and stationarity plus a small parametric family (Matern, power exponential, Gaussian) makes estimation tractable.
+
+-   The price of all this flexibility and honest uncertainty is the $n \times n$ matrix inverse, which limits naive GPs to small and moderate data sets.

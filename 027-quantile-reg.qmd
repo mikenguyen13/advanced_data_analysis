@@ -1,0 +1,165 @@
+# Quantile Regression
+
+```{r}
+#| include: false
+suppressPackageStartupMessages(library(tidyverse))
+```
+
+Ordinary least squares answers one question very well: given the predictors, what is the *average* value of the outcome? The fitted line traces the conditional mean, $E(y|x)$, and a single slope summarizes how that average moves as $x$ moves. That is often exactly what we want. But the average can hide a great deal. Two groups of patients might have the same mean recovery time while one group has a long, heavy upper tail of slow recoverers that a clinic cares about most. A pay-equity study might find no difference in mean salary across groups while the gap is large at the top of the pay scale and absent at the bottom. In both cases the interesting action is in the *shape* of the distribution, not its center, and the mean alone cannot see it.
+
+Quantile regression widens the lens. Instead of modeling only the mean, it models any quantile (any percentile) of the outcome distribution as a function of the predictors. We can ask how the 10th percentile of $y$ responds to $x$, how the median responds, how the 90th percentile responds, and compare those answers. When the relationship is the same at every quantile, quantile regression simply reproduces the OLS story. When it differs, quantile regression reveals structure (changing spread, skewness, effects that grow in the tails) that a mean model averages away.
+
+> **Key idea:** OLS estimates the conditional mean $E(y|x)$. Quantile regression estimates a conditional quantile $Q_q(y|x)$, the value below which a fraction $q$ of the outcome falls at each setting of $x$. Sweeping $q$ from near 0 to near 1 gives a family of fits that describes the whole conditional distribution, not just its center.
+
+In this chapter you will learn what a conditional quantile is and why we might prefer it to the mean, how the model is fit by minimizing an asymmetric absolute-error loss (the "tilted" or "check" loss), how to read the resulting coefficients, and how to estimate and visualize quantile fits in R with the `quantreg` package. The classic reference for the method is @Roger_1996; for an accessible academic review see @Yu_2003.
+
+The most familiar special case is the median. When $q = 0.5$, quantile regression becomes median regression, also called least-absolute-deviations (LAD) regression, which chooses the line minimizing the sum of absolute residuals $\sum_{i}|e_i|$ rather than the sum of squared residuals. Because absolute errors do not square large deviations, the median fit is far less sensitive to a few extreme points than the mean fit is.
+
+> **Intuition:** OLS minimizes *squared* errors, so a single far-away point can drag the whole line toward it. LAD (median) regression minimizes *absolute* errors, so an outlier counts in proportion to its distance rather than its distance squared. That is the same reason the median of a list of numbers barely moves when you replace its largest value with something ten times larger, while the mean lurches.
+
+## Why and when to use it
+
+It helps to be explicit about what quantile regression buys you and what it costs, before getting into the mechanics.
+
+The main attractions are these. Quantile regression is more robust to outliers than OLS, because it rests on absolute rather than squared loss. It gives a fuller picture of the data, describing how the entire conditional distribution shifts with the predictors rather than reporting a single average effect, which is especially valuable when the outcome is skewed or has a bimodal or multimodal distribution (several humps with several modes) that a mean would misrepresent.^[A mean sits between the modes of a bimodal distribution, in a region where few observations actually live, so it describes no typical case well. Separate quantile fits can track each part of the distribution.] It makes no parametric assumption about the error distribution: we do not have to claim the errors are normal or anything else. And it has a clean equivariance property that OLS lacks: quantiles are preserved under monotone transformations, so the $q$th quantile of $g(y)$ is $g$ applied to the $q$th quantile of $y$ for any increasing $g$. OLS does not share this, since in general $E(g(y)) \neq g(E(y))$.^[This is why, for example, you can model $\log y$ and then exponentiate the fitted quantiles to recover quantiles of $y$ directly, with no smearing correction of the kind OLS requires.]
+
+The estimated coefficients also behave well for inference: under standard conditions the quantile-regression estimator $\hat\beta$ is asymptotically normally distributed, which lets us attach standard errors and confidence intervals.
+
+> **When to use this:** Reach for quantile regression when you care about more than the average, when the outcome is skewed or heavy-tailed, when effects plausibly differ across the distribution (small at the median, large in the tail), or when outliers make an OLS mean untrustworthy.
+
+There is one practical limitation worth flagging. Quantile regression works best when the outcome is continuous. If the dependent variable has many tied values or piles of zeros (so that whole ranges of the distribution sit at a single number), individual quantiles become poorly identified and the method is less informative.
+
+> **Warning:** Avoid quantile regression when the outcome is discrete with heavy ties or has a large mass of zeros (for example, count or censored data with many zeros). The quantiles you are trying to estimate may not be uniquely defined there.
+
+## The model and its loss function
+
+The model looks like a linear regression, but the coefficient vector now depends on the quantile $q$ we have chosen to target:
+
+$$
+y_i = x_i'\beta_q + e_i
+$$
+
+Everything hinges on how we measure the error. Write the residual as $e(x) = y - \hat{y}(x)$, and let $L(e(x)) = L(y - \hat{y}(x))$ be the loss we pay for that error. OLS uses squared loss; here we start from absolute loss. If $L(e) = |e|$, the absolute-error loss function, then $\hat\beta$ is found by minimizing $\sum_i |y_i - x_i'\beta|$, which is exactly median (LAD) regression.
+
+To target a quantile other than the median, we tilt this absolute loss so that under-prediction and over-prediction are penalized differently. The objective function for quantile $q$ is
+
+$$
+Q(\beta_q)=\sum_{i:y_i \ge x_i'\beta}^{N} q|y_i - x_i'\beta_q| + \sum_{i:y_i < x_i'\beta}^{N} (1-q)|y_i-x_i'\beta_q|
+$$
+
+where $0 < q < 1$. The first sum collects the points lying *above* the fitted line (where we under-predicted) and weights their absolute errors by $q$; the second sum collects the points *below* the line (where we over-predicted) and weights theirs by $1 - q$.
+
+> **Intuition:** This asymmetric weighting is what pins the fit to a particular quantile. Suppose $q = 0.9$. Then under-prediction costs $0.9$ per unit of error while over-prediction costs only $0.1$. To keep the total small, the line is pushed up until about 90% of the points sit below it, which is precisely the definition of the 90th percentile. Set $q = 0.5$ and the two weights are equal, the loss is symmetric, and we recover median regression.
+
+Because $|e|$ has a kink at zero, the objective is not differentiable, so there is no closed-form normal-equation solution as in OLS. Instead the problem is solved as a linear program, classically with the simplex method, and standard errors are commonly obtained by the bootstrap rather than from a formula.^[The piecewise-linear, convex objective makes this a well-behaved optimization: a global optimum always exists, and efficient specialized algorithms handle even large problems.]
+
+> **Note:** "Not differentiable" sounds like trouble but is not. The loss is still convex, so the optimization is reliable; we just use linear-programming machinery instead of calculus. The `quantreg` package handles all of this for you.
+
+### Interpreting the coefficients
+
+The payoff of all this is an interpretation that parallels OLS but applies at a chosen point of the distribution. For the $j$th predictor $x_j$, the coefficient is the marginal effect on the $q$th conditional quantile:
+
+$$
+\frac{\partial Q_q(y|x)}{\partial x_j} = \beta_{qj}
+$$
+
+In words: at the $q$th quantile of $y$, a one-unit increase in $x_j$ is associated with a $\beta_{qj}$-unit change in $y$, holding the other predictors fixed. The reading is the same sentence you would write for an OLS slope, with one addition: it applies *at that quantile* rather than to the average.
+
+> **Key idea:** A single OLS regression gives you one slope per predictor. Quantile regression run across many values of $q$ gives you a *curve* of slopes, one per quantile, showing whether a predictor matters more at the bottom, the middle, or the top of the outcome distribution.
+
+## Application
+
+The clearest way to see what quantile regression adds is to build data where the mean line is uninformative on its own. We simulate a relationship in which the *spread* of $y$ grows with $x$ (heteroskedasticity, that is, non-constant variance), so the high and low quantiles fan out even though the mean trend is a simple straight line.
+
+```{r}
+# generate data with non-constant variance
+
+x <- seq(0,100,length.out = 100)        # independent variable
+sig <- 0.1 + 0.05*x                     # non-constant variance
+b_0 <- 3                                # true intercept
+b_1 <- 0.05                             # true slope
+set.seed(1)                             # reproducibility
+e <- rnorm(100,mean = 0, sd = sig)      # normal random error with non-constant variance
+y <- b_0 + b_1*x + e                    # dependent variable
+dat <- data.frame(x,y)
+library(ggplot2)
+```
+
+The histogram in Figure @fig-quantile-reg-hist shows the marginal distribution of the simulated outcome.
+
+```{r fig-quantile-reg-hist, fig.cap="Histogram of the simulated outcome variable, whose spread grows with the predictor."}
+hist(y)
+```
+
+The scatterplot in Figure @fig-quantile-reg-scatter shows the tell-tale funnel shape: points hug the line at small $x$ and spread widely at large $x$.
+
+```{r fig-quantile-reg-scatter, fig.cap="Scatterplot of the simulated data, showing the funnel shape produced by non-constant variance."}
+ggplot(dat, aes(x,y)) + geom_point()
+```
+
+Adding the ordinary least squares line, as in Figure @fig-quantile-reg-ols, captures the average trend correctly, but it says nothing about that widening spread, which is exactly the feature quantile regression is built to describe.
+
+```{r fig-quantile-reg-ols, fig.cap="Simulated data with the ordinary least squares fit, which tracks the mean but ignores the changing spread."}
+ggplot(dat, aes(x,y)) + geom_point() + geom_smooth(method="lm")
+```
+
+We follow @Roger_1996 and fit a quantile regression with the `quantreg` package. The argument `tau` selects the quantile of interest; here we set it to the median.
+
+```{r}
+library(quantreg)
+qr <- rq(y ~ x, data=dat, tau = 0.5) # tau: quantile of interest. Here we have it at 50th percentile.
+summary(qr)
+```
+
+The `summary` output reports the intercept and slope for the median fit, along with a confidence interval for each. We can draw the fitted median line on top of the data using its coefficients, as shown in Figure @fig-quantile-reg-median.
+
+```{r quantile-reg-median, fig.cap="Simulated data with the fitted median (50th percentile) quantile regression line."}
+ggplot(dat, aes(x,y)) + geom_point() +
+  geom_abline(intercept=coef(qr)[1], slope=coef(qr)[2])
+```
+
+A single quantile tells only part of the story. The real value comes from fitting several quantiles at once and comparing them. We pass a vector of quantiles to `tau`, asking for the 10th through 90th percentiles in steps of ten.
+
+```{r fig-quantile-reg-fan, fig.cap="Simulated data with fitted quantile regression lines for the 10th through 90th percentiles, fanning out as the predictor grows."}
+qs <- 1:9/10
+qr1 <- rq(y ~ x, data=dat, tau = qs)
+#check for its coefficients
+coef(qr1)
+
+# plot
+ggplot(dat, aes(x,y)) + geom_point() + geom_quantile(quantiles = qs)
+```
+
+Each line in Figure @fig-quantile-reg-fan is the fit for one quantile. Notice how they fan out as $x$ grows: the upper-quantile lines slope up more steeply and the lower-quantile lines less so, because the conditional spread of $y$ increases with $x$. That fanning is the signature of heteroskedasticity, and it is invisible in the single OLS line above.
+
+> **Tip:** When the quantile lines are roughly parallel, the predictor shifts the whole distribution by a constant amount and OLS already tells the full story. When they fan out or cross, the effect of $x$ depends on where in the distribution you look, and the per-quantile slopes carry information the mean cannot.
+
+To judge whether quantile regression is telling us something beyond OLS, we can plot how each quantile coefficient varies across $q$ and overlay the OLS estimate with its confidence band, as in Figure @fig-quantile-reg-coef-hetero.
+
+```{r fig-quantile-reg-coef-hetero, fig.cap="Slope coefficient on the predictor across quantiles for the heteroskedastic data, with the least-squares estimate and its confidence band overlaid."}
+plot(summary(qr1), parm="x")
+```
+
+In Figure @fig-quantile-reg-coef-hetero the horizontal axis is the quantile $q$ and the vertical axis is the value of the slope coefficient on `x` at that quantile. The shaded region traces the quantile-regression coefficients and their confidence interval across quantiles, while the red line (with its own interval) marks the constant least-squares estimate. Here the slope clearly rises with $q$: $x$ has a larger effect on the upper quantiles than on the lower ones, consistent with the spread we built into the data.
+
+> **Note:** If the errors were homoskedastic and normal, the quantile slope would be (up to sampling noise) the same at every $q$, and the quantile curve would sit inside the least-squares confidence band. Departures from that flat band are the signal that the distribution's shape, not just its level, depends on $x$.
+
+To see the contrast, we regenerate the data with *constant* variance and repeat the coefficient plot in Figure @fig-quantile-reg-coef-homo. Now there is no funnel: the spread of $y$ is the same for every $x$.
+
+```{r fig-quantile-reg-coef-homo, fig.cap="Slope coefficient on the predictor across quantiles for the homoskedastic data, lying flat within the least-squares confidence band."}
+# generate data with constant variance
+
+x <- seq(0, 100, length.out = 100)    # independent variable
+b_0 <- 3                              # true intercept
+b_1 <- 0.05                           # true slope
+set.seed(1)                           # reproducibility
+e <- rnorm(100, mean = 0, sd = 1)     # normal random error with constant variance
+y <- b_0 + b_1 * x + e                # dependent variable
+dat2 <- data.frame(x, y)
+qr2 = rq(y ~ x, data = dat2, tau = qs)
+plot(summary(qr2), parm = "x")
+```
+
+This time, as Figure @fig-quantile-reg-coef-homo shows, the quantile coefficients stay essentially flat across $q$ and lie within the least-squares band: every quantile responds to $x$ in the same way, so the mean already summarizes the relationship and quantile regression adds little. Comparing the two coefficient plots is the practical heart of the method: the first dataset shows quantile regression earning its keep, while the second shows the case where OLS suffices.
+
+To sum up, quantile regression generalizes the familiar mean model by targeting any quantile of the outcome through an asymmetric absolute-error loss. It is robust to outliers, makes no distributional assumption on the errors, and is invariant to monotone transformations. Its real strength shows up when the effect of a predictor varies across the distribution: by fitting and comparing many quantiles, we recover the changing spread and shape that a single mean line conceals.

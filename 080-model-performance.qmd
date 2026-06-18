@@ -1,0 +1,100 @@
+# Model Performance
+
+```{r}
+#| include: false
+suppressPackageStartupMessages(library(tidyverse))
+```
+
+When we talk about "model performance," it is tempting to jump straight to a number: an accuracy score, an $R^2$, a root mean squared error. Those numbers matter, but they only tell us how well a model did at the task we asked it to do. They say nothing about whether we asked the right question, whether the data we trained on were trustworthy, or whether the model will hold up once it leaves the comfortable world of our training set. A model can score beautifully on every metric and still be useless, or even harmful, in practice.
+
+This chapter steps back from the optimization machinery and looks at the things that quietly determine whether a model is actually good. These are issues that no amount of hyperparameter tuning will fix, because they live outside the model itself: in the framing of the problem, in how the outcome and the predictors were measured, in the structure of the data, and in how the data were collected in the first place. Each one can silently undermine a model that looks excellent on paper.
+
+The thread running through everything below is the same: a model is only as good as the question it answers and the data it learns from. If either of those is flawed, the most sophisticated algorithm in the world will give you a confident, precise, wrong answer. By the end of the chapter you should have a checklist of failure modes to run through before you trust any model, no matter how good its validation score looks.
+
+> **Key idea:** Good metrics are necessary but not sufficient. Most catastrophic model failures trace back to problems that the metrics cannot see.
+
+## Type III Errors
+
+Most readers have met Type I errors (a false positive: rejecting a null hypothesis that is actually true) and Type II errors (a false negative: failing to reject a null hypothesis that is actually false). A Type III error is a different kind of mistake entirely. It is the error of giving a precise answer to the wrong question.^[The term is sometimes attributed to the statistician John Tukey, who warned against "the error of solving the wrong problem precisely." Different authors define it slightly differently, but the spirit is always the same: a technically correct analysis aimed at the wrong target.]
+
+This happens more often than you might expect, because building a model is technically demanding and absorbing. It is easy to pour all your attention into the mechanics, getting the features right, tuning the algorithm, validating carefully, and lose sight of what the model is ultimately for. The result is a model that performs its stated task flawlessly while missing the actual goal.
+
+A business example makes the trap concrete. Suppose a company wants to grow profit and decides to build a model around its marketing campaign. It is natural to model something convenient and well measured, such as whether a customer was contacted, or whether a contacted customer responded. But the real objective was profit, not contact, and not even response. A customer who would have bought anyway adds no profit when you spend money contacting them; a customer who only buys because of the campaign is the one worth targeting. A model optimized for "response" can confidently recommend exactly the wrong people to contact.
+
+Avoiding a Type III error is not a matter of better algorithms. It is a matter of thinking carefully, before any modeling begins, about what the problem really is. That means asking how the data were sampled, what loss function actually reflects the stakes, what the costs of different kinds of mistakes are, and what decision the model is meant to support.
+
+> **Warning:** The most dangerous model is one that is technically excellent at the wrong task, because its high performance scores make everyone trust it.
+
+## Measurement Error in the Outcome
+
+Every prediction problem has a floor below which no model can go, no matter how clever it is. We call this the irreducible error: the part of the outcome that simply cannot be explained by any function of the available predictors. Chasing performance past this floor is impossible by definition, so it helps to understand what makes it up.
+
+It is useful to think of the irreducible error as having two distinct sources. The first is model error, the variation in the outcome that our features genuinely cannot predict, either because the relevant information was never collected or because the relationship is fundamentally noisy. The second, which is easy to forget, is response measurement error: the noise introduced by how we measured the outcome itself. If your outcome variable is recorded imperfectly, then even a perfect model of the true underlying quantity will appear to make errors, because the thing you are comparing against is noisy.
+
+Neither source can be fully eliminated, but they call for different responses, and recognizing which one is dominating your error is the first step. Model error invites changes to the modeling itself: a different model form, additional or better-engineered features, or richer data. Response measurement error invites a change upstream, in how the outcome is obtained. Sometimes the most valuable thing you can do for a model's performance is not to touch the model at all, but to suggest a cleaner way of measuring the response, one that injects less noise into the target you are trying to learn.
+
+> **Intuition:** If your thermometer is unreliable, no weather model can be more accurate than the thermometer. The same logic applies to any noisily measured outcome.
+
+## Measurement Error in the Predictors
+
+Measurement error does not stop at the outcome. Very few predictors can be known without error.^[Even quantities we treat as exact, such as age, income, or a lab measurement, usually carry rounding, recall, or instrument error. The question is rarely whether there is error, but whether it is large enough to matter.] A sensor drifts, a survey respondent misremembers, a proxy variable only approximates the thing we actually care about. The practical question is how large that error is relative to the variation in the response.
+
+When the error in a predictor is small relative to the signal, we can usually ignore it. But when it is large, it can seriously bias both inference and prediction. The model effectively learns a blurred version of the relationship, and the consequences range from attenuated coefficients to confidently wrong predictions.
+
+How well we can correct for this depends heavily on the kind of model we are using. The picture differs sharply between simple and complex models:
+
+- For linear models, there is a mature toolkit for handling predictor uncertainty, including errors-in-variables methods and related techniques with well understood properties.
+- For complex models (most modern machine learning methods), comparable general purpose tools largely do not exist. The flexibility that makes these models powerful also makes their behavior under measurement error hard to characterize and correct.
+
+One general strategy that does apply broadly is hierarchical (Bayesian) modeling, which can represent the uncertainty in a predictor explicitly and propagate it through to the predictions. This is principled, but it comes with caveats: the hierarchical structure may not fit the problem at hand, and the computation can be expensive. The good news is that the error is sometimes quantifiable directly. Temperature sensors often come with a known error specification, and survey instruments can be studied for their reliability, which gives you a handle on the measurement uncertainty rather than leaving it as an unknown.
+
+> **When to use this:** Reach for explicit measurement error modeling when a key predictor is known to be noisy and that predictor's noise is large compared to the variation you are trying to explain. If the predictor is measured cleanly, the added complexity is rarely worth it.
+
+## Discretizing Continuous Outcomes
+
+There is a natural instinct to treat a continuous outcome as continuous and predict it on its original scale. Often that is right. But sometimes it makes more sense to deliberately coarsen a continuous response into categories, even when the underlying quantity is continuous, because the categorical version is the part we can actually predict with skill.
+
+A striking example comes from long-lead climate forecasting. Consider predicting temperature over North America six months out. At that horizon we are well past the "chaos" boundary, the point where tiny differences in initial conditions blow up into completely different outcomes, so producing a realistic continuous point forecast of temperature is simply not feasible with current methods.^[This sensitivity to initial conditions is the same phenomenon that limits ordinary weather forecasts to a week or two: small measurement errors grow exponentially, and after enough time the forecast is no better than climatology.]
+
+And yet the situation is not hopeless, because the ocean moves more slowly than the atmosphere. Sea surface temperature in the tropical Pacific evolves on much longer time scales and is strongly correlated with later weather over North America. So although the variable we care about is continuous (temperature), and although we cannot predict it continuously at this horizon, we can often predict whether it will fall into a coarse category, "below normal," "normal," or "above normal," with real skill. By discretizing the outcome, we trade unattainable precision for an answer that is genuinely useful and genuinely predictable.
+
+> **Tip:** Matching the granularity of the prediction to the granularity of the available signal is a modeling decision in its own right. A skillful three-category forecast can be far more valuable than a meaningless precise one.
+
+## Dependence
+
+Standard supervised learning quietly assumes that, once we account for the predictors, the observations are independent of one another. Many real datasets violate this. Measurements taken close together in time, in space, or within the same group tend to be correlated, and ignoring that correlation leads to overconfident inference and biased predictions.
+
+To see where the assumption hides, write the familiar model
+
+$$
+y = f(x) + e
+$$
+
+Here $f(x)$ captures the signal we want to learn and $e$ is the error. Most standard machine learning methods focus entirely on flexibly estimating $f$ and make no specific assumptions about the distribution of $e$. That flexibility is a strength when it comes to fitting shapes, but it means these methods have no built-in way to represent a dependence structure among the errors. They implicitly treat each $e$ as standalone noise.
+
+When the errors are in fact dependent, this can bias both our predictions and our inference. One of the most effective ways to handle the problem is to introduce random effects: shared, unobserved quantities attached to groups of correlated observations. Integrating out these common random effects induces exactly the kind of marginal dependence we observe in the data, giving us a principled way to model correlation rather than pretend it away.^[A random effect is a model term that varies across groups (subjects, locations, time blocks) and is treated as drawn from a distribution rather than estimated as a fixed unknown. Sharing it within a group is what couples those observations together.]
+
+This is one area where classical, explicitly probabilistic statistical models still tend to outperform most machine learning methods, which is worth remembering when your data have obvious grouping or autocorrelation. The advantage is not free: it comes at the cost of greater model complexity and heavier computation.
+
+> **Note:** Dependence is easy to overlook because the standard tools do not warn you about it. If your observations are grouped, repeated, or collected over time or space, treat independence as an assumption to be checked, not a default to be trusted.
+
+## Preferential/Biased Sampling
+
+The final issue is the one that sits earliest in the pipeline, and so can do the most damage: how the data were collected. A model can only generalize to the kind of data it was trained on. If your training data were gathered in a biased way, or collected for some other purpose entirely (this is often called preferential sampling), the patterns the model learns may not hold for the population you actually want to serve.
+
+The trouble is that this bias can be either known or unknown. Sometimes you are aware that, say, only the most engaged customers were surveyed, or that environmental sensors were placed precisely where problems were already suspected. Other times the selection happened silently, baked into how the data arrived. In both cases the consequence is the same: the prediction or classification model may perform well on data that look like the training set and then fail badly on the broader population, where the sampling bias no longer holds.
+
+> **Warning:** A high validation score computed on biased data is reassuring and meaningless at the same time. If the validation data inherit the same sampling bias as the training data, they cannot reveal the problem.
+
+## Takeaways
+
+The recurring lesson of this chapter is that model performance is decided largely before the modeling starts and partly after it ends, but only rarely by the algorithm in the middle. To keep these failure modes in view, it helps to run through a short checklist whenever you evaluate a model:
+
+- Type III error: Are we answering the question that actually matters, or just the one that is convenient to model?
+- Outcome measurement error: Is the target itself measured cleanly, or is part of our "error" really noise in the response?
+- Predictor measurement error: Are key predictors noisy relative to the signal, and if so, does the model account for that?
+- Outcome granularity: Should a continuous outcome be discretized to match the level at which we actually have predictive skill?
+- Dependence: Are the observations truly independent, or do time, space, or grouping induce correlation we are ignoring?
+- Sampling: Were the data collected in a way that represents the population we care about, or preferentially?
+
+None of these questions has a tuning knob. Each one rewards careful thought about the problem and the data, and each one can quietly decide whether a model that looks excellent is actually trustworthy.

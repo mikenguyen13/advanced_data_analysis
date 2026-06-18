@@ -1,0 +1,285 @@
+# Interpretable Machine Learning
+
+```{r}
+#| include: false
+suppressPackageStartupMessages(library(tidyverse))
+```
+
+A model that predicts well is useful. A model you can also explain is trustworthy. As predictive models have grown more accurate, they have often grown more opaque: a gradient boosting ensemble or a deep network can involve thousands of parameters interacting in ways no person can trace by hand. This chapter is about closing that gap. It introduces the tools that let us look inside a fitted model and answer questions like "which features matter?", "how does this feature change the prediction?", and "why did the model decide *this* for *this* particular case?".
+
+The motivation is practical, not philosophical. A bank that denies a loan must, by law in many jurisdictions, give a reason. A doctor will not act on a risk score without understanding what drives it. A data scientist debugging a model needs to know whether it learned something real or just memorized an artifact of the training data.^[A classic cautionary tale, reported by Caruana and colleagues (2015): a pneumonia risk model learned that asthmatic patients had *lower* risk of dying, because in the training hospital asthmatics were admitted straight to intensive care and treated aggressively. The pattern was real in the data but exactly backwards as a basis for triage. An interpretability check would have caught it; a pure accuracy check did not.] In all of these settings, the prediction alone is not enough. We need an account of *how the model got there*.
+
+> **Key idea:** Interpretability is not a single technique but a goal, and there are two broad routes to it. We can use models that are transparent by construction (linear regression, a short decision tree, a generalized additive model), or we can fit a flexible black-box model and then apply *post-hoc* explanation methods on top of it. This chapter focuses on the second route, because that is where the interesting tooling lives, but the first route is always worth considering first.
+
+It helps to separate two words that are often used interchangeably. *Interpretability* usually refers to models that are understandable in themselves: you can read the coefficients or trace the tree. *Explainability* usually refers to producing human-readable accounts of an otherwise opaque model after the fact.^[The distinction is discussed at length in the survey by Barredo Arrieta and colleagues (2020) and in the popular write-up at <https://towardsdatascience.com/interperable-vs-explainable-machine-learning-1fa525e12f48>. Different authors draw the line differently, so do not over-invest in the terminology; what matters is the question you are trying to answer.] A second useful split is *global* versus *local* explanations. A global explanation describes the model's behavior across the whole data distribution ("income is the most important feature overall"). A local explanation describes a single prediction ("for *this* applicant, the low credit score pushed the decision toward denial"). Most methods in this chapter come in both flavors, and we will be explicit about which is which.
+
+By the end of the chapter you will be able to rank features by importance, visualize the shape of a feature's effect with partial dependence and individual conditional expectation plots, explain individual predictions with LIME and Shapley values (SHAP), and reason about which method to reach for in a given situation. The canonical free reference for this material is Molnar's *Interpretable Machine Learning* (2022), available at <https://christophm.github.io/interpretable-ml-book/>; the broader research area is surveyed under the heading of explainable AI at <https://en.wikipedia.org/wiki/Explainable_artificial_intelligence> and in Barredo Arrieta et al. (2020). A gentle hands-on course is Kaggle's machine learning explainability track at <https://www.kaggle.com/learn/machine-learning-explainability>.
+
+We will work throughout with one running example so that the methods are directly comparable.
+
+> **When to use this:** Reach for post-hoc interpretation whenever you have a model that is too complex to read directly but whose behavior you still need to justify, audit, or debug. If a simple transparent model fits about as well, prefer it and skip most of this chapter.
+
+## A running example
+
+We will predict house sale prices from the Ames housing data (De Cock, 2011), a modern replacement for the venerable Boston housing set. It is large enough to be interesting and clean enough to keep the focus on interpretation rather than data wrangling. We fit a random forest, which is accurate and nonlinear but completely opaque on its own, and then spend the rest of the chapter explaining it.
+
+```{r iml-setup, message=FALSE, warning=FALSE}
+library(AmesHousing)
+library(randomForest)
+library(ggplot2)
+
+set.seed(1)
+
+ames <- as.data.frame(make_ordinal_ames())
+
+# Keep a compact set of intuitive predictors so the explanations stay readable.
+keep <- c("Sale_Price", "Gr_Liv_Area", "Overall_Qual", "Year_Built",
+          "Total_Bsmt_SF", "Garage_Cars", "Full_Bath",
+          "Lot_Area", "Fireplaces", "TotRms_AbvGrd")
+ames <- ames[, keep]
+
+# Ordinal factors come through as ordered factors; random forest is happiest
+# with plain numerics for the quality scale, so convert it.
+ames$Overall_Qual <- as.integer(ames$Overall_Qual)
+
+# A train / test split.
+n <- nrow(ames)
+train_id <- sample(seq_len(n), size = floor(0.7 * n))
+train <- ames[train_id, ]
+test  <- ames[-train_id, ]
+
+rf <- randomForest(Sale_Price ~ ., data = train, ntree = 300,
+                   importance = TRUE)
+rf
+```
+
+The printout reports the model's out-of-bag error, but it tells us nothing about *why* the forest predicts what it predicts. That is the gap the rest of the chapter fills. To have a transparent point of comparison, we also fit an ordinary linear model on the same data; its coefficients are an interpretation we can check the fancier methods against.
+
+```{r iml-linear}
+lm_fit <- lm(Sale_Price ~ ., data = train)
+round(coef(lm_fit))
+```
+
+> **Intuition:** The linear model is its own explanation: each coefficient says "holding everything else fixed, one more unit of this feature changes the predicted price by this many dollars." Every method below is, in one way or another, an attempt to recover that kind of plain-language statement from a model that does not hand it to us for free.
+
+## Feature importance
+
+The first question anyone asks of a model is which inputs matter. *Feature importance* assigns each feature a number summarizing how much the model relies on it, producing a ranked list. This is a global explanation: it describes the model as a whole, not any single prediction.
+
+There are two common ways to measure it, and they answer slightly different questions. The first is *impurity-based* importance, which is specific to tree ensembles. Each time a tree splits on a feature, the split reduces the impurity (for regression, the variance) of the target within the resulting groups. Summing those reductions across every split on a feature, and across every tree, gives a measure of how useful that feature was for building the forest. It is free to compute because the forest already did the work while training, but it has a known bias: it tends to inflate the importance of high-cardinality features (those with many possible split points) regardless of whether they are truly predictive.^[This bias is why impurity importance can rank a near-random continuous feature above a genuinely useful binary one. See the discussion in Molnar (2022). When in doubt, prefer permutation importance, described next.]
+
+The second method, *permutation importance*, is model-agnostic and more trustworthy. The idea is disarmingly simple. Measure the model's error on held-out data. Then take one feature, shuffle its values across the rows (which destroys any relationship between that feature and the target while keeping its marginal distribution intact), and measure the error again. If the error jumps, the model was relying on that feature; if it barely moves, the feature was not doing much. The increase in error is the feature's importance.
+
+> **Intuition:** Permutation importance asks, "if I scramble this column, how much worse does the model get?" A feature the model truly depends on, when scrambled, wrecks the predictions. An irrelevant feature can be scrambled with no effect.
+
+The `vip` package computes both kinds (Greenwell and Boehmke, 2020). We start with the impurity-based version, which random forest already stored for us; Figure @fig-interpretable-machine-learning-vip-impurity shows the result.
+
+```{r fig-interpretable-machine-learning-vip-impurity, message=FALSE, warning=FALSE, fig.cap="Impurity-based feature importance from the random forest."}
+library(vip)
+vip(rf, num_features = 9, geom = "col") +
+  ggtitle("Impurity-based importance")
+```
+
+Now the model-agnostic permutation version, which we compute on the test set so that it reflects generalization rather than fit; Figure @fig-interpretable-machine-learning-vip-perm shows the result.
+
+```{r fig-interpretable-machine-learning-vip-perm, message=FALSE, warning=FALSE, fig.cap="Permutation-based feature importance on held-out data."}
+pred_fun <- function(object, newdata) predict(object, newdata = newdata)
+
+vip(
+  rf,
+  method = "permute",
+  train = test,
+  target = "Sale_Price",
+  metric = "rmse",
+  pred_wrapper = pred_fun,
+  nsim = 5,
+  num_features = 9
+) + ggtitle("Permutation importance")
+```
+
+Read these plots (Figures @fig-interpretable-machine-learning-vip-impurity and @fig-interpretable-machine-learning-vip-perm) from the top down: the longest bars are the features the model leans on most. For Ames, overall quality and above-ground living area dominate in both methods, which matches intuition about what drives house prices and matches the large coefficients in our linear model. When the two importance methods agree, you can be fairly confident in the ranking. When they disagree, the disagreement is itself informative, often pointing to the cardinality bias of the impurity measure.
+
+> **Warning:** Importance tells you *how much* a feature matters, not *which direction* it pushes predictions or *what shape* its effect has. A feature can be highly important and have a U-shaped effect that a single number cannot convey. For direction and shape, we need the effect plots in the next section.
+
+> **Tip:** Permutation importance is computed many times with different random shuffles (`nsim` above) because a single shuffle is noisy. Report the average, and if decisions ride on the ranking, look at the variability across shuffles too.
+
+## Effect plots: partial dependence and ICE
+
+Importance ranks features; *effect plots* show the relationship between a feature and the prediction. The workhorse is the *partial dependence plot* (PDP), introduced by Friedman (2001). It answers a clean question: as one feature varies over its range, what happens to the average prediction, with all other features left as they are in the data?
+
+Mechanically, to draw the partial dependence of price on living area, we do the following. Pick a grid of living-area values. For each grid value, overwrite the living-area column of *every* row in the data with that one value, leaving all other columns untouched, and ask the model to predict. Average those predictions. That average is the partial dependence at that grid point. Plotting the averages across the grid traces out the marginal effect of living area on the model's output.
+
+> **Key idea:** A PDP marginalizes over the other features by brute force. It literally asks the model, "if this one feature were *x*, what would you predict on average across the population?" The result isolates the feature's effect from the others, as long as the features are not strongly correlated.
+
+The `pdp` package implements this directly (Greenwell, 2017), and Figure @fig-interpretable-machine-learning-pdp-single shows the partial dependence of price on living area.
+
+```{r fig-interpretable-machine-learning-pdp-single, message=FALSE, warning=FALSE, fig.cap="Partial dependence of predicted sale price on above-ground living area."}
+library(pdp)
+
+pd_area <- partial(rf, pred.var = "Gr_Liv_Area", train = train)
+plotPartial(pd_area, main = "Partial dependence: living area")
+```
+
+The curve rises from left to right: bigger houses cost more, as expected, and the slope flattens at the high end, suggesting diminishing returns to sheer size. A linear model could never have shown that bend; the PDP read it straight out of the forest.
+
+Partial dependence can also show how two features interact, by varying them jointly on a grid and drawing the result as a surface or heatmap. Figure @fig-interpretable-machine-learning-pdp-two looks at price as a function of living area and overall quality together.
+
+```{r fig-interpretable-machine-learning-pdp-two, message=FALSE, warning=FALSE, fig.cap="Two-way partial dependence on living area and overall quality."}
+pd_two <- partial(rf, pred.var = c("Gr_Liv_Area", "Overall_Qual"),
+                  train = train, chull = TRUE)
+plotPartial(pd_two, main = "Living area x overall quality")
+```
+
+The PDP has one important blind spot. Because it averages over the population, it can hide the fact that the feature behaves differently for different subgroups. If living area pushes prices up for large lots but is flat for tiny lots, the average can look like a mild slope and you would never know the two stories existed. The *individual conditional expectation* (ICE) plot fixes this (Goldstein et al., 2015). Instead of averaging, it draws one line per observation: each line shows how that single house's prediction would change as we sweep its living area across the grid. The PDP is simply the average of all the ICE lines.
+
+> **Intuition:** A PDP is the chorus; ICE plots are the individual voices. If every voice sings the same melody, the chorus represents them faithfully. If the voices split into groups singing different tunes, the average is misleading and the ICE plot reveals it.
+
+Figure @fig-interpretable-machine-learning-ice draws the centered ICE curves for living area together with their average.
+
+```{r fig-interpretable-machine-learning-ice, message=FALSE, warning=FALSE, fig.cap="Centered ICE plot for living area; the thick line is the partial dependence (average)."}
+ice_area <- partial(rf, pred.var = "Gr_Liv_Area", train = train,
+                    ice = TRUE, center = TRUE)
+plotPartial(ice_area, alpha = 0.05, plot.pdp = TRUE,
+            main = "Centered ICE: living area")
+```
+
+We *centered* the curves so they all start at zero on the left, which makes their *shapes* comparable regardless of each house's baseline price. Reading the plot: if the thin lines fan out and cross, different houses respond differently to size, an interaction the PDP alone would have hidden. If they move in near-parallel, the average curve tells the whole story.
+
+> **Warning:** Both PDP and ICE rely on overwriting one feature while holding the others fixed, which can create *impossible* combinations: a 4000-square-foot house on a 1000-square-foot lot, for instance. When features are strongly correlated, the model is asked to predict on inputs it never saw in training, and the plots can mislead. Accumulated local effects (ALE) plots are a more robust alternative in that case; see Molnar (2022).
+
+To summarize the global picture so far: importance tells you which features matter, PDPs tell you the average shape of each feature's effect, and ICE plots warn you when that average hides subgroup differences. Together they give a reasonably complete description of the model's *global* behavior. We turn next to explaining single predictions.
+
+## Local explanations
+
+Global summaries are the right tool for understanding a model overall, but they cannot answer the question a loan applicant or a clinician actually asks: "why this prediction, for me?" *Local* explanation methods answer exactly that, one observation at a time. We cover the two dominant approaches, LIME and Shapley values.
+
+### LIME
+
+LIME stands for *local interpretable model-agnostic explanations* [@ribeiro2016]. Its premise is that even a wildly nonlinear model looks approximately linear if you zoom in close enough to a single point, the same way the curved surface of the Earth looks flat in your backyard. So to explain one prediction, LIME builds a simple, interpretable model (typically a sparse linear model) that mimics the black box *in the neighborhood of that one point*, and reads off the simple model's coefficients as the explanation.
+
+The recipe is:
+
+1. Take the instance you want to explain.
+2. Generate many perturbed versions of it by randomly tweaking its feature values.
+3. Get the black-box model's prediction for each perturbed point.
+4. Weight the perturbed points by how close they are to the original instance, so nearby points count more.
+5. Fit a simple, interpretable model (a weighted sparse linear regression) to those weighted predictions.
+6. Report that simple model's coefficients as the local explanation.
+
+> **Intuition:** LIME does not try to understand the whole model. It only builds a tiny, faithful caricature that is accurate right around the one prediction you care about, and trusts that caricature exactly that far and no further.
+
+The `lime` package implements this for R (Pedersen and Benesty, 2021). We explain the model's predictions for two specific houses from the test set, and Figure @fig-interpretable-machine-learning-lime shows the result.
+
+```{r fig-interpretable-machine-learning-lime, message=FALSE, warning=FALSE, fig.width=8, fig.cap="LIME explanations for two individual house-price predictions."}
+library(lime)
+
+# lime does not ship support for randomForest regression out of the box,
+# so we register the two small methods it needs.
+model_type.randomForest <- function(x, ...) "regression"
+predict_model.randomForest <- function(x, newdata, ...) {
+  data.frame(Response = predict(x, newdata = newdata))
+}
+
+explainer <- lime(train[, setdiff(names(train), "Sale_Price")],
+                  model = rf)
+
+cases <- test[1:2, setdiff(names(test), "Sale_Price")]
+
+explanation <- explain(
+  cases,
+  explainer,
+  n_features = 5,
+  n_permutations = 500
+)
+
+plot_features(explanation)
+```
+
+Each panel explains one house. A bar to the right (supporting) means that feature, at its value for this house, pushed the prediction up; a bar to the left (contradicting) means it pushed the prediction down. The length is how strongly. So you can now make a per-house statement like "this prediction is high mainly because of high overall quality and large living area, partly offset by the small lot," which is precisely the kind of account a global plot cannot give.
+
+> **Warning:** LIME's explanations depend on choices that are easy to overlook: how perturbations are generated, the neighborhood width (the kernel), and how many features the simple model is allowed to keep. Change these and the explanation can change. Treat a single LIME output as a hypothesis about the prediction, not as ground truth, and check that it is stable before relying on it.
+
+### Shapley values and SHAP
+
+LIME is fast and intuitive but, as just noted, somewhat ad hoc. Shapley values come at local explanation from a completely different and more principled direction: cooperative game theory (Shapley, 1953). Imagine the features are players cooperating to produce a prediction, and the "payout" to be divided among them is the difference between this prediction and the average prediction over the data. The Shapley value of a feature is its fair share of that payout, where "fair" is defined by a short list of axioms (every contribution is accounted for, features that never change the prediction get zero, and so on). Remarkably, exactly one allocation satisfies all the axioms, and that is the Shapley value.
+
+Concretely, the Shapley value of a feature is its *average marginal contribution* across every possible ordering in which the features could be added to the model. To see what feature *j* contributes, you look at how much the prediction changes when *j* joins a coalition of features already present, and you average that change over all coalitions. Computing this exactly is exponential in the number of features, so in practice we approximate it by sampling coalitions.
+
+> **Key idea:** A Shapley explanation has a property the others lack: the feature contributions *add up exactly* to the gap between the prediction and the average prediction. Nothing is left unexplained and nothing is double-counted. This additivity is what makes Shapley values uniquely consistent.
+
+SHAP (*SHapley Additive exPlanations*) is the popular framework, due to @lundberg2017unified, that makes Shapley values computable for modern models and ties them to a unifying view of LIME and related methods. The reference implementation is the Python `shap` library at <https://github.com/slundberg/shap>, with accessible introductions at <https://meichenlu.com/2018-11-10-SHAP-explainable-machine-learning/> and <https://bjlkeng.github.io/posts/model-explanability-with-shapley-additive-explanations-shap/>. SHAP is especially efficient for tree ensembles through the TreeSHAP algorithm [@lundberg2018consistent], which exploits tree structure to compute exact Shapley values quickly.
+
+We can compute Shapley-style explanations in R without leaving the `pdp`/`vip` ecosystem, using the fast Monte Carlo approximation in the `fastshap` package when it is available. The following chunk is guarded so the book still builds if that optional package is not installed; the code is the idiomatic way to do it.
+
+```{r interpretable-machine-learning-shap, eval=requireNamespace("fastshap", quietly=TRUE), message=FALSE, warning=FALSE, fig.cap="SHAP feature contributions for a single house, computed by Monte Carlo approximation."}
+library(fastshap)
+
+pred_wrapper <- function(object, newdata) {
+  as.numeric(predict(object, newdata = newdata))
+}
+
+x_explain <- test[1, setdiff(names(test), "Sale_Price")]
+
+shap_vals <- fastshap::explain(
+  rf,
+  X = train[, setdiff(names(train), "Sale_Price")],
+  newdata = x_explain,
+  pred_wrapper = pred_wrapper,
+  nsim = 50
+)
+
+shap_df <- data.frame(
+  feature = names(shap_vals),
+  contribution = as.numeric(shap_vals[1, ])
+)
+shap_df <- shap_df[order(abs(shap_df$contribution)), ]
+shap_df$feature <- factor(shap_df$feature, levels = shap_df$feature)
+
+ggplot(shap_df, aes(x = contribution, y = feature, fill = contribution > 0)) +
+  geom_col() +
+  scale_fill_manual(values = c("FALSE" = "#c0392b", "TRUE" = "#2980b9"),
+                    guide = "none") +
+  labs(title = "SHAP contributions for one house",
+       x = "Contribution to prediction (dollars)", y = NULL)
+```
+
+Read the bars exactly as with LIME (right pushes the prediction up, left pushes it down), but with the guarantee that they sum to the difference between this house's prediction and the average prediction. Averaging the *absolute* SHAP values of a feature over many observations also yields a global importance measure, giving a single coherent framework that spans local and global explanation. That unification is the main reason SHAP became the de facto standard.
+
+> **When to use this:** Use LIME when you need a fast, intuitive local explanation and approximate fidelity is acceptable. Use SHAP when you need consistency and additivity, when explanations must withstand scrutiny (regulatory or scientific), or when you want local and global explanations from one coherent method. For tree ensembles specifically, TreeSHAP makes the principled choice also the practical one.
+
+## Other tools and the broader landscape
+
+The methods above (importance, PDP/ICE, LIME, SHAP) cover the great majority of day-to-day interpretation work on tabular models. Several other tools extend the same ideas to richer settings and are worth knowing by name.
+
+For tabular and tree models in R, the `flashlight` package collects importance, PDP/ICE, SHAP-style breakdowns, and model comparison behind one consistent interface, and is part of the larger DALEX ("Descriptive mAchine Learning EXplanations") family for model exploration. See the documentation at <http://xai-tools.drwhy.ai/flashlight.html>, the package vignette at <https://cran.r-project.org/web/packages/flashlight/vignettes/flashlight.html>, and the DALEX project at <https://dalex.drwhy.ai/>.
+
+Once we move beyond tables to images and concepts, new methods are needed. *Testing with concept activation vectors* (TCAV) explains a neural network's predictions in terms of human-friendly concepts (for example, how much the concept "stripes" influenced a "zebra" classification) rather than raw pixels (Kim et al., 2018). The reference code is at <https://github.com/tensorflow/tcav>, with the paper at <http://proceedings.mlr.press/v80/kim18d.html> and <https://arxiv.org/abs/1711.11279>.
+
+Google's PAIR (People + AI Research) group has built several interactive tools that make these ideas tangible without writing code, which are excellent for exploration and teaching:
+
+* The What-If Tool lets you probe a trained model's behavior, edit examples, and inspect fairness across slices: <https://pair-code.github.io/what-if-tool/> and <https://cloud.google.com/ai-platform/prediction/docs/using-what-if-tool>.
+* Facets visualizes the distribution and quality of a dataset, which is the first step before trusting any explanation of a model fit to it: <https://pair-code.github.io/facets/>.
+* The Embedding Projector renders learned high-dimensional embeddings in two or three dimensions so you can see the structure a model discovered: <https://projector.tensorflow.org/>.
+
+The PAIR group's broader work is at <https://research.google/teams/brain/pair/>, and a wider survey of interpretability research is collected at <https://arxiv.org/pdf/1905.08883.pdf> and <https://arxiv.org/abs/2004.14545>.
+
+> **Note:** The image- and concept-level tools above (TCAV, the What-If Tool, the Embedding Projector) live in the Python and TensorFlow ecosystem and require a trained deep model and its backend, so we do not run them here. They are listed because the *ideas* (concept-based explanation, interactive what-if probing, embedding visualization) are part of every practitioner's toolkit, even when the implementation lives outside R.
+
+### Two extended applications
+
+The same interpretability mindset shows up in applied problems that may not look like "explanation" at first. Two are worth flagging as case studies for the interested reader.
+
+The first is *video classification*, where a model labels the content of a video clip. Interpreting such a model means understanding which frames and which temporal patterns drove the label, a harder version of the tabular question. Useful entry points include the overview at <https://towardsdatascience.com/introduction-to-video-classification-6c6acbc57356>, a worked TensorFlow pipeline at <https://hackernoon.com/continuous-video-classification-with-tensorflow-inception-and-recurrent-nets-250ba9ff6b85>, a managed service at <https://cloud.google.com/video-intelligence>, research at <https://arxiv.org/pdf/1609.06782.pdf> and <https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0228579>, and applied discussions at <https://www.tubefilter.com/2019/02/12/taxonomy-youtube-videos-develop-original-content-that-works/> and <https://medium.com/swlh/converting-news-into-video-stories-5d8d4fc5a32b>.
+
+The second is *image memorability* prediction: estimating how likely a person is to remember a given image, a property that turns out to be surprisingly consistent across viewers and learnable by models. The AMNet attention-based model is a representative approach (Fajtl et al., 2018); understanding *which* image regions make something memorable is itself an interpretability problem. Pointers include the AMNet paper at <https://openaccess.thecvf.com/content_cvpr_2018/papers/Fajtl_AMNet_Memorability_Estimation_CVPR_2018_paper.pdf> and <https://www.researchgate.net/publication/324387176_AMNet_Memorability_Estimation_with_Attention>, related deep-learning work at <https://www.researchgate.net/publication/308812354_Deep_Learning_for_Image_Memorability_Prediction_the_Emotional_Bias> and <https://arxiv.org/pdf/2005.02969.pdf>, broader surveys at <https://www.researchgate.net/publication/335603628_Image_Memorability_Using_Diverse_Visual_Features_and_Soft_Attention>, <https://arxiv.org/abs/1804.03115>, <http://ceur-ws.org/Vol-2283/MediaEval_18_paper_24.pdf>, <https://jov.arvojournals.org/article.aspx?articleid=2771173>, <https://ieeexplore.ieee.org/document/8578764>, and <https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=7382237&tag=1>, code at <https://github.com/dazcona/memorability> and <https://github.com/adikhosla/feature-extraction>, the original MIT region-memorability project at <http://people.csail.mit.edu/khosla/projects/regionmem/>, and a cognitive-science angle (the elaboration likelihood model) at <https://expertprogrammanagement.com/2019/12/elaboration-likelihood-model/> and the work at <https://people.umass.edu/~yangzhou/>.
+
+## Takeaways
+
+The chapter introduced a small, powerful toolkit for opening up a fitted model. A few points are worth carrying forward.
+
+* Decide first whether you can use a model that is transparent by construction. If a linear model, a short tree, or a generalized additive model fits about as well, prefer it; you get interpretation for free.
+* When you do need a black box, separate the question you are asking. *Which features matter?* is global feature importance, and permutation importance is the trustworthy default. *What is the shape of a feature's effect?* is partial dependence, with ICE plots as the safety check for hidden subgroups. *Why this one prediction?* is a local question for LIME or SHAP.
+* Among local methods, LIME is fast and intuitive but sensitive to its settings, while SHAP is principled, additive, and consistent, and is efficient for tree models through TreeSHAP. When explanations must hold up to scrutiny, prefer SHAP.
+* Every method has assumptions. Importance ignores direction; PDP and ICE can fabricate impossible feature combinations under correlation; LIME depends on neighborhood and perturbation choices. Read explanations as evidence to be checked, not as final truth.
+
+> **Tip:** The single most useful habit is to compute two different explanations and see whether they agree. When permutation and impurity importance, or LIME and SHAP, tell the same story, trust it. When they disagree, you have learned something about either your model or your data, and that is exactly when interpretation earns its keep.

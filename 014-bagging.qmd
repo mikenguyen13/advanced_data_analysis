@@ -1,0 +1,159 @@
+# Bagging
+
+```{r}
+#| include: false
+suppressPackageStartupMessages(library(tidyverse))
+```
+
+A single decision tree, like [CART][Classification and Regression Trees] or [MARS][Multivariate Adaptive Regression Splines], is easy to read but unstable. If you split your training data into two halves at random and grow a tree on each half, you can end up with two very different trees that make very different predictions. This sensitivity to the particular sample you happened to draw is what statisticians call high variance, and it is the main reason a lone tree often predicts poorly on new data.
+
+This chapter introduces a remedy called bagging, short for bootstrap aggregation. The idea is simple and powerful: instead of trusting one unstable tree, grow many trees on slightly different versions of the data and average their predictions. Averaging cancels out the random wobble of any individual tree, so the combined predictor is far more stable than its parts. By the end of the chapter you will understand why averaging reduces variance, how the bootstrap lets us mimic having many training sets when we really have only one, how to estimate test error for free using out-of-bag samples, and how to measure variable importance once the trees are no longer individually interpretable. Bagging is also the conceptual stepping stone to [Random Forests], which we preview here.
+
+> **Intuition:** Think of each tree as a noisy measurement of the same underlying quantity. One measurement is unreliable, but the average of many independent measurements is close to the truth. Bagging applies that everyday logic to prediction models.
+
+## Why averaging reduces variance
+
+Some procedures are naturally stable. Ordinary linear regression, for example, gives nearly the same fit whether you run it on one random sample or another, especially when the number of observations $n$ is large relative to the number of predictors $p$. A procedure with low variance yields similar results when applied repeatedly to distinct data sets. Trees are the opposite: they are flexible enough to chase noise, so small changes in the data produce large changes in the fitted model.
+
+Bagging is a general-purpose procedure for reducing the variance of any such unstable method.^[Although we apply it to trees here, bagging is not specific to trees. It can wrap around any base learner whose predictions are sensitive to the training sample.] The strategy is to average many models. If we had access to $B$ separate training sets, we could fit a model on each, call them $\hat{f}^1(X), \hat{f}^2(X), \dots, \hat{f}^B(X)$, and average them into a single bagged predictor:
+
+$$
+\hat{f}_{bag} (X) = \frac{1}{B} \sum_{b=1}^B \hat{f}^b (x)
+$$
+
+> **Key idea:** Averaging keeps the bias of the base model roughly the same while shrinking its variance. That is why we deliberately grow each tree large and unpruned: large trees have low bias but high variance, and averaging takes care of the variance.
+
+## The bootstrap: many data sets from one
+
+There is a practical problem with the recipe above. In reality we almost never have $B$ independent training sets; we have a single sample. The bootstrap solves this by manufacturing surrogate data sets from the one we have. To create a bootstrap sample, we draw observations from the original training set at random with replacement until we have a data set of the same size. Because we sample with replacement, some observations appear more than once and others not at all, so each bootstrap sample differs slightly from the original.
+
+We generate $B$ such bootstrap samples, fit a model on each, and average the fits. The bagged prediction $\hat{f}_{bag}(x)$ is the average of the fits from these $B$ bootstrap samples, exactly as in the formula above but with bootstrap samples standing in for genuine independent training sets.
+
+> **Note:** With regression trees, we construct $B$ trees and average their predictions, growing each tree large with no pruning. Each tree on its own has high variance and low bias; averaging then drives the variance down without inflating the bias. In practice, around **100** trees is usually enough to capture most of the variance reduction.
+
+For classification the averaging step changes slightly because we cannot average class labels directly. Instead, we record the class predicted by each of the $B$ trees for a given test observation and take a majority vote, choosing the category that occurs most often across the trees.
+
+## Out-of-bag error: cross-validation for free
+
+A pleasant side effect of the bootstrap is that we can estimate test error without performing cross-validation. The reason is that each bootstrap sample leaves some observations out by construction.
+
+The procedure works as follows. For a given tree, the observations that were not selected into its bootstrap sample are called the out-of-bag (OOB) observations for that tree.^[On average, each bootstrap sample omits about one third of the original observations, so every observation is OOB for roughly a third of the trees, giving us plenty of trees to average over.] To get an OOB prediction for the $i$-th observation, we use only the trees in which that observation was OOB, and average their predictions. Comparing these OOB predictions against the true responses gives the OOB MSE for regression, or the OOB classification error for classification.
+
+> **Key idea:** The OOB error is a valid estimate of the test error because each observation is predicted only by trees that never saw it during training. No data point judges a model that was trained on it.
+
+## The cost: losing interpretability
+
+Bagging buys predictive accuracy, but it gives up the clarity that made a single tree appealing. A lone tree can be drawn as a flowchart and read top to bottom. Once we average over hundreds of trees, the variable used at each split (or the basis function included) can change dramatically from tree to tree, so there is no single diagram to interpret and no obvious way to say which variable matters most.
+
+To recover some interpretation, we track how much each predictor contributes to the trees, averaged over all $B$ of them. The two standard measures of variable importance are:
+
+- For regression, the total amount by which the residual sum of squares is decreased due to splits on a given predictor, averaged over all $B$ trees.
+- For classification, the total amount by which the Gini index is decreased by splits on a given predictor, averaged over all $B$ trees.
+
+A predictor that consistently produces large reductions in error across the ensemble is judged important, even though we can no longer point to a single tree to explain why.
+
+## Bagging in R
+
+Bagging is a special case of a random forest in which every predictor is a candidate at every split. Concretely, bagging corresponds to a random forest with $m = p$, where $m$ is the number of input variables considered at each split and $p$ is the number of available variables. Because of this, we can carry out bagging with the `randomForest()` function simply by setting `mtry` equal to the total number of predictors.
+
+We illustrate with the `Boston` housing data, predicting median home value `medv`. We first split the data in half to create a training set and a test set.
+
+```{r, message=FALSE, warning=FALSE}
+library(randomForest)
+library(ISLR2)
+library(tree)
+
+set.seed(1)
+train <- sample(1:nrow(Boston), nrow(Boston)/2)
+boston.test <- Boston[-train, "medv"]
+
+bag.boston <-
+    randomForest(
+        medv ~ .,
+        data = Boston,
+        subset = train,
+        mtry = 12, # all 12 predcitors should be used for each split of the tree
+        importance = T
+    ) # we could use random forest because bagging is a special case of random forest with m = p
+bag.boston
+```
+
+Setting `mtry = 12` tells the function to consider all 12 predictors at every split, which is exactly what makes this bagging rather than a random forest. The printed summary reports the type of forest, the number of trees, and the percentage of variance explained on the out-of-bag samples.
+
+Now we evaluate the bagged model on the held-out test set. Figure @fig-bagging-pred-vs-actual compares predicted values against the true test responses, and the 45-degree line marks perfect prediction.
+
+```{r fig-bagging-pred-vs-actual, fig.cap="Predicted median home values from the bagged model plotted against the true test-set responses, with the 45-degree line marking perfect prediction."}
+yhat.bag <- predict(bag.boston, newdata = Boston[-train, ])
+plot(yhat.bag, boston.test)
+abline(0, 1)
+mean((yhat.bag - boston.test) ^ 2) # test set MSE
+```
+
+Points hugging the line indicate accurate predictions. The reported number is the test-set MSE, our headline measure of how well the bagged model generalizes.
+
+By default `randomForest()` grows 500 trees. We can change how many trees are grown with the `ntree` argument; here we shrink the ensemble to 25 trees to see the effect.
+
+```{r}
+bag.boston <-
+    randomForest(
+        medv ~ . ,
+        data = Boston,
+        subset = train,
+        mtry = 12,
+        ntree = 25 # spceify number of grown tree
+    )
+yhat.bag <- predict(bag.boston, newdata = Boston[-train,])
+mean((yhat.bag - boston.test) ^ 2)
+
+```
+
+> **Tip:** More trees rarely hurt accuracy and never cause overfitting in bagging, so the practical question is how many trees you can afford rather than how many you should risk. Fewer trees mainly trade away a little stability for faster computation.
+
+## From bagging to random forests
+
+Growing a random forest is a small twist on bagging: instead of considering all $p$ predictors at each split, we restrict each split to a random subset of $m < p$ predictors. This decorrelates the trees so the average is even more effective. The `randomForest()` defaults reflect common choices for $m$:
+
+- $\frac{p}{3}$ variables to build a random forest of [Regression Trees]
+- $\sqrt{p}$ variables to build a random forest of [Classification Trees]
+
+Here we fit a regression random forest using `mtry = 6` predictors at each split.
+
+```{r}
+set.seed(1)
+rf.boston <-
+    randomForest(
+        medv ~ . ,
+        data = Boston,
+        subset = train,
+        mtry = 6,
+        # use 6 variables
+        importance = T
+    )
+yhat.rf <- predict(rf.boston, newdata = Boston[-train, ])
+mean((yhat.rf - boston.test) ^ 2)
+```
+
+The random forest improves on bagging here: its test MSE (about 20) is lower than the bagging MSE (about 25). Restricting the predictors at each split paid off by making the trees less alike, so their average generalizes better.
+
+## Reading variable importance
+
+Because we set `importance = T`, we can ask which predictors the forest relied on most.
+
+```{r}
+importance(rf.boston)
+```
+
+The output has two columns, each summarizing importance from a different angle:
+
+1. The mean decrease in prediction accuracy on the OOB samples when that variable's values are scrambled.
+2. The total decrease in node impurity from splits on that variable, averaged over all trees. For [Regression Trees] this is based on the training RSS, and for [Classification Trees] it is based on the deviance.
+
+A picture makes the ranking easier to read than the raw table. Figure @fig-bagging-var-importance displays the two importance measures side by side.
+
+```{r fig-bagging-var-importance, fig.cap="Variable importance for the random forest fit to the Boston housing data, showing the mean decrease in accuracy and the mean decrease in node impurity for each predictor."}
+varImpPlot(rf.boston) #rm and lstate are most important
+```
+
+Both panels point to the same conclusion: `rm` (average number of rooms) and `lstat` (percentage of lower-status population) are by far the most important predictors of median home value, which matches what we would expect from housing economics.
+
+> **When to use this:** Reach for bagging or a random forest whenever a single tree predicts well in spirit but is too unstable to trust, and you are willing to trade the readability of one tree for stronger, more reliable predictions. Variable importance plots then give you back a coarse, ensemble-level view of which predictors drive the model.

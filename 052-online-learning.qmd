@@ -42,11 +42,11 @@ A common production pattern is a hybrid: train a strong batch model offline, the
 
 
 ::: {.callout-tip title="When to use this"}
-Reach for a streaming method when the data is too big to store, never stops arriving, or moves faster than you can retrain. If your dataset is finite, fits in memory, and comes from a stable distribution, batch learning is simpler to validate and usually more accurate per example. Section \@ref(practical-guidance-and-pitfalls) returns to this decision in detail.
+Reach for a streaming method when the data is too big to store, never stops arriving, or moves faster than you can retrain. If your dataset is finite, fits in memory, and comes from a stable distribution, batch learning is simpler to validate and usually more accurate per example. @sec-practical-guidance-and-pitfalls returns to this decision in detail.
 :::
 
 
-## The Incremental Update View
+## The Incremental Update View {#sec-the-incremental-update-view}
 
 Write the model as a parameter vector $\theta \in \mathbb{R}^d$. At step $t$ the learner holds $\theta_t$, sees an example $(x_t, y_t)$, suffers a loss $\ell_t(\theta_t) = \ell(\theta_t; x_t, y_t)$, and produces $\theta_{t+1}$. The generic online update is
 
@@ -54,7 +54,7 @@ $$
 \theta_{t+1} = \theta_t - \eta_t \, g_t, \qquad g_t = \nabla_\theta \ell_t(\theta_t),
 $$
 
-where $\eta_t > 0$ is a step size (learning rate)^[The learning rate controls how far each example is allowed to move the parameters. It is the single most important knob in online learning, and most of the failure modes in Section \@ref(practical-guidance-and-pitfalls) trace back to choosing it badly.] and $g_t$ is the gradient of the current example's loss. Two features make this practical: the update touches only the current example, and the cost per step does not grow with $t$.
+where $\eta_t > 0$ is a step size (learning rate)^[The learning rate controls how far each example is allowed to move the parameters. It is the single most important knob in online learning, and most of the failure modes in @sec-practical-guidance-and-pitfalls trace back to choosing it badly.] and $g_t$ is the gradient of the current example's loss. Two features make this practical: the update touches only the current example, and the cost per step does not grow with $t$.
 
 
 ::: {.callout-important title="Key idea"}
@@ -149,7 +149,7 @@ $$
 M_{2,t} = M_{2,t-1} + (x_t - \bar x_{t-1})(x_t - \bar x_t),
 $$
 
-and the sample variance is $s_t^2 = M_{2,t} / (t-1)$. Each step is $O(1)$ in time and memory. Notice that the mean update $\bar x_t = \bar x_{t-1} + (x_t - \bar x_{t-1})/t$ is exactly the running-average special case from Section \@ref(the-incremental-update-view), with the gradient $g_t = \theta_t - x_t$ and step size $\eta_t = 1/t$.
+and the sample variance is $s_t^2 = M_{2,t} / (t-1)$. Each step is $O(1)$ in time and memory. Notice that the mean update $\bar x_t = \bar x_{t-1} + (x_t - \bar x_{t-1})/t$ is exactly the running-average special case from @sec-the-incremental-update-view, with the gradient $g_t = \theta_t - x_t$ and step size $\eta_t = 1/t$.
 
 
 ::: {.callout-warning}
@@ -375,7 +375,7 @@ No single mechanism handles every kind of drift, so production systems combine s
 
 A concrete decision rule: if accuracy is drifting, first check whether $P(x)$ moved (cheap to monitor) before assuming $P(y\mid x)$ did. Covariate shift often just needs more coverage or reweighting, while real drift needs the model to forget.
 
-## Practical Guidance and Pitfalls
+## Practical Guidance and Pitfalls {#sec-practical-guidance-and-pitfalls}
 
 With the machinery in hand, the final question is when to actually use it. Online learning is the right call when any of the following holds.
 

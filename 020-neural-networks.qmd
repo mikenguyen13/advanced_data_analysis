@@ -408,18 +408,12 @@ Each weight gets a share of the blame for the final error. Backpropagation distr
 
 To see the mechanics, work through the simplest case: nonlinear regression with a single output, the identity output activation $h(\cdot)$, the sigmoid hidden activation $g(\cdot)$, and squared error loss. Let $\{ \tilde{y}_{(l)}, \mathbf{x}_{(l)} \}$ be the observed input/output pair for the $l$-th sample in the mini-batch. The forward computation is
 
-```{=tex}
-\begin{equation}
-(\#eq:1)
+$$
 y_{(l)} = \sum_{j=1}^J \beta_j z_{j(l)}
-\end{equation}
-```
-```{=tex}
-\begin{equation}
-(\#eq:2)
+$$ {#eq-nn-1}
+$$
 z_{j(l)} = g(\sum_{i=0}^p \alpha_{ji} x_{i(l)})
-\end{equation}
-```
+$$ {#eq-nn-2}
 Squared-error objective function
 
 $$
@@ -428,44 +422,32 @@ $$
 
 Then, the gradients are
 
-```{=tex}
-\begin{equation}
-(\#eq:3)
+$$
 \frac{\partial Q}{\partial \beta_{kj}} = \frac{\partial Q}{\partial y_k} \frac{\partial y_k}{\partial \beta_{kj}} = - \sum_l (\tilde{y}_{(l)} - y_{(l)}) z_{j(l)}
-\end{equation}
-```
-```{=tex}
-\begin{equation}
-(\#eq:4)
+$$ {#eq-nn-3}
+$$
 \begin{aligned}
 \frac{\partial Q}{\partial \alpha} &= \sum_l \frac{\partial Q}{\partial y_k} \frac{\partial y_k}{\partial z_j} \frac{\partial z_j}{\partial \alpha_{ji}} \\
 &= \sum_l \{- (\tilde{y}_{(l)} - y_{(l)}) \} \{\beta_j\} \{ z_{j(l)} (1 - z_{j(l)}) x_{i(l)} \}
 \end{aligned}
-\end{equation}
-```
-Notice the structure of these gradients. The factor $(\tilde{y}_{(l)} - y_{(l)})$ in equations \@ref(eq:3) and \@ref(eq:4) is simply the residual, the gap between observation and prediction. The remaining factors say what fraction of that residual is attributed to each weight in the hidden and output layers. So the gradient is a residual, routed back through the network and scaled by local sensitivities, which is exactly the "distribute the blame" picture above.^[The convenient form of the hidden layer gradient relies on the sigmoid's tidy derivative: $\partial g(ab) / \partial a = g(a) (1 - g(a)) b$ when $g(\cdot)$ is the sigmoid. Different activations give different local factors, but the overall chain rule structure is identical.]
+$$ {#eq-nn-4}
+Notice the structure of these gradients. The factor $(\tilde{y}_{(l)} - y_{(l)})$ in equations @eq-nn-3 and @eq-nn-4 is simply the residual, the gap between observation and prediction. The remaining factors say what fraction of that residual is attributed to each weight in the hidden and output layers. So the gradient is a residual, routed back through the network and scaled by local sensitivities, which is exactly the "distribute the blame" picture above.^[The convenient form of the hidden layer gradient relies on the sigmoid's tidy derivative: $\partial g(ab) / \partial a = g(a) (1 - g(a)) b$ when $g(\cdot)$ is the sigmoid. Different activations give different local factors, but the overall chain rule structure is identical.]
 
 With the gradients in hand, the basic SGD updates are just steps downhill, averaged over the $L$ samples in the batch:
 
-```{=tex}
-\begin{equation}
-(\#eq:5)
+$$
 \beta_{j}^{(r+1)} = \beta_j^{(r)} - \epsilon^{(r)} \frac{1}{L} \sum_l \frac{\partial Q}{\partial \beta_j}
-\end{equation}
-```
-```{=tex}
-\begin{equation}
-(\#eq:6)
+$$ {#eq-nn-5}
+$$
 \alpha_{ji}^{(r+1)} = \alpha_{ji}^{(r)} - \epsilon^{(r)} \frac{1}{L} \sum_l \frac{\partial Q}{\partial \alpha_{ji}}
-\end{equation}
-```
+$$ {#eq-nn-6}
 where $\epsilon^{(r)}$ is the learning rate at step $r$ and $L$ is the number of samples in the sum.
 
 The name "backpropagation" comes from the fact that these updates are carried out in two passes over the network. The procedure is:
 
-1.  *Forward pass:* hold the parameters at their current ($r$-th) values and compute the hidden units $z_{j(l)}$ and the output $y_{(l)}$ from equations \@ref(eq:1) and \@ref(eq:2).
+1.  *Forward pass:* hold the parameters at their current ($r$-th) values and compute the hidden units $z_{j(l)}$ and the output $y_{(l)}$ from equations @eq-nn-1 and @eq-nn-2.
 
-2.  *Backward pass:* using those values, compute the gradients from \@ref(eq:3) and \@ref(eq:4), then update the parameters with \@ref(eq:5) and \@ref(eq:6).
+2.  *Backward pass:* using those values, compute the gradients from @eq-nn-3 and @eq-nn-4, then update the parameters with @eq-nn-5 and @eq-nn-6.
 
 A few properties of this scheme are worth highlighting, because they explain why deep learning became practical at all. Backpropagation is a *local* algorithm: each hidden unit exchanges information only with the units it is directly connected to. That locality is what lets the computation be spread across many processors at once, and the rise of cheap parallel hardware (GPUs) is a large part of why deep learning took off. The same machinery extends without change to multiple outputs $y_{k(l)}, k = 1, \dots, K$. And, perhaps surprisingly, the chain rule produces gradient expressions of the same general form for cross-entropy loss (both two class and multiclass) as for squared error, so we do not need a fresh derivation for each task.
 

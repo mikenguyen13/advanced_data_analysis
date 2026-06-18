@@ -290,12 +290,9 @@ This section [@hastie2001a, 5.8] places the SVM inside a much broader framework.
 
 The general regularization (penalized loss) problem is
 
-```{=tex}
-\begin{equation}
-(\#eq:reg1)
+$$
 \underset{f \in H}{\operatorname{min}} [ \sum_{i = 1}^n L(y_i, f(x_i)) + \lambda J(f)]
-\end{equation}
-```
+$$ {#eq-svm-reg1}
 where the three pieces are
 
 -   $L(y_i, f(x_i))$, the loss function, which penalizes poor fit;
@@ -318,12 +315,9 @@ subject to the constraint that $J(f) = ||f||^2_{H_K} \equiv \sum_{j=1}^\infty c_
 
 Substituting the eigenfunction expansion into the general problem rewrites the regularization problem as
 
-```{=tex}
-\begin{equation}
-(\#eq:reg2)
+$$
 \underset{\{c_j\}^\infty_1}{\operatorname{min}} [\sum_{i=1}^nL(y_i, \sum_{j = 1}^\infty c_j \phi_j (x_i)) + \lambda \sum_{j = 1}^\infty \frac{c_j^2}{\delta_j} ]
-\end{equation}
-```
+$$ {#eq-svm-reg2}
 At first glance this looks worse, since we now appear to have an infinite number of coefficients $c_j$ to estimate. The central result of RKHS theory is that, despite appearances, the solution is finite. It can be shown to take the form
 
 $$
@@ -344,40 +338,28 @@ Although the optimization is set up over an infinite-dimensional space of functi
 
 In fact, the infinite-dimensional problem reduces to the finite-dimensional optimization
 
-```{=tex}
-\begin{equation}
-(\#eq:reg3)
+$$
 \underset{\alpha}{\operatorname{min}} [ L(\mathbf{y}, \mathbf{K\alpha})+ \lambda \mathbf{\alpha}^T \mathbf{K \alpha}]
-\end{equation}
-```
-where $\mathbf{K}$ is the matrix with $(i,j)$th entry $K(x_i, x_j)$. The strength of this result is its generality: it works for any convex loss function and any positive definite kernel. The chain of reformulations from \@ref(eq:reg1) to \@ref(eq:reg2) to \@ref(eq:reg3) turns a hard, abstract problem into a concrete one you can hand to an optimizer.
+$$ {#eq-svm-reg3}
+where $\mathbf{K}$ is the matrix with $(i,j)$th entry $K(x_i, x_j)$. The strength of this result is its generality: it works for any convex loss function and any positive definite kernel. The chain of reformulations from @eq-svm-reg1 to @eq-svm-reg2 to @eq-svm-reg3 turns a hard, abstract problem into a concrete one you can hand to an optimizer.
 
 This connects directly back to [Support Vector Machines]. To recover the SVM, all we need is the right loss function plus a positive definite kernel. The loss function associated with the support vector classifier turns out to be $[1 - y_i f(x_i)]_+$, where the "+" denotes the positive part of the bracketed quantity. This is called hinge loss: it charges nothing once a point is comfortably on the correct side of the margin, and charges a growing penalty as a point moves the wrong way.
 
 Then the solution to the constrained minimization
 
-```{=tex}
-\begin{equation}
-(\#eq:reg4)
+$$
 \underset{\beta_0, \beta}{\operatorname{min}} [ \sum_{i=1}^n [1 - y_i f(x_i)]_+ + \frac{\lambda}{2}||\beta||^2]
-\end{equation}
-```
+$$ {#eq-svm-reg4}
 gives the same estimates for $\beta$ as the support vector classifier, where $\lambda$ is proportional to $C$ as before. To express this in terms of the kernel's basis functions, suppose the basis set $\{ h_j(x) \}$ comes from the eigen-decomposition $K(x, \tilde{x}) = \sum_{j = 1}^\infty \delta_j \phi_j (x) \phi_j (\tilde{x})$, so that $h_j(x) = \sqrt{\delta_j} \phi_j(x)$. Letting $\delta_j \equiv \sqrt{\delta_j} \beta_j$ (recall the desired function is an expansion in these basis functions), the minimization becomes
 
-```{=tex}
-\begin{equation}
-(\#eq:reg5)
+$$
 \underset{\beta_0, \theta}{\operatorname{min}} [ \sum_{i=1}^n [1 - y_i (\beta_0 + \sum_{j=1}^\infty \theta_j \phi_j(x_i))]_+ + \frac{\lambda}{2} \sum_{j=1}^\infty \frac{\theta_j^2}{\delta_j}]
-\end{equation}
-```
-One strength of the RKHS view of the SVM is that the "loss plus penalty" form makes it simple to swap in any convex loss function. For instance, using logistic regression as a classifier behaves much like an SVM, because the binomial deviance loss is shaped similarly to the hinge loss.^[Both losses penalize confident wrong predictions heavily and confident correct predictions lightly. They differ mainly in that hinge loss flattens to exactly zero past the margin, while binomial deviance never quite reaches zero, which is what lets logistic regression produce calibrated probabilities.] The RKHS theory then delivers the finite-dimensional solution \@ref(eq:reg3), $f(x) = \beta_0 + \sum_{i=1}^n \alpha_i K(x, x_i)$, which equivalently minimizes
+$$ {#eq-svm-reg5}
+One strength of the RKHS view of the SVM is that the "loss plus penalty" form makes it simple to swap in any convex loss function. For instance, using logistic regression as a classifier behaves much like an SVM, because the binomial deviance loss is shaped similarly to the hinge loss.^[Both losses penalize confident wrong predictions heavily and confident correct predictions lightly. They differ mainly in that hinge loss flattens to exactly zero past the margin, while binomial deviance never quite reaches zero, which is what lets logistic regression produce calibrated probabilities.] The RKHS theory then delivers the finite-dimensional solution @eq-svm-reg3, $f(x) = \beta_0 + \sum_{i=1}^n \alpha_i K(x, x_i)$, which equivalently minimizes
 
-```{=tex}
-\begin{equation}
-(\#eq:reg6)
+$$
 \underset{\beta_0, \alpha}{\operatorname{min}} [ [1 - y_i f(x_i)]_+ + \frac{\lambda}{2} \mathbf{\alpha}^T \mathbf{K \alpha}]
-\end{equation}
-```
+$$ {#eq-svm-reg6}
 As a sanity check, choose a linear kernel, $K(x, x_i) = <x, x_i>$ (which is essentially the Pearson correlation). The solution becomes $f(x) = \beta_0 + \sum_{i=1}^n \alpha_i <x, x_i>$, which is exactly the [Support Vector Classifiers]. The linear kernel recovers the linear model, as it should.
 
 For genuine SVM analysis we usually pick a richer kernel to allow flexible boundaries. The common choices are:

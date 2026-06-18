@@ -164,7 +164,7 @@ The phrase "SVD" in recommender systems is overloaded. The classical SVD factori
 
 When a matrix is *fully* observed, the Eckart-Young theorem says the best rank-$k$ approximation in squared-error (Frobenius) norm is exactly the truncated SVD (a tool covered in the dimension reduction chapter, @sec-dimension-reduction): write $R = U \Sigma V^{\top}$ and keep the top $k$ singular triplets, $R \approx U_k \Sigma_k V_k^{\top}$. Setting $P = U_k \Sigma_k^{1/2}$ and $Q = V_k \Sigma_k^{1/2}$ recovers a factorization of the form above. This is why the truncated SVD is the natural baseline: it is the *optimal* low-rank fit when nothing is missing. The catch is that ratings matrices are not fully observed, so applying SVD requires first imputing the gaps (for example with each item's mean), which biases the result. ALS sidesteps imputation by optimizing over $\Omega$ directly. We will see both on the same data and compare.
 
-## Implicit feedback {#recommender-systems-implicit}
+## Implicit feedback {#sec-recommender-systems-implicit}
 
 So far we assumed explicit ratings, where a user deliberately scores an item. Most real systems instead see *implicit feedback*: clicks, plays, purchases, dwell time. This changes the problem in two ways. First, there are no negatives, only positives and absences; not clicking might mean dislike, or might mean the user never saw the item. Second, the signal is a *confidence*, not a value: watching a film ten times says you like it more strongly than watching once, but neither says how many "stars" you would give.
 
@@ -538,7 +538,7 @@ Mind the train/test split. Random hold-out leaks the future into the past: in re
 
 Regularize and tune $k$. The number of latent factors $k$ and the penalty $\lambda$ are the two knobs that matter most. Too large a $k$ with too little regularization memorizes the sparse observations and generalizes poorly; cross-validate both. The sparser the matrix, the smaller the $k$ you can support.
 
-Respect the feedback type. Explicit ratings and implicit counts are different problems (Section \@ref(recommender-systems-implicit)). Do not paste implicit data into an explicit model with zeros for "not seen." If your data is clicks and plays, use a confidence-weighted or negative-sampling method.
+Respect the feedback type. Explicit ratings and implicit counts are different problems (@sec-recommender-systems-implicit). Do not paste implicit data into an explicit model with zeros for "not seen." If your data is clicks and plays, use a confidence-weighted or negative-sampling method.
 
 Watch for feedback loops and popularity bias. A deployed recommender shapes the very data it later trains on: items it shows get clicked, so they accumulate more positive signal, so they get shown more. Left unchecked this collapses diversity and entrenches a popularity rich-get-richer dynamic. Inject exploration, monitor catalog coverage, and beware of evaluating offline on data that a previous version of the same system generated.
 

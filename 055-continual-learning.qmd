@@ -17,7 +17,7 @@ Imagine studying for a chemistry exam, acing it, then spending a month cramming 
 
 This chapter builds the core ideas from the ground up: the formal setup of a task sequence, why forgetting happens, the stability-plasticity dilemma that frames every method, and the three main families of solutions (regularization, rehearsal/replay, and parameter isolation). We derive elastic weight consolidation (EWC) from a Bayesian view, then show a fully runnable base-R demonstration: a small classifier trained sequentially on two tasks that catastrophically forgets the first, and the same classifier rescued by a tiny replay buffer. By the end you should be able to recognize a continual-learning problem, reason about the stability-plasticity trade-off, and implement a baseline mitigation by hand.
 
-## The Continual Learning Setup
+## The Continual Learning Setup {#sec-the-continual-learning-setup}
 
 A continual learner sees a sequence of tasks $T_1, T_2, \dots, T_K$ arriving in order. Each task $T_k$ has its own data distribution $\mathcal{D}_k$ over inputs and labels $(x, y)$. At stage $k$ the learner is given a training sample from $\mathcal{D}_k$, updates a single shared parameter vector $\theta \in \mathbb{R}^d$, and then loses (most or all) access to the data of tasks $1, \dots, k-1$. Crucially, performance is measured on every task seen so far, not just the current one.
 
@@ -93,7 +93,7 @@ knitr::kable(
 
 @tbl-continual-learning-method-families shows the basic engineering trade-off: regularization is cheap in memory but can become too rigid after many tasks, rehearsal is simple and strong but must store data (a privacy and storage concern), and parameter isolation never forgets by construction but its capacity grows with the number of tasks.
 
-### Regularization: Elastic Weight Consolidation
+### Regularization: Elastic Weight Consolidation {#sec-regularization-elastic-weight-consolidation}
 
 The regularization idea is to add a penalty that anchors the parameters near their old-task values, weighted by how important each parameter was. Parameters that mattered a lot for task A are held nearly fixed; parameters that did not matter are free to move for task B.
 
@@ -235,7 +235,7 @@ cat(sprintf("Naive: task-A acc after learning A = %.2f\n", accA_after_taskA))
 cat(sprintf("Naive: task-A acc after learning B = %.2f\n", accA_after_taskB_naive))
 ```
 
-The drop from the first number to the second is catastrophic forgetting, measured directly. In the language of Section \@ref(the-continual-learning-setup), $a_{1,1}$ is high but $a_{2,1}$ has collapsed toward chance, giving a large negative backward transfer.
+The drop from the first number to the second is catastrophic forgetting, measured directly. In the language of @sec-the-continual-learning-setup, $a_{1,1}$ is high but $a_{2,1}$ has collapsed toward chance, giving a large negative backward transfer.
 
 ### Mitigation with a Small Replay Buffer
 
@@ -322,7 +322,7 @@ Do not read the exact accuracy numbers as universal. They depend on the learning
 
 ## EWC in Practice (Reference Implementation)
 
-The demo above used replay because it runs cleanly in base R. For completeness, here is how the EWC penalty from Section \@ref(regularization-elastic-weight-consolidation) attaches to a deep model in a typical Python/PyTorch workflow. It is shown for reference and is not executed here, since the book's runnable examples are in R.
+The demo above used replay because it runs cleanly in base R. For completeness, here is how the EWC penalty from @sec-regularization-elastic-weight-consolidation attaches to a deep model in a typical Python/PyTorch workflow. It is shown for reference and is not executed here, since the book's runnable examples are in R.
 
 ```{python continual-learning-ewc-python, eval=FALSE}
 import torch

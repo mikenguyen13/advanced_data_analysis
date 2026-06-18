@@ -50,7 +50,7 @@ $$
 
 this *federated gradient descent* is mathematically identical to running gradient descent on the pooled data. It is correct but wasteful: it spends one full round of communication, the slow and expensive part, to make one tiny gradient step. Real networks have latency and limited bandwidth, and a phone on a cellular connection is not going to exchange messages a million times. The central problem of federated learning is to extract more progress from each expensive round of communication. That is what FedAvg does.
 
-## FedAvg: trade computation for communication {#federated-learning-fedavg}
+## FedAvg: trade computation for communication {#sec-federated-learning-fedavg}
 
 The idea behind Federated Averaging (FedAvg), introduced by McMahan and colleagues in 2017, is disarmingly simple. Instead of having each client report a single gradient and then waiting for the next round, let each client run *several* steps of local gradient descent before reporting. The client does real optimization on its own data, moving its parameters meaningfully, and only then sends the result back. The server averages these locally-improved parameter vectors. Computation on the client is cheap; communication with the server is expensive; FedAvg deliberately does more of the former to need less of the latter.
 
@@ -80,7 +80,7 @@ Federated gradient descent is a committee that votes after every single word of 
 :::
 
 
-There is no free lunch, though, and it is worth being precise about why. When $E = 1$ step, averaging parameters equals averaging gradients, which is exact. When $E$ is larger, each client walks toward *its own* local minimum, which is the minimizer of $F_k$, not of the global $F$. Averaging endpoints that have each drifted toward a different local optimum is not the same as one step on the global objective. This *client drift* is the price of doing more local work, and it is mild when the clients' data look alike and severe when it does not. That observation is the bridge to the non-IID problem in Section \@ref(federated-learning-noniid).
+There is no free lunch, though, and it is worth being precise about why. When $E = 1$ step, averaging parameters equals averaging gradients, which is exact. When $E$ is larger, each client walks toward *its own* local minimum, which is the minimizer of $F_k$, not of the global $F$. Averaging endpoints that have each drifted toward a different local optimum is not the same as one step on the global objective. This *client drift* is the price of doing more local work, and it is mild when the clients' data look alike and severe when it does not. That observation is the bridge to the non-IID problem in @sec-federated-learning-noniid.
 
 ## Communication rounds and efficiency {#federated-learning-communication}
 
@@ -96,13 +96,13 @@ Cranking $E$ ever higher does not reduce rounds without limit. Past a point, the
 
 Two further realities shape round design. *Client sampling*: with millions of intermittently-available devices (phones charging overnight on Wi-Fi), the server samples a small fraction each round rather than waiting for everyone. This keeps each round fast and is itself a form of stochasticity. *Stragglers*: clients run at different speeds, and a synchronous round is only as fast as its slowest participant, so practical systems set deadlines and simply drop clients that miss them. We will see in the demo that even with all clients participating every round, FedAvg with a few local epochs reaches centralized-quality accuracy in a modest number of rounds.
 
-## The non-IID challenge {#federated-learning-noniid}
+## The non-IID challenge {#sec-federated-learning-noniid}
 
 The clean derivation of FedAvg quietly assumed nothing about how each client's data relates to the others. In practice the data is emphatically *not* independent and identically distributed (non-IID) across clients, and this is the single biggest reason federated learning is harder than centralized learning. Your phone's typing data reflects you, not the population. A rural clinic sees a different case mix than an urban hospital. A factory in one climate logs different sensor patterns than a factory in another.
 
 Heterogeneity shows up in several distinct ways, and it helps to name them. Client distributions $P_k(x, y)$ can differ in the labels they contain (*label skew*: one client has mostly class A, another mostly class B), in the features (*covariate shift*: the same labels but differently distributed inputs), or simply in how much data each holds (*quantity skew*). Any of these breaks the comfortable assumption that a local gradient is an unbiased estimate of the global gradient.
 
-The mechanism by which this hurts is client drift, the same phenomenon flagged in Section \@ref(federated-learning-fedavg). When client $k$ runs many local steps, it descends toward $\arg\min_w F_k(w)$, the minimizer of *its own* objective. Under non-IID data those local minimizers sit far apart. Averaging parameter vectors that have each been pulled toward a different target lands somewhere that minimizes none of them well, and can be worse than a single careful global step. The more local epochs $E$ you run, the further each client drifts, so the very lever that saves communication amplifies the non-IID penalty. This is why $E$ and data heterogeneity must be tuned together.
+The mechanism by which this hurts is client drift, the same phenomenon flagged in @sec-federated-learning-fedavg. When client $k$ runs many local steps, it descends toward $\arg\min_w F_k(w)$, the minimizer of *its own* objective. Under non-IID data those local minimizers sit far apart. Averaging parameter vectors that have each been pulled toward a different target lands somewhere that minimizes none of them well, and can be worse than a single careful global step. The more local epochs $E$ you run, the further each client drifts, so the very lever that saves communication amplifies the non-IID penalty. This is why $E$ and data heterogeneity must be tuned together.
 
 
 ::: {.callout-important title="Key idea"}
@@ -112,7 +112,7 @@ Under IID data, local minima roughly coincide and averaging long-trained local m
 
 Several algorithms address this directly. *FedProx* (Li and colleagues, 2020) adds a proximal term $\tfrac{\mu}{2}\lVert w_k - w^t \rVert^2$ to each client's local objective, penalizing how far a client may wander from the current global model and thereby capping drift. *SCAFFOLD* (Karimireddy and colleagues, 2020) introduces control variates that estimate and subtract each client's drift direction, correcting the local updates so they point toward the global optimum. A simpler and surprisingly effective measure is to lower $E$ and rely on client sampling. The demo below makes the IID-versus-non-IID gap concrete by training the same model under both data partitions.
 
-## Privacy and security {#federated-learning-privacy}
+## Privacy and security {#sec-federated-learning-privacy}
 
 Keeping raw data on the device is the first line of privacy, but it is not the whole story, and it is a mistake to treat "the data never moved" as equivalent to "the data is private." The model updates themselves carry information about the data that produced them. A gradient is a function of the training examples, and with enough updates an adversary can sometimes reconstruct or infer properties of those examples, an attack family, studied more broadly in the adversarial learning chapter (@sec-adversarial-learning), that includes membership inference (was this person in the training set?) and gradient inversion (recovering input images from gradients). Federation reduces exposure; it does not by itself guarantee privacy.
 
@@ -274,7 +274,7 @@ round(c(FedAvg_IID    = tail(fed_iid$loss, 1),
 
 @fig-federated-learning-curves plots the global loss against the communication round for all three runs, with the `glm` optimum drawn as a dashed floor. The centralized baseline here is full-batch gradient descent, which takes exactly one parameter step per round and so descends gradually toward the optimum. FedAvg reaches near-optimal loss almost immediately, because each of its rounds packs several epochs of mini-batch updates *inside* every client before a single message is exchanged. That is the FedAvg bargain made visible: a great deal of local computation per expensive communication round. The headline result is that FedAvg on IID data settles at the pooled-data optimum without any record leaving its client.
 
-The instructive contrast is between the two FedAvg curves. The IID run sits right on the optimum, while the non-IID run is noisier and plateaus at a visibly higher loss. The mechanism is the interaction flagged in Section \@ref(federated-learning-noniid): because only a couple of label-skewed clients are sampled each round, the average update is a biased estimate of the global gradient (a round that happens to draw two mostly-positive clients pulls the model the wrong way). Under the IID split the sampled clients all look like the population, so sampling adds variance but no bias.
+The instructive contrast is between the two FedAvg curves. The IID run sits right on the optimum, while the non-IID run is noisier and plateaus at a visibly higher loss. The mechanism is the interaction flagged in @sec-federated-learning-noniid: because only a couple of label-skewed clients are sampled each round, the average update is a biased estimate of the global gradient (a round that happens to draw two mostly-positive clients pulls the model the wrong way). Under the IID split the sampled clients all look like the population, so sampling adds variance but no bias.
 
 ```{r fig-federated-learning-curves, fig.cap="Global logistic loss versus communication round under client sampling (two of ten clients per round). FedAvg reaches the pooled-data glm optimum (dashed floor) in very few rounds because each round runs several local epochs per client, far outpacing the per-round full-batch centralized baseline (dotted). FedAvg on non-IID data (dashed line with points) is noisier and plateaus higher than the IID run (solid), because sampling a few label-skewed clients yields biased average updates.", fig.width=7, fig.height=4.8}
 ylim <- range(c(fed_iid$loss, fed_noniid$loss, cen$loss, glm_loss))
@@ -318,7 +318,7 @@ legend("topright", bty = "n", legend = paste0("E = ", E_grid),
 
 ### A differentially private variant {#federated-learning-dp}
 
-Finally we add central differential privacy to the aggregation: clip each client's *update direction* (how far it moved from the global model) to a fixed norm, then add Gaussian noise before averaging. This is the clip-and-noise recipe from Section \@ref(federated-learning-privacy), and it lets us measure the accuracy cost of privacy on this problem.
+Finally we add central differential privacy to the aggregation: clip each client's *update direction* (how far it moved from the global model) to a fixed norm, then add Gaussian noise before averaging. This is the clip-and-noise recipe from @sec-federated-learning-privacy, and it lets us measure the accuracy cost of privacy on this problem.
 
 ```{r federated-learning-dp-run}
 fedavg_dp <- function(clients, X, y, rounds, E, eta, batch_size,

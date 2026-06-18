@@ -55,6 +55,93 @@ Reading the discriminant function from left to right, the first two terms togeth
 
 In practice we do not know the true parameters $\Sigma, \mu_k, \pi_k$. We estimate $\Sigma$ and $\mu_k$ from the training data, and either estimate $\pi_k$ from the observed class frequencies or specify it ourselves (for example, to reflect known population proportions or the relative costs of mistakes).
 
+### Deriving the discriminant functions from Bayes' rule
+
+The discriminant functions above are not postulated; they follow from Bayes' rule once we commit to the Gaussian model. Let class $k$ have prior $\pi_k$ and class-conditional density $f_k(x)$. The posterior probability of class $k$ given $x$ is
+
+$$
+\Pr(G = k \mid X = x) = \frac{\pi_k f_k(x)}{\sum_{l=1}^K \pi_l f_l(x)}.
+$$
+
+The Bayes classifier assigns $x$ to the class with the largest posterior. Because the denominator is common to all classes, maximizing the posterior is equivalent to maximizing $\pi_k f_k(x)$, and since $\log$ is monotone, equivalent to maximizing $\log \pi_k + \log f_k(x)$. With the multivariate Gaussian density
+
+$$
+f_k(x) = \frac{1}{(2\pi)^{p/2} |\Sigma_k|^{1/2}} \exp\!\left( -\tfrac{1}{2}(x - \mu_k)^T \Sigma_k^{-1} (x - \mu_k) \right),
+$$
+
+taking the log gives, up to the additive constant $-\tfrac{p}{2}\log(2\pi)$ which is shared across classes,
+
+$$
+\log \pi_k + \log f_k(x) = -\tfrac{1}{2}\log|\Sigma_k| - \tfrac{1}{2}(x-\mu_k)^T \Sigma_k^{-1}(x-\mu_k) + \log\pi_k + \text{const}.
+$$ {#eq-discriminant-analysis-qda-derivation}
+
+This is exactly the QDA discriminant $\delta_k(x)$ stated above: the quadratic form in $x$ is what gives quadratic boundaries.
+
+To obtain LDA, impose the homoskedastic assumption $\Sigma_k = \Sigma$ for all $k$. Then $-\tfrac{1}{2}\log|\Sigma_k| = -\tfrac{1}{2}\log|\Sigma|$ is the same for every class and drops out of the comparison. Expanding the remaining quadratic form,
+
+$$
+-\tfrac{1}{2}(x-\mu_k)^T \Sigma^{-1}(x-\mu_k) = -\tfrac{1}{2} x^T \Sigma^{-1} x + x^T \Sigma^{-1}\mu_k - \tfrac{1}{2}\mu_k^T \Sigma^{-1}\mu_k.
+$$
+
+The term $-\tfrac{1}{2}x^T\Sigma^{-1}x$ does not depend on $k$, so it too is irrelevant to the $\arg\max$. Dropping both class-independent terms leaves
+
+$$
+\delta_k(x) = x^T \Sigma^{-1}\mu_k - \tfrac{1}{2}\mu_k^T \Sigma^{-1}\mu_k + \log\pi_k,
+$$ {#eq-discriminant-analysis-lda-derivation}
+
+which is the linear discriminant function. The cancellation of the quadratic term $x^T\Sigma^{-1}x$ is the single fact responsible for LDA being linear: it survives in QDA only because $\Sigma_k$ differs by class.
+
+The following short simulation confirms that the simplified linear discriminant @eq-discriminant-analysis-lda-derivation ranks classes identically to the full Gaussian log-posterior, that is, the dropped class-independent terms truly do not change the $\arg\max$.
+
+```{r}
+#| label: lda-discriminant-check
+set.seed(1)
+p <- 3; K <- 3
+Sigma <- crossprod(matrix(rnorm(p * p), p))   # a shared PD covariance
+mu    <- lapply(1:K, function(k) rnorm(p))     # class means
+pi_k  <- c(0.2, 0.5, 0.3)                       # priors
+Si    <- solve(Sigma)
+
+# full Gaussian log-posterior (unnormalized), keeping every term
+log_post <- function(x, k)
+  log(pi_k[k]) - 0.5 * t(x - mu[[k]]) %*% Si %*% (x - mu[[k]])
+
+# simplified linear discriminant from the derivation
+delta <- function(x, k)
+  t(x) %*% Si %*% mu[[k]] - 0.5 * t(mu[[k]]) %*% Si %*% mu[[k]] + log(pi_k[k])
+
+X <- matrix(rnorm(50 * p), 50, p)
+cls_full  <- apply(X, 1, function(x) which.max(sapply(1:K, log_post, x = x)))
+cls_delta <- apply(X, 1, function(x) which.max(sapply(1:K, delta,    x = x)))
+all.equal(cls_full, cls_delta)   # TRUE: identical classifications
+```
+
+::: {.callout-note title="The decision boundary is linear"}
+Between any two classes $k$ and $l$, the LDA boundary is the set where $\delta_k(x) = \delta_l(x)$. Subtracting the two linear discriminants gives
+$$
+\log\frac{\pi_k}{\pi_l} - \tfrac{1}{2}(\mu_k + \mu_l)^T \Sigma^{-1}(\mu_k - \mu_l) + x^T \Sigma^{-1}(\mu_k - \mu_l) = 0,
+$$
+an affine equation in $x$, hence a hyperplane. For QDA the same difference retains a term $-\tfrac{1}{2}x^T(\Sigma_k^{-1} - \Sigma_l^{-1})x$, giving a quadric surface.
+:::
+
+### Parameter estimates as maximum likelihood
+
+The plug-in estimates used in practice are the maximum likelihood estimates under the Gaussian model. Writing $n_k$ for the number of training points in class $k$ and $n = \sum_k n_k$, maximizing the complete log-likelihood gives the familiar formulas
+
+$$
+\hat\pi_k = \frac{n_k}{n}, \qquad
+\hat\mu_k = \frac{1}{n_k}\sum_{g_i = k} x_i, \qquad
+\hat\Sigma_k = \frac{1}{n_k}\sum_{g_i = k}(x_i - \hat\mu_k)(x_i - \hat\mu_k)^T,
+$$
+
+and, for LDA, the pooled within-class covariance
+
+$$
+\hat\Sigma = \frac{1}{n - K}\sum_{k=1}^K \sum_{g_i = k}(x_i - \hat\mu_k)(x_i - \hat\mu_k)^T,
+$$ {#eq-discriminant-analysis-pooled-cov}
+
+where the $n - K$ divisor (rather than $n$) gives the unbiased pooled estimate. LDA estimates $K p$ mean parameters plus $\tfrac{1}{2}p(p+1)$ covariance parameters, whereas QDA estimates $K$ separate covariances, $K \cdot \tfrac{1}{2}p(p+1)$ in all. This $K$-fold increase in covariance parameters is precisely why QDA needs far more data per class and why LDA, with its lower variance, often wins on small samples.
+
 The quadratic discriminant function (QDA) follows the same logic, except that we allow a different covariance matrix $\Sigma_k$ for each class. This gives
 
 $$
@@ -88,6 +175,22 @@ Each of these three weaknesses motivates a family of extensions, which form the 
 These three remedies are not competing alternatives so much as three knobs on the same machine. FDA changes the form of the boundary, penalization controls variance, and mixtures change the assumed shape of each class. Some methods turn more than one knob at once.
 :::
 
+
+### Theoretical properties and practical guidance
+
+A few facts sharpen when to trust LDA and QDA and how to deploy them.
+
+Bias and variance. The bias-variance trade-off between the two methods is entirely about the covariance. LDA imposes a possibly wrong constraint ($\Sigma_k = \Sigma$), incurring bias when the true class covariances differ, but it pools all $n - K$ residual degrees of freedom into one covariance estimate, giving low variance. QDA removes the bias at the cost of estimating $K$ separate covariances from $n_k - 1$ degrees of freedom each, so its variance explodes when any $n_k$ is small relative to $p$. Regularized discriminant analysis (below) interpolates between the two precisely to tune this trade-off.
+
+Connection to least squares and logistic regression. For $K = 2$ classes, the LDA direction $\Sigma^{-1}(\mu_1 - \mu_2)$ is proportional to the coefficient vector obtained by ordinary least-squares regression of a $\{0,1\}$ class indicator on $x$ (the intercept differs). LDA and logistic regression both produce linear boundaries and, in the two-class case, identical functional forms for the log-odds, $\log \Pr(G=1\mid x)/\Pr(G=2\mid x) = \alpha_0 + \alpha^T x$. They differ in how the coefficients are fit: LDA maximizes the full Gaussian likelihood $\prod_i f_{g_i}(x_i)\,\pi_{g_i}$, including the marginal density of $x$, whereas logistic regression maximizes only the conditional likelihood $\prod_i \Pr(g_i \mid x_i)$ and leaves the marginal of $x$ unspecified. When the Gaussian assumption holds, LDA is more efficient (lower asymptotic variance); when it fails, logistic regression is more robust because it never relied on a model for $x$.
+
+Asymptotics. As plug-in estimators of a correctly specified parametric model, $\hat\mu_k$, $\hat\Sigma$, and $\hat\pi_k$ are consistent and asymptotically normal, so the LDA/QDA rule converges to the Bayes rule and its error rate to the Bayes error as $n \to \infty$. The convergence is fast because the number of parameters is fixed and modest; this is the formal version of the "low variance" claim. The guarantee evaporates in the $p \gg n$ regime, where $\hat\Sigma$ is singular and the asymptotics no longer apply, which is exactly the failure mode the large-$p$ methods later in the chapter repair.
+
+Computational cost. Training cost is dominated by forming and inverting the covariance: $O(np^2)$ to accumulate the scatter and $O(p^3)$ to factor it, once for LDA and $K$ times for QDA. Prediction is $O(Kp)$ per point for LDA (each discriminant is an inner product) and $O(Kp^2)$ for QDA (each retains a quadratic form). In practice one Cholesky-factors $\hat\Sigma$ once and reuses the factor for every discriminant.
+
+::: {.callout-warning title="Failure modes"}
+LDA and QDA degrade predictably. (i) Rank deficiency: when $p \ge n - K$ the pooled $\hat\Sigma$ is singular and cannot be inverted; QDA fails even sooner, as soon as $n_k \le p$ for some class. (ii) Strong non-normality, especially heavy tails or discrete or skewed predictors, biases the boundaries; transforming features toward symmetry helps. (iii) Severe class imbalance pushes the boundary toward the rare class through the $\log\pi_k$ term; if the operational priors or misclassification costs differ from the training frequencies, set $\pi_k$ deliberately rather than from the sample. (iv) Outliers distort $\hat\mu_k$ and $\hat\Sigma$ because both are non-robust; robust covariance estimators are a remedy.
+:::
 
 ### Background: Fisher's reduced-rank idea
 
@@ -133,6 +236,34 @@ We turn that intuition into math by looking for the linear combination $Z = a^T 
 
 The solution is a familiar object from linear algebra: the optimal $a$, call it $a_1$, is the eigenvector associated with the largest eigenvalue of $\mathbf{W}^{-1}\mathbf{B}$. The next-best direction $a_2$, the one that maximizes the same ratio while staying orthogonal to $a_1$, is the eigenvector for the next-largest eigenvalue, and so on down the list.
 
+#### Deriving the eigenproblem {.unnumbered}
+
+The claim that the optimal directions are eigenvectors of $\mathbf{W}^{-1}\mathbf{B}$ deserves a derivation, because the same Rayleigh-quotient argument recurs throughout multivariate statistics. We wish to maximize the generalized Rayleigh quotient
+
+$$
+\mathcal{R}(a) = \frac{a^T \mathbf{B}\, a}{a^T \mathbf{W}\, a}.
+$$ {#eq-discriminant-analysis-rayleigh}
+
+The quotient is invariant to the scale of $a$ (replacing $a$ by $ca$ leaves $\mathcal{R}$ unchanged), so we may fix the scale by imposing $a^T \mathbf{W} a = 1$ and maximize $a^T \mathbf{B} a$ subject to that constraint. The Lagrangian is
+
+$$
+\mathcal{L}(a, \lambda) = a^T \mathbf{B}\, a - \lambda\,(a^T \mathbf{W}\, a - 1).
+$$
+
+Setting the gradient to zero, $\nabla_a \mathcal{L} = 2\mathbf{B}a - 2\lambda \mathbf{W}a = 0$, gives the generalized eigenvalue equation
+
+$$
+\mathbf{B}\, a = \lambda\, \mathbf{W}\, a \quad\Longleftrightarrow\quad \mathbf{W}^{-1}\mathbf{B}\, a = \lambda\, a,
+$$ {#eq-discriminant-analysis-geneig}
+
+so the stationary points are exactly the eigenvectors of $\mathbf{W}^{-1}\mathbf{B}$. Left-multiplying $\mathbf{B}a = \lambda \mathbf{W}a$ by $a^T$ shows $\mathcal{R}(a) = \lambda$ at any such stationary point, so the quotient equals the eigenvalue and the maximum is achieved at the largest eigenvalue. Subsequent directions maximize the same quotient under $\mathbf{W}$-orthogonality $a_l^T \mathbf{W} a_m = 0$ for $m < l$, which yields the remaining eigenvectors in decreasing order of eigenvalue.
+
+::: {.callout-tip title="Whitening makes this a symmetric problem"}
+$\mathbf{W}^{-1}\mathbf{B}$ is generally not symmetric, but the problem can be symmetrized. Factor $\mathbf{W} = \mathbf{W}^{1/2}\mathbf{W}^{1/2}$ and substitute $a = \mathbf{W}^{-1/2} u$. The quotient becomes $u^T (\mathbf{W}^{-1/2}\mathbf{B}\mathbf{W}^{-1/2}) u / (u^T u)$, an ordinary Rayleigh quotient for the symmetric matrix $\mathbf{W}^{-1/2}\mathbf{B}\mathbf{W}^{-1/2}$. This "sphering" of the within-class scatter (so distances become Euclidean in the transformed space) followed by a principal-components step on the transformed centroids is the practical recipe for computing the canonical variates, and it explains why nearest-centroid classification in discriminant space is equivalent to LDA.
+:::
+
+Because $\mathbf{B} = \sum_k (\mu_k - \mu)(\mu_k - \mu)^T$ is a sum of $K$ rank-one terms whose summands are linearly dependent (the deviations $\mu_k - \mu$ sum to zero after weighting), $\mathbf{B}$ has rank at most $K - 1$. Hence $\mathbf{W}^{-1}\mathbf{B}$ has at most $K - 1$ nonzero eigenvalues, which is the precise reason there are at most $K - 1$ useful discriminant coordinates.
+
 -   The $a_l$ are called discriminant coordinates (not discriminant functions) or canonical variates.
 
 This sequence of directions provides the low-dimensional representation of the data that separates the classes as much as possible. Because the differences among $K$ centroids live in at most $K-1$ dimensions, there are at most $K-1$ useful discriminant coordinates, which is why these plots are so compact.
@@ -164,6 +295,31 @@ $$
 $$
 
 The remarkable fact is that the sequence of $\beta_l$'s turns out to be the same as the discriminant (canonical) vectors ($a_l$) from [Reduced-Rank LDA], up to a constant, and the scores ($\theta_s$) correspond to the $Z$'s. In other words, ordinary LDA is hiding inside a least-squares regression.
+
+#### Why optimal scoring recovers LDA {.unnumbered}
+
+The equivalence rests on a constrained version of the regression above, known as optimal scoring. Encode the $K$ classes as an $n \times K$ indicator matrix $\mathbf{Y}$, where $Y_{ik} = 1$ if observation $i$ is in class $k$. A score vector is a map $\theta: \{1,\dots,K\} \to \mathbb{R}$, collected as $\theta \in \mathbb{R}^K$, so that $\mathbf{Y}\theta$ is the length-$n$ vector of scores assigned to the observations. The optimal-scoring problem seeks scores and regression coefficients jointly,
+
+$$
+\min_{\theta,\,\beta}\; \| \mathbf{Y}\theta - \mathbf{X}\beta \|^2
+\quad\text{subject to}\quad
+\tfrac{1}{n}\,\theta^T \mathbf{Y}^T \mathbf{Y}\,\theta = 1,
+$$ {#eq-discriminant-analysis-optscore}
+
+with the normalization fixing the scale (and orthogonality to the constant for higher-order scores). For a fixed $\theta$ the inner problem is an ordinary least-squares regression of the target $\mathbf{Y}\theta$ on $\mathbf{X}$, whose solution is $\hat\beta = (\mathbf{X}^T\mathbf{X})^{-1}\mathbf{X}^T \mathbf{Y}\theta$. Substituting $\hat\beta$ back, the fitted values are $\mathbf{X}\hat\beta = \mathbf{P}\mathbf{Y}\theta$ where $\mathbf{P} = \mathbf{X}(\mathbf{X}^T\mathbf{X})^{-1}\mathbf{X}^T$ is the hat matrix, and the criterion reduces to
+
+$$
+\min_\theta\; \| \mathbf{Y}\theta - \mathbf{P}\mathbf{Y}\theta\|^2
+= \min_\theta\; \theta^T \mathbf{Y}^T(\mathbf{I} - \mathbf{P})\mathbf{Y}\,\theta,
+$$
+
+subject to $\tfrac{1}{n}\theta^T \mathbf{Y}^T\mathbf{Y}\theta = 1$. This is again a Rayleigh quotient, now in $\theta$: minimizing $\theta^T \mathbf{Y}^T(\mathbf{I}-\mathbf{P})\mathbf{Y}\theta$ subject to the normalization is equivalent to maximizing $\theta^T \mathbf{Y}^T \mathbf{P}\mathbf{Y}\theta$ under the same constraint, whose stationary points are the eigenvectors of the generalized problem
+
+$$
+\mathbf{Y}^T \mathbf{P}\, \mathbf{Y}\,\theta = \rho^2\, \mathbf{Y}^T\mathbf{Y}\,\theta .
+$$
+
+A direct calculation shows $\mathbf{Y}^T\mathbf{P}\mathbf{Y}$ and $\mathbf{Y}^T\mathbf{Y}$ encode exactly the between- and total-class scatter, so this eigenproblem is the same one as the canonical-variate problem $\mathbf{W}^{-1}\mathbf{B}a = \lambda a$ up to a reparameterization. The resulting $\hat\beta_l$ are therefore proportional to the canonical directions $a_l$, with the proportionality constant a known function of the eigenvalue $\rho_l^2$ (Hastie, Tibshirani, Buja 1994). This is the precise sense in which "LDA is hiding inside a least-squares regression," and it is what licenses replacing $\mathbf{X}\beta$ with a flexible $\eta(\mathbf{X})$.
 
 
 ::: {.callout-important title="Key idea"}
@@ -223,6 +379,34 @@ Notice that we still assume the same covariance matrix $\Sigma$ across every cla
 ::: {.callout-warning}
 Fitting these mixtures is harder than fitting plain LDA, because the optimization is non-convex and can get stuck. The parameters are typically estimated with the expectation-maximization (E-M) algorithm [@hastie2001a 12.7] or a fully Bayesian implementation. Expect to try several starting values.
 :::
+
+#### The EM updates for MDA {.unnumbered}
+
+The mixture model introduces an unobserved subclass label: each observation in class $k$ belongs to one of the $R_k$ components, but we do not see which. EM handles exactly this kind of latent-variable estimation by alternating between estimating the latent memberships and re-estimating the parameters as if those memberships were known.
+
+In the E-step, for each observation $i$ in class $k$ we compute the responsibility of component $r$, the posterior probability that $x_i$ was generated by that component,
+
+$$
+w_{ir} = \frac{q_{kr}\,\phi(x_i;\, \mu_{kr},\, \Sigma)}{\sum_{s=1}^{R_k} q_{ks}\,\phi(x_i;\, \mu_{ks},\, \Sigma)} .
+$$ {#eq-discriminant-analysis-mda-estep}
+
+These responsibilities are soft assignments, lying in $[0,1]$ and summing to one over the components of class $k$.
+
+In the M-step, we update each parameter as a responsibility-weighted version of its complete-data maximum likelihood estimate. Writing the sums over observations $i$ in class $k$,
+
+$$
+\hat q_{kr} = \frac{\sum_{i} w_{ir}}{n_k},
+\qquad
+\hat\mu_{kr} = \frac{\sum_{i} w_{ir}\, x_i}{\sum_{i} w_{ir}},
+$$
+
+and, because the covariance is pooled across all classes and components, it is updated by a single weighted sum over the whole sample,
+
+$$
+\hat\Sigma = \frac{1}{n}\sum_{k=1}^K \sum_{r=1}^{R_k} \sum_{i:\, g_i=k} w_{ir}\,(x_i - \hat\mu_{kr})(x_i - \hat\mu_{kr})^T .
+$$ {#eq-discriminant-analysis-mda-mstep}
+
+Iterating the E- and M-steps monotonically increases the observed-data log-likelihood until it reaches a stationary point. Because that likelihood surface is non-convex, the fixed point depends on initialization; common practice is to seed the component centroids with a few iterations of $k$-means within each class and to restart from several seeds, keeping the solution with the highest likelihood. Setting every $R_k = 1$ collapses the responsibilities to one and recovers ordinary LDA, confirming that MDA is a strict generalization. The optimal-scoring machinery from FDA carries over directly: each EM iteration can be cast as a weighted optimal-scoring regression, which is how the `mda` package fits the model and how FDA-style flexible boundaries can be combined with mixtures.
 
 
 ## Large p, small n Approaches
@@ -305,6 +489,22 @@ The payoff is automatic feature selection. Only features with a nonzero $d_{kj}'
 ::: {.callout-important title="Key idea"}
 Soft-thresholding the centroid distances is the same trick that makes the lasso select variables. Here it lets a high-dimensional classifier name the handful of features (genes, words, pixels) that actually drive the decision.
 :::
+
+#### Why soft-thresholding is the right operator {.unnumbered}
+
+The soft-threshold formula is not an ad hoc clip; it is the exact minimizer of an $\ell_1$-penalized quadratic, the same one-dimensional problem the lasso solves coordinate by coordinate. Consider estimating a single quantity $d$ from a noisy observation $\hat d$ under a lasso-type penalty,
+
+$$
+\min_{d}\; \tfrac{1}{2}(\hat d - d)^2 + \Delta\,|d| .
+$$
+
+For $d > 0$ the objective is smooth with derivative $-(\hat d - d) + \Delta$, which vanishes at $d = \hat d - \Delta$; this solution is valid only when $\hat d > \Delta$. By the symmetric argument for $d < 0$, and because $d = 0$ is optimal whenever $|\hat d| \le \Delta$ (the subgradient of $|d|$ at zero spans $[-\Delta,\Delta]$, which can absorb the gradient $-\hat d$ of the quadratic), the minimizer is
+
+$$
+d^\star = \operatorname{sign}(\hat d)\,(|\hat d| - \Delta)_+ .
+$$ {#eq-discriminant-analysis-soft-threshold}
+
+This is precisely the shrinkage applied to $d_{kj}$. So nearest shrunken centroids is performing, separately for each class-feature pair, the lasso estimate of the standardized centroid contrast, with $\Delta$ playing the role of the lasso penalty $\lambda$. Increasing $\Delta$ both shrinks the surviving contrasts (a bias the estimator deliberately accepts to cut variance) and zeroes out more of them, and a feature is dropped from the classifier entirely once $|d_{kj}| \le \Delta$ for all $K$ classes. Cross-validation chooses $\Delta$ to trade the resulting bias against the variance reduction and the interpretability gain from a smaller active set.
 
 
 ### Regularized Discriminant Analysis

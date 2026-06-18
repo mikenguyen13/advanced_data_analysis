@@ -107,6 +107,85 @@ The bound says the loss is a budget: pushing $\mathcal{L}_{\text{InfoNCE}}$ down
 
 A second, more geometric view comes from decomposing the loss. Writing it out, InfoNCE pushes for *alignment* (positives close) and *uniformity* (representations spread over the sphere so they stay distinguishable). The negatives supply the uniformity pressure. Without them, the encoder could map every input to the same point, drive all positive similarities to one, and make the loss small while learning nothing. This failure is called *representation collapse*, and avoiding it is the central design problem for the methods below.
 
+### Formal Setup and the Loss as a Conditional Likelihood
+
+To make the objective precise, fix the data-generating process. Let $x$ be drawn from the data distribution $p(x)$, and let a stochastic augmentation $t \sim \mathcal{T}$ produce a view $\tilde x = t(x)$. Two independent draws $t, t' \sim \mathcal{T}$ give the positive pair $(\tilde x, \tilde x^{+})$. The encoder $g_\theta$ (encoder plus projection head) maps a view to $\mathbb{R}^m$, and we normalize $z = g_\theta(\tilde x)/\lVert g_\theta(\tilde x)\rVert$ so that $z \in \mathcal{S}^{m-1}$, the unit sphere. The temperature $\tau>0$ is fixed.
+
+InfoNCE is exactly the negative log-likelihood of a softmax classifier whose job is to pick the positive out of a candidate set of size $K+1$. Index the candidates $0,1,\dots,K$ with candidate $0$ the positive. Define the categorical model
+
+$$
+p_\theta(\,\text{match}=0 \mid z, \{z_j\}_{j=0}^{K}) = \frac{\exp(z^\top z_0/\tau)}{\sum_{j=0}^{K}\exp(z^\top z_j/\tau)} .
+$$ {#eq-self-supervised-learning-softmax}
+
+The loss $\ell(z) = -\log p_\theta(\text{match}=0\mid \cdot)$ in @eq-self-supervised-learning-softmax reproduces the InfoNCE loss above. Reading it as a $(K+1)$-way classification makes the connection to cross-entropy literal: the network outputs logits $z^\top z_j/\tau$ and the free label is "the positive sits in slot $0$."
+
+### Derivation: InfoNCE as a Mutual-Information Lower Bound
+
+We now derive the bound $I(z;z^{+}) \ge \log(K+1) - \mathcal{L}_{\text{InfoNCE}}$ stated above, following the contrastive predictive coding argument. The key is that the optimal critic recovers a density ratio.
+
+Consider one positive sample drawn from the joint $p(z, z^{+})$ and $K$ negatives drawn independently from the marginal $p(z^{+})$. Collect the $K+1$ candidates in $Z=\{z_0,\dots,z_K\}$, with the positive placed uniformly at a random slot. The posterior probability that slot $i$ holds the positive, given $z$ and $Z$, is by Bayes' rule
+
+$$
+p(\text{pos}=i \mid z, Z) = \frac{p(z_i \mid z)\prod_{j\ne i} p(z_j)}{\sum_{k=0}^{K} p(z_k\mid z)\prod_{j\ne k}p(z_j)} = \frac{\dfrac{p(z_i\mid z)}{p(z_i)}}{\sum_{k=0}^{K}\dfrac{p(z_k\mid z)}{p(z_k)}} ,
+$$ {#eq-self-supervised-learning-bayes}
+
+where the second equality divides numerator and denominator by $\prod_{j} p(z_j)$. The Bayes-optimal classifier therefore scores each candidate by the density ratio $r(z_i, z) = p(z_i\mid z)/p(z_i) = p(z, z_i)/(p(z)p(z_i))$. Comparing with @eq-self-supervised-learning-softmax, the softmax classifier is Bayes-optimal exactly when the learned similarity matches the log density ratio up to a $z$-dependent constant,
+
+$$
+\exp(z^\top z_i/\tau) \;\propto\; \frac{p(z, z_i)}{p(z)\,p(z_i)} .
+$$ {#eq-self-supervised-learning-ratio}
+
+Now substitute the optimal critic into the expected loss. With the positive at slot $0$,
+
+$$
+\mathcal{L}_{\text{InfoNCE}} = -\,\mathbb{E}\!\left[\log \frac{r(z_0,z)}{\sum_{k=0}^{K} r(z_k, z)}\right]
+= \mathbb{E}\!\left[\log\left(1 + \frac{p(z_0)}{p(z_0\mid z)}\sum_{k=1}^{K} \frac{p(z_k\mid z)}{p(z_k)}\right)\right].
+$$
+
+The $K$ negative terms are i.i.d. draws from the marginal, so $\mathbb{E}_{z_k}\big[p(z_k\mid z)/p(z_k)\big]=\int p(z_k\mid z)\,dz_k = 1$. Replacing the inner sum by its expectation $K$ (a step that is exact in expectation by Jensen on the concave $\log$, giving a valid lower bound on $-\mathcal{L}$, hence an upper bound on $\mathcal{L}$ that we invert) yields
+
+$$
+\mathcal{L}_{\text{InfoNCE}} \;\gtrsim\; \mathbb{E}\!\left[\log\left(1 + \frac{p(z_0)}{p(z_0\mid z)}\,K\right)\right] \;\ge\; \mathbb{E}\!\left[\log \frac{p(z_0)}{p(z_0\mid z)} K\right] = \log K - I(z; z^{+}).
+$$
+
+Rearranging gives the advertised bound, with $\log(K+1)$ in place of $\log K$ when the positive slot is counted among the $K+1$ candidates,
+
+$$
+I(z; z^{+}) \;\ge\; \log(K+1) - \mathcal{L}_{\text{InfoNCE}} .
+$$ {#eq-self-supervised-learning-mi-bound}
+
+Two consequences follow immediately from @eq-self-supervised-learning-mi-bound. First, the bound is loose by at most $\log(K+1)$, so it can certify at most $\log(K+1)$ nats of mutual information; this is the precise sense in which more negatives raise the ceiling. Second, if the true $I(z;z^{+})$ exceeds $\log(K+1)$, the loss cannot be driven to zero no matter how good the encoder, which is why InfoNCE saturates and why large $K$ matters for high-information modalities.
+
+::: {.callout-warning title="The bias of the bound"}
+@eq-self-supervised-learning-mi-bound is a *lower* bound on $I(z;z^{+})$, so minimizing the loss is a surrogate, not a direct maximization of mutual information. The slack $\log(K+1)-\mathcal{L}$ is what you actually control. Estimators of mutual information based on this bound are known to have variance and bias that grow with the true information, so InfoNCE is best read as a representation objective whose MI interpretation is a guide, not a guarantee.
+:::
+
+### Derivation: The Alignment and Uniformity Decomposition
+
+The geometric picture can be made exact in the limit of infinitely many negatives. Write the per-sample loss with negatives drawn from the marginal $p_z$ over the sphere,
+
+$$
+\ell(z) = -\frac{z^\top z^{+}}{\tau} + \log\!\left(\exp(z^\top z^{+}/\tau) + \sum_{k=1}^{K}\exp(z^\top z^{-}_k/\tau)\right).
+$$
+
+Take expectations and let $K\to\infty$. The first term becomes the negative expected positive similarity, and by the law of large numbers the sum inside the log concentrates on $K\,\mathbb{E}_{z^-}\exp(z^\top z^-/\tau)$. Dropping the additive $\log K$ constant, the asymptotic objective splits into two pieces,
+
+$$
+\mathcal{L}_\infty(\theta) = \underbrace{-\frac{1}{\tau}\,\mathbb{E}_{(z,z^{+})}\,z^\top z^{+}}_{\text{alignment}} \;+\; \underbrace{\mathbb{E}_{z}\,\log \mathbb{E}_{z^{-}}\exp(z^\top z^{-}/\tau)}_{\text{uniformity}} .
+$$ {#eq-self-supervised-learning-align-unif}
+
+The alignment term is minimized when positive pairs are identical on the sphere. The uniformity term in @eq-self-supervised-learning-align-unif is, up to constants, the logarithm of the Gaussian-kernel potential $\mathbb{E}\,e^{-\lVert z - z^{-}\rVert^2/(2\tau)\cdot c}$ (using $\lVert z-z^-\rVert^2 = 2-2z^\top z^-$ on the unit sphere). Minimizing it spreads the representations as uniformly as possible over $\mathcal{S}^{m-1}$; its global minimizer is the uniform distribution on the sphere. This is the formal statement that negatives supply *uniformity* pressure and positives supply *alignment* pressure, and it explains collapse directly: with no negatives the uniformity term vanishes and the alignment term alone is minimized by the constant map.
+
+### Derivation: The InfoNCE Gradient and Hard-Negative Weighting
+
+To see *why* small temperature emphasizes hard negatives, differentiate. With $s_j = z^\top z_j/\tau$ and softmax weights $p_j = e^{s_j}/\sum_k e^{s_k}$ over the candidates (positive at slot $0$), the loss is $\ell = -s_0 + \log\sum_j e^{s_j}$, so
+
+$$
+\frac{\partial \ell}{\partial z} = -\frac{z_0}{\tau} + \sum_{j} p_j\,\frac{z_j}{\tau} = \frac{1}{\tau}\Big[(p_0-1)\,z_0 + \sum_{k\ge 1} p_k\, z_k\Big].
+$$ {#eq-self-supervised-learning-grad}
+
+The gradient pulls $z$ toward the positive (the $(p_0-1)z_0$ term, since $p_0-1<0$) and pushes it away from each negative with weight $p_k$. Because $p_k \propto e^{z^\top z_k/\tau}$, a hard negative (large $z^\top z_k$) receives an exponentially larger repulsion weight as $\tau\to 0$. Thus small $\tau$ concentrates the gradient on the few hardest negatives, sharpening the decision boundary but increasing variance; large $\tau$ averages over all negatives, which is gentler but blurs the contrast. This is the analytic content behind the earlier remark that $\tau$ trades hard-negative focus against stability.
+
 
 ::: {.callout-warning}
 Collapse is the recurring villain of self-supervised learning. Watch for it whenever a method has alignment pressure but weak or no uniformity pressure. The two terms are in tension: alignment alone wants to crush everything together, uniformity alone wants to scatter it, and a good representation is the balance between them.
@@ -127,6 +206,28 @@ $$
 
 The slow-moving key encoder keeps the queued representations consistent over time, which matters because they were computed by slightly older weights.
 
+### SimCLR: the NT-Xent Loss Made Precise
+
+In a SimCLR batch of $N$ items, augmentation produces $2N$ views indexed $i=1,\dots,2N$, where view $i$ and its partner $j(i)$ are the two views of the same item. With normalized projections $z_i$ and similarity $s_{ik}=z_i^\top z_k/\tau$, the per-view NT-Xent loss excludes self-comparison,
+
+$$
+\ell_i = -\log \frac{\exp(s_{i,j(i)})}{\sum_{k=1}^{2N}\mathbb{1}[k\ne i]\,\exp(s_{ik})},
+\qquad
+\mathcal{L}_{\text{SimCLR}} = \frac{1}{2N}\sum_{i=1}^{2N}\ell_i .
+$$ {#eq-self-supervised-learning-ntxent}
+
+Each view in @eq-self-supervised-learning-ntxent sees $K = 2N-2$ negatives, so the effective negative count is tied directly to batch size; this is why SimCLR needs batches in the thousands to make the $\log(K+1)$ ceiling in @eq-self-supervised-learning-mi-bound useful. The cost is the $(2N)\times(2N)$ similarity matrix, which is $O(N^2 m)$ to form and $O(N^2)$ memory, dominating large-batch training. The loss is symmetric in the two views because every view serves as a query.
+
+### MoCo as a Dictionary Lookup and the Role of Momentum
+
+MoCo reframes contrastive learning as lookup against a dictionary. The query $q=g_{\theta_q}(\tilde x)$ is matched against keys $\{k_0,k_1,\dots\}$, where $k_0$ is the positive key and the rest come from a FIFO queue of size $K$ encoded by the momentum encoder. The loss is the single-query InfoNCE,
+
+$$
+\ell_{\text{MoCo}} = -\log \frac{\exp(q^\top k_0/\tau)}{\sum_{i=0}^{K}\exp(q^\top k_i/\tau)} .
+$$
+
+Decoupling $K$ from batch size is the central trick: the queue accumulates negatives across many past steps, so $K$ can be tens of thousands with a batch of a few hundred. The momentum update $\theta_{\text{key}} \leftarrow m\,\theta_{\text{key}} + (1-m)\,\theta_{\text{query}}$ is what makes this safe. If the key encoder were updated by gradient like the query encoder, the queued keys would be stale: representations computed several hundred steps ago by rapidly changing weights would no longer be comparable to current queries, and training would diverge. The slow update keeps the key encoder approximately constant over the lifetime of the queue. Concretely, a key enters the queue and is evicted after $K/\,(\text{batch size})$ steps; over that span $\theta_{\text{key}}$ moves by roughly a factor $1-m^{K/\text{batch}}$, so $m$ near $0.999$ keeps the dictionary consistent. Empirically large $m$ (0.99 to 0.999) is essential; $m=0$ (no momentum, key encoder equals query encoder) collapses performance.
+
 
 ::: {.callout-tip title="When to use this"}
 Choose SimCLR when you can afford large batches and want the simplest pipeline. Choose MoCo when GPU memory caps your batch size but you still want many negatives; its queue lets a small batch see thousands of negatives accumulated over recent steps.
@@ -145,6 +246,26 @@ $$
 
 where $q$ is a predictor on the online side and the bar denotes normalization. Two ingredients keep the trivial constant solution away: the extra predictor $q$ on only the online side breaks the symmetry between the two branches, and the stop-gradient on the target branch means the target does not chase the online network. The result is competitive with contrastive methods without ever forming a negative pair, which removes the large-batch and queue machinery. A related method, SimSiam, shows that even the moving-average target can be dropped if the stop-gradient and predictor are kept.
 
+### Why BYOL Does Not Collapse: the Stop-Gradient Argument
+
+It is worth being precise about the puzzle, because the resolution is subtle and the naive analysis predicts collapse. Expand the BYOL objective with online encoder $f_\theta$, predictor $q_\theta$, target encoder $f_\xi$, and stop-gradient $\operatorname{sg}$,
+
+$$
+\mathcal{L}_{\text{BYOL}}(\theta) = \mathbb{E}\,\big\lVert \overline{q_\theta(f_\theta(\tilde x))} - \operatorname{sg}\big(\overline{f_\xi(\tilde x^{+})}\big)\big\rVert^2 .
+$$
+
+The constant map ($f$ outputs a fixed vector) is a global minimizer with loss zero, so nothing in the objective forbids collapse. SimSiam analyzes why gradient descent nonetheless avoids it by reading the procedure as alternating optimization of an auxiliary problem. Introduce a per-image latent target $\eta_x$ and the surrogate
+
+$$
+\mathcal{L}(\theta, \eta) = \mathbb{E}_x\big\lVert q_\theta(f_\theta(\tilde x)) - \eta_x \big\rVert^2 .
+$$
+
+Holding $\theta$ fixed, the optimal $\eta_x$ is the expectation $\mathbb{E}_{t}\,f_\theta(t(x))$, which is what the stop-gradient branch (with its slow target) approximates. Holding $\eta$ fixed, a gradient step updates $\theta$. The stop-gradient is exactly what makes this an alternating two-variable minimization rather than a single joint descent that would collapse. The predictor $q_\theta$ is the second guard: because the optimal predictor outputs the conditional mean $q^\star(f_\theta(\tilde x)) = \mathbb{E}_{\tilde x^{+}}[\,\overline{f_\xi(\tilde x^{+})}\mid f_\theta(\tilde x)\,]$, it absorbs the augmentation-induced variance and removes the gradient pressure that would otherwise shrink all representations to a point. Remove either ingredient and BYOL collapses, which the SimSiam ablations confirm. The exponential-moving-average target adds stability but is not strictly necessary once stop-gradient and predictor are present.
+
+::: {.callout-note title="Connection to contrastive methods"}
+BYOL has no explicit uniformity term, so it cannot be analyzed through @eq-self-supervised-learning-align-unif. Its anti-collapse mechanism is dynamical (a property of the optimization path) rather than a property of the loss landscape. This is why BYOL is more sensitive to architectural details such as batch-norm in the predictor and projector: those layers inject the implicit between-sample interaction that negatives supply explicitly in SimCLR and MoCo.
+:::
+
 ## Masked Modeling
 
 Masked modeling is the dominant self-supervised approach for text and a strong one for images. The pretext task is to hide part of the input and reconstruct it from the rest.
@@ -158,6 +279,20 @@ Masked modeling is the dominant self-supervised approach for text and a strong o
 Masked modeling is fill-in-the-blank. To guess the word hidden in "the cat sat on the ___," you need to understand the sentence, not just memorize letter frequencies. The reconstruction target is the original input itself, so there is nothing to collapse onto and no negatives to mine; the difficulty of the blanks does all the work.
 :::
 
+
+### Masked Modeling as Conditional Likelihood
+
+Masked modeling has a clean likelihood formulation. Let $x = (x_1,\dots,x_L)$ be a sequence (tokens or patches) and let $M\subset\{1,\dots,L\}$ be a random mask with each position included independently with probability $\rho$ (the *mask ratio*). Write $x_M$ for the masked entries and $x_{\setminus M}$ for the visible ones. Masked language modeling maximizes the expected conditional log-likelihood of the masked entries given the visible context,
+
+$$
+\mathcal{L}_{\text{MLM}}(\theta) = -\,\mathbb{E}_{x}\,\mathbb{E}_{M}\,\frac{1}{|M|}\sum_{i\in M} \log p_\theta(x_i \mid x_{\setminus M}) .
+$$ {#eq-self-supervised-learning-mlm}
+
+This is a *pseudo-likelihood* objective: rather than modeling the full joint $p(x)$, which would require an intractable normalizer over all sequences, @eq-self-supervised-learning-mlm models a collection of conditionals $p_\theta(x_i\mid x_{\setminus M})$, each a tractable softmax over the vocabulary. The connection is exact in the small-mask limit: when $|M|=1$, MLM is precisely the pseudo-likelihood of Besag, whose maximizer is consistent for the joint under mild conditions even though no single conditional determines the joint on its own. Larger mask ratios trade this statistical grounding for a harder, more informative prediction problem; BERT uses $\rho\approx 0.15$ for text, while MAE uses $\rho\approx 0.75$ for images because pixels are far more locally redundant than tokens and a low ratio would let the decoder copy neighbors. There is no collapse failure mode here: the target is the observed input itself, so the objective is bounded below by the data entropy and a constant predictor is heavily penalized.
+
+::: {.callout-note title="Why bidirectional context matters"}
+The conditioning set $x_{\setminus M}$ in @eq-self-supervised-learning-mlm includes positions on both sides of each masked entry, which is what gives BERT its bidirectional representations. This is the structural difference from an autoregressive language model, which factorizes $p(x)=\prod_i p(x_i\mid x_{<i})$ and conditions only on the left. The masked objective sacrifices the ability to generate by ancestral sampling in exchange for representations that see full context, a trade that favors discriminative transfer over generation.
+:::
 
 Masked modeling and contrastive learning sit at two ends of a spectrum. Contrastive methods compare whole-item representations and need carefully designed views and negatives. Masked methods predict missing parts and need a good masking scheme but no negatives and no paired augmentations. Both produce representations that transfer; which works better depends on the modality and the downstream task.
 
@@ -261,6 +396,51 @@ loss_by_tau <- sapply(taus, function(t) info_nce(Z2, Zpos2, tau = t))
 data.frame(tau = taus, loss = round(loss_by_tau, 4))
 ```
 
+### Verifying the Mutual-Information Bound Numerically
+
+The bound @eq-self-supervised-learning-mi-bound says $I(z;z^{+}) \ge \log(K+1) - \mathcal{L}_{\text{InfoNCE}}$. We can confirm the bound holds and watch the certified floor rise with $K$ by simulating a setting where the true mutual information is known. Take a one-dimensional latent shared by both views through a correlated Gaussian, for which $I = -\tfrac12\log(1-\varrho^2)$ in nats. We then build the contrastive loss using the *optimal* critic from @eq-self-supervised-learning-ratio, the log density ratio, so that the bound is as tight as the candidate count allows.
+
+```{r infonce-mi-bound}
+set.seed(11)
+rho <- 0.9                                  # correlation between the two views
+true_mi <- -0.5 * log(1 - rho^2)            # exact MI in nats for a bivariate normal
+
+# log density ratio for a standard bivariate normal with correlation rho:
+# log p(z,zp)/(p(z)p(zp)) = -0.5*log(1-rho^2) + (rho/(1-rho^2))*(z*zp - 0.5*rho*(z^2+zp^2))
+log_ratio <- function(z, zp) {
+    a <- -0.5 * log(1 - rho^2)
+    b <- (rho / (1 - rho^2)) * (z * zp - 0.5 * rho * (z^2 + zp^2))
+    a + b
+}
+
+estimate_loss <- function(K, reps = 4000) {
+    losses <- numeric(reps)
+    for (r in seq_len(reps)) {
+        z  <- rnorm(1)
+        zp <- rho * z + sqrt(1 - rho^2) * rnorm(1)   # positive: correlated view
+        negs <- rnorm(K)                              # negatives: marginal draws
+        crit_pos <- log_ratio(z, zp)
+        crit_neg <- log_ratio(z, negs)
+        m <- max(c(crit_pos, crit_neg))
+        denom <- m + log(sum(exp(c(crit_pos, crit_neg) - m)))
+        losses[r] <- -(crit_pos - denom)
+    }
+    mean(losses)
+}
+
+Ks <- c(1, 4, 16, 64, 256)
+tab <- data.frame(
+    K        = Ks,
+    loss     = sapply(Ks, estimate_loss),
+    ceiling  = log(Ks + 1)
+)
+tab$lower_bound_on_MI <- tab$ceiling - tab$loss
+tab$true_MI <- true_mi
+round(tab, 3)
+```
+
+Every row satisfies `lower_bound_on_MI` $\le$ `true_MI`, confirming @eq-self-supervised-learning-mi-bound, and the bound tightens toward the true value as $K$ grows: with few negatives the ceiling $\log(K+1)$ is the binding constraint, and only once $\log(K+1)$ exceeds the true $I$ can the estimate approach it. This is the simulation-level statement of why high-information modalities need many negatives.
+
 ### A Figure: Positive Similarity Versus Loss
 
 To see the alignment pressure directly, we vary how closely the positive view matches the query (by shrinking the positive's noise) and plot the resulting loss. As positives align better, the InfoNCE loss falls. @fig-self-supervised-learning-positive-similarity shows this relationship.
@@ -357,6 +537,27 @@ Temperature matters. Small $\tau$ emphasizes hard negatives and can speed learni
 Evaluate with a frozen linear probe. The standard, comparable measure of representation quality is the accuracy of a linear model on frozen features. Report it before deciding to fine-tune, because a strong probe means the representation already carries the task signal.
 
 The pretext objective is not the metric you care about. A model can ace masked prediction or contrastive matching and still transfer poorly. Always validate on the actual downstream task.
+
+### Computational and Sample Complexity
+
+The methods have different cost profiles that should drive the choice under a fixed budget. For a batch of $N$ items, $2N$ views, and projection dimension $m$:
+
+- SimCLR forms the full $(2N)\times(2N)$ similarity matrix, so a training step costs $O(N^2 m)$ time and $O(N^2)$ memory on top of the encoder forward and backward passes. Doubling the batch quadruples the contrastive overhead, which is why SimCLR is bandwidth-bound at the batch sizes (4096 and up) where it performs best.
+- MoCo costs $O(N K m)$ for the query-to-queue similarities with queue size $K$, plus $O(K m)$ memory for the queue. Because $K$ is decoupled from $N$, MoCo reaches the same effective negative count at a fraction of the memory, paying instead with the second (momentum) encoder forward pass.
+- BYOL and SimSiam cost two encoder passes and a predictor pass per step, with no quadratic term, so per-step cost is roughly linear in $N$. Their expense is wall-clock training length and sensitivity to tuning, not per-step memory.
+- Masked modeling costs one forward and backward pass over the (possibly shortened) sequence. MAE exploits its high mask ratio by feeding only the visible 25 percent of patches to the encoder, cutting encoder cost by roughly $4\times$ relative to processing the full image, with a lightweight decoder reconstructing the rest.
+
+On the statistical side, contrastive theory gives a downstream guarantee of the following shape. If the pretrained representation achieves contrastive risk $\mathcal{L}$ and there are $C$ latent classes, then a linear classifier on the frozen features has supervised risk bounded (up to constants and a class-collision term that shrinks as classes separate) by a quantity that decreases with $\mathcal{L}$ and increases with $\log C$. The practical reading is that more negatives reduce the gap between the contrastive surrogate and the true classification objective only up to the point where false negatives (negatives that share the latent class of the query) begin to dominate the collision term. This is the formal counterpart to the false-negative warning above: beyond a modality-dependent $K$, adding negatives stops helping because too many of them are secretly positives.
+
+### Choosing Hyperparameters
+
+The levers, in rough order of impact:
+
+- Augmentation strength: the single most important choice for contrastive methods, as argued above. Calibrate so the positive task is nontrivial but the object survives. Random resized crop plus color jitter is the standard image recipe; the crop scale lower bound is the most sensitive knob.
+- Temperature $\tau$: tune on a small grid around $0.1$ (try $0.05, 0.1, 0.2$). Use @eq-self-supervised-learning-grad to reason about it: lower $\tau$ if the model underfits hard cases, raise it if training is unstable.
+- Batch size or queue size $K$: set as large as memory allows for SimCLR; for MoCo decouple and set $K$ in the $10^3$ to $10^5$ range, capped before false negatives dominate.
+- Momentum $m$ (MoCo, BYOL): keep near $0.99$ to $0.999$; it should be large enough that the target moves slower than the queue turnover.
+- Projection head: a two- or three-layer MLP with the representation taken from before it. Discarding the head at transfer time is consistently better than keeping it, because the head specializes to the contrastive task.
 
 ## A Larger Encoder With Keras (Not Run Here)
 

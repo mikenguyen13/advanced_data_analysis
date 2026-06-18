@@ -50,6 +50,38 @@ $$
 
 this *federated gradient descent* is mathematically identical to running gradient descent on the pooled data. It is correct but wasteful: it spends one full round of communication, the slow and expensive part, to make one tiny gradient step. Real networks have latency and limited bandwidth, and a phone on a cellular connection is not going to exchange messages a million times. The central problem of federated learning is to extract more progress from each expensive round of communication. That is what FedAvg does.
 
+### Why the federated gradient decomposes {#sec-federated-learning-grad-decomp}
+
+The identity $\nabla F(w) = \sum_k (n_k/n)\nabla F_k(w)$ is the algebraic backbone of every aggregation rule in this chapter, so it is worth seeing it fall out of the definitions rather than asserting it. Gradients are linear operators, and $F$ is a finite weighted sum of the $F_k$, so
+
+$$
+\nabla F(w)
+= \nabla\!\left[\frac{1}{n}\sum_{k=1}^{K}\sum_{i\in\mathcal{D}_k}\ell(w;x_i,y_i)\right]
+= \frac{1}{n}\sum_{k=1}^{K}\sum_{i\in\mathcal{D}_k}\nabla_w\,\ell(w;x_i,y_i)
+= \sum_{k=1}^{K}\frac{n_k}{n}\,\nabla F_k(w),
+$$
+
+where the last step pulls $1/n = (n_k/n)\cdot(1/n_k)$ out of each inner sum and recognizes $\frac{1}{n_k}\sum_{i\in\mathcal{D}_k}\nabla\ell = \nabla F_k(w)$. The same weights $n_k/n$ appear in the server's average precisely because they are the weights that make the local objectives reconstruct the global one. This also pins down the unbiasedness statement of @sec-federated-learning-noniid: if a client is sampled with probability proportional to $n_k$, then $\mathbb{E}[\nabla F_k(w)] = \nabla F(w)$ only when the per-client gradient expectations agree, which is exactly the IID assumption. Under heterogeneity the local gradient is a biased estimate of the global one, and that bias, not mere variance, is what large $E$ amplifies.
+
+### The per-example logistic gradient {#sec-federated-learning-logistic-grad}
+
+The simulation needs $\nabla\ell$ for logistic regression, and the derivation is short enough to give in full so the code is not a black box. For one labeled point $(x,y)$ with $y\in\{0,1\}$, write $p = \sigma(x^\top w)$ with $\sigma(z) = 1/(1+e^{-z})$. The negative log-likelihood is
+
+$$
+\ell(w;x,y) = -\bigl[y\log p + (1-y)\log(1-p)\bigr].
+$$
+
+The single fact that makes this clean is the logistic derivative $\sigma'(z) = \sigma(z)\bigl(1-\sigma(z)\bigr)$, which follows from $\frac{d}{dz}(1+e^{-z})^{-1} = e^{-z}(1+e^{-z})^{-2} = \sigma(z)(1-\sigma(z))$. With $z = x^\top w$ so that $\nabla_w z = x$, the chain rule gives
+
+$$
+\frac{\partial \ell}{\partial p} = -\frac{y}{p} + \frac{1-y}{1-p} = \frac{p-y}{p(1-p)},
+\qquad
+\nabla_w \ell = \frac{\partial \ell}{\partial p}\,\sigma'(z)\,x
+= \frac{p-y}{p(1-p)}\,p(1-p)\,x = (p-y)\,x.
+$$
+
+The $p(1-p)$ factors cancel exactly, leaving $\nabla_w\ell = (\sigma(x^\top w) - y)\,x$, which is the line `as.vector(t(X) %*% (p - y)) / nrow(X)` in `logistic_grad` (the division by $n_k$ converts the sum over a client's rows into the mean that defines $F_k$). Because the residual $p-y$ lies in $(-1,1)$, the per-example gradient norm is bounded by $\lVert x\rVert$, a fact we will reuse when calibrating the clipping threshold for differential privacy in @sec-federated-learning-privacy.
+
 ## FedAvg: trade computation for communication {#sec-federated-learning-fedavg}
 
 The idea behind Federated Averaging (FedAvg), introduced by McMahan and colleagues in 2017, is disarmingly simple. Instead of having each client report a single gradient and then waiting for the next round, let each client run *several* steps of local gradient descent before reporting. The client does real optimization on its own data, moving its parameters meaningfully, and only then sends the result back. The server averages these locally-improved parameter vectors. Computation on the client is cheap; communication with the server is expensive; FedAvg deliberately does more of the former to need less of the latter.
@@ -82,6 +114,50 @@ Federated gradient descent is a committee that votes after every single word of 
 
 There is no free lunch, though, and it is worth being precise about why. When $E = 1$ step, averaging parameters equals averaging gradients, which is exact. When $E$ is larger, each client walks toward *its own* local minimum, which is the minimizer of $F_k$, not of the global $F$. Averaging endpoints that have each drifted toward a different local optimum is not the same as one step on the global objective. This *client drift* is the price of doing more local work, and it is mild when the clients' data look alike and severe when it does not. That observation is the bridge to the non-IID problem in @sec-federated-learning-noniid.
 
+### FedAvg with one local step is federated gradient descent {#federated-learning-onestep}
+
+The claim that "$E=1$ full-batch step recovers federated gradient descent" deserves the one line of algebra that proves it, because it anchors the whole bias story. Suppose every client takes exactly one full-batch step from the shared point $w^t$ with the same learning rate $\eta$. Then the update each client returns is
+
+$$
+w_k = w^t - \eta\,\nabla F_k(w^t).
+$$
+
+The server forms the data-weighted average (full participation, $S_t = \{1,\dots,K\}$):
+
+$$
+w^{t+1}
+= \sum_{k=1}^{K}\frac{n_k}{n}\,w_k
+= \sum_{k=1}^{K}\frac{n_k}{n}\Bigl(w^t - \eta\,\nabla F_k(w^t)\Bigr)
+= w^t - \eta\sum_{k=1}^{K}\frac{n_k}{n}\,\nabla F_k(w^t)
+= w^t - \eta\,\nabla F(w^t),
+$$ {#eq-federated-learning-onestep}
+
+using $\sum_k n_k/n = 1$ on the first term and the decomposition of @sec-federated-learning-grad-decomp on the second. So @eq-federated-learning-onestep is *exactly* a gradient-descent step on the pooled objective $F$: nothing is lost, and standard convex-optimization guarantees transfer verbatim. The bias appears only when $E>1$. Write the result of $\tau$ local steps as $w_k = w^t - \eta\sum_{s=0}^{\tau-1}\nabla F_k(w_k^{(s)})$. Now the server averages a *sum of gradients evaluated at different, client-specific iterates* $w_k^{(s)}$, not at the shared $w^t$. The difference
+
+$$
+w^{t+1} - \Bigl(w^t - \eta\,\tau\,\nabla F(w^t)\Bigr)
+= -\eta\sum_{k}\frac{n_k}{n}\sum_{s=0}^{\tau-1}\Bigl[\nabla F_k(w_k^{(s)}) - \nabla F_k(w^t)\Bigr]
+$$
+
+is the client-drift term: it is zero when $\tau=1$ (the inner bracket vanishes), and it grows with $\tau$ and with how fast each $\nabla F_k$ changes as the iterate moves away from $w^t$.
+
+### A bound on client drift {#sec-federated-learning-drift-bound}
+
+The qualitative claim that drift grows with $E$ and with heterogeneity can be made quantitative under the usual assumptions. Suppose each $F_k$ is $L$-smooth, meaning $\lVert\nabla F_k(u) - \nabla F_k(v)\rVert \le L\lVert u-v\rVert$ for all $u,v$, and that gradient dissimilarity is bounded, $\lVert\nabla F_k(w) - \nabla F(w)\rVert \le \zeta$ for all $k$ and $w$. The constant $\zeta$ is the formal measure of non-IID-ness: $\zeta=0$ is the IID/homogeneous case, large $\zeta$ is severe heterogeneity. For a single local gradient step the deviation of a client's iterate from the shared point is
+
+$$
+\lVert w_k^{(1)} - w^t\rVert = \eta\,\lVert\nabla F_k(w^t)\rVert
+\le \eta\bigl(\lVert\nabla F(w^t)\rVert + \zeta\bigr),
+$$
+
+by the triangle inequality and the dissimilarity bound. Iterating across $\tau$ steps and using $L$-smoothness to control how the local gradient changes as the iterate moves, the accumulated drift satisfies, to leading order in the step size,
+
+$$
+\max_k \lVert w_k^{(\tau)} - w^t\rVert \;\lesssim\; \eta\,\tau\,\bigl(G + \zeta\bigr),
+$$
+
+where $G$ bounds $\lVert\nabla F(w^t)\rVert$. Two things are immediate. First, drift scales with the product $\eta\tau$, the *total local progress* per round, which is why shrinking $\eta$ or $E$ both help and why they trade off. Second, drift scales with $\zeta$: with identical clients ($\zeta=0$) the only deviation is the shared-gradient term that all clients agree on, so averaging is benign, whereas large $\zeta$ makes each client pull toward a genuinely different place. This is the precise sense in which heterogeneity converts the communication-saving lever $E$ into bias.
+
 ## Communication rounds and efficiency {#federated-learning-communication}
 
 In a federated system the dominant cost is almost never the arithmetic. It is the rounds of communication: every round pays network latency, and on each round every participating client uploads a full parameter vector of size $d$. For a model with millions of parameters and clients on metered or flaky connections, this is the bottleneck that determines whether a system is usable at all.
@@ -112,6 +188,43 @@ Under IID data, local minima roughly coincide and averaging long-trained local m
 
 Several algorithms address this directly. *FedProx* (Li and colleagues, 2020) adds a proximal term $\tfrac{\mu}{2}\lVert w_k - w^t \rVert^2$ to each client's local objective, penalizing how far a client may wander from the current global model and thereby capping drift. *SCAFFOLD* (Karimireddy and colleagues, 2020) introduces control variates that estimate and subtract each client's drift direction, correcting the local updates so they point toward the global optimum. A simpler and surprisingly effective measure is to lower $E$ and rely on client sampling. The demo below makes the IID-versus-non-IID gap concrete by training the same model under both data partitions.
 
+### The FedProx local objective and its update {#federated-learning-fedprox}
+
+FedProx changes only what each client optimizes. Instead of minimizing $F_k$, client $k$ minimizes the regularized objective
+
+$$
+h_k(w; w^t) = F_k(w) + \frac{\mu}{2}\lVert w - w^t\rVert^2,
+$$ {#eq-federated-learning-fedprox}
+
+anchored at the global model $w^t$ broadcast that round. The gradient of the proximal term is simply $\mu(w - w^t)$, so a local gradient step under FedProx is
+
+$$
+w_k \leftarrow w_k - \eta\Bigl(\nabla F_k(w_k) + \mu\,(w_k - w^t)\Bigr)
+= (1 - \eta\mu)\,w_k - \eta\,\nabla F_k(w_k) + \eta\mu\,w^t.
+$$
+
+The rewritten form exposes the mechanism: the iterate is shrunk toward $w^t$ by the factor $\eta\mu$ at every step, an explicit restoring force that pulls back against drift. In the drift bound of @sec-federated-learning-drift-bound, adding $\mu$-strong convexity to each local problem ($h_k$ is $\mu$-strongly convex even where $F_k$ is merely convex) caps how far the local minimizer of $h_k$ can sit from $w^t$: since $h_k$ is minimized where $\nabla F_k(w) = -\mu(w - w^t)$, the displacement obeys $\lVert w_k^\star - w^t\rVert \le \lVert\nabla F_k(w^t)\rVert/\mu \le (G+\zeta)/\mu$, so the proximal coefficient $\mu$ directly trades drift control against how much local progress is allowed. Setting $\mu=0$ recovers FedAvg exactly; large $\mu$ approaches federated gradient descent (clients barely move from $w^t$). FedProx also tolerates *partial* local work (clients that finish only some of their epochs before a deadline still contribute valid updates), which is its other practical advantage in straggler-heavy systems.
+
+### SCAFFOLD and variance reduction {#federated-learning-scaffold}
+
+SCAFFOLD attacks the drift at its source rather than penalizing it. It keeps a server control variate $c$ and a per-client control variate $c_k$, each an estimate of a gradient direction, and corrects every local step by adding the global direction and subtracting the local one:
+
+$$
+w_k \leftarrow w_k - \eta\Bigl(\nabla F_k(w_k) - c_k + c\Bigr).
+$$
+
+The correction $-c_k + c$ is a control variate in the classic variance-reduction sense: $c_k \approx \nabla F_k$ and $c \approx \nabla F$, so $\nabla F_k(w_k) - c_k + c \approx \nabla F(w_k)$, replacing the biased local gradient with an estimate of the *global* gradient. If the control variates were exact, the bracket would equal $\nabla F$ and client drift would vanish entirely regardless of $\zeta$, which is why SCAFFOLD removes the $\zeta$-dependence from the round complexity that FedProx only dampens. The cost is doubled uplink communication (each client must send back its updated $c_k$ alongside the model) and the server-side state of one control variate per client, which can be prohibitive when clients number in the millions and rarely reappear.
+
+### Convergence rates and round complexity {#federated-learning-rates}
+
+The point of these methods is fewer communication rounds, so the headline guarantees are stated in rounds $T$. For a convex $L$-smooth objective with bounded gradient dissimilarity $\zeta$, FedAvg-style analysis gives a global-optimality gap of the schematic form
+
+$$
+F(\bar w^T) - F(w^\star) \;\lesssim\; \underbrace{\frac{1}{T}}_{\text{optimization}} \;+\; \underbrace{\frac{\sigma^2}{KT}}_{\text{variance}} \;+\; \underbrace{\eta^2 E^2 \zeta^2}_{\text{client drift}},
+$$
+
+where $\sigma^2$ is the local stochastic-gradient variance. The three terms map onto the chapter's three themes. The $1/T$ term is ordinary convergence and is what local work accelerates. The $\sigma^2/(KT)$ term shows the linear speedup from averaging $K$ clients, the statistical payoff of federation. The $\eta^2 E^2 \zeta^2$ term is the client-drift floor derived in @sec-federated-learning-drift-bound: it does not vanish with more rounds, it is a *bias* set by heterogeneity and local work, and it is exactly the residual gap the non-IID curve plateaus at in the demo. SCAFFOLD's control variates cancel the $\zeta^2$ term (its rate is $\zeta$-free), which is the formal statement of "it corrects drift"; FedProx shrinks the term's constant through $\mu$ but does not eliminate it. The practical reading: under strong heterogeneity, no number of rounds buys away the drift floor, so you must either reduce $\eta E$, switch to a drift-correcting method, or accept the plateau.
+
 ## Privacy and security {#sec-federated-learning-privacy}
 
 Keeping raw data on the device is the first line of privacy, but it is not the whole story, and it is a mistake to treat "the data never moved" as equivalent to "the data is private." The model updates themselves carry information about the data that produced them. A gradient is a function of the training examples, and with enough updates an adversary can sometimes reconstruct or infer properties of those examples, an attack family, studied more broadly in the adversarial learning chapter (@sec-adversarial-learning), that includes membership inference (was this person in the training set?) and gradient inversion (recovering input images from gradients). Federation reduces exposure; it does not by itself guarantee privacy.
@@ -123,6 +236,24 @@ $$
 $$
 
 The *privacy budget* $\varepsilon$ controls the strength: small $\varepsilon$ means the two cases are nearly indistinguishable, hence strong privacy. In federated learning DP is usually applied by *clipping* each client's update to a bounded norm $C$ (so no single client can dominate) and then adding Gaussian noise with standard deviation proportional to $C$ before aggregation. More noise buys more privacy and costs accuracy; the noise-versus-accuracy tradeoff is the central design decision.
+
+### Calibrating the Gaussian mechanism {#federated-learning-gaussian}
+
+The phrase "noise proportional to $C$" hides a precise calibration that determines how much accuracy privacy actually costs, so it is worth deriving. Define the $\ell_2$-sensitivity of the aggregation as the most its output can change when one client's update is swapped:
+
+$$
+\Delta_2 = \max_{D,D'}\bigl\lVert \mathcal{A}(D) - \mathcal{A}(D')\bigr\rVert_2,
+$$
+
+where $\mathcal{A}$ is the (pre-noise) aggregate and $D,D'$ differ in one client. Clipping every per-client update to norm at most $C$ is exactly what bounds this: if the aggregate is a sum and one clipped vector is replaced, the output moves by at most $\lVert\text{clip}(\delta_k)\rVert + \lVert\text{clip}(\delta_k')\rVert \le 2C$, and for the standard "add or remove one client" adjacency it is $\Delta_2 = C$. Clipping is therefore not a heuristic; it is what makes the sensitivity finite and known. The Gaussian mechanism then releases $\mathcal{A}(D) + \mathcal{N}(0, \sigma^2 I)$ with
+
+$$
+\sigma \;=\; \frac{\Delta_2\,\sqrt{2\ln(1.25/\delta)}}{\varepsilon},
+$$ {#eq-federated-learning-gaussian}
+
+which is the classical result (Dwork and Roth) guaranteeing $(\varepsilon,\delta)$-DP for a single release. @eq-federated-learning-gaussian says exactly what the tradeoff is: the noise scales as $C/\varepsilon$, so halving the budget $\varepsilon$ doubles the noise standard deviation, and the $\sqrt{\ln(1/\delta)}$ factor makes the dependence on $\delta$ gentle (logarithmic). In the demo, `noise_sd` plays the role of $\sigma$ and `clip` the role of $C$; raising `noise_sd` at fixed `clip` is precisely moving to a smaller $\varepsilon$. Two refinements matter in practice. First, when the aggregate is an *average* over $m$ sampled clients rather than a sum, the noise added to the average is $\sigma/m$ in each coordinate, so larger cohorts dilute the noise and improve the privacy-utility frontier (this is the formal reason secure aggregation over many clients helps). Second, training runs for $T$ rounds, each a fresh release, so the budgets compose; naive composition gives $T\varepsilon$, but the *moments accountant* (Abadi and colleagues) tracks the privacy loss far more tightly and is what makes DP-SGD usable at realistic round counts.
+
+A subtle point connects clipping back to the gradient derivation. Because the per-example logistic gradient has norm at most $\lVert x\rVert$ (@sec-federated-learning-logistic-grad), one can bound sensitivity at the level of individual gradients rather than whole client updates, which is how *example-level* DP differs from the *client-level* DP described here. Federated systems usually want client-level guarantees (protect the participation of a whole user), so they clip the aggregated update $\delta_k = w_k - w^t$, which is what `fedavg_dp` does.
 
 
 ::: {.callout-note}

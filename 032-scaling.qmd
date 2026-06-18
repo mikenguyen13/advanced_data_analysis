@@ -49,6 +49,14 @@ which is called least squares or Kruskal-Shepard scaling. In words, we want the 
 
 This minimization is not analytical but can be solved computationally by a gradient descent algorithm.^[Because every pair contributes a term that couples the positions of two points, there is no closed-form solution; one starts from a random or PCA-based layout and iteratively nudges the points downhill in stress.]
 
+The gradient is worth writing out, both because it drives the algorithm and because it exposes the geometry. Differentiating $S_M$ with respect to a single point $z_i$, and using $\partial \|z_i - z_{i'}\| / \partial z_i = (z_i - z_{i'})/\|z_i - z_{i'}\|$, gives
+
+$$
+\frac{\partial S_M}{\partial z_i} = -2 \sum_{i' \neq i} \big(d_{ii'} - \|z_i - z_{i'}\|\big)\, \frac{z_i - z_{i'}}{\|z_i - z_{i'}\|} .
+$$ {#eq-scaling-ks-grad}
+
+Each term is a spring: the unit vector $(z_i - z_{i'})/\|z_i - z_{i'}\|$ points along the edge, and the scalar $d_{ii'} - \|z_i - z_{i'}\|$ is positive when the points are currently too close (pull apart) and negative when too far (push together). The configuration is in equilibrium when these spring forces balance at every point. A practical consequence of @eq-scaling-ks-grad is the singularity at $z_i = z_{i'}$: coincident points produce an undefined direction, so implementations either perturb ties or, more robustly, use the SMACOF majorization algorithm (Scaling by MAjorizing a COmplicated Function), which replaces the non-smooth stress by a quadratic upper bound at each iteration and so guarantees a monotone, divide-free decrease of stress.
+
 <br>
 
 #### Sammon Mapping
@@ -83,6 +91,60 @@ Unlike the previous two, this can be solved explicitly in terms of an eigen-deco
 ::: {.callout-note}
 This equivalence is reassuring but also a limitation. Because classical scaling is PCA in disguise, it can only capture *linear* structure. The nonlinear methods later in the chapter exist precisely to go beyond what an eigen-decomposition of a centered similarity matrix can see.
 :::
+
+##### Derivation: from distances to coordinates by double centering
+
+The remarkable fact about classical scaling is that we can recover coordinates from distances alone, with no iterative search, provided the distances are Euclidean. Suppose the $d_{ii'}$ arise as Euclidean distances from some unknown centered configuration, $d_{ii'}^2 = \|x_i - x_{i'}\|^2$. Expand the square,
+
+$$
+d_{ii'}^2 = \|x_i\|^2 + \|x_{i'}\|^2 - 2\, x_i^\top x_{i'} .
+$$ {#eq-scaling-dsq-expand}
+
+Write $b_{ii'} = x_i^\top x_{i'}$ for the (centered) Gram matrix entry. The squared-distance matrix mixes the wanted inner products $b_{ii'}$ with the unwanted diagonal terms $\|x_i\|^2$ and $\|x_{i'}\|^2$. Those unwanted terms are constant along rows and columns, so they can be annihilated by *double centering*: subtract the row mean, the column mean, and add back the grand mean. Define the centering matrix
+
+$$
+\mathbf{H} = \mathbf{I} - \tfrac{1}{n}\mathbf{1}\mathbf{1}^\top ,
+$$ {#eq-scaling-centering}
+
+and let $\mathbf{D}^{(2)}$ be the matrix with entries $d_{ii'}^2$. Applying @eq-scaling-dsq-expand and using $\sum_i x_i = 0$ (the configuration is centered), the row and column means of $\mathbf{D}^{(2)}$ exactly capture the $\|x_i\|^2$ terms, and one obtains the key identity
+
+$$
+\mathbf{B} = -\tfrac{1}{2}\,\mathbf{H}\,\mathbf{D}^{(2)}\,\mathbf{H} = \mathbf{X}\mathbf{X}^\top ,
+$$ {#eq-scaling-double-center}
+
+so that $b_{ii'} = x_i^\top x_{i'}$. The double-centered squared-distance matrix *is* the centered Gram matrix. Since $\mathbf{B}$ is symmetric positive semidefinite of rank at most $p$, take its spectral decomposition $\mathbf{B} = \mathbf{U}\boldsymbol{\Lambda}\mathbf{U}^\top$ with $\lambda_1 \ge \lambda_2 \ge \cdots \ge 0$. The classical-scaling coordinates in $k$ dimensions are the leading scaled eigenvectors,
+
+$$
+\mathbf{Z} = \mathbf{U}_k \boldsymbol{\Lambda}_k^{1/2}, \qquad z_i = \big(\sqrt{\lambda_1}\,u_{1i}, \dots, \sqrt{\lambda_k}\,u_{ki}\big) .
+$$ {#eq-scaling-cmds-coords}
+
+This is precisely the Eckart-Young optimal rank-$k$ approximation of $\mathbf{B}$, which is why classical scaling minimizes the strain $\|\mathbf{B} - \mathbf{Z}\mathbf{Z}^\top\|_F^2 = \sum_{j>k}\lambda_j^2$ and why dropping the smallest eigenvalues is optimal. Because $\mathbf{B} = \mathbf{X}\mathbf{X}^\top$ shares its nonzero spectrum with the covariance-like matrix $\mathbf{X}^\top\mathbf{X}$, the recovered $z_i$ are exactly the PCA scores, making the MDS/PCA equivalence concrete rather than asserted.
+
+::: {.callout-warning title="When double centering fails"}
+If the input dissimilarities are not Euclidean (e.g., they violate the triangle inequality, or come from subjective ratings), $\mathbf{B}$ in @eq-scaling-double-center can have negative eigenvalues. Classical scaling then discards them and uses only the positive part, which is the best low-rank Euclidean approximation but is no longer exact. A large negative eigenvalue is a diagnostic that the data are intrinsically non-Euclidean, and a sign that a metric or nonmetric stress method (which never forms $\mathbf{B}$) may fit better.
+:::
+
+We can verify the two central claims numerically with base R: that double centering the squared-distance matrix recovers the Gram matrix (@eq-scaling-double-center), and that the resulting coordinates coincide with PCA scores up to sign and rotation.
+
+```{r}
+#| label: cmds-pca-check
+#| eval: false
+set.seed(1)
+X  <- scale(matrix(rnorm(20 * 5), 20, 5), center = TRUE, scale = FALSE)
+D2 <- as.matrix(dist(X))^2                 # squared Euclidean distances
+H  <- diag(20) - matrix(1 / 20, 20, 20)    # centering matrix
+B  <- -0.5 * H %*% D2 %*% H                 # double centering
+# B should equal the centered Gram matrix X X^T:
+max(abs(B - X %*% t(X)))
+# classical-scaling coordinates vs PCA scores (first 2 dims):
+ev  <- eigen(B, symmetric = TRUE)
+Z   <- ev$vectors[, 1:2] %*% diag(sqrt(ev$values[1:2]))
+pcs <- prcomp(X, center = FALSE)$x[, 1:2]
+# columns match up to sign; compare absolute correlations:
+round(abs(diag(cor(Z, pcs))), 6)
+```
+
+The first number is essentially machine zero (the identity holds exactly), and the correlations are $1$, confirming the MDS/PCA equivalence.
 
 
 ### Nonmetric scalings
@@ -136,6 +198,14 @@ ISOMAP estimates that along-the-surface distance with a graph, then hands the re
 ISOMAP is classical MDS with one substitution: replace Euclidean pairwise distances by graph-based geodesic distances. That single change lets a linear method recover nonlinear structure.
 :::
 
+#### Why ISOMAP works, and what it costs
+
+The theoretical justification is an asymptotic recovery guarantee. @tenenbaum2000 (with later convergence proofs by Bernstein and co-authors) show that if the data are sampled from a manifold that is *isometric* to a convex region of $R^d$ (it can be unrolled without tearing or stretching), and the sampling is dense enough, then the graph shortest-path distance converges to the true geodesic distance as $n \to \infty$. Feeding those geodesics to classical scaling then recovers the underlying flat coordinates up to a rigid motion. The two conditions are exactly the failure modes: a manifold with holes or non-convex boundary (so the flat parameter domain is not convex) breaks the isometry assumption, and short-circuit edges, spurious neighbor links that jump across a fold of the manifold, corrupt every shortest path that uses them, which is why $\epsilon$ or $K$ must be small enough to avoid bridging distinct sheets yet large enough to keep the graph connected.
+
+The computational cost is dominated by the all-pairs shortest paths and the eigendecomposition. With $n$ points, building the neighbor graph is $O(n^2 p)$ naively, all-pairs shortest paths via Dijkstra with a heap is $O(n^2 \log n + n^2 K)$, and the dense classical-scaling eigenproblem is $O(n^3)$. The $O(n^3)$ term and the dense $n \times n$ geodesic matrix make plain ISOMAP impractical beyond a few thousand points; Landmark ISOMAP mitigates this by computing geodesics only from a small set of landmark points and embedding the rest by triangulation.
+
+Like classical scaling, ISOMAP must double-center the squared geodesic distance matrix (apply @eq-scaling-double-center to $\mathbf{D}^{(2)}$ built from geodesics). Because graph geodesics are not exactly Euclidean, the resulting $\mathbf{B}$ typically has some negative eigenvalues; their relative magnitude is a useful diagnostic for how far the data depart from a flat isometric manifold.
+
 
 <br>
 
@@ -184,6 +254,22 @@ $$
 
 with weights $w_{ik}$ such that $w_{ik} = 0, k \notin \cal{N}(i), \sum_{k=1}^n w_{ik} = 1$ (i.e., 0 outside of the neighborhood, and summing to 1 inside of the neighborhood).^[The constraint that the weights sum to one is what makes the reconstruction *affine* rather than merely linear, and it gives a useful invariance: the weights do not change if you rotate, rescale, or translate a neighborhood, so they capture only the intrinsic local shape.]
 
+##### Derivation: the local weights in closed form
+
+Step 2 looks like an unconstrained least-squares problem but the constraint $\sum_k w_{ik} = 1$ is what makes it solvable in closed form. Fix a point $x_i$ with neighbors indexed by $k$. Using $\sum_k w_{ik} = 1$, the reconstruction error can be written entirely in terms of differences from $x_i$,
+
+$$
+\Big\| x_i - \sum_{k} w_{ik} x_k \Big\|^2 = \Big\| \sum_{k} w_{ik} (x_i - x_k) \Big\|^2 = \sum_{k,l} w_{ik} w_{il}\, G_{kl},
+$$ {#eq-scaling-lle-gram}
+
+where $G_{kl} = (x_i - x_k)^\top (x_i - x_l)$ is the local Gram matrix of the neighbors measured from $x_i$. Minimizing the quadratic form $w_i^\top \mathbf{G} w_i$ subject to $\mathbf{1}^\top w_i = 1$ is a constrained optimization; the Lagrangian is $w_i^\top \mathbf{G} w_i - \mu(\mathbf{1}^\top w_i - 1)$, and setting the gradient to zero gives $2 \mathbf{G} w_i = \mu \mathbf{1}$, hence
+
+$$
+w_i = \frac{\mathbf{G}^{-1}\mathbf{1}}{\mathbf{1}^\top \mathbf{G}^{-1}\mathbf{1}} .
+$$ {#eq-scaling-lle-weights}
+
+In practice one solves the linear system $\mathbf{G} w_i = \mathbf{1}$ and rescales, rather than inverting. When $K > p$ (more neighbors than dimensions) $\mathbf{G}$ is singular or ill conditioned, so a ridge term $\mathbf{G} + \delta \mathbf{I}$ with small $\delta$ (regularization proportional to the trace of $\mathbf{G}$) is added; this regularization parameter is, alongside $K$, the main knob in LLE.
+
 3.  We seek points $y_i$ in $d$-dimensional space ($d <p$) to minimize
 
 $$
@@ -199,6 +285,16 @@ $$
 $$
 
 where $\mathbf{W}$ is $n \times n$ (and known from step 2) and $\mathbf{Y}$ is $n \times d$ for some $d <<p$. It can then be shown that the solution $\hat{\mathbf{Y}}$ is given by the trailing eigenvectors of $\mathbf{M = (I - W)^T(I-W)}$.^[*Trailing* means the eigenvectors with the smallest eigenvalues (the smallest one is discarded as trivial). Whenever a method ends in an eigenvector computation like this, the layout is found in closed form, with no iterative gradient descent and no local-minimum worries.]
+
+##### Derivation: why trailing eigenvectors
+
+The objective $\operatorname{tr}[\mathbf{Y}^\top \mathbf{M}\mathbf{Y}]$ with $\mathbf{M} = (\mathbf{I}-\mathbf{W})^\top(\mathbf{I}-\mathbf{W})$ is invariant to translating all $y_i$ by a constant and would be driven to its trivial minimum of zero by collapsing every $y_i$ to one point. Two constraints rule these out: we fix the scale and orientation by requiring $\frac{1}{n}\mathbf{Y}^\top\mathbf{Y} = \mathbf{I}$ (unit covariance, uncorrelated coordinates), and we remove the translational freedom by centering, $\sum_i y_i = \mathbf{0}$. The problem becomes
+
+$$
+\min_{\mathbf{Y}} \operatorname{tr}[\mathbf{Y}^\top \mathbf{M}\mathbf{Y}] \quad \text{s.t.} \quad \tfrac{1}{n}\mathbf{Y}^\top\mathbf{Y} = \mathbf{I},\; \mathbf{1}^\top \mathbf{Y} = \mathbf{0}^\top .
+$$ {#eq-scaling-lle-embed}
+
+By the Rayleigh-Ritz theorem, the minimizer of a trace of this form under an orthonormality constraint is the set of eigenvectors of $\mathbf{M}$ with the *smallest* eigenvalues. Now $\mathbf{M}$ is symmetric positive semidefinite, and because each row of $\mathbf{W}$ sums to one, $(\mathbf{I}-\mathbf{W})\mathbf{1} = \mathbf{0}$, so the constant vector $\mathbf{1}$ is an eigenvector of $\mathbf{M}$ with eigenvalue $0$. That eigenvector is exactly the collapsed configuration we excluded with the centering constraint, so we discard it and take the next $d$ eigenvectors, those with the smallest *nonzero* eigenvalues $\lambda_2 \le \cdots \le \lambda_{d+1}$. This is what "trailing eigenvectors, smallest one discarded" means, and it is the same bottom-of-spectrum structure that reappears in Laplacian Eigenmaps below, the connection @belkin2003 make precise.
 
 <br>
 
@@ -249,6 +345,24 @@ $$
 \mathbf{x}_i \to (\mathbf{f}_1 (i), \dots, \mathbf{f}_m(i))
 $$
 
+##### Derivation: the Laplacian quadratic form and the generalized eigenproblem
+
+The reason the Laplacian appears is a one-line identity. For any vector $\mathbf{f} = (f_1, \dots, f_n)^\top$ of coordinates assigned to the nodes (a candidate one-dimensional embedding), the disagreement-with-neighbors objective expands as
+
+$$
+\tfrac{1}{2}\sum_{i,j} W_{ij}\,(f_i - f_j)^2 = \sum_i D_{ii} f_i^2 - \sum_{i,j} W_{ij} f_i f_j = \mathbf{f}^\top (\mathbf{D} - \mathbf{W})\,\mathbf{f} = \mathbf{f}^\top \mathbf{L}\,\mathbf{f} .
+$$ {#eq-scaling-le-quad}
+
+The cross term used $\sum_{i,j} W_{ij} f_i^2 = \sum_i D_{ii} f_i^2$ since $D_{ii} = \sum_j W_{ij}$. Equation @eq-scaling-le-quad makes the intuition exact: minimizing $\mathbf{f}^\top \mathbf{L}\mathbf{f}$ heavily penalizes giving very different coordinates $f_i, f_j$ to strongly connected ($W_{ij}$ large) points, so connected points are pulled together in the embedding. It also shows $\mathbf{L}$ is positive semidefinite, since the left side is a sum of squares.
+
+To prevent the trivial collapse $\mathbf{f} = \text{const}$ and to fix scale, we impose the constraint $\mathbf{f}^\top \mathbf{D}\,\mathbf{f} = 1$. The $\mathbf{D}$-weighting is deliberate: it normalizes each coordinate by the node's degree, preventing high-degree hub nodes from dominating and giving the embedding its connection to the normalized cut criterion of spectral clustering (@sec-cluster). The Lagrangian is $\mathbf{f}^\top \mathbf{L}\mathbf{f} - \lambda(\mathbf{f}^\top \mathbf{D}\mathbf{f} - 1)$, and its stationarity condition is exactly the generalized eigenproblem stated above,
+
+$$
+\mathbf{L}\,\mathbf{f} = \lambda\, \mathbf{D}\,\mathbf{f} .
+$$ {#eq-scaling-le-geneig}
+
+The constant vector solves this with $\lambda_0 = 0$ (since $\mathbf{L}\mathbf{1} = \mathbf{0}$), which is the discarded trivial solution; the next $m$ generalized eigenvectors give the embedding. Substituting $\mathbf{g} = \mathbf{D}^{1/2}\mathbf{f}$ turns @eq-scaling-le-geneig into the standard eigenproblem for the symmetric normalized Laplacian $\mathbf{D}^{-1/2}\mathbf{L}\mathbf{D}^{-1/2}$, which is why the two formulations are equivalent.
+
 
 ::: {.callout-note}
 We start at $\lambda_1$, not $\lambda_0$. The smallest eigenvalue $\lambda_0 = 0$ corresponds to a constant eigenvector that assigns every point the same coordinate, which carries no information, so it is discarded.
@@ -258,6 +372,20 @@ We start at $\lambda_1$, not $\lambda_0$. The smallest eigenvalue $\lambda_0 = 0
 To summarize what LE buys us: one can show through spectral graph theory that these LE embeddings preserve local info in an optimal way (i.e., they are the best locality-preserving mapping). One justification of this procedure is that the Laplacian of a graph is analogous to the Laplace-Beltrami operator on manifolds in differential geometry (i.e., it operates as the divergence of a gradient). It is also the case that the Laplace-Beltrami operator on differentiable functions on a manifold is closely related to the heat flow, which is why we consider the "heat kernel" weights. There is a relatively new area of statistical learning called manifold learning that deals with these issues.
 
 The four methods are more closely related than they first appear. @belkin2003 discuss the connection between [Local Linear Embedding] and [Laplacian Eigenmaps]. In particular, they show that essentially, LLE tries to find the eigenfunctions of the iterated Laplacian $\mathbf{L}^2$ and that these eigenfunctions coincide with those of $\mathbf{L}$, so the two methods are recovering nearly the same structure by different routes.
+
+### Practical guidance and the out-of-sample problem
+
+The methods of this section share a small set of decisions that govern whether the embedding is meaningful.
+
+*Choosing the neighborhood size.* Every local method (ISOMAP, Local MDS, LLE, Laplacian Eigenmaps) hinges on $K$ (or $\epsilon$). Too small and the neighbor graph fragments into disconnected components, so the eigenproblem returns one trivial near-zero eigenvalue per component and the embedding mixes unrelated pieces arbitrarily; too large and edges short-circuit across folds of the manifold, collapsing the nonlinear structure back toward a linear projection. A workable recipe is to pick the smallest $K$ that keeps the graph connected (check the multiplicity of the zero eigenvalue of $\mathbf{L}$, which equals the number of connected components), then increase it modestly for robustness to noise. The heat-kernel bandwidth $\theta$ in Laplacian Eigenmaps is commonly set to a multiple of the median squared neighbor distance.
+
+*Choosing the embedding dimension.* As with classical scaling, inspect the spectrum. For ISOMAP, plot the residual variance of the classical-scaling reconstruction against $d$ and take the elbow. For the bottom-eigenvalue methods (LLE, Laplacian Eigenmaps), a spectral gap after the $d$-th nonzero eigenvalue suggests an intrinsic dimension of $d$, though such gaps are often soft in real data.
+
+*The out-of-sample (Nystrom) extension.* The irreversibility noted below has a related but distinct cousin: even forward, these methods embed only the $n$ points used at fit time, with no formula for a new point $x_\ast$. The standard remedy is the Nystrom extension, which treats each embedding coordinate as an eigenfunction of a data-dependent kernel and extends it to $x_\ast$ by a kernel-weighted average over the training points. Bengio and co-authors (2004) show that classical MDS, ISOMAP, LLE, and Laplacian Eigenmaps can all be cast in this common kernel-eigenfunction form, which both unifies the four methods and supplies each with a principled way to embed new observations.
+
+::: {.callout-tip title="Which method when"}
+Use classical scaling (or PCA) when the structure is plausibly linear and you need reversibility and out-of-sample maps for free. Use ISOMAP when the manifold is a single, convex, well-sampled sheet and global geodesic distances are meaningful. Use LLE or Laplacian Eigenmaps when only local structure is trustworthy, the manifold may be non-convex or have holes, or $n$ is large enough that ISOMAP's dense $O(n^3)$ geodesic step is prohibitive; their sparse eigenproblems scale far better.
+:::
 
 This is only a sampler. There are many different approaches to nonlinear dimension reduction; there is a Matlab toolbox you can download that implements 34 techniques for dimension reduction.
 

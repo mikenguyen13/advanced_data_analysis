@@ -111,6 +111,100 @@ the noun it refers to, even if that noun sat ten words earlier.
 :::
 
 
+#### Formulation
+
+Fix notation. Let the input sequence have $n$ tokens, each embedded as a row
+vector in $\mathbb{R}^{d_{\text{model}}}$, and collect them as the rows of
+$X \in \mathbb{R}^{n \times d_{\text{model}}}$. A single attention head is
+defined by three learned projection matrices
+$W_Q \in \mathbb{R}^{d_{\text{model}} \times d_k}$,
+$W_K \in \mathbb{R}^{d_{\text{model}} \times d_k}$, and
+$W_V \in \mathbb{R}^{d_{\text{model}} \times d_v}$, which produce the query, key,
+and value matrices
+
+$$
+Q = X W_Q, \qquad K = X W_K, \qquad V = X W_V .
+$$ {#eq-BERT-qkv}
+
+The head output is then
+
+$$
+\text{Attention}(Q,K,V)
+= \underbrace{\operatorname{softmax}\!\left(\frac{QK^\top}{\sqrt{d_k}}\right)}_{A \,\in\, \mathbb{R}^{n\times n}} V ,
+$$ {#eq-BERT-attn}
+
+where the softmax is applied independently to each row, so each row of the
+attention matrix $A$ is a probability vector: $A_{ij} \ge 0$ and
+$\sum_{j=1}^{n} A_{ij} = 1$. Writing this row by row makes the operation
+transparent. With $q_i = x_i W_Q$ the query for token $i$ and $k_j = x_j W_K$ the
+key for token $j$, the weight token $i$ places on token $j$ is
+
+$$
+A_{ij} = \frac{\exp\!\big(q_i^\top k_j / \sqrt{d_k}\big)}
+              {\sum_{\ell=1}^{n} \exp\!\big(q_i^\top k_\ell / \sqrt{d_k}\big)},
+\qquad
+\text{output}_i = \sum_{j=1}^{n} A_{ij}\, v_j .
+$$ {#eq-BERT-attn-row}
+
+So token $i$'s new representation is a convex combination of all value vectors,
+with the weights determined by query-key compatibility. Because every $A_{ij}$ is
+nonzero, information can flow between any pair of positions in a single layer;
+this is the precise sense in which attention has a "receptive field" spanning the
+whole sequence, in contrast to the local receptive field of a convolution or the
+sequentially decaying memory of a recurrent network.
+
+#### Why divide by $\sqrt{d_k}$
+
+The scaling factor is not cosmetic; it controls the variance of the logits and
+keeps the softmax in its well-conditioned regime. Suppose the entries of $q_i$
+and $k_j$ are independent, mean-zero, unit-variance random variables (a
+reasonable model at initialization). The unscaled logit is
+$q_i^\top k_j = \sum_{m=1}^{d_k} q_{im} k_{jm}$. Each summand has mean
+$\mathbb{E}[q_{im} k_{jm}] = 0$ and variance
+$\operatorname{Var}(q_{im}k_{jm}) = \mathbb{E}[q_{im}^2]\,\mathbb{E}[k_{jm}^2] = 1$
+by independence, so
+
+$$
+\mathbb{E}\big[q_i^\top k_j\big] = 0,
+\qquad
+\operatorname{Var}\big(q_i^\top k_j\big) = \sum_{m=1}^{d_k} \operatorname{Var}(q_{im}k_{jm}) = d_k .
+$$ {#eq-BERT-logit-var}
+
+The logits therefore have standard deviation $\sqrt{d_k}$, which grows with the
+head dimension. Dividing by $\sqrt{d_k}$ rescales them back to unit variance.
+This matters because the softmax saturates: if one logit is much larger than the
+rest, the output approaches a one-hot vector and the Jacobian of the softmax
+collapses toward zero. Concretely, for $p = \operatorname{softmax}(z)$,
+
+$$
+\frac{\partial p_i}{\partial z_j} = p_i(\delta_{ij} - p_j),
+$$ {#eq-BERT-softmax-jac}
+
+which vanishes whenever any $p_i \to 0$ or $p_i \to 1$. Letting the logits scale
+as $\sqrt{d_k}$ would push the softmax into these flat regions and starve the
+upstream projections of gradient. The $1/\sqrt{d_k}$ factor is exactly the
+normalization that holds the logit variance at $O(1)$ regardless of $d_k$.
+
+We can confirm @eq-BERT-logit-var, that the variance of the unscaled dot
+product equals $d_k$ and the scaled version has unit variance, with a quick
+simulation in base R.
+
+```{r}
+set.seed(1)
+dot_var <- function(d_k, reps = 20000) {
+  vals <- replicate(reps, {
+    q <- rnorm(d_k); k <- rnorm(d_k)   # unit-variance, independent
+    sum(q * k)                          # unscaled logit q^T k
+  })
+  c(unscaled = var(vals), scaled = var(vals / sqrt(d_k)))
+}
+sapply(c(8, 64, 512), dot_var)         # columns: d_k = 8, 64, 512
+```
+
+The first row tracks $d_k$ almost exactly, while the second row stays near one,
+which is the whole point of the scaling.
+
+
 ### Multi-Head Attention and Positional Encodings
 
 A single round of attention is powerful but limited: it produces one pattern of
@@ -128,6 +222,70 @@ blind spot of attention.
 Stacking many such attention-plus-feed-forward layers (12 layers in BERT-base, 24
 in BERT-large) yields a deep network whose hidden states are the contextual
 representations we use downstream.
+
+#### Multi-head attention, formally
+
+With $h$ heads, each head $r = 1,\dots,h$ has its own projections
+$W_Q^{(r)}, W_K^{(r)}, W_V^{(r)}$ and computes
+$\text{head}_r = \text{Attention}(XW_Q^{(r)}, XW_K^{(r)}, XW_V^{(r)})
+\in \mathbb{R}^{n \times d_v}$. The heads are concatenated along the feature axis
+and mixed by an output projection
+$W_O \in \mathbb{R}^{h d_v \times d_{\text{model}}}$,
+
+$$
+\text{MultiHead}(X) = \big[\text{head}_1 \;\Vert\; \cdots \;\Vert\; \text{head}_h\big]\, W_O .
+$$ {#eq-BERT-multihead}
+
+In BERT the per-head dimensions are tied to the model width by
+$d_k = d_v = d_{\text{model}}/h$ (for BERT-base, $d_{\text{model}}=768$, $h=12$,
+so $d_k = 64$). This keeps the total computation and parameter count of
+multi-head attention essentially equal to that of a single full-width head while
+allowing $h$ distinct attention patterns. The reason a single head is
+insufficient is structural: each head produces a single $n \times n$ stochastic
+matrix $A$, and a convex average through one such matrix can emphasize only one
+relational pattern at a time. Multiple heads let the layer attend to several
+relations (syntactic head, coreferent antecedent, adjacent token) in parallel
+before $W_O$ recombines them.
+
+#### The full encoder block
+
+Each BERT layer wraps multi-head attention and a position-wise feed-forward
+network in residual connections with layer normalization. Writing the
+sublayer computation as
+
+$$
+\begin{aligned}
+Z &= \text{LayerNorm}\big(X + \text{MultiHead}(X)\big), \\
+\text{FFN}(z) &= \text{GELU}(z W_1 + b_1)\,W_2 + b_2, \\
+\text{Output} &= \text{LayerNorm}\big(Z + \text{FFN}(Z)\big),
+\end{aligned}
+$$ {#eq-BERT-block}
+
+where the feed-forward network is applied to each position independently with
+$W_1 \in \mathbb{R}^{d_{\text{model}} \times d_{\text{ff}}}$ and
+$W_2 \in \mathbb{R}^{d_{\text{ff}} \times d_{\text{model}}}$ (BERT-base uses
+$d_{\text{ff}} = 4 d_{\text{model}} = 3072$). The residual connections
+$X + (\cdot)$ are what make a stack of 12 to 24 such blocks trainable: the
+identity path gives gradients an unobstructed route back to early layers, so the
+gradient of the loss with respect to an early hidden state always retains an
+additive term of magnitude one, mitigating vanishing gradients.
+
+#### Computational complexity
+
+Self-attention's cost is dominated by forming $QK^\top$ and applying $A$ to $V$,
+each $O(n^2 d)$ in time, plus the $O(n^2)$ memory needed to store the attention
+matrix. The feed-forward sublayer costs $O(n\, d\, d_{\text{ff}})$. Per layer the
+total is
+
+$$
+O\big(n^2 d + n\, d\, d_{\text{ff}}\big).
+$$ {#eq-BERT-complexity}
+
+The quadratic dependence on sequence length $n$ is the defining scaling property
+(and limitation) of the Transformer: it is the reason BERT caps inputs at 512
+tokens and the motivation for the many "efficient attention" variants
+(Longformer, BigBird, Performer) that replace the dense $n \times n$ matrix with
+sparse or low-rank approximations.
 
 
 ::: {.callout-note}
@@ -163,6 +321,57 @@ it must use both left and right context to fill in the blanks, MLM is what gives
 BERT its deep bidirectional understanding. This is analogous to a cloze
 ("fill-in-the-blank") test.
 
+#### The MLM objective, precisely
+
+Let $x = (x_1,\dots,x_n)$ be the token sequence and let
+$\mathcal{M} \subset \{1,\dots,n\}$ be the randomly chosen set of masked
+positions ($|\mathcal{M}| \approx 0.15\, n$). Write $x_{\mathcal{M}}$ for the
+masked tokens and $x_{\setminus \mathcal{M}}$ for the corrupted context the model
+sees. The encoder maps the (corrupted) input to final hidden states
+$H = (h_1,\dots,h_n)$ with $h_i \in \mathbb{R}^{d_{\text{model}}}$, and a
+prediction head turns each masked position's hidden state into a distribution
+over the vocabulary $\mathcal{V}$ by a softmax,
+
+$$
+p_\theta\big(x_i \mid x_{\setminus \mathcal{M}}\big)
+= \operatorname{softmax}\!\big(W_{\text{emb}}\, g(h_i) + b\big),
+\qquad i \in \mathcal{M},
+$$ {#eq-BERT-mlm-head}
+
+where $g$ is a small transform (a dense layer plus GELU plus LayerNorm) and
+$W_{\text{emb}} \in \mathbb{R}^{|\mathcal{V}| \times d_{\text{model}}}$ is tied to
+the input embedding matrix. Training minimizes the average negative
+log-likelihood over masked positions, which is precisely the cross-entropy
+between the one-hot truth and the predicted distribution,
+
+$$
+\mathcal{L}_{\text{MLM}}(\theta)
+= -\,\mathbb{E}_{x,\,\mathcal{M}}
+\left[\frac{1}{|\mathcal{M}|}\sum_{i \in \mathcal{M}}
+\log p_\theta\big(x_i \mid x_{\setminus \mathcal{M}}\big)\right].
+$$ {#eq-BERT-mlm-loss}
+
+This is the key formal distinction from a left-to-right language model. A standard
+autoregressive model factorizes
+$p(x) = \prod_{i} p(x_i \mid x_{<i})$ and conditions only on the left context. MLM
+instead estimates the conditionals $p(x_i \mid x_{\setminus \mathcal{M}})$ given
+context on both sides, which is what licenses the term "bidirectional." The price
+is that MLM does not define a proper joint distribution over $x$ (the conditionals
+need not be compatible with any single joint), so BERT is a representation learner
+and a denoiser rather than a generative model you can sample from.
+
+::: {.callout-note title="The 80/10/10 masking rule"}
+A subtlety: the `[MASK]` token appears during pretraining but never at
+fine-tuning time, which would create a train/test mismatch. BERT's remedy is that
+of the 15% selected positions, 80% are replaced with `[MASK]`, 10% are replaced
+with a random vocabulary token, and 10% are left unchanged. The loss in
+@eq-BERT-mlm-loss is still computed at all selected positions. Leaving some
+tokens unchanged forces the model to build a useful representation for every
+position (it cannot tell which unchanged tokens it will be scored on), and the
+random replacements make the model robust rather than reliant on the literal
+`[MASK]` symbol.
+:::
+
 ### Next Sentence Prediction (NSP)
 
 BERT is also given pairs of sentences and trained to predict whether the second
@@ -171,6 +380,26 @@ distractor. NSP was intended to help with tasks that involve relationships betwe
 sentences (e.g., question answering, natural-language inference). Later work (notably
 RoBERTa) found NSP contributes little, and many successors drop it. It is still
 worth knowing as part of the original recipe.
+
+Formally, NSP is a binary classification on the `[CLS]` hidden state $h_{\texttt{[CLS]}}$,
+with $y = 1$ if the second segment is the true continuation and $y = 0$ if it was
+sampled at random,
+
+$$
+p_\theta(y \mid x) = \sigma\!\big(w^\top h_{\texttt{[CLS]}} + b\big),
+\qquad
+\mathcal{L}_{\text{NSP}}(\theta)
+= -\,\mathbb{E}\big[y \log p_\theta + (1-y)\log(1-p_\theta)\big],
+$$ {#eq-BERT-nsp-loss}
+
+and BERT is pretrained on the sum
+$\mathcal{L} = \mathcal{L}_{\text{MLM}} + \mathcal{L}_{\text{NSP}}$. The reason
+NSP turned out to be weak is that distinguishing a random sentence from the true
+next sentence is dominated by topic mismatch, a signal already abundant in MLM, so
+NSP adds little beyond what masked prediction teaches. RoBERTa drops it; ALBERT
+replaces it with sentence-order prediction (predicting whether two consecutive
+segments have been swapped), a harder task that removes the topic shortcut and is
+more useful.
 
 ## Tokenization and Special Tokens
 
@@ -206,6 +435,43 @@ The defining paradigm is pretrain $\rightarrow$ fine-tune:
    (often a single linear layer on top of the `[CLS]` representation) and training
    the whole network for a few epochs on your data.
 
+#### The fine-tuning objective
+
+For a sequence-classification task with $C$ classes and labeled data
+$\{(x^{(t)}, y^{(t)})\}_{t=1}^{N}$, fine-tuning adds a single linear head on the
+`[CLS]` representation and minimizes the regularized cross-entropy
+
+$$
+p_\phi(y \mid x) = \operatorname{softmax}\!\big(W\, h_{\texttt{[CLS]}}(x;\theta) + b\big),
+\qquad
+\min_{\theta,\,W,\,b}\;
+-\frac{1}{N}\sum_{t=1}^{N}\log p_\phi\big(y^{(t)} \mid x^{(t)}\big),
+$$ {#eq-BERT-finetune}
+
+where $h_{\texttt{[CLS]}}(x;\theta)$ now depends on the full encoder parameters
+$\theta$, which are themselves updated (not frozen). The crucial point is the
+starting condition: rather than initializing $\theta$ at random, fine-tuning
+initializes it at the pretrained weights $\theta_{\text{pre}}$ and runs only a few
+epochs of gradient descent. The optimization therefore stays in the basin around
+$\theta_{\text{pre}}$, which already encodes general linguistic structure, and the
+task head $W$ only has to learn a linear read-out of that structure.
+
+#### Why transfer works: a bias-variance view
+
+The transfer benefit has a clean statistical reading. Training a Transformer from
+scratch on a few thousand labeled examples is a high-variance estimation problem:
+the hypothesis class (hundreds of millions of parameters) is enormous relative to
+the sample, so the estimator overfits badly. Pretraining acts as an extremely
+informative, data-driven prior. Initializing at $\theta_{\text{pre}}$ and taking a
+small number of steps constrains the effective hypothesis class to a neighborhood
+of weights that already produce linguistically sensible representations,
+collapsing the variance at the cost of a small bias (the pretrained features may
+not be perfectly aligned with the target task). On modest labeled datasets this
+trade is overwhelmingly favorable, which is exactly the regime where fine-tuned
+BERT dominates models trained from scratch. As labeled data grows, the variance
+penalty of training from scratch shrinks and the advantage of transfer narrows,
+the familiar shape of a learning curve crossover.
+
 This transfer-learning recipe (@sec-transfer-multitask-learning) is why BERT is so
 practical: the heavy lifting of learning language is amortized across everyone who
 reuses the pretrained weights.
@@ -237,10 +503,49 @@ reads and what it predicts from them.
 - Question answering (e.g., SQuAD-style extractive QA): predict the start and end
   positions of the answer span within a passage.
 
+For extractive question answering the head structure is worth making explicit,
+since it is less obvious than the classification case. Given the token hidden
+states $h_1,\dots,h_n$ of the (question, passage) pair, two learned vectors
+$s, e \in \mathbb{R}^{d_{\text{model}}}$ define independent softmax distributions
+over positions for the answer's start and end,
+
+$$
+P_{\text{start}}(i) = \frac{\exp(s^\top h_i)}{\sum_{j} \exp(s^\top h_j)},
+\qquad
+P_{\text{end}}(i) = \frac{\exp(e^\top h_i)}{\sum_{j} \exp(e^\top h_j)},
+$$ {#eq-BERT-qa}
+
+trained by summing the cross-entropies of the true start and end indices. At
+inference the predicted span $(\hat\imath, \hat\jmath)$ maximizes
+$s^\top h_i + e^\top h_j$ subject to $i \le j$, computable in $O(n)$ after sorting.
+
 BERT transfers well because pretraining forces it to encode broad, reusable
 linguistic structure (syntax, semantics, some world knowledge) into its hidden
 states. A downstream task then mostly needs to learn how to *read off* the relevant
 parts of that representation rather than learning language from scratch.
+
+#### Failure modes
+
+BERT is not a universal solution, and knowing where it breaks is part of using it
+responsibly.
+
+- Sequence length. The $O(n^2)$ attention cost and the learned positional
+  embeddings cap the input at 512 tokens. Longer documents must be truncated or
+  chunked, which loses long-range dependencies; for genuinely long inputs use a
+  long-context variant rather than forcing BERT.
+- Fine-tuning instability. On small datasets, fine-tuning all parameters can be
+  unstable across random seeds, with a non-trivial fraction of runs failing to
+  beat the majority-class baseline. The usual culprits are too high a learning
+  rate and too few warmup steps; remedies are lower learning rates, more warmup,
+  and averaging or selecting over several seeds.
+- Domain shift. Pretraining on Wikipedia and books leaves BERT weak on text
+  whose vocabulary and style differ sharply (clinical notes, legal contracts,
+  social-media slang), where WordPiece shatters domain terms into many subwords.
+  Domain-adaptive continued pretraining or a domain-specific variant fixes this.
+- Distribution and spurious cues. Like any empirical-risk minimizer, a fine-tuned
+  BERT will exploit dataset artifacts (annotation shortcuts, lexical overlap
+  heuristics) and can fail under distribution shift even when in-distribution
+  accuracy is high.
 
 ## Practical Use in R and Python
 
@@ -311,6 +616,39 @@ cls_embedding = outputs.last_hidden_state[:, 0, :]
 For an end-to-end classification task, you would instead load
 `AutoModelForSequenceClassification`, attach your labels, and fine-tune with the
 Hugging Face `Trainer` API or PyTorch directly.
+
+### Choosing Hyperparameters and Diagnostics
+
+The original BERT paper recommends a deliberately narrow search space for
+fine-tuning, and it remains a good default.
+
+- Learning rate. Use a small value, typically in $\{2,3,5\}\times 10^{-5}$ with the
+  AdamW optimizer. Fine-tuning is sensitive here: rates above $\sim 10^{-4}$
+  frequently destabilize training because they push $\theta$ out of the pretrained
+  basin in a single step. Pair the rate with a linear warmup over the first
+  6 to 10 percent of steps followed by linear decay; the warmup is what prevents
+  the early, high-variance gradients from corrupting the pretrained weights.
+- Epochs. Two to four epochs are usually enough. More tends to overfit because the
+  model starts from an already-competent initialization, so the marginal labeled
+  signal is small.
+- Batch size. 16 or 32 are standard; larger batches need a proportionally larger
+  learning rate.
+- Frozen versus fine-tuned. If labeled data is very scarce or compute is tight,
+  freeze $\theta$ and train only the head (equivalently, use BERT as the feature
+  extractor of @eq-BERT-finetune with $\theta$ held at $\theta_{\text{pre}}$).
+  This trades a little accuracy for stability and speed.
+
+A practical note on pooling. The `[CLS]` vector is the conventional sentence
+summary, but for the frozen-feature use case mean-pooling the token hidden states
+(averaging $h_1,\dots,h_n$ over non-padding positions) is often a stronger
+sentence representation than `[CLS]`, because the raw pretrained `[CLS]` vector was
+optimized for NSP rather than for general similarity. When fine-tuning end to end
+the distinction largely washes out, since the head and encoder co-adapt.
+
+For diagnostics, watch the gap between training and validation loss across the few
+epochs (overfitting appears quickly at these dataset sizes), and because
+fine-tuning can be seed-sensitive on small data, run several seeds and report the
+median rather than the best.
 
 ## Variants
 

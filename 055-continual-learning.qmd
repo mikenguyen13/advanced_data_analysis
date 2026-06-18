@@ -35,6 +35,22 @@ $$
 
 A large negative $\text{BWT}$ means catastrophic forgetting: tasks that were once learned well have decayed. A positive $\text{BWT}$ means learning later tasks actually helped earlier ones, which is the dream outcome.^[The notation $a_{k,j}$ follows the matrix-of-accuracies convention of Lopez-Paz and Ranzato (2017), who also defined forward transfer, the effect of past learning on a task before any of its own data is seen.]
 
+### The Risk the Learner Cannot See {#sec-cl-risk-objective}
+
+To reason about forgetting precisely we need the population objective, not just the accuracy bookkeeping. Let $\mathcal{L}_k(\theta) = \mathbb{E}_{(x,y)\sim \mathcal{D}_k}[\ell(\theta; x, y)]$ be the population risk of task $k$ under a per-example loss $\ell$ (cross-entropy in our running example). A learner that retained all data and weighted tasks equally would target the *joint risk*
+
+$$
+R(\theta) = \frac{1}{K} \sum_{k=1}^{K} \mathcal{L}_k(\theta).
+$$ {#eq-continual-learning-joint-risk}
+
+The defining constraint of continual learning is that at stage $k$ the learner can evaluate (and differentiate) only $\mathcal{L}_k$ exactly; the terms $\mathcal{L}_1, \dots, \mathcal{L}_{k-1}$ in @eq-continual-learning-joint-risk are not available, because their data is gone. Every method is therefore an estimator of the missing summands. Write the stage-$k$ surrogate as
+
+$$
+\widehat{R}_k(\theta) = \mathcal{L}_k(\theta) + \sum_{j < k} \widetilde{\mathcal{L}}_j(\theta),
+$$ {#eq-continual-learning-surrogate}
+
+where $\widetilde{\mathcal{L}}_j$ is whatever proxy the method substitutes for the unseen $\mathcal{L}_j$. Regularization uses a quadratic Taylor proxy $\widetilde{\mathcal{L}}_j(\theta) \approx \tfrac{1}{2}(\theta - \theta_j^\star)^\top H_j (\theta - \theta_j^\star)$; rehearsal uses an empirical-mean proxy $\widetilde{\mathcal{L}}_j(\theta) \approx |\mathcal{M}_j|^{-1}\sum_{(x,y)\in\mathcal{M}_j} \ell(\theta;x,y)$; parameter isolation removes the coupling by making the proxies act on disjoint coordinates of $\theta$. Framing the families as three estimators of the same hidden sum @eq-continual-learning-surrogate is the organizing idea of this chapter, and it tells you immediately where each method's error comes from: bias in the Taylor expansion, variance in the small sample, or capacity in the isolated parameters.
+
 
 ::: {.callout-note}
 The three standard scenarios differ in what changes between tasks. In *task-incremental* learning the task identity is known at test time (you are told "this is the cats-vs-dogs head"). In *domain-incremental* learning the label set is fixed but the input distribution shifts. In *class-incremental* learning new classes appear over time and the model must choose among all classes seen so far with no task hint. Class-incremental is the hardest, because the model must also learn to tell tasks apart.
@@ -50,6 +66,16 @@ Consider a model with parameters $\theta$ that has converged to a good solution 
 Forgetting is not a bug in the optimizer. It is the correct behavior of an objective that only mentions the current task. To preserve old knowledge you must change the objective, the data, or the parameter space so that something pushes back against drift.
 :::
 
+
+### A Quadratic Model of Forgetting {#sec-cl-quadratic-forgetting}
+
+We can quantify exactly how much $\mathcal{L}_A$ rises when we move to fit task B. Suppose $\theta_A^\star$ is a local minimum of $\mathcal{L}_A$, so $\nabla \mathcal{L}_A(\theta_A^\star) = 0$. A second-order Taylor expansion gives, for a displacement $\Delta = \theta - \theta_A^\star$,
+
+$$
+\mathcal{L}_A(\theta_A^\star + \Delta) \approx \mathcal{L}_A(\theta_A^\star) + \tfrac{1}{2}\, \Delta^\top H_A\, \Delta,
+$$ {#eq-continual-learning-forget-quad}
+
+where $H_A = \nabla^2 \mathcal{L}_A(\theta_A^\star) \succeq 0$ is the task-A Hessian at the old optimum and the linear term vanishes at the stationary point. The increase in task-A loss caused by drifting to $\theta$ is exactly the quadratic form $\tfrac{1}{2}\Delta^\top H_A \Delta$. Two facts follow immediately. First, displacement along directions where $H_A$ has small eigenvalues (flat directions of the task-A loss) costs almost nothing, while displacement along stiff directions (large eigenvalues) is punished quadratically. Second, the amount forgotten depends on the *interaction* between where task B wants to move and the curvature of task A: if the task-B gradient points mostly along flat task-A directions, fine tuning barely forgets; if it points along stiff directions, it forgets catastrophically. This is the precise sense in which "the tasks share their minima" or do not. Regularization methods such as EWC are nothing more than replacing the intractable $H_A$ in @eq-continual-learning-forget-quad by a tractable surrogate (the diagonal Fisher) and adding the resulting penalty back to the objective, so that the optimizer pays for the forgetting it would otherwise incur for free.
 
 This sets up the stability-plasticity dilemma, a tension named in the neuroscience literature (Grossberg, 1987). A system needs *plasticity* to absorb new tasks and *stability* to retain old ones, and these pull in opposite directions:
 
@@ -112,6 +138,43 @@ $$
 
 where $\lambda > 0$ controls how hard old tasks are protected. The penalty is a per-parameter spring: its stiffness is $F_i$, so important parameters (high Fisher information) are pulled back strongly toward their old values, while unimportant ones are barely constrained.
 
+#### Deriving the penalty from the Laplace approximation {#sec-cl-ewc-derivation}
+
+The step from the intractable posterior $p(\theta\mid\mathcal{D}_A)$ to the quadratic penalty deserves to be done explicitly, because it pins down exactly what EWC approximates and where it can fail. Write the negative log-posterior as $\Psi(\theta) = -\log p(\theta\mid\mathcal{D}_A)$ and assume task A was trained to a mode $\theta_A^\star$ that is a stationary point, $\nabla\Psi(\theta_A^\star) = 0$. Taylor-expand $\Psi$ to second order around the mode:
+
+$$
+\Psi(\theta) \approx \Psi(\theta_A^\star) + \underbrace{\nabla\Psi(\theta_A^\star)^\top (\theta - \theta_A^\star)}_{=\,0} + \tfrac{1}{2}(\theta-\theta_A^\star)^\top H\,(\theta-\theta_A^\star),
+$$
+
+with $H = \nabla^2\Psi(\theta_A^\star)$ the Hessian of the negative log-posterior. Exponentiating, $p(\theta\mid\mathcal{D}_A) \propto \exp\{-\tfrac12 (\theta-\theta_A^\star)^\top H (\theta-\theta_A^\star)\}$, which is precisely a Gaussian $\mathcal{N}(\theta_A^\star, H^{-1})$. This is the Laplace approximation: the posterior is replaced by a Gaussian whose mean is the mode and whose precision is the curvature at the mode. Substituting $-\log p(\theta\mid\mathcal{D}_A) \approx \text{const} + \tfrac12 (\theta-\theta_A^\star)^\top H (\theta-\theta_A^\star)$ into the Bayesian update and dropping terms constant in $\theta$ gives
+
+$$
+\mathcal{L}_{\text{EWC}}(\theta) = \mathcal{L}_B(\theta) + \tfrac{1}{2}(\theta - \theta_A^\star)^\top H\, (\theta - \theta_A^\star).
+$$ {#eq-continual-learning-ewc-full-hessian}
+
+Two approximations turn @eq-continual-learning-ewc-full-hessian into the usable EWC penalty. First, with a flat (or slowly varying) prior the Hessian of the negative log-posterior is dominated by the Hessian of the negative log-likelihood, and at a well-fit mode the latter is well approximated by the Fisher information matrix $F = \mathbb{E}_{x}\,\mathbb{E}_{y\sim p(\cdot\mid x,\theta)}[\nabla\log p\,\nabla\log p^\top]$; this is the standard identity that the expected Hessian of the negative log-likelihood equals the Fisher (the information-matrix equality), exact at the true parameter. Replacing $H$ by $F$ keeps the penalty positive semidefinite by construction, which a raw empirical Hessian need not be. Second, computing and storing the full $d\times d$ matrix is infeasible for large $d$, so EWC keeps only the diagonal, $H \approx \operatorname{diag}(F_1,\dots,F_d)$, and adds the tunable strength $\lambda$ to compensate for the curvature thrown away by the diagonal restriction. The result is exactly the per-parameter spring above. The diagonal step is the load-bearing approximation: it assumes the posterior factorizes across parameters, ignoring correlations that, in over-parameterized networks, are often large. This is why EWC can be brittle and why later methods (rotated EWC, Kronecker-factored Laplace) restore some off-diagonal structure.
+
+#### The Fisher equals the expected squared-gradient {#sec-cl-fisher-identity}
+
+The estimator @eq-continual-learning-fisher-est below uses squared gradients rather than second derivatives, and the reason is the information-matrix equality, worth deriving once. For a single example the score is $s(\theta) = \nabla_\theta \log p(y\mid x,\theta)$. Because $\int p(y\mid x,\theta)\,dy = 1$ for all $\theta$, differentiating under the integral gives $\mathbb{E}_{y\sim p}[s(\theta)] = 0$. Differentiating once more,
+
+$$
+0 = \nabla_\theta \int p\, dy = \int (\nabla_\theta \log p)\, p\, dy, \qquad
+0 = \nabla_\theta^2 \int p\, dy = \int \big(\nabla^2\log p + \nabla\log p\,\nabla\log p^\top\big) p\, dy,
+$$
+
+so that $\mathbb{E}_{y\sim p}[-\nabla^2\log p] = \mathbb{E}_{y\sim p}[\,s\,s^\top]$. The left side is the expected Hessian of the negative log-likelihood (the curvature that @eq-continual-learning-ewc-full-hessian wants); the right side is the Fisher information, a covariance of gradients. Taking the diagonal and averaging over the task-A inputs yields exactly the squared-gradient estimator stated below, which needs only first-order backpropagation. Note the expectation is over labels drawn from the *model* $p(\cdot\mid x,\theta_A^\star)$, not the observed labels; using observed labels yields the *empirical* Fisher, a common and usually harmless shortcut, but the equality with curvature holds only at the model distribution and at a good fit.
+
+#### Accumulating across many tasks {#sec-cl-ewc-many}
+
+For a sequence $T_1,\dots,T_{k}$ the same Laplace argument applied recursively gives an additive penalty. After task $k$ the running surrogate is a sum of springs,
+
+$$
+\mathcal{L}_{\text{EWC}}^{(k)}(\theta) = \mathcal{L}_k(\theta) + \frac{\lambda}{2}\sum_{j<k}\sum_{i=1}^{d} F_{j,i}\,(\theta_i - \theta_{j,i}^\star)^2,
+$$ {#eq-continual-learning-ewc-accum}
+
+where $F_{j}$ and $\theta_j^\star$ are the Fisher and parameters snapshotted at the end of task $j$. The original EWC stores one $(F_j,\theta_j^\star)$ pair per task, so memory grows linearly in $k$; *online EWC* (Schwarz et al., 2018) instead keeps a single running Fisher $\tilde F \leftarrow \gamma \tilde F + F_k$ and a single anchor at the latest optimum, trading per-task fidelity for $O(d)$ memory independent of $k$. Equation @eq-continual-learning-ewc-accum also exposes EWC's central failure mode directly: each new task adds nonnegative stiffness to every coordinate, so the effective curvature $\sum_{j<k} F_{j,i}$ only grows, the feasible region of "directions task A through $k{-}1$ do not care about" shrinks monotonically, and after enough tasks the model saturates and loses plasticity. This is the stability-plasticity dilemma made algebraic.
+
 
 ::: {.callout-tip title="Intuition"}
 Think of each parameter attached to its old value by a spring. EWC makes the springs on the parameters that mattered for task A very stiff and the rest very loose. Task B is then learned in the slack directions that task A did not care about. With more tasks you keep adding springs (and accumulating Fisher terms), which is also why EWC eventually runs out of slack and stiffens up.
@@ -122,7 +185,7 @@ The diagonal Fisher entry is estimated from the task-A data as the average squar
 
 $$
 F_i \approx \frac{1}{n_A} \sum_{(x,y) \in \mathcal{D}_A} \left( \frac{\partial}{\partial \theta_i} \log p(y \mid x, \theta) \right)^2 \Bigg|_{\theta = \theta_A^\star},
-$$
+$$ {#eq-continual-learning-fisher-est}
 
 which only requires gradients you already compute during training, no second derivatives. Synaptic Intelligence (Zenke et al., 2017) estimates a similar importance online during training instead of in a separate pass, but the penalty has the same quadratic shape.
 
@@ -133,6 +196,18 @@ Rehearsal keeps a small memory buffer $\mathcal{M}$ of examples from past tasks 
 $$
 \mathcal{L}_{\text{replay}}(\theta) = \mathcal{L}_k(\theta) + \frac{1}{|\mathcal{M}|} \sum_{(x,y) \in \mathcal{M}} \ell(\theta; x, y).
 $$
+
+The buffer estimate is a Monte Carlo proxy for the true old risk, so its quality is governed by bias and variance. If the buffer $\mathcal{M}_j$ is a uniform sample of $\mathcal{D}_j$, then $|\mathcal{M}_j|^{-1}\sum_{(x,y)\in\mathcal{M}_j}\ell(\theta;x,y)$ is an unbiased estimator of $\mathcal{L}_j(\theta)$ with variance $\operatorname{Var}_{\mathcal{D}_j}[\ell(\theta;x,y)]/|\mathcal{M}_j|$. Unbiasedness is the structural advantage of replay over EWC: where the quadratic proxy carries a fixed Taylor bias that no amount of data removes, the replay proxy is correct in expectation and its only error is sampling variance that shrinks as $1/|\mathcal{M}_j|$. The cost is that the gradient seen each step, $\nabla\mathcal{L}_k(\theta) + |\mathcal{M}|^{-1}\sum\nabla\ell$, is a noisy estimate of the joint gradient, so the buffer must be large enough that this noise does not swamp the old-task signal. This is also why a tiny, repeatedly replayed buffer eventually overfits: the empirical risk over $\mathcal{M}_j$ is minimized exactly while the population risk $\mathcal{L}_j$ is not, the classic generalization gap of a small sample.
+
+#### Replay as gradient-constraint satisfaction {#sec-cl-gem}
+
+There is a sharper view that connects replay to constrained optimization and explains methods like Gradient Episodic Memory (GEM; Lopez-Paz and Ranzato, 2017). Mixing the buffer into the loss is one way to keep old tasks from getting worse; GEM imposes the requirement directly as a constraint on the update. At each step it solves
+
+$$
+\min_{g}\ \tfrac{1}{2}\lVert g - \nabla\mathcal{L}_k(\theta)\rVert^2 \quad \text{s.t.}\quad \langle g,\ \nabla\widehat{\mathcal{L}}_j(\theta)\rangle \ge 0 \ \ \text{for all } j<k,
+$$ {#eq-continual-learning-gem}
+
+where $\nabla\widehat{\mathcal{L}}_j$ is the buffer-estimated gradient of past task $j$. The objective asks for the update closest to the plain task-$k$ gradient; the constraints require that the chosen direction not increase any past loss to first order (a nonnegative inner product with each old gradient). If the raw task-$k$ gradient already satisfies the constraints it is used unchanged; otherwise it is projected onto the feasible cone, a small quadratic program in the number of past tasks solvable by its dual. The first-order link to @eq-continual-learning-forget-quad is exact: forgetting on task $j$ to first order is $-\langle\Delta,\nabla\mathcal{L}_j\rangle$, so requiring $\langle g,\nabla\mathcal{L}_j\rangle\ge 0$ is precisely requiring no first-order forgetting. Plain loss-mixing replay is the soft, penalty-form relaxation of this hard constraint; GEM is the projected-gradient form. Seeing both as enforcing $\langle\Delta,\nabla\mathcal{L}_j\rangle\ge 0$ is the cleanest unification of the rehearsal family.
 
 The buffer is tiny relative to the full history, so the question is what to keep. Reservoir sampling keeps a uniform random sample of everything seen with a fixed buffer size; herding keeps examples closest to each class mean. *Generative replay* (Shin et al., 2017) avoids storing raw data at all by training a generative model (@sec-generative-models) to synthesize old-task examples on demand, which sidesteps privacy concerns at the cost of generator quality. Despite its simplicity, a small replay buffer is one of the strongest and most reliable baselines in the field, which is exactly what the demo below shows.
 
@@ -320,6 +395,63 @@ Do not read the exact accuracy numbers as universal. They depend on the learning
 :::
 
 
+### Verifying the Quadratic Forgetting Law {#sec-cl-verify-quad}
+
+The claim behind both @eq-continual-learning-forget-quad and the EWC penalty is that, near a task-A optimum, the rise in task-A loss caused by a small displacement $\Delta$ is the quadratic form $\tfrac12\Delta^\top H_A\Delta$. We can confirm this directly. We train a logistic model on task A to a near-optimum, compute the analytic Hessian of the cross-entropy at that point, then perturb the parameters in random directions and compare the actual loss increase against the quadratic prediction.
+
+```{r continual-learning-verify-quadratic}
+# Cross-entropy loss (no weight decay) on a task, for full param vector c(w, b).
+ce_loss <- function(pars, task) {
+  par <- list(w = pars[1:2], b = pars[3])
+  p <- predict_prob(par, task$X)
+  p <- pmin(pmax(p, 1e-12), 1 - 1e-12)
+  -mean(task$y * log(p) + (1 - task$y) * log(1 - p))
+}
+
+# Train task A to a tight optimum (no decay, so grad -> 0).
+parA <- init_par()
+for (e in seq_len(4000)) parA <- gd_step(parA, taskA$X, taskA$y, lr = 0.5, wd = 0)
+theta_star <- c(parA$w, parA$b)
+
+# Analytic Hessian of mean cross-entropy: (1/n) sum_i p_i(1-p_i) z_i z_i^T,
+# with z_i = c(x_i1, x_i2, 1). This is also the (model-label) Fisher here.
+Z <- cbind(taskA$X, 1)
+p <- predict_prob(parA, taskA$X)
+H <- t(Z) %*% (Z * (p * (1 - p))) / nrow(Z)
+
+L0 <- ce_loss(theta_star, taskA)
+set.seed(7)
+cmp <- t(sapply(1:6, function(k) {
+  delta <- 0.05 * rnorm(3)
+  actual <- ce_loss(theta_star + delta, taskA) - L0
+  quad   <- 0.5 * as.numeric(t(delta) %*% H %*% delta)
+  c(actual = actual, quadratic = quad)
+}))
+round(cmp, 6)
+```
+
+The two columns agree to several decimals, confirming that the Hessian (equivalently the Fisher, here) predicts the task-A loss increase from a parameter move. EWC simply adds this predicted increase, with the Hessian replaced by its diagonal, as a penalty, so the optimizer is charged for the forgetting that @eq-continual-learning-forget-quad says it would otherwise incur.
+
+## Theoretical Properties and Failure Modes {#sec-cl-theory}
+
+A few results sharpen when each family works and when it breaks.
+
+*Geometry of regularization.* When task B is itself locally quadratic with optimum $\theta_B^\star$ and curvature $H_B$, the EWC objective @eq-continual-learning-ewc-full-hessian (with task-A penalty matrix $A = \lambda\,\operatorname{diag}(F)$) is a sum of two quadratics, whose unique minimizer is the precision-weighted average
+
+$$
+\hat\theta = (H_B + A)^{-1}(H_B\,\theta_B^\star + A\,\theta_A^\star).
+$$ {#eq-continual-learning-ewc-balance}
+
+This is exactly the posterior mean of a Gaussian-prior, Gaussian-likelihood model, which is the Bayesian reading of EWC: the old task acts as a prior with precision $A$ and the new task as a likelihood with precision $H_B$. As $\lambda\to\infty$, $\hat\theta\to\theta_A^\star$ (perfect stability, no learning); as $\lambda\to 0$, $\hat\theta\to\theta_B^\star$ (full plasticity, full forgetting). The slider is literally the prior-to-likelihood precision ratio, and @eq-continual-learning-ewc-balance shows the compromise is optimal only to the extent the local-quadratic assumption holds.
+
+*Forgetting bound for replay.* If at every step the mixed gradient keeps a nonnegative inner product with each past gradient (the GEM constraint @eq-continual-learning-gem), then to first order no past loss increases along the trajectory, so cumulative forgetting is bounded by the second-order remainder, which scales with the step size and the past-task curvature. This is why small learning rates and balanced replay together control forgetting, and why pure replay with too few buffer points fails: the estimated old gradient $\nabla\widehat{\mathcal{L}}_j$ is too noisy for the inner-product condition to hold in expectation.
+
+*Capacity accounting for isolation.* Parameter isolation has zero forgetting by construction but a hard capacity ceiling. Progressive networks add $O(d_k)$ parameters per task, so total parameters grow like $\sum_k d_k$, linear in the number of tasks. PackNet holds parameters fixed but allocates a fraction of the remaining free weights to each task; after $k$ tasks at fraction $f$ the free capacity is $(1-f)^k$, an exponential decay that sets a practical limit on how many tasks fit. There is no free lunch: a method that never forgets must pay in parameters, and a method with fixed parameters must eventually forget or refuse new tasks.
+
+::: {.callout-warning title="Common failure modes"}
+EWC fails when (i) the diagonal-Fisher assumption is badly violated (strongly correlated parameters), (ii) tasks are many, so accumulated stiffness in @eq-continual-learning-ewc-accum kills plasticity, or (iii) the new optimum is far from $\theta_A^\star$, so the local quadratic in @eq-continual-learning-forget-quad is a poor global model. Replay fails when the buffer is too small (variance), class-imbalanced (biased gradient), or replayed so heavily it overfits. Isolation fails when capacity runs out or when tasks are similar enough that sharing would have helped but isolation forbids it.
+:::
+
 ## EWC in Practice (Reference Implementation)
 
 The demo above used replay because it runs cleanly in base R. For completeness, here is how the EWC penalty from @sec-regularization-elastic-weight-consolidation attaches to a deep model in a typical Python/PyTorch workflow. It is shown for reference and is not executed here, since the book's runnable examples are in R.
@@ -387,7 +519,8 @@ Continual learning shares a border with online and incremental learning (@sec-on
 - Grossberg (1987) framed the stability-plasticity dilemma that organizes every method here.
 - Kirkpatrick, Pascanu, Rabinowitz, et al. (2017) introduced elastic weight consolidation and the Bayesian/Fisher derivation used above.
 - Zenke, Poole, and Ganguli (2017) proposed Synaptic Intelligence, an online importance estimate with the same quadratic penalty.
-- Lopez-Paz and Ranzato (2017) defined the accuracy-matrix metrics (average accuracy, backward and forward transfer) and Gradient Episodic Memory.
+- Lopez-Paz and Ranzato (2017) defined the accuracy-matrix metrics (average accuracy, backward and forward transfer) and Gradient Episodic Memory, the projected-gradient view of @sec-cl-gem.
+- Schwarz, Czarnecki, Luketina, et al. (2018) introduced online EWC, the running-Fisher variant with memory independent of the number of tasks used in @sec-cl-ewc-many.
 - Shin, Lee, Kim, and Kim (2017) introduced deep generative replay as a data-free rehearsal alternative.
 - Rusu, Rabinowitz, Desjardins, et al. (2016) presented progressive neural networks, a canonical parameter-isolation method; Mallya and Lazebnik (2018) gave PackNet.
 - Parisi, Kemker, Part, Kanan, and Wermter (2019) survey continual lifelong learning with neural networks and are a good map of the territory.

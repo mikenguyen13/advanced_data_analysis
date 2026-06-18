@@ -46,6 +46,20 @@ Learning a Mahalanobis metric $M$ is exactly the same as learning a linear trans
 
 The rank $k$ of $L$ controls the dimension of the embedding. If $k < d$, the map $z = Lx$ is a dimension reduction, and distances are computed in the smaller space, which is what makes learned metrics useful for fast retrieval. If $k = d$, the metric is full rank and merely reshapes the space without discarding dimensions.
 
+### Why positive semidefiniteness is exactly the right constraint
+
+The requirement $M \succeq 0$ is not a convenience; it is the precise condition under which $d_M$ is a pseudometric. Recall that a pseudometric must satisfy non-negativity, symmetry, the triangle inequality, and $d(x,x)=0$ (it relaxes a true metric only by allowing $d(x,y)=0$ for $x \neq y$). Symmetry holds for any symmetric $M$, and $d_M(x,x)=0$ trivially. The two non-trivial properties both follow from the factorization $M = L^\top L$.
+
+Non-negativity: $d_M^2(x_i,x_j) = \lVert L(x_i-x_j)\rVert_2^2 \ge 0$. Conversely, if $M$ had a negative eigenvalue $\mu < 0$ with unit eigenvector $v$, then taking $x_i - x_j = v$ gives $d_M^2 = v^\top M v = \mu < 0$, so the distance would be imaginary. Hence $M \succeq 0$ is necessary and sufficient for real, non-negative distances.
+
+Triangle inequality: write $u = L x_i$, $w = L x_j$, $z = L x_l$. Then $d_M$ is the ordinary Euclidean norm of differences of the transformed points, $d_M(x_i,x_j) = \lVert u - w\rVert_2$, and the Euclidean norm satisfies the triangle inequality by Minkowski,
+$$
+d_M(x_i,x_l) = \lVert u - z\rVert_2 = \lVert (u-w) + (w-z)\rVert_2 \le \lVert u-w\rVert_2 + \lVert w-z\rVert_2 = d_M(x_i,x_j) + d_M(x_j,x_l).
+$$
+The map to $z = Lx$ is therefore not just a useful picture; it is the *mechanism* by which the triangle inequality is inherited. This is why optimizing over the factor $L$ automatically keeps us inside the cone of valid metrics, whereas optimizing over $M$ directly requires projecting back onto $\{M : M \succeq 0\}$ after each step (see @sec-metric-learning-convex).
+
+The factorization $M = L^\top L$ is non-unique: any $L' = QL$ with $Q^\top Q = I$ (an orthogonal $k \times k$ rotation) gives $L'^\top L' = M$. The metric is invariant to rotations of the embedding space, which is expected, since Euclidean distance is rotation invariant. The minimal $k$ for which a factorization exists equals $\operatorname{rank}(M)$.
+
 ## Learning the matrix: supervision from pairs and triplets
 
 What objective should $M$ (equivalently $L$) optimize? The supervision comes as relationships. Two common forms:
@@ -59,11 +73,47 @@ $$
 $$
 where $[\,z\,]_+ = \max(0, z)$ is the hinge and $c > 0$ trades off the two terms. The hinge term is active only when an impostor $l$ violates the margin, that is, when it sits closer to $i$ than a target neighbor plus one unit. This is the engine of metric learning: pull the things that should match, and push apart only the offending non-matches, not every non-match.
 
+### LMNN as a semidefinite program {#sec-metric-learning-convex}
+
+The objective $\varepsilon(L)$ above is written in terms of $L$, and as a function of $L$ it is not convex, because $d_M^2$ is quadratic in $L$. The crucial observation of Weinberger and Saul is that the *same* objective is convex when re-expressed in $M$. Each squared distance is linear in $M$,
+$$
+d_M^2(x_i,x_j) = (x_i - x_j)^\top M (x_i - x_j) = \langle M, \, (x_i-x_j)(x_i-x_j)^\top \rangle,
+$$
+using the trace inner product $\langle A,B\rangle = \operatorname{tr}(A^\top B)$. A hinge of a linear function is convex, a non-negative sum of convex functions is convex, and the constraint set $\{M : M \succeq 0\}$ is a convex cone. Introducing slack variables $\xi_{ijl} \ge 0$ for the margin violations turns LMNN into a semidefinite program (SDP),
+$$
+\begin{aligned}
+\min_{M,\,\xi}\;\; & \sum_{j \rightsquigarrow i} (x_i-x_j)^\top M (x_i-x_j) \;+\; c \sum_{j \rightsquigarrow i}\sum_l (1-y_{il})\,\xi_{ijl} \\
+\text{s.t.}\;\; & (x_i-x_l)^\top M (x_i-x_l) - (x_i-x_j)^\top M (x_i-x_j) \ge 1 - \xi_{ijl}, \\
+& \xi_{ijl} \ge 0, \qquad M \succeq 0 .
+\end{aligned}
+$$
+Because the feasible set is convex and the objective is convex, every local minimum is global. The price of convexity is the variable count: $M$ has $O(d^2)$ entries, and the PSD constraint must be maintained by projecting onto the cone (clip the negative eigenvalues to zero) after each gradient step, an $O(d^3)$ eigendecomposition. The number of margin constraints is $O(n k_{\text{nbr}} n)$ in the worst case, so working solvers use the special structure: only a small active set of impostors violates the margin at any time, and target neighbors are fixed up front under the Euclidean metric, so the constraint set is generated lazily. This is the canonical example of the convexity-versus-flexibility trade: the convex formulation in $M$ guarantees a global optimum but forgoes the low-rank, nonlinear maps that the non-convex formulation in $L$ (or in $f_\theta$) can reach.
+
 The demonstration below uses a simpler but closely related objective that is transparent to implement from scratch. Define the average squared distance over similar pairs and over dissimilar pairs,
 $$
 J(L) = \sum_{(i,j)\in\mathcal{S}} \lVert L x_i - L x_j \rVert^2 \;-\; \lambda \sum_{(i,j)\in\mathcal{D}} \lVert L x_i - L x_j \rVert^2 ,
 $$
 and minimize it over $L$ with a norm constraint so the trivial solution $L \to \infty$ on dissimilar pairs is ruled out. Minimizing the first term pulls similar points together; the second term, with weight $\lambda > 0$, rewards spreading dissimilar points apart. This is the contrastive idea in its barest linear form, and it has a closed-form eigenvector solution that we exploit in the code.
+
+### Deriving the closed-form solution {#sec-metric-learning-eigen}
+
+Consider learning a single projection direction $v \in \mathbb{R}^d$ (so $L = v^\top$, $k=1$) and ask which direction best compresses similar pairs while spreading dissimilar ones. For a difference vector $\delta_{ij} = x_i - x_j$, the projected squared distance is $(v^\top \delta_{ij})^2 = v^\top \delta_{ij}\delta_{ij}^\top v$. Averaging over each pair set and using the difference-covariance matrices defined later,
+$$
+C_{\mathcal{S}} = \frac{1}{|\mathcal{S}|}\sum_{(i,j)\in\mathcal{S}} \delta_{ij}\delta_{ij}^\top, \qquad C_{\mathcal{D}} = \frac{1}{|\mathcal{D}|}\sum_{(i,j)\in\mathcal{D}} \delta_{ij}\delta_{ij}^\top,
+$$
+the mean projected within-pair spread is $v^\top C_{\mathcal{S}} v$ and the mean projected between-pair spread is $v^\top C_{\mathcal{D}} v$. We want a direction that makes dissimilar pairs spread out per unit of similar-pair spread, that is, we maximize the generalized Rayleigh quotient
+$$
+\rho(v) = \frac{v^\top C_{\mathcal{D}}\, v}{v^\top C_{\mathcal{S}}\, v} .
+$$
+The quotient is scale invariant in $v$, so fix the denominator at $v^\top C_{\mathcal{S}} v = 1$ and maximize the numerator. The Lagrangian is $\mathcal{L}(v,\mu) = v^\top C_{\mathcal{D}} v - \mu (v^\top C_{\mathcal{S}} v - 1)$, and setting $\nabla_v \mathcal{L} = 0$ gives
+$$
+2 C_{\mathcal{D}} v - 2\mu\, C_{\mathcal{S}} v = 0 \quad\Longrightarrow\quad C_{\mathcal{D}}\, v = \mu\, C_{\mathcal{S}}\, v .
+$$
+This is exactly the generalized eigenproblem stated in the demonstration. Left-multiplying the stationarity condition by $v^\top$ and using the constraint shows $\rho(v) = v^\top C_{\mathcal{D}} v = \mu$, so the eigenvalue *is* the value of the quotient: the largest generalized eigenvalue gives the best direction, the next gives the best direction orthogonal (in the $C_{\mathcal{S}}$ inner product) to it, and so on. To recover the multi-row $L$, whiten by $C_{\mathcal{S}}$. With $C_{\mathcal{S}} = C_{\mathcal{S}}^{1/2}C_{\mathcal{S}}^{1/2}$ and the change of variable $w = C_{\mathcal{S}}^{1/2} v$, the problem becomes the ordinary symmetric eigenproblem
+$$
+\tilde C\, w = \mu\, w, \qquad \tilde C = C_{\mathcal{S}}^{-1/2}\, C_{\mathcal{D}}\, C_{\mathcal{S}}^{-1/2},
+$$
+whose eigenvectors are orthonormal. Stacking the top $k$ whitened eigenvectors $w_1,\dots,w_k$ as rows of $W$ and undoing the whitening, $L = \operatorname{diag}(\sqrt{\mu_1},\dots,\sqrt{\mu_k})\, W\, C_{\mathcal{S}}^{-1/2}$, gives a map whose coordinates are uncorrelated under $C_{\mathcal{S}}$ and scaled so that discriminative directions (large $\mu$) are stretched and nuisance directions (small $\mu$) are shrunk. This is precisely the computation in the code below, and it is the linear-algebra core of Relevant Component Analysis and Fisher's discriminant.
 
 
 ::: {.callout-note}
@@ -93,7 +143,21 @@ Contrastive loss judges pairs against an absolute yardstick (be within zero, or 
 :::
 
 
+### Gradients and what the losses actually do
+
+It is worth seeing the gradient, because it explains both the geometry and the failure modes. For the triplet loss, write the embeddings $z_a = f_\theta(x_a)$ and so on, and consider a violating triplet (loss positive). Since $D_{ap}^2 = \lVert z_a - z_p\rVert^2$, the gradients with respect to the embeddings are
+$$
+\frac{\partial \mathcal{L}_{\text{trip}}}{\partial z_a} = 2(z_n - z_p), \qquad \frac{\partial \mathcal{L}_{\text{trip}}}{\partial z_p} = -2(z_a - z_p), \qquad \frac{\partial \mathcal{L}_{\text{trip}}}{\partial z_n} = 2(z_a - z_n),
+$$
+which by the chain rule propagate into $\theta$ through the shared Jacobian $\partial z_\bullet/\partial \theta$. Reading the signs: the positive is pulled toward the anchor ($-(z_a - z_p)$ moves $z_p$ along $z_a - z_p$), the negative is pushed away ($z_n$ moves along $z_a - z_n$, away from the anchor), and the anchor itself moves toward the positive and away from the negative. On a non-violating triplet all three gradients vanish, which is the source of the mining problem: a triplet that already satisfies the margin contributes exactly nothing.
+
+For the contrastive loss, a similar pair ($y=1$) yields $\partial \mathcal{L}_{\text{cont}}/\partial z_i = 2(z_i - z_j)$, a pure attractive force whose magnitude grows with the current distance. A dissimilar pair ($y=0$) inside the margin ($D_{ij} < m$) yields $\partial \mathcal{L}_{\text{cont}}/\partial z_i = -2(m - D_{ij})(z_i - z_j)/D_{ij}$, a repulsive force that shuts off the instant $D_{ij} \ge m$. The margin is therefore a hard cap on how much work the loss demands from already-separated negatives, which is what prevents the embedding norms from running away to infinity.
+
 The practical difficulty with triplet loss is mining. Once training is underway, the vast majority of randomly drawn triplets already satisfy the margin and contribute a zero gradient. Training stalls unless you actively select informative triplets: *hard* negatives (the closest wrong-class point to the anchor) or *semi-hard* negatives (farther than the positive but still inside the margin). Semi-hard mining, introduced in the FaceNet work, is the usual sweet spot, since the hardest negatives are often mislabeled or anomalous and can destabilize training.
+
+The three mining regimes are defined precisely relative to the anchor-positive distance. For a fixed $(a,p)$, a negative $n$ is *easy* if $D_{an} > D_{ap} + m$ (zero loss, zero gradient), *hard* if $D_{an} < D_{ap}$ (the negative is closer than the positive, the worst case), and *semi-hard* if $D_{ap} < D_{an} < D_{ap} + m$ (correctly ordered but inside the margin). Semi-hard negatives produce a non-zero gradient without the pathology of hard negatives, where a single mislabeled or outlier point can dominate the batch and collapse the embedding. A practical and now-standard alternative is *batch-hard* mining (Hermans, Beyer, and Leibe, 2017): within a minibatch of $P$ identities times $K$ samples each, form for every anchor the triplet using its farthest positive and its nearest negative *in the batch*, which approximates the hardest constraints at $O(PK)$ cost rather than the $O(n^3)$ cost of enumerating all triplets globally.
+
+The combinatorics are why mining matters. With $n$ training points the number of valid triplets is $O(n^3)$, and the number of pairs is $O(n^2)$, so neither set can be enumerated for large $n$. The relevant quantity is not the number of triplets but the number that are *active* (non-zero gradient), and that fraction shrinks toward zero as training proceeds, which is exactly why uniform sampling stalls. Online mining inside each minibatch keeps the active fraction high at near-constant cost per step.
 
 ## Siamese networks: the architecture that ties it together
 
@@ -191,7 +255,21 @@ L <- diag(sqrt(pmax(ev$values, 0))) %*% t(ev$vectors) %*% Cs_inv_half
 round(L, 3)
 ```
 
-The first row of $L$ carries a large weight on the informative axis and near-zero weight on the nuisance axes, exactly the reshaping we hoped for. Now we compare $k$-nearest-neighbor accuracy before and after the transformation.
+The first row of $L$ carries a large weight on the informative axis and near-zero weight on the nuisance axes, exactly the reshaping we hoped for.
+
+We can confirm numerically the claim from @sec-metric-learning-eigen that each generalized eigenvalue equals the value of the Rayleigh quotient $\rho(v) = v^\top C_{\mathcal{D}} v / v^\top C_{\mathcal{S}} v$ at its eigenvector, and that the leading eigenvector indeed lies along the informative axis.
+
+```{r metric-learning-verify}
+## Recover generalized eigenvectors v from the whitened solution: v = Cs^{-1/2} w.
+V <- Cs_inv_half %*% ev$vectors
+## Rayleigh quotient for each direction should equal the eigenvalue.
+rq <- apply(V, 2, function(v)
+  as.numeric((t(v) %*% C_D %*% v) / (t(v) %*% C_S %*% v)))
+rbind(eigenvalue       = round(ev$values, 4),
+      rayleigh_quotient = round(rq, 4))
+```
+
+The two rows match to numerical precision, confirming the derivation. Now we compare $k$-nearest-neighbor accuracy before and after the transformation.
 
 ```{r metric-learning-knn}
 library(class)
@@ -262,6 +340,16 @@ For verification, embed both inputs and threshold the distance: declare a match 
 For retrieval, embed the whole gallery once and store the vectors. At query time, embed the query and return its nearest neighbors. With a few thousand items a brute-force scan is fine; at scale you index the embeddings with an approximate nearest-neighbor structure (see the embeddings and vector search chapter, @sec-embeddings-vector-search) so lookups stay sublinear. The quality of retrieval is the quality of the metric: if similar items embed near each other, simple nearest-neighbor search is all you need on top.
 
 A common refinement for both tasks is to L2-normalize the embeddings, mapping every vector to the unit sphere. Euclidean distance on the sphere is then a monotone function of cosine similarity, $\lVert u - v \rVert^2 = 2 - 2\,u^\top v$ for unit vectors, so distance and cosine agree. Normalization removes embedding magnitude as a nuisance and is standard practice in face and text embedding systems.
+
+The equivalence is exact, not approximate. For any vectors $u,v$, expanding the squared norm gives $\lVert u - v\rVert^2 = \lVert u\rVert^2 + \lVert v\rVert^2 - 2 u^\top v$. When both are unit vectors, $\lVert u\rVert^2 = \lVert v\rVert^2 = 1$, so $\lVert u - v\rVert^2 = 2 - 2\, u^\top v = 2(1 - \cos\angle(u,v))$. Squared Euclidean distance on the sphere is therefore an affine, strictly decreasing function of cosine similarity, which means any threshold on distance corresponds to an exactly equivalent threshold on cosine, and nearest-neighbor rankings under the two are identical. This is why face and text systems can train with cosine-based losses and retrieve with a Euclidean index, or vice versa, with no loss of information.
+
+### Verification as a decision problem
+
+Verification with a threshold is a binary hypothesis test, and its theory tells you how to set $\tau$. Let the genuine (same-identity) pair distances have density $p_{\text{gen}}(D)$ and the impostor (different-identity) distances have density $p_{\text{imp}}(D)$. Declaring a match when $D \le \tau$ produces a false reject rate (a genuine pair called different) and a false accept rate (an impostor called the same),
+$$
+\mathrm{FRR}(\tau) = \int_{\tau}^{\infty} p_{\text{gen}}(D)\, dD, \qquad \mathrm{FAR}(\tau) = \int_{0}^{\tau} p_{\text{imp}}(D)\, dD .
+$$
+Raising $\tau$ admits more matches, which lowers FRR and raises FAR; the trade-off is the entire content of the detection-error or ROC curve, traced out as $\tau$ varies. Two operating points are standard. The *equal error rate* (EER) is the $\tau$ at which $\mathrm{FRR}(\tau) = \mathrm{FAR}(\tau)$, a single summary number for comparing systems. For deployment you instead fix the tolerable FAR (say one impostor in $10^4$) and read off the $\tau$ that achieves it, accepting whatever FRR results. Because the integrals depend on the densities and not on any closed label set, the same threshold generalizes to unseen identities, provided the validation distances are collected under deployment-matched conditions. The Bayes-optimal rule weights by the prior odds and costs: declare a match when the likelihood ratio $p_{\text{gen}}(D)/p_{\text{imp}}(D)$ exceeds $\frac{\pi_{\text{imp}}\, c_{\mathrm{FA}}}{\pi_{\text{gen}}\, c_{\mathrm{FR}}}$, where $\pi$ are the priors and $c$ the misclassification costs. When the two densities are unimodal with $p_{\text{gen}}$ concentrated at small $D$, this likelihood-ratio rule reduces to a single distance threshold, which is why thresholding works in practice.
 
 @tbl-metric-learning-comparison summarizes how the main approaches compare on the dimensions that matter when choosing one.
 

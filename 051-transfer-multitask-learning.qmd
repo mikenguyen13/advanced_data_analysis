@@ -210,7 +210,45 @@ So you fit the model on source data but weight each source point by how
 likely it is under the target marginal. Estimating $w(x)$ directly by
 density estimation is hard, so in practice you train a classifier to
 distinguish source from target inputs and turn its probability into the
-weight, as in @Sugiyama_2007. When representations are learned, an
+weight, as in @Sugiyama_2007.
+
+### Why the identity holds, and what it costs
+
+The reweighting identity is a one-line change of measure, valid whenever
+$P_S(x) > 0$ wherever $P_T(x) > 0$ (the support condition, without which the
+ratio is undefined and importance weighting cannot work):
+
+$$
+\mathbb{E}_{P_T}[\ell(f(x), y)]
+= \int \ell(f(x), y)\, P_T(x)\, P_T(y \mid x)\, dx\, dy
+= \int \ell(f(x), y)\, \frac{P_T(x)}{P_S(x)}\, P_S(x)\, P_S(y \mid x)\, dx\, dy ,
+$$
+
+where the second equality multiplies and divides by $P_S(x)$ and uses
+$P_T(y\mid x) = P_S(y\mid x)$, the covariate-shift assumption. The right-hand
+side is $\mathbb{E}_{P_S}[w(x)\,\ell(f(x),y)]$, so the weighted empirical risk
+$\hat R_w(f) = \frac{1}{n_S}\sum_{i=1}^{n_S} w(x_i)\,\ell(f(x_i), y_i)$ is an
+unbiased and (under standard conditions) consistent estimator of the target
+risk. The crucial caveat is that the conditional $P(y\mid x)$ must genuinely be
+invariant. If the label rule itself shifts (concept drift), reweighting the
+inputs corrects the wrong thing and can make matters worse.
+
+Unbiasedness is not free. The weighted estimator has variance inflated by the
+spread of the weights. Its effective sample size is
+
+$$
+n_{\text{eff}}
+= \frac{\left(\sum_i w(x_i)\right)^2}{\sum_i w(x_i)^2}
+= \frac{n_S}{1 + \widehat{\operatorname{CV}}^2(w)} ,
+$$ {#eq-transfer-multitask-learning-neff}
+
+where $\widehat{\operatorname{CV}}^2(w)$ is the squared coefficient of variation
+of the weights. When source and target overlap poorly, a few points carry
+almost all the weight, $\operatorname{CV}^2(w)$ explodes, and $n_{\text{eff}}$
+collapses far below $n_S$: the correction is unbiased but useless. This is why
+practitioners clip or self-normalize the weights, trading a little bias for a
+large reduction in variance, and why @eq-transfer-multitask-learning-neff is
+the right diagnostic to monitor before trusting an importance-weighted fit. When representations are learned, an
 alternative is to align the source and target feature distributions during
 training, for example by matching their means and covariances or by an
 adversarial domain classifier, as in @Ganin_2016.
@@ -316,6 +354,212 @@ compute than any other ridge fit.
 
 Each task estimate is then $\hat\beta_t = \hat\beta_0 + \hat v_t$. The next
 section builds exactly this $Z$ and $P$ in base R.
+
+### Deriving the closed form from the normal equations
+
+The block formulation above hides the structure. It is worth deriving the
+solution directly, because the stationarity conditions expose exactly how the
+shared center and the deviations are coupled. Write the objective as
+
+$$
+F(\beta_0, v_1, \dots, v_T)
+= \sum_{t=1}^{T} \lVert y_t - X_t \beta_0 - X_t v_t \rVert_2^2
+\;+\; \lambda \sum_{t=1}^{T} \lVert v_t \rVert_2^2 .
+$$
+
+Differentiate with respect to each block and set the gradient to zero. For a
+fixed task $t$,
+
+$$
+\frac{\partial F}{\partial v_t}
+= -2 X_t^\top (y_t - X_t \beta_0 - X_t v_t) + 2 \lambda v_t = 0 ,
+$$
+
+which rearranges to the per-task stationarity condition
+
+$$
+(X_t^\top X_t + \lambda I)\, v_t = X_t^\top (y_t - X_t \beta_0).
+$$ {#eq-transfer-multitask-learning-vt-stationary}
+
+So given the shared center, each deviation is a ridge fit to that task's
+residual,
+
+$$
+\hat v_t(\beta_0) = (X_t^\top X_t + \lambda I)^{-1} X_t^\top (y_t - X_t \beta_0)
+\equiv A_t (y_t - X_t \beta_0),
+\qquad A_t := (X_t^\top X_t + \lambda I)^{-1} X_t^\top .
+$$
+
+Differentiating with respect to the shared block gives
+
+$$
+\frac{\partial F}{\partial \beta_0}
+= -2 \sum_{t=1}^{T} X_t^\top (y_t - X_t \beta_0 - X_t v_t) = 0 ,
+$$
+
+so $\sum_t X_t^\top (y_t - X_t \beta_0 - X_t \hat v_t) = 0$. Substituting
+@eq-transfer-multitask-learning-vt-stationary, namely
+$X_t^\top X_t \hat v_t = X_t^\top(y_t - X_t\beta_0) - \lambda \hat v_t$, into
+$X_t^\top(y_t - X_t\beta_0) - X_t^\top X_t \hat v_t = \lambda \hat v_t$ shows the
+$\beta_0$ condition collapses to
+
+$$
+\sum_{t=1}^{T} \lambda \, \hat v_t = 0
+\quad\Longleftrightarrow\quad
+\sum_{t=1}^{T} \hat v_t = 0 .
+$$ {#eq-transfer-multitask-learning-deviation-sum}
+
+The deviations sum to zero at the optimum: the shared center is the point from
+which the task-specific corrections balance out, which is the precise sense in
+which $\beta_0$ is a "center." Substituting
+$\hat v_t = A_t(y_t - X_t\beta_0)$ into
+@eq-transfer-multitask-learning-deviation-sum yields a single linear system
+for $\beta_0$,
+
+$$
+\left( \sum_{t=1}^{T} A_t X_t \right) \beta_0 = \sum_{t=1}^{T} A_t y_t ,
+$$
+
+after which each $\hat v_t$ follows in closed form. This is algebraically
+identical to the block solution
+$\hat\theta = (Z^\top Z + P)^{-1} Z^\top y$, but it makes the mechanism
+transparent: profiling out the deviations leaves a $p \times p$ system in the
+shared center, so the multi-task fit costs essentially one ridge solve plus $T$
+small ridge solves, not one dense $(T+1)p$ solve, when implemented carefully.
+
+### The ridge-on-deviations as a Gaussian prior
+
+The penalty $\lambda \sum_t \lVert v_t \rVert_2^2$ is not arbitrary. It is the
+negative log of a hierarchical Gaussian prior. Take
+
+$$
+\beta_t = \beta_0 + v_t, \qquad
+v_t \sim \mathcal{N}(0, \tau^2 I), \qquad
+y_t \mid X_t, \beta_t \sim \mathcal{N}(X_t \beta_t, \sigma^2 I),
+$$
+
+with a flat prior on $\beta_0$. The negative log posterior is, up to constants,
+
+$$
+\frac{1}{2\sigma^2} \sum_t \lVert y_t - X_t(\beta_0 + v_t) \rVert_2^2
++ \frac{1}{2\tau^2} \sum_t \lVert v_t \rVert_2^2 ,
+$$
+
+which is exactly the joint objective with $\lambda = \sigma^2 / \tau^2$. The
+sharing strength is therefore an estimate of the noise-to-heterogeneity ratio.
+Small $\tau^2$ (tasks tightly clustered around the center) sends
+$\lambda \to \infty$ and recovers pooling; large $\tau^2$ (tasks free to roam)
+sends $\lambda \to 0$ and recovers independent fits. This is the formal content
+of the empirical observation that the best $\lambda$ is interior whenever the
+tasks are related but not identical: $\tau^2$ is finite and positive.
+
+::: {.callout-note}
+The hierarchical-prior reading turns "tune $\lambda$ by cross-validation" into
+"estimate the heterogeneity $\tau^2$." With many tasks one can estimate
+$\sigma^2$ and $\tau^2$ directly by marginal (empirical Bayes) likelihood and
+set $\lambda = \hat\sigma^2 / \hat\tau^2$, which is the multi-task analogue of
+James-Stein shrinkage and avoids a cross-validation grid entirely.
+:::
+
+### Shrinkage, bias, and variance in the orthonormal case
+
+To see the bias-variance trade-off in closed form, specialize to balanced
+orthonormal designs: $n_t = n$ and $X_t^\top X_t = n I$ for every task. Then
+$A_t = (n I + \lambda I)^{-1} X_t^\top$, and by symmetry the shared center is the
+average of the per-task OLS solutions. Writing
+$\hat\beta_t^{\text{ols}} = (X_t^\top X_t)^{-1} X_t^\top y_t$ and
+$\bar\beta^{\text{ols}} = \tfrac{1}{T}\sum_t \hat\beta_t^{\text{ols}}$, the
+multi-task estimate becomes a convex combination
+
+$$
+\hat\beta_t
+= (1 - \alpha)\, \hat\beta_t^{\text{ols}} + \alpha\, \bar\beta^{\text{ols}},
+\qquad
+\alpha = \frac{\lambda}{\,n + \lambda\,} \in [0, 1].
+$$ {#eq-transfer-multitask-learning-shrinkage}
+
+The estimator shrinks each task's OLS solution toward the cross-task mean by a
+fraction $\alpha$ that grows with $\lambda$ and shrinks with sample size $n$.
+This is the exact analogue of ridge shrinkage and of James-Stein toward a
+common mean. With $\beta_t = \beta_0 + \delta_t$ for true deviations $\delta_t$
+and per-coordinate OLS variance $\sigma^2/n$, the per-task mean squared error of
+@eq-transfer-multitask-learning-shrinkage decomposes (treating the mean as
+approximately unbiased for $\beta_0$ when $T$ is large) as
+
+$$
+\mathbb{E}\,\lVert \hat\beta_t - \beta_t \rVert_2^2
+\approx
+\underbrace{\alpha^2 \lVert \delta_t \rVert_2^2}_{\text{bias}^2}
++ \underbrace{(1-\alpha)^2 \frac{p\,\sigma^2}{n}}_{\text{variance}} ,
+$$
+
+ignoring the $O(1/T)$ variance of the mean. Minimizing over $\alpha$ gives the
+optimal shrinkage
+
+$$
+\alpha^\star
+= \frac{p\,\sigma^2 / n}{\,p\,\sigma^2/n + \lVert \delta_t \rVert_2^2\,},
+\qquad\text{equivalently}\qquad
+\lambda^\star = \frac{p\,\sigma^2}{\lVert \delta_t \rVert_2^2}
+\;\;\text{(per coordinate, } \tau^2 = \lVert\delta_t\rVert_2^2/p\text{)}.
+$$
+
+Three readings of this formula are worth stating. First, more noise or smaller
+samples ($\sigma^2/n$ large) push $\alpha^\star$ toward 1: borrow more. Second,
+more genuine heterogeneity ($\lVert\delta_t\rVert_2^2$ large) pushes
+$\alpha^\star$ toward 0: borrow less. Third, $\alpha^\star$ is strictly interior
+whenever both terms are positive and finite, which is the algebraic reason the
+U-shaped curve in the demonstration has an interior minimum. The formula also
+recovers the failure modes: when the tasks are unrelated,
+$\lVert\delta_t\rVert_2^2 \to \infty$ forces $\alpha^\star \to 0$ and any
+positive $\lambda$ is harmful, which is negative transfer in a single equation.
+
+The convex-combination identity
+@eq-transfer-multitask-learning-shrinkage is easy to confirm numerically.
+The check below builds orthonormal designs so that $X_t^\top X_t = n I$ exactly,
+solves the full block system, and compares the result to the shrinkage formula.
+
+```{r mtl-shrinkage-check}
+set.seed(7)
+T_chk <- 4; p_chk <- 3; n_chk <- 20; lam <- 5
+
+# Orthonormal designs: X_t^T X_t = n I via scaled orthonormal columns.
+mk_orth <- function() {
+  Q <- qr.Q(qr(matrix(rnorm(n_chk * p_chk), n_chk, p_chk)))
+  Q * sqrt(n_chk)                      # columns now have squared norm n
+}
+Xs <- replicate(T_chk, mk_orth(), simplify = FALSE)
+bt <- replicate(T_chk, rnorm(p_chk), simplify = FALSE)
+ys <- Map(function(X, b) as.numeric(X %*% b) + rnorm(n_chk), Xs, bt)
+
+# Block solve (same construction as fit_mtl).
+N <- T_chk * n_chk
+Z <- matrix(0, N, p_chk * (T_chk + 1)); yv <- numeric(N); r0 <- 0
+for (t in 1:T_chk) {
+  rows <- (r0 + 1):(r0 + n_chk)
+  Z[rows, 1:p_chk] <- Xs[[t]]
+  Z[rows, (t * p_chk + 1):((t + 1) * p_chk)] <- Xs[[t]]
+  yv[rows] <- ys[[t]]; r0 <- r0 + n_chk
+}
+pen <- c(rep(0, p_chk), rep(lam, p_chk * T_chk))
+theta <- solve(crossprod(Z) + diag(pen), crossprod(Z, yv))
+b0 <- theta[1:p_chk]
+beta_block <- lapply(1:T_chk, function(t)
+  b0 + theta[(t * p_chk + 1):((t + 1) * p_chk)])
+
+# Shrinkage formula: convex combo of per-task OLS and their mean.
+ols   <- Map(function(X, y) solve(crossprod(X), crossprod(X, y)), Xs, ys)
+obar  <- Reduce(`+`, ols) / T_chk
+alpha <- lam / (n_chk + lam)
+beta_form <- lapply(ols, function(b) (1 - alpha) * b + alpha * obar)
+
+max_abs_diff <- max(abs(unlist(beta_block) - unlist(beta_form)))
+cat("max |block - shrinkage formula| =", signif(max_abs_diff, 3), "\n")
+```
+
+The discrepancy is at the level of floating-point error, confirming that in the
+orthonormal case the block estimator is exactly the shrinkage of each task's OLS
+toward the cross-task mean with weight $\alpha = \lambda / (n + \lambda)$.
 
 ## Runnable demonstration
 
@@ -556,6 +800,39 @@ $$
 so a task with high uncertainty gets a small weight $1 / (2\sigma_t^2)$, and
 the $\log \sigma_t$ term prevents the weights from collapsing to zero. The
 $\sigma_t$ are learned by gradient descent alongside the model.
+
+To see where this objective comes from, model each regression task as Gaussian
+with its own observation noise, $y_t \sim \mathcal{N}(f_t(x), \sigma_t^2)$. The
+negative log likelihood of one task, dropping the constant $\frac12\log 2\pi$,
+is
+
+$$
+-\log p(y_t \mid f_t(x))
+= \frac{1}{2\sigma_t^2} \lVert y_t - f_t(x) \rVert_2^2 + \log \sigma_t ,
+$$
+
+and summing over tasks (which assumes conditional independence across tasks
+given the shared representation) gives exactly the displayed objective with
+$\mathcal{L}_t = \lVert y_t - f_t(x)\rVert_2^2$. The weighting is therefore not a
+heuristic; it is maximum likelihood for a heteroscedastic multi-task Gaussian
+model in which each task is allowed its own noise scale. Profiling out
+$\sigma_t$ makes the mechanism explicit: setting
+$\partial \mathcal{L} / \partial \sigma_t = 0$ gives
+
+$$
+-\frac{\mathcal{L}_t}{\sigma_t^3} + \frac{1}{\sigma_t} = 0
+\quad\Longrightarrow\quad
+\hat\sigma_t^2 = \mathcal{L}_t ,
+$$
+
+so at the optimum the learned noise variance equals the task's own residual
+loss, and back-substituting yields a profiled objective
+$\sum_t \big(\tfrac12 + \tfrac12\log \mathcal{L}_t\big)$, that is, a sum of log
+losses. The practical effect is automatic, scale-free balancing: a task with a
+large irreducible loss is downweighted in proportion to that loss, so no task
+dominates merely because it is measured in larger units or is intrinsically
+noisier. (In practice one optimizes $s_t = \log \sigma_t^2$ rather than
+$\sigma_t$ for numerical stability and to keep the variance positive.)
 
 *Gradient normalization* (@Chen_2018) instead adjusts the weights so that the
 tasks train at similar rates, by balancing the magnitudes of their gradients

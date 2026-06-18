@@ -84,6 +84,30 @@ A prototype is the "average look" of a class given its few examples. Classifying
 
 There is a clean probabilistic reading. With squared-Euclidean distance, the softmax above is exactly the posterior of a Gaussian mixture in which every class shares an identity covariance and the prototype is the class mean. Prototypical networks are, in the embedding space, a one-nearest-centroid classifier (equivalently, linear discriminant analysis (@sec-discriminant-analysis) with tied isotropic covariance). Their power comes entirely from learning an embedding $g_\theta$, across many episodes, in which that simple decision rule works. Relatives in this family include matching networks (Vinyals et al., 2016), which use an attention-weighted nearest neighbor, and relation networks (Sung et al., 2018), which learn the comparison metric itself (@sec-metric-learning) rather than fixing it to Euclidean distance.
 
+### Derivation: why squared Euclidean distance gives a linear classifier
+
+The claim that the prototype softmax is a Gaussian-mixture posterior, and that it is *linear* in the embedding, is worth deriving because it explains both the appeal and the limits of the method. Suppose each class $c$ generates embeddings from $\mathcal{N}(\mu_c, \sigma^2 I)$ with a shared isotropic covariance and equal priors $\pi_c = 1/N$. Let $z = g_\theta(x^\*)$. By Bayes' rule the posterior is
+$$
+p(y = c \mid z) \;=\; \frac{\pi_c \, \exp\!\left(-\tfrac{1}{2\sigma^2}\lVert z - \mu_c \rVert^2\right)}{\sum_{c'} \pi_{c'} \, \exp\!\left(-\tfrac{1}{2\sigma^2}\lVert z - \mu_{c'} \rVert^2\right)} .
+$$
+Expand the squared norm in the exponent, $\lVert z - \mu_c \rVert^2 = \lVert z \rVert^2 - 2\,\mu_c^\top z + \lVert \mu_c \rVert^2$. The term $\lVert z \rVert^2$ is the same for every class, so it cancels between numerator and denominator. Absorbing it and the (equal) priors leaves
+$$
+p(y = c \mid z) \;=\; \frac{\exp\!\left(w_c^\top z + b_c\right)}{\sum_{c'} \exp\!\left(w_{c'}^\top z + b_{c'}\right)},
+\qquad
+w_c = \frac{1}{\sigma^2}\mu_c, \quad
+b_c = -\frac{1}{2\sigma^2}\lVert \mu_c \rVert^2 .
+$$ {#eq-few-shot-zero-shot-protolinear}
+Equation @eq-few-shot-zero-shot-protolinear is an ordinary softmax (multinomial logistic) classifier whose weight vector for class $c$ is the prototype itself, scaled by $1/\sigma^2$, and whose bias is set by the prototype norm. Two consequences follow. First, prototypical networks impose a *linear* decision rule in embedding space; all nonlinearity must be carried by $g_\theta$, which is why a poor embedding cannot be rescued by the classifier. Second, the temperature is the noise scale $\sigma^2$: the chapter's softmax fixes $\sigma^2 = 1/2$ implicitly by writing $\exp(-\lVert z - \mu_c\rVert^2)$, but in practice a learnable temperature $\tau$ in $\exp(-\lVert z - \mu_c\rVert^2/\tau)$ materially affects calibration and is worth tuning. Using cosine distance instead of squared Euclidean breaks this exact equivalence (the $\lVert z\rVert^2$ term no longer cancels cleanly) but is often preferred empirically because it removes embedding-norm effects.
+
+### Prototype variance and the $1/K$ rate
+
+The diminishing returns visible in @fig-few-shot-zero-shot-shotcurve have a precise cause. The prototype $\mu_c = \frac{1}{K}\sum_{j=1}^K z_j$ is a sample mean of $K$ embeddings, so if the true class-conditional embedding has mean $\mu_c^\star$ and covariance $\Sigma_c$, then
+$$
+\mathbb{E}[\mu_c] = \mu_c^\star, \qquad
+\operatorname{Cov}(\mu_c) = \frac{1}{K}\Sigma_c .
+$$ {#eq-few-shot-zero-shot-protovar}
+The prototype is unbiased for the true class center, and its estimation variance falls as $1/K$, so the *standard error* of each prototype coordinate shrinks like $1/\sqrt{K}$. Because the decision boundary between two classes is the perpendicular bisector of their prototypes, boundary jitter inherits this $1/\sqrt{K}$ rate, and the resulting error rate above its asymptote (the Bayes rate for the fixed embedding) decays on the same order. This is why the curve gains most in the first few shots and then flattens: going from one shot to two halves the prototype variance, but going from ten to twenty cuts it only by a further factor of two off an already small base. It also explains why one-shot is the genuinely hard regime, the prototype is a single noisy point with no averaging at all.
+
 ## Optimization-based methods and a pointer to MAML
 
 A different family treats few-shot learning as learning an *initialization* (or an optimizer) from which a few gradient steps on the support set yield a good classifier. The flagship is Model-Agnostic Meta-Learning, MAML (Finn, Abbeel, and Levine, 2017). MAML learns parameters $\theta$ such that, for a new task, a small number of gradient steps on the support loss produces task-adapted parameters $\theta'$ that perform well on the query set. The inner loop adapts; the outer loop optimizes the initialization so that adaptation is fast.
@@ -200,6 +224,24 @@ text(max(shots), 1/5 + 0.03, "chance (1/N)", pos = 2, col = "grey40", cex = 0.9)
 
 @fig-few-shot-zero-shot-shotcurve is the empirical signature of few-shot learning: large gains from the first example, then flattening. The same curve shape appears with real learned embeddings; the difference is only how high the curve starts, which is governed by how well the embedding separates unseen classes.
 
+The $1/K$ variance law of @eq-few-shot-zero-shot-protovar is easy to confirm directly: estimate the trace of the prototype covariance by Monte Carlo for a range of $K$ and check that it scales like $1/K$.
+
+```{r few-shot-zero-shot-protovar-check}
+set.seed(1301)
+mu_star <- world$centers[1, ]            # a fixed true class center
+proto_var <- function(K, reps = 4000) {
+  protos <- t(replicate(reps, colMeans(draw_points(world, 1, K))))
+  sum(apply(protos, 2, var))             # trace of empirical Cov(prototype)
+}
+Ks <- c(1, 2, 5, 10, 20)
+tr <- sapply(Ks, proto_var)
+# Predicted: trace(Sigma)/K, with trace(Sigma) = d * sigma^2 for isotropic blobs.
+predicted <- world$d * world$sigma^2 / Ks
+data.frame(K = Ks, empirical = round(tr, 2), predicted = round(predicted, 2))
+```
+
+The empirical prototype variance tracks the predicted $d\sigma^2/K$ closely, confirming that more shots help only by averaging down a variance that already falls as $1/K$.
+
 
 ::: {.callout-tip title="When to use this"}
 Reach for a metric-based few-shot approach when new classes arrive often, each with only a few labels, and you can afford to train a good embedding once on a large pool of related classes. Nearest-centroid classification on top of a strong pretrained embedding (an image encoder, a text encoder) is a remarkably hard baseline to beat, and it adds new classes with zero retraining.
@@ -228,6 +270,25 @@ $$
 $$
 Because $W$ maps inputs into the semantic space (or aligns the two spaces), and because semantic vectors exist for unseen classes, the model can score classes it never trained on. The attribute structure is what carries information across the seen/unseen boundary: if "stripes" and "four legs" were learned from seen striped and four-legged animals, a never-seen zebra defined by those same attributes can be recognized.
 
+### Derivation: the closed-form compatibility solution (ESZSL)
+
+The bilinear score $F(x, a) = \phi(x)^\top W a$ has a training objective with a closed-form solution, which is worth deriving because it shows exactly how seen-class supervision determines $W$ and why ridge regularization is not optional here. Stack the $n$ seen-class training features as rows of $X \in \mathbb{R}^{n \times d}$, and let $S \in \mathbb{R}^{s \times m}$ hold the semantic vectors of the $s$ seen classes as rows. Encode labels as a one-hot matrix $Y \in \{0,1\}^{n \times s}$. The model's score matrix over training points and seen classes is $X W S^\top$, and the simplest objective fits these scores to the labels under a squared loss with Frobenius regularization (this is the Embarrassingly Simple Zero-Shot Learning, ESZSL, formulation of Romera-Paredes and Torr, 2015):
+$$
+\mathcal{L}(W) \;=\; \big\lVert X W S^\top - Y \big\rVert_F^2
+\;+\; \gamma \lVert W S^\top \rVert_F^2
+\;+\; \lambda \lVert X W \rVert_F^2
+\;+\; \beta \lVert W \rVert_F^2 .
+$$
+The three penalties control, respectively, the projection of attributes into feature space, the projection of features into attribute space, and the raw map. Keeping the single penalty $\beta\lVert W\rVert_F^2$ for clarity and differentiating, with the Frobenius identity $\nabla_W \lVert AWB - Y\rVert_F^2 = 2 A^\top(AWB - Y)B$, gives
+$$
+\nabla_W \mathcal{L} \;=\; 2 X^\top (X W S^\top - Y) S \;+\; 2\beta W \;=\; 0 .
+$$
+Setting $V = X^\top X$ and $G = S^\top S$ and rearranging yields the Sylvester equation $V W G + \beta W = X^\top Y S$. When the penalty is split as $\gamma$ on the attribute side and $\lambda$ on the feature side (the original ESZSL choice), the stationary condition separates into a clean product of two ridge inverses:
+$$
+\hat{W} \;=\; \big(X^\top X + \lambda I_d\big)^{-1} X^\top Y\, S \big(S^\top S + \gamma I_m\big)^{-1} .
+$$ {#eq-few-shot-zero-shot-eszsl}
+Equation @eq-few-shot-zero-shot-eszsl is a two-sided ridge regression: $(X^\top X + \lambda I)^{-1} X^\top$ is the usual feature-side ridge solution, $S(S^\top S + \gamma I)^{-1}$ is a ridge-regularized pseudoinverse on the semantic side, and $Y$ bridges them. The regularizers are essential, not cosmetic: $S^\top S$ is $m \times m$ but built from only $s$ seen-class rows, so if $s < m$ (fewer seen classes than attributes, the common case) it is singular and $\gamma > 0$ is required to invert it at all. At test time the predicted unseen label is $\hat y = \arg\max_{c \in \mathcal{Y}^u} \phi(x)^\top \hat W a_c$, and crucially $a_c$ for unseen $c$ never entered @eq-few-shot-zero-shot-eszsl; only seen semantics in $S$ did. The chapter's runnable demo fits a feature-to-attribute map $W$ by per-attribute ridge regression, which is the special case $S = I$ (each seen class supervises its own attribute targets directly) of this general bilinear form.
+
 ### Vision-language models and LLMs do this at scale
 
 Modern zero-shot classification is the same idea with learned, high-capacity encoders and natural-language side information. CLIP (Radford et al., 2021) trains an image encoder and a text encoder *jointly* on hundreds of millions of image-caption pairs, with a contrastive objective (@sec-self-supervised-learning) that pulls matching image-text pairs together and pushes mismatched pairs apart in a shared embedding space. To classify an image into arbitrary categories at test time, you write a text prompt for each candidate label (for example, "a photo of a {label}"), encode all prompts and the image, and pick the label whose text embedding has the highest cosine similarity to the image embedding. No category-specific training is needed; the labels can be anything expressible in words, including categories never named during training. Large language models perform zero-shot classification the same way in a purely textual modality: the input text and a description of each label are mapped into the model's representation space, and the most compatible label is chosen, often simply by asking the model to name it.
@@ -236,6 +297,18 @@ Modern zero-shot classification is the same idea with learned, high-capacity enc
 ::: {.callout-note}
 CLIP-style zero-shot is exactly the compatibility-function recipe with $\phi$ an image encoder, the semantic vector $a_c$ a text embedding of the label, and the score a cosine similarity. The conceptual content is identical to the attribute model below; only the encoders and the scale of training data differ.
 :::
+
+The contrastive objective that produces the shared space is worth writing precisely, because it is what guarantees the cosine score is meaningful at test time. Given a batch of $B$ image-text pairs, let $u_i = f(\text{image}_i)/\lVert f(\text{image}_i)\rVert$ and $v_j = g(\text{text}_j)/\lVert g(\text{text}_j)\rVert$ be the L2-normalized image and text embeddings, and let $\tau$ be a learned temperature. CLIP minimizes a symmetric InfoNCE loss in which, for each image, the matching caption is the positive among all $B$ captions as negatives, and vice versa:
+$$
+\mathcal{L}
+= -\frac{1}{2B}\sum_{i=1}^{B}
+\left[
+\log \frac{e^{\,u_i^\top v_i/\tau}}{\sum_{j=1}^{B} e^{\,u_i^\top v_j/\tau}}
+\;+\;
+\log \frac{e^{\,u_i^\top v_i/\tau}}{\sum_{j=1}^{B} e^{\,u_j^\top v_i/\tau}}
+\right].
+$$ {#eq-few-shot-zero-shot-infonce}
+The first term is a $B$-way classification of which caption matches image $i$; the second is the transposed problem. Minimizing @eq-few-shot-zero-shot-infonce drives $u_i^\top v_i$ (matched cosine) above $u_i^\top v_j$ (mismatched cosine) by a margin set by $\tau$, which is exactly the property the zero-shot rule relies on: at test time the correct label text sits at higher cosine similarity to the image than any wrong label. Because the loss is over normalized embeddings and arbitrary text, the alignment learned on training captions transfers to label strings never seen during training, which is the source of the open-vocabulary behavior. See @sec-self-supervised-learning for the InfoNCE bound on mutual information that this objective optimizes.
 
 
 A minimal CLIP-style zero-shot classifier in PyTorch looks like the following. It needs the Python `torch` and `clip` stack, so it is shown for reference and not executed here.
@@ -394,6 +467,13 @@ H \;=\; \frac{2\, \text{Acc}_s\, \text{Acc}_u}{\text{Acc}_s + \text{Acc}_u}.
 $$
 The harmonic mean punishes lopsided performance: a model that nails seen classes but fails on unseen ones (the typical bias) scores poorly, whereas a plain average would hide the problem. Calibration tricks (downweighting seen-class scores, calibrated stacking) exist precisely to combat this bias.
 
+The standard fix, calibrated stacking (Chao et al., 2016), makes the bias an explicit, tunable scalar. Subtract a constant $\gamma$ from the score of every seen class before taking the argmax over the union of seen and unseen labels:
+$$
+\hat y \;=\; \arg\max_{c \,\in\, \mathcal{Y}^s \cup \mathcal{Y}^u}\;
+\Big[\, F(x, a_c) \;-\; \gamma\, \mathbb{1}\{c \in \mathcal{Y}^s\} \,\Big].
+$$ {#eq-few-shot-zero-shot-calstack}
+At $\gamma = -\infty$ every input is forced to a seen class (seen accuracy is maximized, unseen accuracy is zero); at $\gamma = +\infty$ every input is forced to an unseen class (the reverse). Sweeping $\gamma$ from one extreme to the other traces out a curve of $(\text{Acc}_u, \text{Acc}_s)$ pairs, the seen-unseen accuracy trade-off curve, and one reports its area or picks the $\gamma$ that maximizes the harmonic mean $H$ on a validation split. The single parameter @eq-few-shot-zero-shot-calstack exposes the bias directly: a large optimal $\gamma$ is a quantitative confession that the raw compatibility scores favor seen classes.
+
 
 ::: {.callout-warning}
 Never report only strict zero-shot accuracy or a plain average of seen and unseen accuracy. Both flatter a model that has quietly collapsed onto the seen classes. Report the harmonic mean $H$, and report seen and unseen accuracy separately so the imbalance is visible.
@@ -401,6 +481,14 @@ Never report only strict zero-shot accuracy or a plain average of seen and unsee
 
 
 The second is the hubness problem. In high-dimensional embedding spaces, a few points (the "hubs") become the nearest neighbor of an unusually large number of query points, regardless of true class. When you classify by nearest semantic vector, certain class vectors act as hubs and absorb predictions they should not, inflating their false-positive rate and starving other classes. Hubness is a geometric property of high-dimensional nearest-neighbor search, not a bug in any particular model, and it worsens as dimension grows. Common mitigations rescale or normalize the similarity scores: cross-domain similarity local scaling (CSLS), which subtracts each point's average similarity to its neighbors before ranking, and simple ranking-based or normalized-similarity schemes that prevent any single vector from dominating.
+
+Why hubness emerges is a concentration-of-measure effect. As dimension $D$ grows, pairwise distances between independent points concentrate: the ratio of the spread of distances to their mean shrinks like $1/\sqrt{D}$, so almost all points sit at nearly the same distance from any query. In that near-degenerate geometry, the small residual differences are dominated by each candidate's distance to the *data mean*: points closer to the center of the cloud are systematically closer to everything, and therefore appear in many neighbor lists. The result is a skew in the $k$-occurrence distribution $O_k(c)$, the number of query points for which class vector $c$ ranks among the top $k$, with a heavy right tail of hubs. This is precisely why raw nearest-semantic-vector zero-shot degrades as the embedding dimension rises.
+
+CSLS corrects for the centrality bias by penalizing candidates that are everyone's neighbor. Let $\cos(x, a)$ be the cosine similarity and let $r_k(a) = \frac{1}{k}\sum_{x' \in \mathcal{N}_k(a)} \cos(x', a)$ be the mean similarity of semantic vector $a$ to its $k$ nearest queries, with $r_k(x)$ defined symmetrically for a query $x$. The CSLS score is
+$$
+\operatorname{CSLS}(x, a) \;=\; 2\cos(x, a) \;-\; r_k(x) \;-\; r_k(a) .
+$$ {#eq-few-shot-zero-shot-csls}
+The subtracted term $r_k(a)$ is large exactly for hubs, vectors that are highly similar to many points, so @eq-few-shot-zero-shot-csls demotes them and lets non-hub classes win the matches they deserve. It reduces to plain cosine ranking when no vector is more central than another, so it costs nothing in the well-behaved case.
 
 
 ::: {.callout-tip title="Intuition"}
@@ -436,6 +524,9 @@ Use few-shot methods when new classes keep arriving with a few labels each and y
 - Finn, Abbeel, and Levine (2017) introduce MAML, the optimization-based meta-learner; see the Meta-Learning chapter of this book.
 - Lampert, Nickisch, and Harmeling (2009) establish attribute-based zero-shot classification, the basis of the attribute demonstration here.
 - Xian, Lampert, Schiele, and Akata (2019) give the standard generalized zero-shot evaluation protocol and the harmonic-mean metric.
+- Romera-Paredes and Torr (2015) derive the embarrassingly simple (ESZSL) closed-form bilinear compatibility solution used above.
+- Chao, Changpinyo, Gong, and Sha (2016) introduce calibrated stacking and the seen-unseen accuracy trade-off curve for generalized zero-shot learning.
+- Conneau, Lample, Ranzato, Denoyer, and Jegou (2018) introduce CSLS as a hubness-aware retrieval criterion.
 - Radford et al. (2021) present CLIP, the contrastive vision-language model behind modern zero-shot image classification.
 - Radovanovic, Nanopoulos, and Ivanovic (2010) analyze the hubness problem in high-dimensional nearest-neighbor spaces.
 - Wang, Yao, Kwok, and Ni (2020) survey few-shot learning methods and their taxonomy.

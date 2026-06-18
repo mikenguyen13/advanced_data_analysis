@@ -68,6 +68,37 @@ $$
 
 The first term averages the noise variance over the posterior; the second measures how much the mean prediction moves as $\theta$ varies. This formula is the practical workhorse of the chapter: every method below is, in effect, a recipe for sampling or approximating $p(\theta \mid \mathcal{D})$ so that you can estimate these two terms.
 
+### Deriving the variance decomposition
+
+The split above is the law of total variance specialized to the posterior predictive, and it is worth deriving once so the two terms are unambiguous. Write $m(\theta) = E(y_* \mid x_*, \theta)$ for the conditional mean and $v(\theta) = \operatorname{Var}(y_* \mid x_*, \theta)$ for the conditional (aleatoric) variance, with both conditioned implicitly on $x_*$, and let expectations $E_\theta$ and variances $\operatorname{Var}_\theta$ be taken over the posterior $p(\theta \mid \mathcal{D})$. Start from the definition of variance applied to the marginal predictive,
+
+$$
+\operatorname{Var}(y_* \mid x_*) = E\big[(y_* - E(y_* \mid x_*))^2\big],
+$$
+
+and condition on $\theta$ inside. By the tower property $E(y_* \mid x_*) = E_\theta[m(\theta)] =: \bar m$. Insert and subtract $m(\theta)$,
+
+$$
+y_* - \bar m = \big(y_* - m(\theta)\big) + \big(m(\theta) - \bar m\big).
+$$
+
+Square and take the joint expectation over $(\theta, y_*)$. The cross term vanishes because, conditional on $\theta$, $E[(y_* - m(\theta)) \mid \theta] = 0$ while $(m(\theta) - \bar m)$ is $\theta$-measurable:
+
+$$
+E\big[(y_* - m(\theta))(m(\theta)-\bar m)\big]
+= E_\theta\!\Big[(m(\theta)-\bar m)\, E\big[(y_* - m(\theta)) \mid \theta\big]\Big] = 0 .
+$$
+
+The two surviving squares are exactly the conditional variance averaged over the posterior and the variance of the conditional mean,
+
+$$
+\operatorname{Var}(y_* \mid x_*)
+= \underbrace{E_\theta[v(\theta)]}_{\text{aleatoric}}
++ \underbrace{E_\theta\big[(m(\theta)-\bar m)^2\big]}_{=\,\operatorname{Var}_\theta[m(\theta)],\ \text{epistemic}} .
+$$ {#eq-bayesian-deep-learning-total-var}
+
+Two consequences are worth stating. The epistemic term @eq-bayesian-deep-learning-total-var is nonnegative and shrinks to zero exactly when the posterior concentrates on a single $\theta$, which under standard regularity (a well-specified model, an identifiable parameter, and a prior with mass near the truth) happens as $n \to \infty$ by posterior consistency. The aleatoric term does not depend on $n$ and persists at the irreducible noise floor. This is the precise sense in which "more data removes epistemic but not aleatoric" uncertainty.
+
 
 ::: {.callout-note}
 If you remember one equation from this chapter, make it the law-of-total-variance split above. Once you can sample plausible parameter settings $\theta$ from (an approximation of) the posterior, the rest is bookkeeping: average each member's noise for the aleatoric piece, and measure the scatter of the members' means for the epistemic piece.
@@ -90,6 +121,16 @@ $$
 
 If each network also outputs a variance $\sigma^2_{\theta^{(m)}}(x_*)$, add its mean to get total variance. Ensembles are simple, embarrassingly parallel, and tend to give the best-calibrated uncertainty in benchmarks. The cost is $M$ times the training and storage.
 
+#### Why a variance head needs the Gaussian NLL, and what it estimates
+
+The heteroscedastic variance head in the Keras template below is trained by minimizing the Gaussian negative log-likelihood, and it is worth seeing why that loss recovers the noise variance rather than collapsing. With outputs $\mu_\theta(x)$ and $\sigma^2_\theta(x)$ the per-point negative log-likelihood is, up to a constant,
+
+$$
+\ell(\theta) = \frac{1}{2}\log \sigma^2_\theta(x) + \frac{(y - \mu_\theta(x))^2}{2\,\sigma^2_\theta(x)} .
+$$ {#eq-bayesian-deep-learning-gauss-nll}
+
+Hold the mean fixed and minimize over the variance at a single input. Writing $s = \sigma^2_\theta(x)$ and $r^2 = (y - \mu_\theta(x))^2$, set $\partial \ell / \partial s = \tfrac{1}{2s} - \tfrac{r^2}{2 s^2} = 0$, which gives $\hat s = r^2$. Aggregated over points sharing similar $x$, the optimal head therefore reports the local mean squared residual, which is exactly the conditional noise variance $\sigma^2(x)$ that defines aleatoric uncertainty. The $\tfrac{1}{2}\log s$ term is what prevents the degenerate solution $s \to \infty$ (which would zero out the data term): it penalizes inflating the variance, so the two terms balance at the true residual scale. In practice one parameterizes the head by $\log \sigma^2_\theta(x)$ (as in the template) so the output is unconstrained and $\exp(-\log s)$ is numerically stable, which is the precise role of the `tf$exp(-logvar)` factor in the code.
+
 
 ::: {.callout-tip}
 Because the $M$ fits are independent, you can train them on separate machines or GPUs at the same time. That makes ensembles the easiest UQ method to scale when you have hardware but not much patience for new code.
@@ -105,6 +146,27 @@ $$
 $$
 
 where $z_t$ is the random dropout mask on pass $t$. This is almost free to add to an existing dropout network: no retraining, just turning off the usual "eval mode" deactivation of dropout. The catch is that the implied posterior is tied to the dropout rate and is often poorly calibrated unless the rate is tuned.
+
+::: {.callout-note title="Monte Carlo error of the sample estimators"}
+Both MC dropout and the ensemble combine $T$ (or $M$) stochastic predictions, so their estimates carry Monte Carlo error on top of the modeling error. The sample mean $\widehat{E}(y_*\mid x_*)$ has standard error $\operatorname{sd}_{\text{epi}}(x_*)/\sqrt{T}$, so it tightens as $T^{-1/2}$; the sample variance estimator of the epistemic term itself converges at the same $T^{-1/2}$ rate but with larger constant (its relative error is roughly $\sqrt{2/(T-1)}$ for Gaussian draws). The practical reading is that $T$ in the low hundreds pins down the predictive mean cheaply, but stable variance and tail quantiles want more passes. This MC error is distinct from and additional to the bias of the underlying posterior approximation.
+:::
+
+#### MC dropout as variational inference
+
+MC dropout is not an ad hoc trick: it is exact variational inference under a specific approximating family. The argument (Gal and Ghahramani, 2016) treats each weight matrix $W_\ell$ of layer $\ell$ as random and uses the variational distribution
+
+$$
+W_\ell = M_\ell \cdot \operatorname{diag}(z_\ell), \qquad z_{\ell,j} \sim \operatorname{Bernoulli}(1 - p),
+$$
+
+where $M_\ell$ is the learned weight matrix and $z_\ell$ are the dropout masks. This $q_\phi$, a mixture of two Gaussians per weight with one component pinned near zero, is the family whose ELBO is being maximized. The reconstruction term of the ELBO is
+
+$$
+E_{q_\phi}\big[\log p(\mathcal{D}\mid\theta)\big]
+\approx \frac{1}{T}\sum_{t=1}^T \log p\big(\mathcal{D}\mid \theta_t\big), \qquad \theta_t \sim q_\phi,
+$$
+
+which is precisely averaging the data log-likelihood over $T$ dropout masks. With an L2 weight penalty of strength $\lambda$ standing in for the KL-to-prior term, minimizing the usual dropout training objective is therefore (approximately) maximizing the ELBO. The same masks at test time then turn the trained network into a sampler from $q_\phi$, and @eq-bayesian-deep-learning-total-var supplies the variance decomposition. This derivation also exposes the method's structural limitation: because the Bernoulli rate $p$ is fixed, the predictive variance has a floor that does not vanish as $n \to \infty$, so MC dropout cannot in general be posterior-consistent for epistemic uncertainty without annealing $p$ with the data.
 
 
 ::: {.callout-warning}
@@ -124,6 +186,35 @@ $$
 
 where $H$ is the Hessian of the negative log-posterior at the mode (often approximated by the Fisher information or a Kronecker-factored block-diagonal version, since the full Hessian is too large).^[The Hessian measures curvature: how sharply the log-posterior bends at its peak. A sharp peak (large curvature) means the data pins the parameters down tightly, so the posterior is narrow and epistemic uncertainty is low. A flat peak means many parameter settings fit nearly as well, so uncertainty is high. Inverting $H$ turns curvature into a covariance.] It is cheap because it reuses the trained weights and only adds a curvature estimate, and modern "last-layer" Laplace applies the Gaussian only to the final layer to keep $H$ small.
 
+#### Deriving the Laplace Gaussian
+
+Let $g(\theta) = \log p(\theta \mid \mathcal{D}) = \log p(\mathcal{D}\mid\theta) + \log p(\theta) - \log p(\mathcal{D})$. The MAP estimate $\hat\theta$ is a stationary point, so $\nabla g(\hat\theta) = 0$. A second-order Taylor expansion of $g$ about $\hat\theta$ has no first-order term,
+
+$$
+g(\theta) \approx g(\hat\theta) - \tfrac{1}{2}(\theta - \hat\theta)^\top H (\theta - \hat\theta),
+\qquad H = -\nabla^2_\theta g(\hat\theta) ,
+$$
+
+so exponentiating gives $p(\theta\mid\mathcal{D}) \propto \exp\!\big(-\tfrac12 (\theta-\hat\theta)^\top H (\theta-\hat\theta)\big)$, the kernel of a $N(\hat\theta, H^{-1})$ density (and $H \succ 0$ at a maximum guarantees a valid covariance). This is the multivariate Laplace method: a Gaussian fit by matching the mode and the curvature there. As a byproduct, integrating the unnormalized posterior under the same quadratic gives the Laplace estimate of the log marginal likelihood,
+
+$$
+\log p(\mathcal{D}) \approx \log p(\mathcal{D}\mid\hat\theta) + \log p(\hat\theta) + \tfrac{d}{2}\log(2\pi) - \tfrac{1}{2}\log\det H ,
+$$
+
+with $d = \dim(\theta)$; the $-\tfrac12\log\det H$ term is an Occam factor that rewards flat (low-curvature) modes and is what makes Laplace usable for hyperparameter selection.
+
+#### From parameter posterior to predictive: the linearized variance
+
+For a regression output $f_\theta(x_*)$ the Laplace posterior on $\theta$ must be pushed through $f$ to get a predictive variance. A first-order (delta-method) expansion around the mode, $f_\theta(x_*) \approx f_{\hat\theta}(x_*) + J_*^\top (\theta - \hat\theta)$ with Jacobian $J_* = \nabla_\theta f_\theta(x_*)\big|_{\hat\theta}$, makes the output marginally Gaussian:
+
+$$
+f_\theta(x_*) \mid \mathcal{D} \;\approx\; N\!\big(f_{\hat\theta}(x_*),\; J_*^\top H^{-1} J_*\big),
+\qquad
+\operatorname{Var}(y_* \mid x_*) \approx \underbrace{J_*^\top H^{-1} J_*}_{\text{epistemic}} + \underbrace{\sigma^2}_{\text{aleatoric}} .
+$$ {#eq-bayesian-deep-learning-laplace-pred}
+
+This "linearized Laplace" is the form implemented in practice and is what the torch sketch computes. For the last-layer variant the network body is frozen, so $f_\theta(x_*) = \phi(x_*)^\top w$ is linear in the last-layer weights $w$, the Jacobian is exactly the frozen features $J_* = \phi(x_*)$, and @eq-bayesian-deep-learning-laplace-pred becomes $\phi(x_*)^\top H^{-1}\phi(x_*) + \sigma^2$, identical in form to the Bayesian linear regression predictive variance derived in @sec-bayesian-deep-learning below. The generalized Gauss-Newton approximation $H \approx \sum_i J_i J_i^\top / \sigma^2 + I/\tau^2$ replaces the true Hessian with an outer-product (Fisher) form that is always positive semidefinite, which is why it is preferred over the raw Hessian.
+
 ### Variational inference (brief)
 
 Variational inference (VI) replaces the intractable posterior with a tractable family $q_\phi(\theta)$, typically a factorized Gaussian, and fits $\phi$ by maximizing the evidence lower bound (ELBO):
@@ -133,6 +224,41 @@ $$
 $$
 
 The first term rewards fitting the data; the KL term keeps $q_\phi$ close to the prior and acts as a complexity penalty. "Bayes by Backprop" makes this differentiable with the reparameterization trick so it trains with the usual stochastic gradient tooling. VI gives a genuine approximate posterior in one training run, but the factorized Gaussian usually underestimates variance and the implementation is more involved than the other three.
+
+#### Why the ELBO is a lower bound
+
+The ELBO is not an arbitrary objective; it is the log evidence minus the gap to the true posterior. Start from the log marginal likelihood and insert $q_\phi$,
+
+$$
+\log p(\mathcal{D}) = \log \int p(\mathcal{D}\mid\theta)p(\theta)\,d\theta
+= \log E_{q_\phi}\!\left[\frac{p(\mathcal{D}\mid\theta)p(\theta)}{q_\phi(\theta)}\right].
+$$
+
+Jensen's inequality (the log of an expectation is at least the expectation of the log) pushes the log inside,
+
+$$
+\log p(\mathcal{D}) \ge E_{q_\phi}\!\big[\log p(\mathcal{D}\mid\theta)\big] - \operatorname{KL}\!\big(q_\phi \,\|\, p(\theta)\big) = \mathcal{L}(\phi),
+$$
+
+which is exactly the ELBO. The slack in the bound is the posterior approximation error: an algebraic rearrangement gives $\log p(\mathcal{D}) - \mathcal{L}(\phi) = \operatorname{KL}\!\big(q_\phi(\theta)\,\|\,p(\theta\mid\mathcal{D})\big) \ge 0$. Maximizing the ELBO over $\phi$ is therefore equivalent to minimizing the reverse KL from $q_\phi$ to the true posterior. That reverse direction is precisely why mean-field VI underestimates variance: reverse KL is mode-seeking and penalizes placing mass where the posterior is small, so $q_\phi$ shrinks to fit inside a single mode rather than covering the full posterior spread.
+
+#### The reparameterization trick
+
+The obstacle to gradient training is that $\phi$ appears in the distribution the expectation is taken over, so $\nabla_\phi E_{q_\phi}[\,\cdot\,]$ cannot be moved inside the expectation directly. For a factorized Gaussian $q_\phi(\theta) = N(\mu, \operatorname{diag}(\sigma^2))$ with $\phi = (\mu, \rho)$ and $\sigma = \log(1+e^{\rho})$, write the sample as a deterministic transform of parameter-free noise,
+
+$$
+\theta = \mu + \sigma \odot \varepsilon, \qquad \varepsilon \sim N(0, I).
+$$
+
+Now the randomness no longer depends on $\phi$, and the gradient passes through:
+
+$$
+\nabla_\phi\, E_{q_\phi}\big[h(\theta)\big]
+= E_{\varepsilon \sim N(0,I)}\big[\nabla_\phi\, h(\mu + \sigma\odot\varepsilon)\big]
+\approx \frac{1}{S}\sum_{s=1}^S \nabla_\phi\, h(\mu + \sigma\odot\varepsilon_s).
+$$
+
+A single sample ($S = 1$) per minibatch usually suffices. This Monte Carlo gradient is unbiased and typically far lower variance than the score-function (REINFORCE) estimator, which is what makes Bayes by Backprop trainable with ordinary SGD. The KL term against a Gaussian prior $N(0,\tau^2 I)$ has the closed form $\operatorname{KL} = \tfrac12\sum_j\big(\sigma_j^2/\tau^2 + \mu_j^2/\tau^2 - 1 - \log(\sigma_j^2/\tau^2)\big)$, so only the data term needs sampling.
 
 ### Comparison
 
@@ -280,7 +406,22 @@ $$
 \Sigma_n = \Big(\tfrac{1}{\sigma^2} X^\top X + \tfrac{1}{\tau^2} I\Big)^{-1},
 \qquad
 \mu_n = \tfrac{1}{\sigma^2}\, \Sigma_n X^\top y .
+$$ {#eq-bayesian-deep-learning-blr-post}
+
+To derive @eq-bayesian-deep-learning-blr-post, multiply the Gaussian likelihood by the Gaussian prior and read off the exponent as a quadratic in $\beta$ (the conjugate "complete the square" argument). Dropping terms not involving $\beta$, the log posterior is
+
 $$
+\log p(\beta\mid\mathcal{D}) = -\frac{1}{2\sigma^2}(y - X\beta)^\top(y - X\beta) - \frac{1}{2\tau^2}\beta^\top\beta + \text{const}.
+$$
+
+Expanding and collecting the quadratic and linear terms in $\beta$,
+
+$$
+= -\frac{1}{2}\,\beta^\top\!\underbrace{\Big(\tfrac{1}{\sigma^2}X^\top X + \tfrac{1}{\tau^2}I\Big)}_{\Sigma_n^{-1}}\beta
+\;+\; \beta^\top \underbrace{\tfrac{1}{\sigma^2}X^\top y}_{\Sigma_n^{-1}\mu_n} \;+\; \text{const}.
+$$
+
+A Gaussian $N(\mu_n,\Sigma_n)$ has log density with quadratic coefficient $-\tfrac12\Sigma_n^{-1}$ and linear coefficient $\Sigma_n^{-1}\mu_n$. Matching the two displays gives $\Sigma_n = (\tfrac{1}{\sigma^2}X^\top X + \tfrac{1}{\tau^2}I)^{-1}$ and $\mu_n = \tfrac{1}{\sigma^2}\Sigma_n X^\top y$ at once. The posterior mean is the ridge estimate with penalty $\sigma^2/\tau^2$, which exhibits the prior as the regularizer: a tight prior (small $\tau^2$) shrinks $\beta$ harder. As $n$ grows, $X^\top X = O(n)$ dominates the $I/\tau^2$ term, so $\Sigma_n = O(1/n)$ and the prior washes out, the Bernstein-von Mises behavior for this model.
 
 For a new input row $x_*$, the posterior predictive is Gaussian with
 
@@ -291,6 +432,14 @@ E(y_* \mid x_*, \mathcal{D}) = x_*^\top \mu_n,
 $$
 
 The two variance terms are exactly the decomposition from the law of total variance, with the epistemic term shrinking as $X^\top X$ grows with more data. The aleatoric term $\sigma^2$ is constant here because we assumed homoscedastic noise. We use a polynomial basis so the mean function can curve.
+
+The predictive variance follows directly from @eq-bayesian-deep-learning-blr-post by writing $y_* = x_*^\top\beta + \epsilon_*$ with $\epsilon_* \sim N(0,\sigma^2)$ independent of $\beta\mid\mathcal{D}$. Then $x_*^\top\beta \mid \mathcal{D} \sim N(x_*^\top\mu_n,\ x_*^\top\Sigma_n x_*)$ as a linear image of a Gaussian, and adding the independent noise sums the variances:
+
+$$
+\operatorname{Var}(y_*\mid x_*,\mathcal{D}) = x_*^\top\Sigma_n x_* + \sigma^2 .
+$$
+
+The first term is the epistemic piece $\operatorname{Var}_\beta[E(y_*\mid x_*,\beta)]$ and the second is the aleatoric piece $E_\beta[\operatorname{Var}(y_*\mid x_*,\beta)]$, so this is @eq-bayesian-deep-learning-total-var made fully analytic. The quadratic form $x_*^\top\Sigma_n x_*$ grows when $x_*$ points in directions poorly covered by the rows of $X$ (small eigenvalues of $X^\top X$), which is why the band fans out under extrapolation in the figure.
 
 
 ::: {.callout-important title="Key idea"}
@@ -353,6 +502,30 @@ ggplot() +
 ```
 
 @fig-bayesian-deep-learning-bayes-poly shows the result. Outside the training range (the dotted lines), the epistemic band fans out fast: the model knows it is extrapolating. Inside the range the credible band is tight and the predictive band is dominated by the constant aleatoric floor $\sigma^2$. This is exactly the behavior we want from a UQ method and is the gold standard the approximate deep learning methods are trying to mimic.
+
+The closed-form epistemic variance $x_*^\top\Sigma_n x_*$ is the population quantity the law of total variance promises. We can confirm the decomposition empirically by drawing $\beta$ from the posterior, evaluating the mean function $x_*^\top\beta$ for each draw, and checking that the Monte Carlo variance of those means matches the quadratic form, while the noise term adds the rest.
+
+```{r, message=FALSE, warning=FALSE}
+# Verify Var_beta[ x*' beta ] == x*' Sigma_n x* by Monte Carlo, and that
+# adding sigma^2 recovers the total predictive variance.
+set.seed(99)
+L   <- chol(Sig_n)                       # Sig_n = L' L
+B   <- 50000
+draws_beta <- matrix(rnorm(B * p), B, p) %*% L
+draws_beta <- sweep(draws_beta, 2, as.numeric(mu_n), "+")  # rows ~ N(mu_n, Sig_n)
+
+x_star <- Xg[150, ]                       # one extrapolation point
+mean_draws <- as.numeric(draws_beta %*% x_star)
+mc_epi  <- var(mean_draws)                # Monte Carlo epistemic variance
+cf_epi  <- as.numeric(t(x_star) %*% Sig_n %*% x_star)  # closed form
+
+# Draw y* = x*'beta + noise and compare total variance.
+y_star_draws <- mean_draws + rnorm(B, 0, sqrt(sigma2))
+c(mc_epistemic = mc_epi, closed_form_epistemic = cf_epi,
+  mc_total = var(y_star_draws), closed_form_total = cf_epi + sigma2)
+```
+
+The Monte Carlo and closed-form columns agree to sampling error, confirming both the posterior covariance in @eq-bayesian-deep-learning-blr-post and the variance split in @eq-bayesian-deep-learning-total-var.
 
 ## Deep learning implementations (not executed here)
 
@@ -447,6 +620,18 @@ library(torch)
 ## Practical guidance, pitfalls, and when to use each
 
 Always validate calibration, not just sharpness. A method can produce tight, confident-looking bands that are wrong. Check empirical coverage (does the 90% interval contain 90% of held-out points?) and use proper scoring rules such as the negative log predictive density or the continuous ranked probability score. A reliability diagram for classification is the analog, covered in the probability calibration chapter (@sec-probability-calibration). The coverage check in the bootstrap demo is the minimum you should run.
+
+### Proper scoring rules for probabilistic predictions
+
+Coverage checks one quantile; a proper scoring rule grades the whole predictive distribution. A scoring rule $S(p, y)$ assigns a penalty to a predictive distribution $p$ given the realized outcome $y$. It is proper if the expected score is optimized (here, minimized) by reporting the true distribution: $E_{y\sim q}\,S(q,y) \le E_{y\sim q}\,S(p,y)$ for all $p$, and strictly proper if equality forces $p = q$. Propriety is what makes a rule un-gameable: you cannot lower your expected penalty by being deliberately over- or under-confident, so minimizing it on held-out data simultaneously rewards calibration and sharpness.
+
+The negative log predictive density (NLPD), $S(p,y) = -\log p(y)$, is strictly proper. For a Gaussian predictive $N(\mu, \sigma^2)$ it equals @eq-bayesian-deep-learning-gauss-nll plus a constant, so it explicitly penalizes both a wrong mean (through $(y-\mu)^2/\sigma^2$) and a miscalibrated spread (through the $\tfrac12\log\sigma^2$ Occam term that punishes overconfident tiny $\sigma$). The continuous ranked probability score integrates the squared distance between the predictive CDF $F$ and the step function at the outcome,
+
+$$
+\operatorname{CRPS}(F, y) = \int_{-\infty}^{\infty}\big(F(t) - \mathbb{1}\{t \ge y\}\big)^2\,dt ,
+$$ {#eq-bayesian-deep-learning-crps}
+
+which is also strictly proper, is in the same units as $y$ (unlike NLPD), and is finite even when the predictive density is zero at $y$, making it more robust than NLPD to badly placed tails. For a Gaussian predictive @eq-bayesian-deep-learning-crps has the closed form $\operatorname{CRPS}(N(\mu,\sigma^2), y) = \sigma\big[\, z(2\Phi(z)-1) + 2\phi(z) - \pi^{-1/2}\big]$ with $z = (y-\mu)/\sigma$, convenient for the variance-head and Bayesian-linear models above. Report mean NLPD or mean CRPS over the test set alongside coverage: coverage can look right while the distribution is wrong elsewhere, and a strictly proper score will catch it.
 
 Do not confuse the two uncertainties when acting on them. High aleatoric uncertainty means "this region is inherently noisy; collecting more data will not help much." High epistemic uncertainty means "the model has not seen enough here; more data or abstention will help." Active learning targets epistemic; deciding whether a measurement is worth taking targets aleatoric. Reporting only total variance hides which lever to pull.
 

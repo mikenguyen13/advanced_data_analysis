@@ -67,6 +67,12 @@ $$
 $$
 because conditioning on $W$ is, given $X$, the same as conditioning on the potential outcome. This single identity is the engine behind every estimator in this chapter: estimate the response surfaces (or functionals of them) with flexible ML, then difference them.
 
+To see the identity explicitly, fix $x$ and a treatment value $w$. By the definition of the observed outcome, $\mathbb{E}[Y \mid X = x, W = w] = \mathbb{E}[Y(w) \mid X = x, W = w]$, since $Y = Y(w)$ on the event $\{W = w\}$. Unconfoundedness makes $Y(w)$ independent of $W$ given $X$, so the conditioning on $W = w$ can be dropped:
+$$
+\mu_w(x) = \mathbb{E}[Y \mid X = x, W = w] = \mathbb{E}[Y(w) \mid X = x, W = w] = \mathbb{E}[Y(w) \mid X = x].
+$$
+Differencing $w = 1$ and $w = 0$ gives $\mu_1(x) - \mu_0(x) = \mathbb{E}[Y(1) - Y(0) \mid X = x] = \tau(x)$, which is the identifying identity. Overlap is what makes both conditional expectations well defined: if $e(x) = 0$ or $1$ at some $x$, one arm contributes no data there and the corresponding $\mu_w(x)$ is unidentified, so any estimate is pure extrapolation.
+
 
 ::: {.callout-important title="Key idea"}
 Identification converts an impossible question (a counterfactual difference per unit) into a possible one (a difference of two ordinary regressions). Everything that follows is a different strategy for estimating those regressions, or functionals of them, accurately.
@@ -118,6 +124,22 @@ $$
 $$
 The weighting puts more trust in the estimate built from the larger arm at each $x$, which is why the X-learner shines under imbalance.^[The propensity $\hat e(x)$ acts as a switch: where treated units are rare, $\hat e(x)$ is small, so the formula leans on $\hat\tau_1(x)$, the effect estimate imputed from the plentiful controls, and vice versa.]
 
+#### Why the cross-step works and the choice of weight {#sec-causal-machine-learning-xlearner-deriv}
+
+The cross-step is an unbiasedness argument. Take a treated unit ($W_i = 1$) and suppose $\hat\mu_0$ has converged to the truth, $\hat\mu_0 = \mu_0$. Then the imputed effect is
+$$
+\tilde D_i = Y_i - \mu_0(X_i) = Y_i(1) - \mu_0(X_i),
+$$
+and taking the conditional expectation,
+$$
+\mathbb{E}[\tilde D_i \mid X_i = x, W_i = 1]
+= \mathbb{E}[Y(1) \mid X = x] - \mu_0(x)
+= \mu_1(x) - \mu_0(x) = \tau(x),
+$$
+where the first equality uses unconfoundedness to drop the conditioning on $W_i = 1$. So regressing $\tilde D_i$ on $X_i$ over the treated units estimates $\tau(x)$, and the symmetric argument over controls (with $\hat\mu_1 = \mu_1$) gives the second estimate $\hat\tau_0(x)$. The benefit over the T-learner is that each cross-estimate uses one fitted nuisance plus the observed outcome of the *other* arm, rather than differencing two independently noisy fits.
+
+The convex combination $\hat\tau_X = g\,\hat\tau_0 + (1 - g)\,\hat\tau_1$ for a weight $g(x) \in [0, 1]$ is then chosen to minimize variance. If $\hat\tau_0$ and $\hat\tau_1$ were independent with variances $v_0(x)$ and $v_1(x)$, the variance-minimizing weight would be the inverse-variance weight $g^\star(x) = v_1(x) / (v_0(x) + v_1(x))$. Where treated units are scarce, $\hat\tau_1$ (built by imputing on the many controls) is the more stable estimate, so we want to put weight on it; @kunzel2019metalearners observe that $g(x) = \hat e(x)$ approximates the inverse-variance weight because the variance of an arm's estimate scales inversely with that arm's local sample fraction. Hence $g = \hat e$ leans on $\hat\tau_1$ exactly when treated units are rare ($\hat e$ small), recovering the stated formula. Using $g \equiv 1/2$ or $g \equiv \hat e$ are both valid; the propensity weight is the default because it adapts to local imbalance.
+
 @tbl-causal-machine-learning-estimator-comparison summarizes the trade-offs. Read it as a decision aid: pick the row whose "Use when" column matches your data, then confirm with held-out evaluation.
 
 | Meta-learner | Models fit | Strength | Main failure mode | Use when |
@@ -141,6 +163,37 @@ First, splits are chosen to maximize the difference in estimated treatment effec
 Honesty is the statistical version of not grading your own homework. If you choose the leaf boundaries to make an effect look large and then estimate that same effect on the same rows, you will overstate it. Splitting the data in two keeps the estimate honest.
 :::
 
+
+### Splitting criterion and the forest as an adaptive kernel {#sec-causal-machine-learning-grf-deriv}
+
+Within a leaf $L$ a causal tree estimates the effect by the difference of arm means,
+$$
+\hat\tau_L = \frac{\sum_{i \in L} W_i Y_i}{\sum_{i \in L} W_i} - \frac{\sum_{i \in L} (1 - W_i) Y_i}{\sum_{i \in L} (1 - W_i)},
+$$
+which is unbiased for $\tau(x)$ on $L$ when treatment is randomized within the leaf. A regression tree chooses splits to reduce outcome variance; a causal tree instead chooses the split of parent $P$ into children $C_1, C_2$ that maximizes the heterogeneity of the effect across children. Writing $n_j = |C_j|$, the criterion is the weighted between-child effect variance
+$$
+\Delta(C_1, C_2) = \frac{n_1 n_2}{n_1 + n_2}\,\bigl(\hat\tau_{C_1} - \hat\tau_{C_2}\bigr)^2,
+$$
+which is large exactly when a split separates units with different treatment effects (the causal-tree criterion of Athey and Imbens). Maximizing $\Delta$ is equivalent to minimizing the expected squared error of the leaf effect estimates, the causal analogue of the regression tree's variance-reduction criterion. The generalized random forest of @athey2019grf replaces the raw arm-mean estimator by a locally weighted moment estimator and uses a gradient-based approximation of $\Delta$ for computational efficiency, but the principle is the same: split where the local effect changes.
+
+Honesty enforces that the sample used to choose splits (the $\mathcal{I}$ subsample) is disjoint from the sample used to fill the leaf estimates (the $\mathcal{J}$ subsample). Because the leaf value $\hat\tau_L$ is then a fixed-partition arm-mean on data independent of the partition choice, $\mathbb{E}[\hat\tau_L \mid X \in L] = \bar\tau_L$ with no optimization bias, and the within-leaf estimate is conditionally unbiased.
+
+It is useful to read the forest as an adaptive kernel. Aggregating over $B$ honest trees, the prediction at $x$ is a weighted arm-difference,
+$$
+\hat\tau(x) = \frac{\sum_i \alpha_i(x)\,W_i\,(Y_i - \bar Y^{(1)})}{\cdots} \quad\text{with}\quad
+\alpha_i(x) = \frac{1}{B}\sum_{b=1}^{B} \frac{\mathbf{1}\{X_i \in L_b(x)\}}{|L_b(x)|},
+$$
+where $L_b(x)$ is the leaf of tree $b$ containing $x$ and $\sum_i \alpha_i(x) = 1$. The weights $\alpha_i(x)$ are a data-adaptive, supervised kernel: they place mass on training points that repeatedly fall in the same leaves as $x$, that is, points the forest judges to have a similar treatment effect. This is the unifying view of @athey2019grf, and it connects causal forests directly to the kernel and local-regression methods of @sec-kernel.
+
+### Consistency, asymptotic normality, and the rate {#sec-causal-machine-learning-grf-theory}
+
+@wager2018estimation prove that an honest causal forest with subsampling (each tree grown on a subsample of size $s = n^\beta$, $\beta < 1$, drawn without replacement) is pointwise consistent and asymptotically Gaussian:
+$$
+\frac{\hat\tau(x) - \tau(x)}{\widehat{\mathrm{se}}(\hat\tau(x))} \xrightarrow{d} \mathcal{N}(0, 1),
+$$
+which is the basis for the reported confidence intervals. Two structural ingredients make this work. Honesty removes the optimization bias, so the estimator behaves like a U-statistic of the subsampling. The trees are also required to be *random-split* and *balanced* (each split sends at least a fraction of points to each child and each feature has a minimum split probability), which forces every coordinate of $X$ to be split and drives leaf diameter to zero, giving consistency. The variance is estimated by the infinitesimal jackknife for random forests, which `grf` returns via `estimate.variance = TRUE`.
+
+The convergence is slower than the parametric $n^{-1/2}$: the pointwise rate is $n^{-\gamma}$ with $\gamma < 1/2$ depending on the dimension $p$ and the subsample exponent $\beta$, reflecting the curse of dimensionality that all nonparametric CATE estimators face. This is the price of pointwise heterogeneity estimation, and it is exactly why DML (next section), which targets a low-dimensional summary, can attain the faster $\sqrt n$ rate for that summary.
 
 The forest produces a pointwise estimate $\hat\tau(x)$ together with an estimated standard error, so you get
 $$
@@ -188,12 +241,61 @@ $$
 \psi(Y, W, X; \tau, \eta) = \mu_1(x) - \mu_0(x)
 + \frac{W\,(Y - \mu_1(x))}{e(x)}
 - \frac{(1 - W)\,(Y - \mu_0(x))}{1 - e(x)} - \tau,
-$$
+$$ {#eq-causal-machine-learning-aipw}
 with nuisances $\eta = (\mu_0, \mu_1, e)$. Because the score is orthogonal, first-order errors in $\hat\eta$ cancel, so the effect estimate is robust to moderate nuisance error. This estimator is also doubly robust: it is consistent if *either* the outcome models or the propensity model is correct.
+
+### Unbiasedness, double robustness, and the orthogonality calculation {#sec-causal-machine-learning-dml-deriv}
+
+First, the score in @eq-causal-machine-learning-aipw identifies the ATE when the nuisances are correct. Set $\eta = (\mu_0, \mu_1, e)$ at the truth and take expectations. The augmentation term has mean zero, because for the treated piece
+$$
+\mathbb{E}\!\left[\frac{W\,(Y - \mu_1(X))}{e(X)}\right]
+= \mathbb{E}\!\left[\frac{e(X)\,\mathbb{E}[Y - \mu_1(X) \mid X, W = 1]}{e(X)}\right] = 0,
+$$
+using the tower rule and $\mathbb{E}[Y \mid X, W = 1] = \mu_1(X)$, and symmetrically for the control piece. Hence $\mathbb{E}[\psi] = \mathbb{E}[\mu_1(X) - \mu_0(X)] - \tau = \tau_{\text{ATE}} - \tau$, so the moment $\mathbb{E}[\psi] = 0$ is solved at $\tau = \tau_{\text{ATE}}$.
+
+Double robustness. Now suppose only the propensity is correct, $\hat e = e$, but the outcome models are wrong, $\hat\mu_w \ne \mu_w$. The treated augmentation still has mean zero by the IPW identity $\mathbb{E}[W f(X)/e(X)] = \mathbb{E}[f(X)]$ applied to $f(X) = \mathbb{E}[Y \mid X, W=1] - \hat\mu_1(X)$, which cancels the bias from $\hat\mu_1$; the same holds for controls. Conversely, if the outcome models are correct, $\hat\mu_w = \mu_w$, the residuals $Y - \hat\mu_w$ have conditional mean zero and the augmentation vanishes regardless of $\hat e$, leaving $\mathbb{E}[\hat\mu_1 - \hat\mu_0] = \tau_{\text{ATE}}$. Consistency under *either* model correct is the doubly robust property.
+
+Neyman orthogonality. The key reason DML tolerates slow ML nuisance estimation is that the Gateaux (directional) derivative of the moment with respect to each nuisance vanishes at the truth. Write $m(\tau, \eta) = \mathbb{E}[\psi(\,\cdot\,; \tau, \eta)]$ and perturb the propensity in a direction $\delta(X)$, $e_t = e + t\,\delta$. Differentiating the treated augmentation term,
+$$
+\left.\frac{\partial}{\partial t} \mathbb{E}\!\left[\frac{W\,(Y - \mu_1(X))}{e(X) + t\,\delta(X)}\right]\right|_{t=0}
+= -\,\mathbb{E}\!\left[\frac{W\,(Y - \mu_1(X))\,\delta(X)}{e(X)^2}\right] = 0,
+$$
+because $\mathbb{E}[W(Y - \mu_1(X)) \mid X] = e(X)\cdot 0 = 0$ at the true $\mu_1$. The derivative with respect to $\mu_1$ in a direction $h(X)$ is
+$$
+\left.\frac{\partial}{\partial t}\,\mathbb{E}\!\left[(\mu_1 + t h)(X) - \frac{W\,(Y - (\mu_1 + t h)(X))}{e(X)}\cdot(-1)\right]\right|_{t=0}
+= \mathbb{E}\!\left[h(X)\Bigl(1 - \frac{W}{e(X)}\Bigr)\right] = 0,
+$$
+since $\mathbb{E}[W \mid X] = e(X)$. The symmetric calculation holds for $\mu_0$ and $1 - e$. All first-order nuisance derivatives are zero, so the bias from plugging in $\hat\eta$ is second order, of size $\|\hat e - e\|\cdot\|\hat\mu - \mu\|$. This product structure is what lets each nuisance converge at the slow nonparametric rate $o_p(n^{-1/4})$ while their product is $o_p(n^{-1/2})$, fast enough to be asymptotically negligible.
 
 Cross-fitting. The nuisances are estimated on one fold and the score is evaluated on a held-out fold, then rotated over $K$ folds. This breaks the dependence between the nuisance fit and the data used to estimate $\tau$, removing the overfitting bias that would otherwise remain even with an orthogonal score.
 
-The resulting estimator $\hat\tau = \frac1n \sum_i \psi$-based average is $\sqrt n$-consistent and asymptotically normal even though $\hat\mu$ and $\hat e$ converge slowly. DML targets summaries by default; pairing the orthogonal score with a flexible final-stage model (R-learner, causal forest) extends it to full CATE estimation.
+Concretely, split the data into $K$ folds. For fold $k$, fit $\hat\eta^{(-k)} = (\hat\mu_0^{(-k)}, \hat\mu_1^{(-k)}, \hat e^{(-k)})$ on all *other* folds, evaluate the score $\hat\psi_i = \psi(Y_i, W_i, X_i; \tau, \hat\eta^{(-k)})$ on the held-out fold, and solve the empirical moment. Because @eq-causal-machine-learning-aipw is linear in $\tau$, the solution is the closed form
+$$
+\hat\tau_{\text{DML}} = \frac1n \sum_{k=1}^{K} \sum_{i \in I_k}
+\left[\hat\mu_1^{(-k)}(X_i) - \hat\mu_0^{(-k)}(X_i)
++ \frac{W_i\,(Y_i - \hat\mu_1^{(-k)}(X_i))}{\hat e^{(-k)}(X_i)}
+- \frac{(1 - W_i)\,(Y_i - \hat\mu_0^{(-k)}(X_i))}{1 - \hat e^{(-k)}(X_i)}\right].
+$$ {#eq-causal-machine-learning-dml-ate}
+Under orthogonality, cross-fitting, and the rate condition $\|\hat e - e\|\,\|\hat\mu - \mu\| = o_p(n^{-1/2})$, this estimator satisfies $\sqrt n\,(\hat\tau_{\text{DML}} - \tau) \xrightarrow{d} \mathcal{N}(0, V)$ with $V = \mathrm{Var}(\psi(\cdot; \tau, \eta))$, and $\hat V = \frac1n \sum_i \hat\psi_i^2$ is consistent, so $\hat\tau_{\text{DML}} \pm z_{1-\alpha/2}\sqrt{\hat V / n}$ is a valid confidence interval (@chernozhukov2018dml). The estimator is $\sqrt n$-consistent and asymptotically normal even though $\hat\mu$ and $\hat e$ converge slowly. DML targets summaries by default; pairing the orthogonal score with a flexible final-stage model (R-learner, causal forest) extends it to full CATE estimation.
+
+### The R-learner {#sec-causal-machine-learning-rlearner}
+
+The R-learner (@nie2021quasi) is the orthogonalization idea applied to full CATE estimation, and it makes the connection to residual-on-residual (partialling-out) regression explicit. Start from Robinson's decomposition. Define the conditional outcome mean $m(x) = \mathbb{E}[Y \mid X = x] = \mu_0(x) + e(x)\,\tau(x)$ and the propensity $e(x)$. Writing $Y = \mu_0(X) + W\tau(X) + \varepsilon$ with $\mathbb{E}[\varepsilon \mid X, W] = 0$ and subtracting $m(X)$,
+$$
+Y - m(X) = \bigl(W - e(X)\bigr)\,\tau(X) + \varepsilon.
+$$ {#eq-causal-machine-learning-robinson}
+This is the central identity: after partialling out the marginal outcome mean and the propensity, the outcome residual equals the treatment residual times the CATE, plus noise. It motivates the R-learner objective, which estimates $\tau$ by a weighted least-squares fit of outcome residuals on treatment residuals,
+$$
+\hat\tau = \arg\min_{\tau}\ \frac1n \sum_{i=1}^{n}
+\Bigl[\bigl(Y_i - \hat m^{(-k(i))}(X_i)\bigr) - \bigl(W_i - \hat e^{(-k(i))}(X_i)\bigr)\,\tau(X_i)\Bigr]^2 + \Lambda(\tau),
+$$ {#eq-causal-machine-learning-rloss}
+where $\hat m$ and $\hat e$ are cross-fitted nuisances, $\Lambda$ is a regularizer (a penalty, a kernel bandwidth, or the implicit regularization of a chosen function class), and $k(i)$ denotes the fold of unit $i$. The loss in @eq-causal-machine-learning-rloss is the empirical R-loss; its population minimizer is the true $\tau(x)$ by @eq-causal-machine-learning-robinson, since the residual $W - e(X)$ has conditional mean zero so the cross term with $\varepsilon$ integrates out.
+
+For a constant $\tau$ and no penalty, minimizing @eq-causal-machine-learning-rloss is an ordinary least squares regression of $\tilde Y = Y - \hat m$ on $\tilde W = W - \hat e$ through the origin, giving the closed form
+$$
+\hat\tau = \frac{\sum_i \tilde W_i\,\tilde Y_i}{\sum_i \tilde W_i^{\,2}},
+$$
+the classical partialling-out estimator. For a flexible $\tau(\cdot)$, @eq-causal-machine-learning-rloss is a weighted regression problem with weights $(W_i - \hat e_i)^2$ and pseudo-outcome $(Y_i - \hat m_i)/(W_i - \hat e_i)$, so any squared-error learner (lasso, boosting, neural net) can be the final stage. @nie2021quasi prove a quasi-oracle bound: the R-learner's CATE estimate converges at the rate it would achieve if the nuisances were known exactly, provided the nuisance product error is $o_p(n^{-1/2})$, the same orthogonality dividend seen for the ATE.
 
 
 ::: {.callout-tip title="Intuition"}

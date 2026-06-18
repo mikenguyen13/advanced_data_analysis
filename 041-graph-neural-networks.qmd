@@ -95,7 +95,7 @@ $$
 
 $$
 h_i^{(k)} = \text{UPDATE}\!\left(h_i^{(k-1)}, m_i^{(k)}\right).
-$$
+$$ {#eq-graph-neural-networks-mp}
 
 Here $\phi$ builds a message from a node and one of its neighbors, AGGREGATE is a permutation-invariant pooling function (sum, mean, or max, because neighbors have no inherent order), and UPDATE merges the pooled message with the node's prior state, usually through a learned linear map and a nonlinearity.
 
@@ -138,6 +138,98 @@ If you forget the self-loop in $\tilde{A} = A + I$, each node throws away its ow
 
 
 GCN is simple and fast, but the same weight matrix $W^{(k)}$ and the fixed normalization apply everywhere, so the model cannot weight some neighbors more than others, and it needs the whole adjacency matrix at training time (it is transductive in its basic form).^[Transductive means the model is trained on one fixed graph and can only score nodes that were present during training. The opposite, inductive, means the model can produce predictions for brand-new nodes or even entirely new graphs. GraphSAGE, below, is the inductive answer.]
+
+### Derivation: From Spectral Convolution to the GCN Layer {#sec-graph-neural-networks-spectral}
+
+The GCN rule is not arbitrary. It is a first-order approximation of a spectral graph convolution, and tracing that derivation explains every term in $\hat A H W$. Work with the symmetric normalized Laplacian $L_{\text{sym}} = I - D^{-1/2} A D^{-1/2}$, which is real symmetric and positive semidefinite, hence admits an eigendecomposition
+
+$$
+L_{\text{sym}} = U \Lambda U^\top, \qquad \Lambda = \operatorname{diag}(\lambda_1, \dots, \lambda_n), \quad 0 = \lambda_1 \le \dots \le \lambda_n \le 2 .
+$$ {#eq-graph-neural-networks-eigendecomp}
+
+The bound $\lambda_n \le 2$ is standard for $L_{\text{sym}}$ and is the fact that makes the approximation below stable. The graph Fourier transform of a signal $x \in \mathbb{R}^n$ (one scalar feature per node) is $\hat x = U^\top x$, and a spectral filter with frequency response $g_\theta(\Lambda)$ acts as
+
+$$
+g_\theta \star x = U\, g_\theta(\Lambda)\, U^\top x .
+$$ {#eq-graph-neural-networks-spectral-conv}
+
+Evaluating $U g_\theta(\Lambda) U^\top$ requires the full eigendecomposition, an $O(n^3)$ cost, and the filter has $n$ free parameters, so it is neither scalable nor localized. Defferrard, Bresson, and Vandergheynst (2016) make the filter a degree-$K$ polynomial in $\Lambda$ expanded in Chebyshev polynomials $T_k$,
+
+$$
+g_\theta(\Lambda) \approx \sum_{k=0}^{K} \theta_k\, T_k(\tilde\Lambda), \qquad \tilde\Lambda = \tfrac{2}{\lambda_n}\Lambda - I ,
+$$ {#eq-graph-neural-networks-cheby}
+
+where the rescaling sends the spectrum into $[-1,1]$, the domain on which $T_k$ are defined by the recurrence $T_0 = 1$, $T_1 = z$, $T_k(z) = 2 z\, T_{k-1}(z) - T_{k-2}(z)$. Because $U T_k(\tilde\Lambda) U^\top = T_k(\tilde L)$ with $\tilde L = \tfrac{2}{\lambda_n} L_{\text{sym}} - I$, the filter becomes a polynomial in the Laplacian itself,
+
+$$
+g_\theta \star x \approx \sum_{k=0}^{K} \theta_k\, T_k(\tilde L)\, x ,
+$$ {#eq-graph-neural-networks-cheby-spatial}
+
+which costs $O(K |E|)$ via sparse matrix-vector products and is exactly $K$-localized: $T_k(\tilde L)$ has the same sparsity pattern as $L^k$, so it touches only nodes within $k$ hops. This is already a usable GNN (ChebNet). Kipf and Welling specialize it twice. First set $K = 1$, keeping only the constant and linear terms, and approximate $\lambda_n \approx 2$ so that $\tilde L = L_{\text{sym}} - I = -D^{-1/2} A D^{-1/2}$. Then @eq-graph-neural-networks-cheby-spatial collapses to
+
+$$
+g_\theta \star x \approx \theta_0\, x + \theta_1 \big( L_{\text{sym}} - I \big) x = \theta_0\, x - \theta_1\, D^{-1/2} A D^{-1/2} x .
+$$ {#eq-graph-neural-networks-firstorder}
+
+Second, tie the two parameters by $\theta = \theta_0 = -\theta_1$ (a regularization that halves the parameter count and discourages overfitting), giving the single-parameter filter
+
+$$
+g_\theta \star x \approx \theta \big( I + D^{-1/2} A D^{-1/2} \big) x .
+$$ {#eq-graph-neural-networks-tied}
+
+The operator $I + D^{-1/2} A D^{-1/2}$ has eigenvalues in $[0, 2]$ (since those of $D^{-1/2} A D^{-1/2}$ lie in $[-1,1]$). Stacking many layers each multiplying by such an operator would amplify signals and cause numerical instability, so Kipf and Welling apply the renormalization trick: replace $I + D^{-1/2} A D^{-1/2}$ by $\tilde D^{-1/2} \tilde A \tilde D^{-1/2}$ with $\tilde A = A + I$ and $\tilde D_{ii} = \sum_j \tilde A_{ij}$. This is exactly the $\hat A$ defined above; it folds the identity (the self-loop) directly into the adjacency before normalizing, which keeps the spectrum bounded in a way that is stable under repeated application. Promoting the scalar feature to a $d$-dimensional one (so $x$ becomes $H \in \mathbb{R}^{n \times d}$) and the scalar $\theta$ to a weight matrix $W$ yields the layer pre-activation $\hat A H W$, and applying a nonlinearity gives @eq-graph-neural-networks-firstorder's matured form, the GCN propagation rule. Every piece, the self-loop, the symmetric normalization, the linear map, is now accounted for by this chain of approximations rather than asserted.
+
+::: {.callout-note}
+The renormalization trick is more than cosmetic. The naive operator $I + D^{-1/2} A D^{-1/2}$ has top eigenvalue $2$, so $L$ stacked layers scale the leading graph-frequency component by up to $2^L$. The renormalized $\hat A$ has spectral radius at most $1$, which is what permits stacking several layers without exploding activations. It also shifts the spectrum so that the all-ones (constant) signal is the dominant eigenvector, which is the seed of over-smoothing analyzed below.
+:::
+
+### Over-smoothing as Convergence to the Dominant Eigenvector {#sec-graph-neural-networks-oversmoothing-theory}
+
+The collapse seen in @fig-graph-neural-networks-depth is not a coincidence of the random weights; it is forced by the spectrum of $\hat A$. Strip away the nonlinearity and the per-layer weights for a moment (the linear case already captures the mechanism). After $k$ layers the embeddings are $H^{(k)} = \hat A^{k} X W^{(1)} \cdots W^{(k)}$, so the question reduces to the behavior of $\hat A^{k}$ as $k \to \infty$. Write the eigendecomposition $\hat A = \sum_{r=1}^{n} \mu_r\, u_r u_r^\top$ with $|\mu_1| \ge |\mu_2| \ge \dots$. For a connected non-bipartite graph the symmetric normalized adjacency with self-loops has a unique top eigenvalue $\mu_1 = 1$ with eigenvector
+
+$$
+u_1 \propto \tilde D^{1/2} \mathbf{1}, \qquad (u_1)_i \propto \sqrt{\tilde d_i} ,
+$$ {#eq-graph-neural-networks-dominant}
+
+and all other eigenvalues satisfy $|\mu_r| < 1$. Decomposing any feature column $x = \sum_r c_r u_r$ gives
+
+$$
+\hat A^{k} x = \sum_{r=1}^{n} \mu_r^{k}\, c_r\, u_r = c_1\, u_1 + \sum_{r \ge 2} \mu_r^{k}\, c_r\, u_r \xrightarrow{k \to \infty} c_1\, u_1 ,
+$$ {#eq-graph-neural-networks-oversmoothing}
+
+because every term with $r \ge 2$ decays geometrically at rate $|\mu_r|^k$. The limit $c_1 u_1$ is the same for every node up to its $\sqrt{\tilde d_i}$ scaling: all nodes collapse onto a single direction whose entries depend only on degree, erasing the feature information a classifier needs. The convergence rate is governed by the spectral gap $1 - |\mu_2|$: the residual distance from the limit shrinks like $|\mu_2|^k$, so well-connected graphs (large gap) over-smooth in very few layers, exactly the two-to-three-layer collapse the figure shows. The ReLU and the weights modulate the constants but do not change the geometric decay of the non-dominant components, which is why over-smoothing is robust to the details of the network. This also clarifies why the mitigations listed below work: residual connections add back a component along the original $x$ that $\hat A^k$ would otherwise annihilate, and jumping knowledge reads off the shallow layers before the high-frequency components have decayed.
+
+::: {.callout-tip}
+The diagnostic in @fig-graph-neural-networks-depth measures mean pairwise embedding distance, which is a direct estimate of the energy in the non-dominant eigencomponents. Plotting it on a log scale against depth should give an approximately straight line whose slope estimates $\log |\mu_2|$, the second-largest eigenvalue magnitude of $\hat A$. That slope is a quantitative read on how aggressively your particular graph will over-smooth.
+:::
+
+We can verify @eq-graph-neural-networks-dominant and @eq-graph-neural-networks-oversmoothing directly. The top eigenvalue of $\hat A$ should equal $1$, its eigenvector should be proportional to $\sqrt{\tilde d_i}$, and iterating $\hat A^k x$ should align with that eigenvector at a rate set by $|\mu_2|$.
+
+```{r oversmoothing-verify, eval=TRUE}
+# Use the same 6-node graph and gcn_norm() from the base-R section.
+Ahat  <- gcn_norm(A)
+eig   <- eigen(Ahat, symmetric = TRUE)
+mu1   <- eig$values[1]              # should be 1
+mu2   <- abs(eig$values[2])        # spectral-gap term
+u1    <- abs(eig$vectors[, 1])     # dominant eigenvector (sign-free)
+
+deg_self <- rowSums(A + diag(nrow(A)))   # tilde-degrees
+# u1 should be proportional to sqrt(tilde d): check correlation is ~1
+cor_check <- cor(u1, sqrt(deg_self))
+
+# Power iteration: cosine of angle between Ahat^k x and u1 should -> 1.
+# Rate is set by |mu2|, so on a small graph it takes a few dozen steps.
+cos_align <- function(a, b) abs(sum(a * b)) / (sqrt(sum(a^2)) * sqrt(sum(b^2)))
+v <- rnorm(nrow(A))
+align <- numeric(40)
+for (k in 1:40) { v <- as.numeric(Ahat %*% v); align[k] <- cos_align(v, u1) }
+
+round(c(mu1 = mu1, mu2 = mu2,
+        cor_u1_sqrt_deg = cor_check,
+        align_k1 = align[1], align_k10 = align[10], align_k40 = align[40]), 4)
+```
+
+The top eigenvalue is $1$ and the dominant eigenvector correlates perfectly with $\sqrt{\tilde d_i}$, confirming @eq-graph-neural-networks-dominant. The alignment of $\hat A^k x$ with $u_1$ climbs toward $1$ as $k$ grows, slowly here because this small graph has $|\mu_2| \approx 0.86$ (a narrow spectral gap), so the non-dominant components decay only like $0.86^k$. On a graph with a wider gap the collapse arrives in a handful of steps, which is the regime that produces the over-smoothing in @fig-graph-neural-networks-depth.
 
 ## A GCN Layer in Base R
 
@@ -334,6 +426,42 @@ With all three layers in hand, it helps to see them side by side. Each makes a d
 
 : Side-by-side comparison of GCN, GraphSAGE, and GAT across neighbor weighting, aggregation, own-state handling, sampling, inductive capability, compute cost, and the setting each suits best. {#tbl-graph-neural-networks-architecture-comparison}
 
+### Expressive Power: The Weisfeiler-Lehman Ceiling {#sec-graph-neural-networks-expressivity}
+
+How much can a message-passing GNN distinguish? The answer, made precise by Xu, Hu, Leskovec, and Jegelka (2019), is bounded by a classical combinatorial test. The one-dimensional Weisfeiler-Lehman (1-WL) color refinement algorithm assigns each node an initial color, then iteratively recolors
+
+$$
+c_i^{(k)} = \operatorname{HASH}\!\Big( c_i^{(k-1)},\ \{\!\!\{\, c_j^{(k-1)} : j \in \mathcal{N}(i) \,\}\!\!\} \Big) ,
+$$ {#eq-graph-neural-networks-wl}
+
+where $\{\!\!\{ \cdot \}\!\!\}$ denotes a multiset and HASH is an injective map. Two graphs that 1-WL colors differently are provably non-isomorphic. The structural correspondence to message passing is exact: @eq-graph-neural-networks-wl is @eq-graph-neural-networks-mp's AGGREGATE/UPDATE template with an injective hash in place of the learned functions. This yields the central result.
+
+::: {.callout-important title="Theorem (expressivity ceiling)"}
+Any message-passing GNN of the form @eq-graph-neural-networks-mp is at most as powerful as 1-WL at distinguishing non-isomorphic graphs. Two nodes (or graphs) that 1-WL assigns the same color can never be separated by such a GNN, no matter the weights or depth.
+:::
+
+The proof is a depth induction: if two nodes have identical 1-WL colors at every round, their feature aggregates coincide at every layer, so any deterministic AGGREGATE/UPDATE produces identical embeddings. The converse direction is the design lesson. A GNN reaches the 1-WL ceiling only if its AGGREGATE and UPDATE are injective on multisets. Mean and max aggregation are not injective: mean cannot tell a single neighbor from two identical neighbors (the average is unchanged), and max collapses a multiset to its largest element. Sum aggregation is injective on multisets of bounded countable features, which is why the Graph Isomorphism Network (GIN) uses
+
+$$
+h_i^{(k)} = \operatorname{MLP}^{(k)}\!\Big( (1 + \epsilon^{(k)})\, h_i^{(k-1)} + \sum_{j \in \mathcal{N}(i)} h_j^{(k-1)} \Big) ,
+$$ {#eq-graph-neural-networks-gin}
+
+with $\epsilon^{(k)}$ a learnable or fixed scalar. The universal approximation property of the MLP supplies the injective UPDATE, and the sum supplies the injective AGGREGATE, so GIN provably matches 1-WL. The practical reading: if your task requires counting substructures or distinguishing regular graphs (for example, telling two non-isomorphic molecules apart that look identical under degree statistics), expect any plain GCN/SAGE/GAT to fail on the 1-WL-equivalent cases, and reach for sum aggregation or higher-order schemes.
+
+::: {.callout-note}
+The 1-WL bound is about distinguishing power on the worst case, not about node-classification accuracy on a fixed graph, where mean aggregation often outperforms sum because it is degree-invariant and less variance-prone. Expressivity and generalization are different axes; GIN wins the first, GCN often wins the second on noisy homophilous data.
+:::
+
+### Computational and Sample Complexity {#sec-graph-neural-networks-complexity}
+
+Cost analysis decides whether an architecture is even runnable. For a full-graph GCN layer with feature widths $d_{k-1} \to d_k$, the work splits into the dense map $H W$, costing $O(n\, d_{k-1} d_k)$, and the sparse propagation $\hat A (HW)$, costing $O(|E|\, d_k)$ when $\hat A$ is stored sparsely (a dense $\hat A H$ would be $O(n^2 d_k)$ and is the usual memory wall). A full forward pass over $L$ layers is therefore
+
+$$
+O\!\Big( L\, |E|\, d + L\, n\, d^2 \Big)
+$$ {#eq-graph-neural-networks-cost}
+
+with $d = \max_k d_k$, and memory is $O(L n d)$ for stored activations plus $O(|E|)$ for the sparse operator. This is linear in the number of edges, which is the property that makes GCN scale to large sparse graphs but also explains the memory blow-up of full-batch training: every node's activation at every layer must be retained for backpropagation. Neighbor sampling (GraphSAGE) replaces the full neighborhood by a fixed sample of size $s$ per node, capping a single target node's $L$-layer receptive field at $\prod_{k=1}^{L} s_k$ nodes and decoupling per-batch cost from $n$. GAT adds the per-edge attention score @eq-graph-neural-networks-firstorder, costing $O(|E|\, d)$ extra per head for $H$ heads, so $O(H |E| d)$, which is why GAT sits at the high end of the compute table. On the statistical side there is no clean i.i.d. sample-complexity bound because the nodes are dependent through the edges; the effective sample size for node classification is closer to the number of labeled nodes times the diversity of their neighborhoods, and semi-supervised GCN training routinely succeeds with only a handful of labels per class precisely because message passing propagates label-correlated structure across the graph.
+
 ## Over-smoothing and Other Pitfalls
 
 No GNN survives contact with real data without running into at least one of the following. Knowing the failure modes in advance saves a great deal of debugging.
@@ -448,6 +576,28 @@ pred = model(data.x, data.edge_index).argmax(dim=1)
 acc = (pred[data.test_mask] == data.y[data.test_mask]).float().mean().item()
 print(f"test accuracy: {acc:.3f}")
 ```
+
+## Training Objectives
+
+The code chunks optimize a loss, but it is worth writing the objectives down precisely, because they differ by task level and the edge-level case has a subtlety. Let $z_i = h_i^{(L)}$ be the final node embedding produced by the GNN with parameters $\theta$ (all the $W^{(k)}$, attention vectors, and so on).
+
+For node classification with classes $1, \dots, C$, a readout $\operatorname{softmax}(W_o z_i)$ gives class probabilities $p_{ic}$, and training minimizes the masked cross-entropy over the labeled set $\mathcal{V}_{\text{train}}$,
+
+$$
+\mathcal{L}_{\text{node}}(\theta) = -\frac{1}{|\mathcal{V}_{\text{train}}|} \sum_{i \in \mathcal{V}_{\text{train}}} \sum_{c=1}^{C} y_{ic}\, \log p_{ic} ,
+$$ {#eq-graph-neural-networks-node-loss}
+
+where the mask is essential: message passing still uses the whole graph (including unlabeled and test nodes) in the forward pass, but the loss is evaluated only on $\mathcal{V}_{\text{train}}$. This is what makes a GCN semi-supervised by construction.
+
+For graph classification, a permutation-invariant pooling (READOUT) collapses node embeddings into a graph embedding $z_G = \operatorname{READOUT}(\{ z_i : i \in V \})$, typically sum or mean, and the same cross-entropy applies at the graph level. Sum-pooling preserves the injectivity argument from @sec-graph-neural-networks-expressivity; mean-pooling discards graph size.
+
+For edge (link) prediction the labels are which pairs are connected, and a score $s_{ij} = z_i^\top z_j$ (or a learned bilinear form $z_i^\top R\, z_j$) measures affinity. Because the non-edges vastly outnumber the edges, the standard objective is negative sampling: for each true edge $(i,j) \in E$ draw $Q$ corrupted endpoints $j' \sim P_n$ from a noise distribution and minimize
+
+$$
+\mathcal{L}_{\text{edge}}(\theta) = -\sum_{(i,j) \in E} \Big[ \log \sigma(s_{ij}) + \sum_{q=1}^{Q} \mathbb{E}_{j' \sim P_n} \log \sigma(-s_{ij'}) \Big] ,
+$$ {#eq-graph-neural-networks-edge-loss}
+
+with $\sigma$ the logistic function. The first term pushes connected nodes' embeddings together; the second pushes randomly paired nodes apart. This is the same noise-contrastive form used in word embeddings, and choosing $P_n$ (uniform versus degree-proportional) and $Q$ (typically 1 to 5) are the main knobs.
 
 ## Practical Guidance
 

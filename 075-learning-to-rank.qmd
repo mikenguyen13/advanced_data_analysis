@@ -33,6 +33,20 @@ The output of a ranker is invariant to any order-preserving (monotone) transform
 
 This mismatch between an easy-to-optimize surrogate loss (squared error, log loss) and the true objective (a list-quality metric like NDCG) is the central tension in learning to rank, and every method below is a different way of managing it.
 
+### A formal problem statement
+
+Make the setup precise so the later derivations have something to bite on. A query and its candidate set form one training instance. Let $q$ index queries drawn i.i.d. from a query distribution, and for query $q$ let $\mathbf{X}^{(q)} = (\mathbf{x}^{(q)}_1, \dots, \mathbf{x}^{(q)}_{n_q})$ be the feature vectors of its $n_q$ candidates, with relevance labels $\mathbf{y}^{(q)} = (y^{(q)}_1, \dots, y^{(q)}_{n_q})$. A scoring function $f \in \mathcal{F}$, $f : \mathbb{R}^p \to \mathbb{R}$, induces a ranking $\pi_f^{(q)}$ by sorting candidates on $s_i = f(\mathbf{x}^{(q)}_i)$ in descending order (ties broken arbitrarily). Let $M$ be a per-query list metric (NDCG@k, AP, etc.), written $M(\pi, \mathbf{y}) \in [0,1]$ with $M$ larger for better orderings. The learning goal is to maximize the expected metric, equivalently to minimize the ranking risk
+
+$$
+R(f) = \mathbb{E}_q\!\left[\, 1 - M\big(\pi_f^{(q)}, \mathbf{y}^{(q)}\big) \right],
+$$ {#eq-learning-to-rank-risk}
+
+estimated on a sample by the empirical average over the $|Q|$ training queries. The obstruction named above is now explicit: $\pi_f^{(q)}$ depends on $f$ only through the *sort order* of the scores, so $M(\pi_f^{(q)}, \mathbf{y}^{(q)})$ is piecewise constant in the parameters of $f$. Its gradient is zero wherever it is defined and undefined on the measure-zero set where two scores cross. Direct gradient optimization of @eq-learning-to-rank-risk is therefore impossible, and the three families correspond to three classes of surrogate $\tilde{R}(f) \ge \text{const} \cdot R(f)$ that are differentiable in $f$.
+
+::: {.callout-note}
+The sort step is the source of all the difficulty. Everything that distinguishes ranking from regression flows from the fact that the map from scores to the evaluated quantity factors through a discontinuous $\operatorname{argsort}$. Surrogates differ in how they smooth or sidestep that discontinuity: pairwise losses replace the global sort with many local two-item comparisons, listwise losses replace it with a differentiable distribution over permutations, and LambdaRank keeps the discontinuous metric but supplies hand-built gradients.
+:::
+
 ## Ranking metrics
 
 We need to measure list quality before we can train for it. Throughout, fix a single query with $n$ candidate items. The model produces a ranking, which we read as an ordered list of positions $1, 2, \dots, n$ from top to bottom. Let $\text{rel}_i$ denote the relevance label of the item placed at position $i$. We will average any per-query metric over all queries in the evaluation set at the end.
@@ -207,6 +221,42 @@ $$
 
 where $S_{ij} \in \{-1, 0, +1\}$ encodes whether $i$ is less, equally, or more relevant than $j$. Define $\lambda_{ij}$ as this gradient. A key observation is that each document's total gradient is just the sum of $\lambda_{ij}$ over all pairs it participates in. These per-pair forces $\lambda_{ij}$ can be read as little "tugs": document $i$ is pulled up and $j$ is pulled down whenever $i$ should outrank $j$ but does not by enough.
 
+### Deriving the RankNet gradient
+
+It is worth doing the calculus once, because the result is the engine of every Lambda method. Adopt the convention $S_{ij} \in \{-1,0,+1\}$ and write the target as $\bar{P}_{ij} = \tfrac{1}{2}(1 + S_{ij})$, so $S_{ij}=+1$ gives $\bar{P}_{ij}=1$, a tie gives $\tfrac12$, and $S_{ij}=-1$ gives $0$. Let $s_{ij} = s_i - s_j$. The model probability is $P_{ij} = \sigma(\sigma_0 s_{ij})$ where $\sigma(z) = 1/(1+e^{-z})$ and $\sigma_0>0$ is the shape parameter (called $\sigma$ in the text above). Substituting $\bar{P}_{ij}$ into the cross-entropy and using $1 - \sigma(z) = \sigma(-z)$,
+
+$$
+C_{ij} = -\tfrac{1}{2}(1+S_{ij}) \log \sigma(\sigma_0 s_{ij}) - \tfrac{1}{2}(1 - S_{ij}) \log \sigma(-\sigma_0 s_{ij}).
+$$
+
+Using the textbook identity $\log \sigma(z) = -\log(1 + e^{-z})$ and collecting terms,
+
+$$
+C_{ij} = \tfrac{1}{2}(1 - S_{ij})\,\sigma_0 s_{ij} + \log\!\big(1 + e^{-\sigma_0 s_{ij}}\big).
+$$ {#eq-learning-to-rank-ranknet-cost}
+
+The first term is linear, the second is the softplus. For the canonical case $S_{ij}=+1$ the linear term vanishes and @eq-learning-to-rank-ranknet-cost reduces to $\log(1 + e^{-\sigma_0 s_{ij}})$, matching the simplified form stated earlier. Now differentiate. Since $\frac{d}{dz}\log(1+e^{-z}) = -\sigma(-z) = -(1-\sigma(z))$ and $\partial s_{ij}/\partial s_i = 1$,
+
+$$
+\frac{\partial C_{ij}}{\partial s_i}
+= \sigma_0\!\left[\tfrac{1}{2}(1 - S_{ij}) - \big(1 - \sigma(\sigma_0 s_{ij})\big)\right]
+= \sigma_0\!\left[\tfrac{1}{2}(1 - S_{ij}) - \frac{1}{1 + e^{\sigma_0 s_{ij}}}\right],
+$$ {#eq-learning-to-rank-ranknet-grad}
+
+which is exactly $\lambda_{ij}$ as stated, and $\partial C_{ij}/\partial s_j = -\partial C_{ij}/\partial s_i$ because $C_{ij}$ depends on $s_i, s_j$ only through $s_{ij}$. The antisymmetry $\lambda_{ji} = -\lambda_{ij}$ is what lets us aggregate: with $\mathcal{P}$ the set of pairs $(i,j)$ with $i$ more relevant than $j$ (so $S_{ij}=+1$ throughout, the standard bookkeeping), the gradient on a single document accumulates the tugs from every pair it touches,
+
+$$
+\frac{\partial C}{\partial s_i}
+= \sum_{j : (i,j) \in \mathcal{P}} \lambda_{ij} \;-\; \sum_{j : (j,i) \in \mathcal{P}} \lambda_{ji}
+\;\equiv\; \lambda_i,
+$$ {#eq-learning-to-rank-ranknet-doc-grad}
+
+and the chain rule gives $\partial C / \partial \mathbf{w} = \sum_i \lambda_i \, \partial s_i / \partial \mathbf{w}$. For the linear scorer $s_i = \mathbf{w}^\top \mathbf{x}_i$ this is $\sum_{(i,j) \in \mathcal{P}} \lambda_{ij} (\mathbf{x}_i - \mathbf{x}_j)$, the update implemented in the demonstration. The reduction from $O(n^2)$ per-pair gradients to $n$ per-document gradients via @eq-learning-to-rank-ranknet-doc-grad is the factorization trick that makes the method affordable inside a tree learner.
+
+::: {.callout-note title="Convexity"}
+For a linear scorer, @eq-learning-to-rank-ranknet-cost is convex in $\mathbf{w}$: it is a sum of an affine term and the softplus $\log(1+e^{-\sigma_0 \mathbf{w}^\top \mathbf{d}_{ij}})$ composed with the affine map $\mathbf{w} \mapsto \mathbf{w}^\top \mathbf{d}_{ij}$, and softplus is convex. The pairwise RankNet problem over a linear class therefore has no spurious local minima, which is why the simple gradient descent in the demonstration converges reliably. Convexity is lost once $f$ is a neural network or a tree ensemble.
+:::
+
 ## From RankNet to LambdaMART
 
 RankNet minimizes pairwise error, but pairwise error is not NDCG. Swapping two documents near the bottom of the list barely changes NDCG, while swapping two near the top changes it a lot. Plain RankNet treats both swaps as equally important. LambdaRank [@burges2010ranknet] fixes this with a remarkably simple trick: scale each pairwise tug $\lambda_{ij}$ by the *change in NDCG* that would result from swapping documents $i$ and $j$:
@@ -231,6 +281,53 @@ LambdaMART never optimizes a differentiable copy of NDCG. It hand-defines gradie
 
 
 Both `xgboost` (objective `rank:pairwise`, `rank:ndcg`) and `lightgbm` (objective `lambdarank`) implement this family, and they are what you will actually run in practice; for the mechanics of tuning these boosted models, see @sec-gradient-boosting.
+
+### What loss does LambdaRank implicitly minimize?
+
+The Lambda trick looks like a hack: we scale gradients by $|\Delta\text{NDCG}_{ij}|$ without writing down a loss. A natural worry is whether these gradients are even integrable, that is, whether some function $C^{\text{Lambda}}$ has them as its derivatives. They are. With $S_{ij}=+1$ on every pair in $\mathcal{P}$, the LambdaRank gradient on the pair is
+
+$$
+\lambda_{ij}^{\text{Lambda}}
+= -\,\frac{\sigma_0\,|\Delta\text{NDCG}_{ij}|}{1 + e^{\sigma_0 (s_i - s_j)}},
+$$
+
+which is exactly $\partial / \partial s_i$ of
+
+$$
+C^{\text{Lambda}}_{ij} = |\Delta\text{NDCG}_{ij}| \,\log\!\big(1 + e^{-\sigma_0 (s_i - s_j)}\big),
+$$ {#eq-learning-to-rank-lambdaloss}
+
+*provided* we treat $|\Delta\text{NDCG}_{ij}|$ as a constant during differentiation. Of course it is not constant, it depends on the current ranking, hence on the scores. Burges showed empirically that the gradient field is conservative to high accuracy, so LambdaRank behaves as if it were descending a well-defined cost close to @eq-learning-to-rank-lambdaloss, a $\Delta$NDCG-weighted RankNet loss. The weight steepens the logistic penalty precisely on pairs whose swap would most improve NDCG, which is why optimizing the surrogate tracks the metric. Donmez, Svore, and Burges later verified that the LambdaRank update is, to first order, an ascent direction for NDCG at the current scores, giving the method a local-optimality guarantee with respect to the true metric.
+
+### RankSVM: the margin formulation of pairwise ranking
+
+RankNet uses a logistic penalty on score differences; RankSVM [@joachims2002optimizing] uses the hinge instead, which connects ranking to the support vector machine of @sec-svm. For a linear scorer and the pair set $\mathcal{P}$, RankSVM solves
+
+$$
+\min_{\mathbf{w}} \;\; \tfrac{1}{2}\|\mathbf{w}\|^2 + C \sum_{(i,j)\in\mathcal{P}} \big[\,1 - \mathbf{w}^\top (\mathbf{x}_i - \mathbf{x}_j)\,\big]_+,
+$$ {#eq-learning-to-rank-ranksvm}
+
+where $[\,z\,]_+ = \max(0,z)$. This is an ordinary soft-margin SVM on the *difference vectors* $\mathbf{d}_{ij} = \mathbf{x}_i - \mathbf{x}_j$, all with label $+1$: a correctly ordered pair with margin at least $1/\|\mathbf{w}\|$ incurs no loss, an inverted or under-separated pair pays linearly. Kernelizing $\mathbf{d}_{ij}$ buys nonlinear ranking exactly as in classification. RankSVM and RankNet are thus the same pairwise idea under two different convex surrogates of the 0/1 pair-inversion loss (hinge versus logistic), mirroring the SVM-versus-logistic-regression contrast for classification.
+
+### Listwise losses: ListNet and the Plackett-Luce model
+
+Listwise methods define a single loss on the whole permutation rather than summing over pairs. The cleanest is ListNet [@cao2007learning], built on the Plackett-Luce distribution over permutations. Given scores $s_1,\dots,s_n$, the probability that item $i$ is ranked first is the softmax $\phi(s_i) = e^{s_i} / \sum_{m} e^{s_m}$, and the probability of a full permutation $\pi = (\pi_1, \dots, \pi_n)$ is the product of sequential top-one choices on the shrinking candidate set,
+
+$$
+P(\pi \mid s) = \prod_{r=1}^{n} \frac{e^{s_{\pi_r}}}{\sum_{m=r}^{n} e^{s_{\pi_m}}}.
+$$ {#eq-learning-to-rank-plackett-luce}
+
+ListMLE [@xia2008listwise] takes the negative log of @eq-learning-to-rank-plackett-luce for the single ground-truth permutation and minimizes it directly, a clean maximum-likelihood objective. ListNet instead matches the *top-one* marginal distributions: it minimizes the cross-entropy between the softmax over labels $\phi(y_i)$ and the softmax over scores $\phi(s_i)$,
+
+$$
+C^{\text{ListNet}} = -\sum_{i=1}^{n} \frac{e^{y_i}}{\sum_m e^{y_m}} \,\log \frac{e^{s_i}}{\sum_m e^{s_m}},
+$$ {#eq-learning-to-rank-listnet}
+
+which is differentiable in the scores at $O(n)$ cost per query, far cheaper than the $O(n^2)$ pair enumeration. The gradient is the familiar softmax-cross-entropy form $\partial C^{\text{ListNet}} / \partial s_i = \phi(s_i) - \phi(y_i)$, pushing the score distribution toward the label distribution. The listwise view also clarifies a theoretical point: Xia et al. proved that the ListMLE/Plackett-Luce surrogate is *statistically consistent* for ranking, meaning its population minimizer recovers the Bayes-optimal ordering, a guarantee that pairwise surrogates do not enjoy in general.
+
+::: {.callout-note title="Consistency caveat"}
+Consistency results are reassuring but rest on assumptions (a correctly specified, sufficiently rich $\mathcal{F}$, and in some cases noise conditions) that rarely hold exactly in practice. Empirically, the pairwise-versus-listwise gap is usually small and is dominated by feature quality and label noise, which is why LambdaMART, formally a pairwise method with metric-aware weights, remains the production default despite lacking a clean consistency theorem.
+:::
 
 ## A runnable demonstration in base R
 
@@ -455,6 +552,32 @@ abline(h = 2, lty = 2, col = "grey40")
 
 @fig-learning-to-rank-training confirms two things at once: the surrogate loss is being minimized, and minimizing it drives the model toward the feature weighting that produces correct orderings.
 
+We can also verify the analytic RankNet gradient @eq-learning-to-rank-ranknet-grad against a finite-difference approximation, a cheap check that the calculus above is right and that the descent step uses the correct gradient.
+
+```{r learning-to-rank-grad-check}
+# Mean RankNet loss over the "i > j" pairs as a function of w
+ranknet_loss <- function(w) {
+  margin <- as.numeric(pair_diffs %*% w)
+  mean(log1p(exp(-sigma * margin)))
+}
+# Analytic gradient (the one used in the descent loop)
+analytic_grad <- function(w) {
+  margin <- as.numeric(pair_diffs %*% w)
+  -sigma * colMeans(pair_diffs / (1 + exp(sigma * margin)))
+}
+# Central finite differences
+numeric_grad <- function(w, eps = 1e-6) {
+  sapply(seq_along(w), function(j) {
+    wp <- w; wm <- w; wp[j] <- wp[j] + eps; wm[j] <- wm[j] - eps
+    (ranknet_loss(wp) - ranknet_loss(wm)) / (2 * eps)
+  })
+}
+w_chk <- c(0.7, -0.3)
+rbind(analytic = analytic_grad(w_chk), numeric = numeric_grad(w_chk))
+```
+
+The two rows agree to roughly six digits, confirming @eq-learning-to-rank-ranknet-grad.
+
 ### A gradient-boosted ranker with xgboost
 
 Finally we train a real LambdaMART-style ranker with `xgboost`, using the `rank:ndcg` objective. The grouping vector tells xgboost how many rows belong to each query so it only forms pairs within a query.
@@ -505,6 +628,18 @@ knitr::kable(
 ```
 
 @tbl-learning-to-rank-comparison shows that on this deliberately linear problem the simple pairwise ranker is competitive with gradient boosting, a useful reminder that model complexity should match signal complexity. On real data with nonlinear feature interactions, the gradient-boosted ranker typically pulls ahead.
+
+## Theoretical and computational properties
+
+A few properties recur across the methods and are worth stating once.
+
+Computational complexity. A query with $n$ candidates and $R$ relevant items generates $O(nR)$ ordered relevant/non-relevant pairs (up to $O(n^2)$ when grades are dense), so naive pairwise training costs $O(\sum_q n_q^2)$ per epoch, the dominant term for long candidate lists. The factorization in @eq-learning-to-rank-ranknet-doc-grad reduces the *gradient assembly* from $O(n^2)$ to $O(n^2)$ work for the $\Delta$NDCG terms but only $O(n)$ storage and $O(n)$ tree targets, which is why LambdaMART scales. Listwise softmax losses such as @eq-learning-to-rank-listnet cost $O(n)$ per query and avoid pair enumeration entirely. Sorting for NDCG and IDCG is $O(n \log n)$ per query.
+
+The discount makes top-heavy errors cheap to ignore. Because the NDCG discount $1/\log_2(i+1)$ decays, $|\Delta\text{NDCG}_{ij}|$ is tiny when both $i$ and $j$ sit deep in the list. The Lambda weighting therefore concentrates almost all gradient mass on a small number of near-top pairs, which both speeds training (deep pairs can be subsampled with little loss) and explains why LambdaMART optimizes top-$k$ metrics so effectively: it spends its capacity where the metric is sensitive.
+
+Generalization and sample complexity. Generalization in ranking is governed by the number of *queries*, not the number of documents, since candidates within a query are dependent. Margin-based bounds for RankSVM (and Rademacher-complexity bounds for pairwise classes) scale with $1/\sqrt{|Q|}$ and with the pairwise margin $1/\|\mathbf{w}\|$, not with the raw pair count; adding more documents per query enlarges the training set far less than adding more queries. This is the formal counterpart to the practical rule that label budget is better spent judging more queries than exhaustively judging one.
+
+Failure modes. Three are characteristic. First, pairwise surrogates are *position-agnostic by construction* (plain RankNet weights a deep swap and a top swap equally), which is the exact deficiency LambdaRank repairs. Second, all of these methods inherit *selection bias* from logged data: pairs are only formed among items that were shown, so a model can be consistent for the observed conditional distribution yet wrong for the deployment distribution (the basis for inverse-propensity-weighted and unbiased LTR). Third, when relevance grades are noisy, the $2^{\text{rel}}-1$ gain *amplifies* label error at the top grades, so a single mislabeled "perfect" document can dominate a query's gradient.
 
 ## Practical guidance and pitfalls
 

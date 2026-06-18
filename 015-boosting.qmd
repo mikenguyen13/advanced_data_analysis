@@ -113,6 +113,41 @@ The inverse relationship between $\lambda$ and $B$ is the single most important 
 :::
 
 
+### Why slow learning regularizes {#sec-boosting-shrinkage-theory}
+
+The empirical rule "small $\lambda$, large $B$" has a precise statistical reading. Each boosting iteration adds a basis function $\hat f^b$ aligned with the current negative gradient, and $B$ controls how many such terms enter the model. With $\lambda = 1$ and no constraint, the procedure is greedy least-squares matching pursuit, and the training error can be driven to zero, overfitting. Shrinkage by $\lambda < 1$ damps each step, so that the path traced out by the ensemble as $B$ grows stays close to the path of an L1-penalized (lasso) fit in the space of all trees. In the limit of infinitesimal $\lambda$, increasing $B$ moves the solution along the lasso regularization path with the number of trees playing the role of inverse penalty: more trees correspond to a larger effective model. This is the rigorous content behind the advice to treat $B$ as the regularization parameter to be chosen by cross-validation while fixing $\lambda$ small. It also explains why early stopping (capping $B$ at the cross-validated minimum) is itself a form of regularization, not merely a compute-saving trick.
+
+The two parameters trade off through the bias-variance decomposition. Holding $B$ fixed, smaller $\lambda$ means each tree contributes less, raising bias but lowering variance and the risk of fitting noise; the deficit is recovered by raising $B$. Tree depth $d$ controls the complementary axis of complexity: $d = 1$ (stumps) yields a strictly additive model with no interactions (@sec-gam), while depth $d$ permits interactions of order up to $d$. Increasing $d$ lowers bias for genuinely interacting signals but raises variance and the effective number of parameters per tree.
+
+### Convergence, consistency, and failure modes {#sec-boosting-theory}
+
+A few theoretical facts frame when boosting works and when it does not.
+
+-   Training-error guarantee for AdaBoost. If every weak learner achieves weighted error $\overline{err}_m = \tfrac{1}{2} - \delta_m$ with edge $\delta_m > 0$, then the training misclassification rate is bounded by $\prod_m \sqrt{1 - 4\delta_m^2} \le \exp(-2\sum_m \delta_m^2)$, which goes to zero exponentially in the number of rounds. This is the original sense in which boosting "turns weak learners into a strong learner."
+
+-   Margins and resistance to overfitting. AdaBoost often keeps improving test accuracy even after training error reaches zero. The margin explanation is that continued rounds increase the classification margins $y_i f(x_i) / \sum_m |\alpha_m|$, and generalization bounds depend on the margin distribution rather than on the number of rounds, so a larger margin can keep test error falling. This is not a guarantee: with enough noise, boosting does eventually overfit.
+
+-   Statistical view and consistency. Viewing boosting as stagewise function-space minimization of a convex surrogate loss connects it to nonparametric regression: with appropriately shrunken steps and early stopping, boosting with trees is consistent for the regression function or the Bayes classifier under standard conditions. The estimator is biased toward simpler (low-interaction, shrunken) fits, trading variance for bias in the usual way.
+
+-   Failure modes. Boosting breaks down or underperforms when (i) labels are noisy or contain outliers and the loss is exponential, since $e^{-yf}$ places enormous weight on grossly misclassified points and the ensemble chases them (use deviance, Huber, or quantile losses instead); (ii) the base learners are too strong (deep trees with $\lambda = 1$), which removes the slow-learning safeguard and overfits in a handful of rounds; (iii) $B$ is left uncross-validated, in which case the relentless drive to reduce training loss eventually fits noise; and (iv) classes are extremely imbalanced, where accuracy-driven reweighting can be dominated by the majority class unless the loss is reweighted.
+
+### Computational cost and practical tuning {#sec-boosting-howto}
+
+The dominant cost of boosting is growing $B$ trees sequentially, each over $n$ observations and $p$ features. With exact split finding, building one depth-$d$ tree costs $O(d \cdot n p)$ after an initial $O(np \log n)$ feature sort, so the full fit is roughly $O(B \cdot d \cdot n p)$. Two engineering ideas in modern libraries cut this: histogram binning of each feature into $K$ bins reduces split scanning from $O(n)$ to $O(K)$ per feature (LightGBM, and XGBoost's `tree_method = "hist"`), and row/column subsampling shrinks the effective $n$ and $p$ per tree. Sequentiality means the $B$ dimension cannot be parallelized; the parallelism in XGBoost and LightGBM is within each tree (across features and split candidates), which is why they scale with cores rather than with tree count.
+
+A workable tuning recipe, consistent with the grid searches later in the chapter, is:
+
+1.  Fix a small learning rate ($\lambda$ or `eta` around 0.05 to 0.1 for tuning, optionally smaller for the final fit) and choose $B$ by cross-validation or early stopping. Do not tune $\lambda$ and $B$ independently; tune the others at a moderate $\lambda$, then lower $\lambda$ and raise $B$ proportionally for the final model.
+
+2.  Set tree depth $d$ (`interaction.depth`, `max_depth`) to the interaction order you expect; 3 to 6 is typical for tabular data, $d = 1$ when you want a transparent additive model.
+
+3.  Add stochasticity (`bag.fraction`, `subsample`, `colsample_bytree` in $[0.5, 0.9]$) as a cheap variance reducer.
+
+4.  Use the leaf-size and regularization knobs (`min_child_weight`, `n.minobsinnode`, `gamma`, `lambda`, `alpha`) to control overfitting once the above are set.
+
+Diagnose by plotting cross-validated loss against the number of trees (as in @fig-boosting-gbm-perf-slow and @fig-boosting-xgb-overfit): a test curve that turns upward signals too many trees or too aggressive a learner.
+
+
 <br>
 
 ## Classification Boosting
@@ -232,6 +267,108 @@ $$
 
 which is the "exponential loss." This loss is closely related to the binomial negative log-likelihood (deviance), although the two behave differently with finite, real-world data. The exponential loss is attractive mainly because it makes the computation in step 2 fall out cleanly.
 
+### Deriving AdaBoost from exponential loss {#sec-boosting-adaboost-derivation}
+
+The claim that AdaBoost.M1 is forward stagewise additive modeling under exponential loss is worth proving, because the proof produces the exact formulas for $\alpha_m$ and the weight update rather than leaving them as recipes. We work with $y \in \{-1, 1\}$ and an additive model $f(x) = \sum_m \alpha_m G_m(x)$ where each $G_m(x) \in \{-1, 1\}$.
+
+At stage $m$ the current model is $f_{m-1}(x)$ and we must solve
+
+$$
+(\alpha_m, G_m) = \underset{\alpha, G}{\operatorname{argmin}} \sum_{i=1}^N \exp\!\big(-y_i \, (f_{m-1}(x_i) + \alpha G(x_i))\big).
+$$
+
+Define $w_i^{(m)} = \exp(-y_i f_{m-1}(x_i))$. These weights depend on neither $\alpha$ nor $G$, so they act as fixed observation weights at this stage, and the objective factorizes as
+
+$$
+\sum_{i=1}^N w_i^{(m)} \exp(-\alpha\, y_i G(x_i)).
+$$ {#eq-boosting-ada-obj}
+
+Because $y_i G(x_i) = 1$ when the point is correctly classified and $-1$ when misclassified, we split the sum:
+
+$$
+\begin{aligned}
+\sum_{i=1}^N w_i^{(m)} \exp(-\alpha\, y_i G(x_i))
+&= e^{-\alpha} \sum_{y_i = G(x_i)} w_i^{(m)} + e^{\alpha} \sum_{y_i \neq G(x_i)} w_i^{(m)} \\
+&= (e^{\alpha} - e^{-\alpha}) \sum_{i=1}^N w_i^{(m)} I(y_i \neq G(x_i)) + e^{-\alpha} \sum_{i=1}^N w_i^{(m)}.
+\end{aligned}
+$$ {#eq-boosting-ada-split}
+
+Now optimize in two steps. For any fixed $\alpha > 0$, only the first term in @eq-boosting-ada-split depends on $G$ (and $e^{\alpha} - e^{-\alpha} > 0$), so the optimal classifier minimizes the weighted error,
+
+$$
+G_m = \underset{G}{\operatorname{argmin}} \sum_{i=1}^N w_i^{(m)} I(y_i \neq G(x_i)),
+$$
+
+which is exactly step 2.1 of the algorithm: fit a classifier to the weighted data. Given $G_m$, write the weighted error as
+
+$$
+\overline{err}_m = \frac{\sum_{i=1}^N w_i^{(m)} I(y_i \neq G_m(x_i))}{\sum_{i=1}^N w_i^{(m)}}.
+$$
+
+Substituting $G_m$ into @eq-boosting-ada-split and dividing by the constant $\sum_i w_i^{(m)}$ leaves the scalar function
+
+$$
+\phi(\alpha) = (e^{\alpha} - e^{-\alpha})\, \overline{err}_m + e^{-\alpha}.
+$$
+
+Setting $\phi'(\alpha) = (e^{\alpha} + e^{-\alpha})\overline{err}_m - e^{-\alpha} = 0$ gives $e^{2\alpha} \overline{err}_m = 1 - \overline{err}_m$, hence
+
+$$
+\alpha_m = \tfrac{1}{2} \log\!\frac{1 - \overline{err}_m}{\overline{err}_m}.
+$$ {#eq-boosting-ada-alpha}
+
+This matches step 2.3 of AdaBoost.M1 up to the factor $\tfrac{1}{2}$; the factor is immaterial because the final classifier is $\operatorname{sign}(\sum_m \alpha_m G_m)$, and scaling every $\alpha_m$ by a common constant leaves the sign unchanged. Finally, the weights for the next stage are $w_i^{(m+1)} = \exp(-y_i f_m(x_i)) = w_i^{(m)} \exp(-\alpha_m y_i G_m(x_i))$. Using $-y_i G_m(x_i) = 2 I(y_i \neq G_m(x_i)) - 1$,
+
+$$
+w_i^{(m+1)} = w_i^{(m)} \exp\!\big(2\alpha_m I(y_i \neq G_m(x_i))\big) \, e^{-\alpha_m}.
+$$
+
+The factor $e^{-\alpha_m}$ is common to all observations and cancels under the renormalization in step 2.2, so the update is equivalent to $w_i \leftarrow w_i \exp(2\alpha_m I(y_i \neq G_m(x_i)))$, which is step 2.4 (again with the harmless factor of two folded into $\alpha_m$). Every line of AdaBoost.M1 has now been derived from the single choice of exponential loss.
+
+We can confirm @eq-boosting-ada-alpha numerically: the closed-form $\alpha_m$ should coincide with the value that minimizes the weighted exponential-loss objective @eq-boosting-ada-obj at a single stage.
+
+```{r}
+# verify AdaBoost's alpha minimizes the stage-m exponential loss
+set.seed(1)
+n <- 200
+x <- runif(n, -1, 1)
+y <- ifelse(x + rnorm(n, 0, 0.5) > 0, 1L, -1L)  # labels in {-1, 1}
+w <- rep(1 / n, n)                               # equal stage-1 weights
+G <- ifelse(x > 0, 1L, -1L)                      # a stump classifier
+
+err <- sum(w * (y != G)) / sum(w)
+alpha_closed <- 0.5 * log((1 - err) / err)       # eq closed form
+
+obj <- function(a) sum(w * exp(-a * y * G))      # stage objective
+alpha_numeric <- optimize(obj, interval = c(-5, 5))$minimum
+
+c(closed_form = alpha_closed, numeric = alpha_numeric)
+```
+
+The two agree to numerical precision, confirming the derivation.
+
+### What exponential loss estimates {#sec-boosting-exploss-population}
+
+Stagewise minimization of exponential loss is not arbitrary: its population minimizer is half the log-odds. Minimizing $E_{Y\mid x}[e^{-Y f(x)}]$ pointwise over $f(x)$,
+
+$$
+\frac{\partial}{\partial f(x)} \Big( P(Y=1\mid x)\, e^{-f(x)} + P(Y=-1\mid x)\, e^{f(x)} \Big) = 0,
+$$
+
+gives $-P(Y=1\mid x) e^{-f(x)} + P(Y=-1\mid x) e^{f(x)} = 0$, so
+
+$$
+f^{*}(x) = \tfrac{1}{2} \log \frac{P(Y=1\mid x)}{P(Y=-1\mid x)}.
+$$ {#eq-boosting-exploss-pop}
+
+Thus $\operatorname{sign}(f^{*}(x))$ is the Bayes classifier, which is why driving down exponential loss yields good classification, and inverting @eq-boosting-exploss-pop recovers calibrated probabilities $P(Y=1\mid x) = 1/(1 + e^{-2f^{*}(x)})$. The deviance loss $\log(1 + e^{-2yf(x)})$ has the same population minimizer but grows only linearly (rather than exponentially) in the margin $-yf(x)$, which is precisely why it is more robust to mislabeled points and outliers: a single grossly misclassified observation cannot dominate the sum.
+
+
+::: {.callout-note}
+Both exponential and deviance losses target the same $f^{*}$, so they agree in the infinite-data limit. They differ in finite samples through how aggressively they penalize large negative margins. This is the rigorous version of the earlier remark that the two "behave differently with finite, real-world data."
+:::
+
+
 
 ::: {.callout-note}
 AdaBoost did not start from "let's minimize exponential loss." It was designed first and only later understood as stagewise minimization of that loss. This after-the-fact view is what opened the door to generalizing it.
@@ -292,6 +429,58 @@ Step 2: for $m = 1 \to M$ (number of trees):
 Output: $F_M(x)$
 
 For squared error loss, the pseudo-residual in step 2.1 reduces exactly to the ordinary residual $y_i - F_{m-1}(x_i)$, which is why the earlier regression algorithm is a special case of this one.
+
+#### Why fit the tree to the negative gradient {#sec-boosting-functional-gd}
+
+The algorithm above is gradient descent performed in function space, and seeing this explicitly explains both the pseudo-residual and the separate leaf-fitting step. Regard the training loss
+
+$$
+\mathcal{L}(F) = \sum_{i=1}^n L(y_i, F(x_i))
+$$
+
+as a function of the $n$-vector of fitted values $\mathbf{F} = (F(x_1), \dots, F(x_n))$. Ordinary steepest descent would take the step $\mathbf{F}_m = \mathbf{F}_{m-1} - \nu\, \mathbf{g}_m$ where $\mathbf{g}_m$ is the gradient with components
+
+$$
+g_{im} = \left[\frac{\partial L(y_i, F(x_i))}{\partial F(x_i)}\right]_{F = F_{m-1}},
+$$
+
+so $-g_{im}$ is precisely the pseudo-residual $r_{im}$ of step 2.1. The difficulty is that $-\mathbf{g}_m$ is defined only at the $n$ training points; to obtain a function we can evaluate at new $x$, we fit a regression tree to the $n$ pairs $(x_i, r_{im})$. That tree is the closest representable function (in least-squares projection) to the unconstrained steepest-descent direction,
+
+$$
+\hat{f}^m = \underset{f \in \mathcal{T}}{\operatorname{argmin}} \sum_{i=1}^n \big(r_{im} - f(x_i)\big)^2,
+$$ {#eq-boosting-gb-projection}
+
+where $\mathcal{T}$ is the class of depth-$d$ trees. This is why the tree in step 2.2 is always fit by squared error to the residuals, even when the model loss $L$ is something else entirely: the squared-error fit is the projection of the gradient onto the tree class.
+
+#### Deriving the optimal leaf values {#sec-boosting-leaf-values}
+
+Once the tree has fixed the partition $\{R_{jm}\}$, the leaf values $\gamma_{jm}$ are chosen by a separate one-dimensional optimization (step 2.3) rather than reused from the gradient. The reason is that the gradient gives the right *direction* but not the optimal *step size* within each region. For squared error, $L(y, F) = \tfrac{1}{2}(y - F)^2$, the leaf optimization
+
+$$
+\gamma_{jm} = \underset{\gamma}{\operatorname{argmin}} \sum_{x_i \in R_{jm}} \tfrac{1}{2}\big(y_i - F_{m-1}(x_i) - \gamma\big)^2
+$$
+
+has the closed form $\gamma_{jm} = \operatorname{mean}_{x_i \in R_{jm}}(y_i - F_{m-1}(x_i))$, the average residual in the leaf, confirming again that the Gaussian case reduces to the plain regression boosting algorithm.
+
+For a general loss, expand the leaf objective $\Phi_j(\gamma) = \sum_{x_i \in R_{jm}} L(y_i, F_{m-1}(x_i) + \gamma)$ to second order around $\gamma = 0$:
+
+$$
+\Phi_j(\gamma) \approx \Phi_j(0) + \gamma \sum_{x_i \in R_{jm}} g_{im} + \tfrac{1}{2} \gamma^2 \sum_{x_i \in R_{jm}} h_{im},
+\qquad h_{im} = \left[\frac{\partial^2 L(y_i, F(x_i))}{\partial F(x_i)^2}\right]_{F = F_{m-1}}.
+$$
+
+Minimizing this quadratic gives the Newton leaf value
+
+$$
+\gamma_{jm} = -\frac{\sum_{x_i \in R_{jm}} g_{im}}{\sum_{x_i \in R_{jm}} h_{im}}.
+$$ {#eq-boosting-newton-leaf}
+
+This single formula is the engine behind both the binary classification closed form quoted in the next section and the XGBoost objective derived later.
+
+
+::: {.callout-note}
+Gradient boosting separates the two questions "which way?" and "how far?": the tree structure is found by least-squares fitting to the negative gradient (the direction), while the leaf values are found by exactly minimizing the true loss within each region (the step). Conflating the two by reusing the gradient as the leaf value would be valid only for squared error.
+:::
 
 <br>
 
@@ -707,6 +896,32 @@ $$
 
 The numerator pulls the leaf toward the residuals; the denominator, built from the current predicted probabilities, damps the step where the model is already confident.
 
+This closed form is a direct instance of the Newton leaf value in @eq-boosting-newton-leaf. Work in log-odds space, $F(x) = \log\frac{p(x)}{1 - p(x)}$, so that $p = \sigma(F) = 1/(1 + e^{-F})$, and code $y \in \{0, 1\}$. The per-observation deviance is
+
+$$
+L(y, F) = -\big[\, y F - \log(1 + e^{F}) \,\big],
+$$
+
+obtained by writing the Bernoulli log-likelihood $y \log p + (1-y)\log(1-p)$ in terms of $F$. Its first derivative is
+
+$$
+g = \frac{\partial L}{\partial F} = -\big(y - \sigma(F)\big) = -(y - p) = -\,\text{Residual},
+$$
+
+so the pseudo-residual $-g = y - p$ is exactly the observed-minus-predicted probability, and its second derivative is
+
+$$
+h = \frac{\partial^2 L}{\partial F^2} = \sigma(F)\big(1 - \sigma(F)\big) = p(1 - p).
+$$
+
+Substituting these into @eq-boosting-newton-leaf gives the leaf value
+
+$$
+\gamma_{jm} = -\frac{\sum_{x_i \in R_{jm}} g_{im}}{\sum_{x_i \in R_{jm}} h_{im}} = \frac{\sum_{x_i \in R_{jm}} (y_i - p_i)}{\sum_{x_i \in R_{jm}} p_i (1 - p_i)},
+$$ {#eq-boosting-binom-leaf}
+
+which is precisely the formula above. The same calculation explains the initial value in step 1: minimizing $\sum_i L(y_i, \gamma)$ over a constant $\gamma$ gives $\sigma(\gamma) = \bar{y}$, so $F_0 = \log\frac{\bar y}{1 - \bar y}$ is the global log-odds of the positive class.
+
 ## Stochastic Gradient Boosting
 
 So far each tree has seen all of the data. Stochastic gradient boosting borrows the randomness that made bagging (@sec-bagging) and random forests (@sec-random-forest) effective: by fitting each tree to a random subsample, we reduce the correlation between successive trees in the boosting sequence, which often improves generalization.
@@ -968,6 +1183,59 @@ XGBoost (Extreme Gradient Boosting), also known as regularized boosting, is the 
 -   tree pruning, and
 
 -   built-in cross-validation.
+
+### The regularized Newton objective {#sec-boosting-xgboost-objective}
+
+The statistical core of XGBoost is a regularized, second-order version of the gradient boosting step. Where plain gradient boosting fits a tree to the negative gradient and then sets leaf values by a one-dimensional optimization, XGBoost chooses the entire tree, structure and leaf values together, to minimize a single penalized quadratic. Deriving this both explains the regularization knobs and yields the split-finding criterion the library actually uses.
+
+At stage $t$ we add a tree $f_t$ with $T$ leaves, leaf weights $w_1, \dots, w_T$, and a structure function $q(x)$ mapping each input to a leaf index. The penalized objective is
+
+$$
+\mathcal{L}^{(t)} = \sum_{i=1}^n L\big(y_i, F_{t-1}(x_i) + f_t(x_i)\big) + \Omega(f_t),
+\qquad
+\Omega(f_t) = \gamma T + \tfrac{1}{2}\lambda \sum_{j=1}^T w_j^2 + \alpha \sum_{j=1}^T |w_j|,
+$$ {#eq-boosting-xgb-obj}
+
+where $\gamma$ penalizes the number of leaves (this is what enables principled pruning), $\lambda$ is an L2 penalty and $\alpha$ an L1 penalty on the leaf weights. Take a second-order Taylor expansion of the loss in the increment $f_t(x_i)$, using the same $g_i$ and $h_i$ as above:
+
+$$
+\mathcal{L}^{(t)} \approx \sum_{i=1}^n \Big[ g_i f_t(x_i) + \tfrac{1}{2} h_i f_t(x_i)^2 \Big] + \Omega(f_t) + \text{const}.
+$$
+
+Because a tree is constant on each leaf, $f_t(x_i) = w_{q(x_i)}$, group the sum by leaf and write $I_j = \{ i : q(x_i) = j \}$, $G_j = \sum_{i \in I_j} g_i$, and $H_j = \sum_{i \in I_j} h_i$. Dropping the L1 term ($\alpha = 0$) for clarity, the objective separates across leaves:
+
+$$
+\mathcal{L}^{(t)} = \sum_{j=1}^T \Big[ G_j w_j + \tfrac{1}{2}(H_j + \lambda) w_j^2 \Big] + \gamma T + \text{const}.
+$$ {#eq-boosting-xgb-byleaf}
+
+For a fixed structure $q$, each leaf is an independent quadratic in $w_j$. Setting the derivative to zero,
+
+$$
+w_j^{*} = -\frac{G_j}{H_j + \lambda},
+$$ {#eq-boosting-xgb-weight}
+
+which is the Newton leaf value of @eq-boosting-newton-leaf shrunk toward zero by the ridge penalty $\lambda$. Substituting $w_j^{*}$ back into @eq-boosting-xgb-byleaf gives the optimal value of the objective for that structure,
+
+$$
+\tilde{\mathcal{L}}^{(t)}(q) = -\frac{1}{2} \sum_{j=1}^T \frac{G_j^2}{H_j + \lambda} + \gamma T,
+$$ {#eq-boosting-xgb-structure}
+
+the "structure score": a lower value means a better tree, and it plays the role for trees that an impurity measure plays for a single decision tree.
+
+#### From structure score to split gain {#sec-boosting-xgboost-gain}
+
+Equation @eq-boosting-xgb-structure cannot be evaluated over all tree structures, so XGBoost grows the tree greedily, exactly as CART does, by asking whether splitting a leaf reduces the score. Consider splitting one leaf whose instance set is $I = I_L \cup I_R$. Using @eq-boosting-xgb-structure, the reduction in the objective from making the split (parent score minus children score) is
+
+$$
+\text{Gain} = \frac{1}{2}\left[ \frac{G_L^2}{H_L + \lambda} + \frac{G_R^2}{H_R + \lambda} - \frac{(G_L + G_R)^2}{H_L + H_R + \lambda} \right] - \gamma.
+$$ {#eq-boosting-xgb-gain}
+
+This single expression encodes three behaviors. The bracket is the quality of the split, always nonnegative, computed from the gradient and Hessian sums on each side; the library scans candidate split points by accumulating $G_L, H_L$ from left to right, which is what makes split finding fast and parallelizable. The subtracted $\gamma$ is a fixed admission charge per split: a split is kept only if its quality exceeds $\gamma$, so $\gamma$ directly controls pre-pruning (and post-pruning, since XGBoost can grow to `max_depth` and then prune back branches with negative gain). The $\lambda$ in each denominator shrinks the contribution of leaves with small Hessian mass, damping splits supported by little curvature (few or low-confidence observations).
+
+
+::: {.callout-note title="Mapping the math to the knobs"}
+The tuning parameters of `xgboost` are not heuristics bolted on after the fact; they are the symbols in @eq-boosting-xgb-gain. The argument `lambda` is the $\lambda$ in the denominators, `alpha` is the dropped L1 term, `gamma` (`min_split_loss`) is the per-split charge, and `min_child_weight` is a lower bound on the leaf Hessian sum $H_j$ (which for squared error is just the observation count, and for logistic loss is $\sum p_i(1-p_i)$, a measure of effective sample size in a leaf). The learning rate `eta` multiplies the optimal weights $w_j^{*}$ before they are added, exactly the shrinkage $\nu$ of the generic algorithm.
+:::
 
 ### `xgboost`
 

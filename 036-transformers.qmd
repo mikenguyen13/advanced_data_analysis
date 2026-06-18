@@ -143,6 +143,91 @@ $1/\sqrt{d_k}$ factor decouples the temperature of the attention from the width
 of the representation.
 :::
 
+#### The saturation argument made precise
+
+The qualitative claim that large scores "freeze learning" can be made exact by
+examining the softmax Jacobian. Write $a = \text{softmax}(s)$ for a single row of
+scores $s \in \mathbb{R}^n$. The derivative of the output with respect to the
+scores is
+
+$$
+\frac{\partial a_i}{\partial s_j} = a_i(\delta_{ij} - a_j),
+\qquad
+J = \text{diag}(a) - a a^\top ,
+$$ {#eq-transformers-softmax-jac}
+
+which follows from differentiating $a_i = e^{s_i} / \sum_m e^{s_m}$ and using the
+quotient rule. As a row vector saturates toward a one-hot vector $e_{i^\star}$, the
+diagonal term $a_{i^\star}(1 - a_{i^\star}) \to 0$ and every off-diagonal term
+$a_i a_j \to 0$, so $J \to 0$ entrywise. The spectral norm of $J$ is bounded by
+$\max_i a_i (1 - a_i) \le \tfrac14$, attained only at the uniform-over-two-atoms
+distribution, and it collapses to zero in the saturated regime. Concretely, a
+single dominant logit gap $\Delta = s_{i^\star} - \max_{j \ne i^\star} s_j$ gives
+$1 - a_{i^\star} \le (n-1) e^{-\Delta}$, so the gradient that flows back through
+attention decays exponentially in the logit gap. Because the gap scales like
+$\sqrt{d_k}$ before normalization (the variance computation above), an unscaled
+softmax over a wide model sits in exactly the regime where @eq-transformers-softmax-jac
+vanishes. Dividing by $\sqrt{d_k}$ holds $\Delta = O(1)$ in expectation, keeping
+$\|J\|$ bounded away from zero.
+
+#### Attention as kernel smoothing
+
+Scaled dot-product attention is a learned instance of the Nadaraya-Watson kernel
+regression estimator from @sec-kernel. With the exponential similarity
+$\kappa(q_i, k_j) = \exp(q_i^\top k_j / \sqrt{d_k})$, row $i$ of the output is
+
+$$
+o_i = \sum_{j=1}^{n} \frac{\kappa(q_i, k_j)}{\sum_{m=1}^{n} \kappa(q_i, k_m)}\, v_j ,
+$$ {#eq-transformers-nw}
+
+which is precisely a Nadaraya-Watson estimate of a value "regressed" on a query,
+using an asymmetric exponential kernel whose bandwidth is set by $\sqrt{d_k}$ and
+whose geometry is learned through the query and key projections. Causal masking is
+the same estimator restricted to a one-sided neighborhood. This connection
+explains both the smoothing behavior of attention (outputs are convex combinations
+of values, so they cannot extrapolate beyond the convex hull of $V$) and its
+failure mode: like any kernel smoother, attention degrades when the effective
+neighborhood is either too diffuse (uniform weights, no selectivity) or too peaked
+(a single value copied, no aggregation).
+
+#### Backpropagation through attention
+
+Training requires gradients of the loss $L$ with respect to $Q$, $K$, and $V$.
+Write $S = QK^\top / \sqrt{d_k}$, $A = \text{softmax}_{\text{row}}(S)$, and
+$O = AV$. Given the upstream gradient $G = \partial L / \partial O \in
+\mathbb{R}^{n \times d_v}$, the value and weight gradients are immediate from
+$O = AV$,
+
+$$
+\frac{\partial L}{\partial V} = A^\top G,
+\qquad
+\frac{\partial L}{\partial A} = G V^\top .
+$$
+
+Propagating through the row-wise softmax uses @eq-transformers-softmax-jac
+applied per row, which for the full matrix collapses to the compact form
+
+$$
+\frac{\partial L}{\partial S} = A \odot \left( \frac{\partial L}{\partial A}
+- \big( (\tfrac{\partial L}{\partial A} \odot A)\, \mathbf{1} \big) \mathbf{1}^\top \right),
+$$ {#eq-transformers-softmax-bwd}
+
+where $\odot$ is the Hadamard product and $\mathbf{1}$ is the all-ones vector that
+subtracts each row's weighted mean. Finally the chain rule through $S = QK^\top /
+\sqrt{d_k}$ gives
+
+$$
+\frac{\partial L}{\partial Q} = \frac{1}{\sqrt{d_k}} \frac{\partial L}{\partial S} K,
+\qquad
+\frac{\partial L}{\partial K} = \frac{1}{\sqrt{d_k}} \Big(\frac{\partial L}{\partial S}\Big)^\top Q .
+$$
+
+The factor $1/\sqrt{d_k}$ multiplies the gradient as well as the forward score, so
+the same scaling that tames the forward softmax also rescales the backward signal.
+Equation @eq-transformers-softmax-bwd is the operation that memory-efficient
+kernels such as FlashAttention recompute on the fly rather than store, since the
+$n \times n$ matrix $A$ is the dominant memory term.
+
 
 ### Computational Cost
 
@@ -213,6 +298,22 @@ so on its own it treats a sentence as a bag of tokens. To attention, "dog bites
 man" and "man bites dog" look identical, which is clearly wrong for language. Word
 order has to be injected explicitly.
 
+To state this precisely, let $P \in \{0,1\}^{n \times n}$ be a permutation matrix.
+Self-attention with projections applied to $PX$ satisfies
+
+$$
+\text{Attention}(PXW^Q, PXW^K, PXW^V)
+= \text{softmax}\!\left(\frac{P (XW^Q)(XW^K)^\top P^\top}{\sqrt{d_k}}\right) P X W^V
+= P\, \text{Attention}(XW^Q, XW^K, XW^V),
+$$ {#eq-transformers-equivariance}
+
+where the last step uses that a row-wise softmax commutes with the symmetric
+permutation $P (\cdot) P^\top$ (it permutes both the rows being normalized and the
+columns within each row identically) and that $P^\top P = I$. Equation
+@eq-transformers-equivariance is the formal content of permutation
+equivariance, and it shows that any order information must enter through $X$ itself,
+which is exactly what positional encoding does.
+
 The original Transformer adds a fixed *positional encoding* to the input
 embeddings. For position $\text{pos}$ and embedding dimension index $i$, the
 encoding uses sines and cosines at geometrically spaced frequencies,
@@ -230,6 +331,32 @@ these sinusoids, the model can express relative position with linear operations.
 Adding $PE$ to the token embeddings lets attention see where each token sits without
 changing the attention mechanism itself. Learned positional embeddings are a common
 alternative that replaces the fixed formula with a trainable table.
+
+#### Why the offset is a linear map
+
+The claim that a shift in position is a linear transformation can be derived
+directly. Fix a frequency $\omega_i = 10000^{-2i/d}$ and group the pair of
+coordinates for that frequency into the vector $u(\text{pos}) =
+(\sin(\omega_i\,\text{pos}),\, \cos(\omega_i\,\text{pos}))^\top$. For any fixed
+offset $\Delta$, the angle-addition identities give
+
+$$
+u(\text{pos} + \Delta)
+= \underbrace{\begin{pmatrix} \cos(\omega_i \Delta) & \sin(\omega_i \Delta) \\
+-\sin(\omega_i \Delta) & \cos(\omega_i \Delta) \end{pmatrix}}_{R(\omega_i \Delta)}
+\, u(\text{pos}) ,
+$$ {#eq-transformers-pe-rotation}
+
+a rotation by angle $\omega_i \Delta$ that depends on $\Delta$ but not on
+$\text{pos}$. Stacking the per-frequency rotations into a single block-diagonal
+matrix $R_\Delta$ gives $PE_{\text{pos}+\Delta} = R_\Delta\, PE_{\text{pos}}$ for
+all positions. Because a dot product of two encodings then depends only on the
+relative offset, $\langle PE_{\text{pos}}, PE_{\text{pos}+\Delta} \rangle =
+\sum_i \cos(\omega_i \Delta)$, a linear query-key projection can read off relative
+position without ever learning absolute coordinates. Equation
+@eq-transformers-pe-rotation is also the seed of rotary position embeddings
+(RoPE), which apply $R(\omega_i \,\text{pos})$ directly to the query and key
+vectors so that $q_i^\top k_j$ depends only on $i - j$.
 
 ## The Transformer Block
 
@@ -270,6 +397,28 @@ $$
 
 with an inner width several times larger than $d$. It adds nonlinear capacity on top
 of the mixing that attention provides.
+
+#### Pre-norm versus post-norm
+
+The placement of the normalization relative to the residual branch is not a
+cosmetic choice and is the single most important detail for training deep stacks.
+The original formula $\text{LayerNorm}(x + \text{Sublayer}(x))$ is *post-norm*: the
+normalization sits on the residual path itself. Writing the stack as a composition,
+post-norm rescales the accumulated residual at every layer, so the identity
+"highway" is repeatedly renormalized and the effective gradient through $\ell$
+layers can grow or shrink geometrically. This is why the original Transformer needed
+a learning-rate warmup schedule to train at all. The now-standard *pre-norm*
+variant moves the normalization inside the branch,
+
+$$
+x \;\leftarrow\; x + \text{Sublayer}\big(\text{LayerNorm}(x)\big),
+$$ {#eq-transformers-prenorm}
+
+leaving the residual path in @eq-transformers-prenorm a clean sum of sublayer
+outputs. The gradient from the loss reaches every layer through an unobstructed
+identity term, so pre-norm trains stably without warmup and scales to hundreds of
+layers, at the cost of a slightly larger output variance that a final
+normalization corrects. Most modern large models use pre-norm.
 
 ### Encoder and Decoder
 
@@ -532,6 +681,45 @@ matrix. By replacing the softmax with a feature map $\phi(\cdot)$ and reordering
 products as $\phi(Q)\,(\phi(K)^\top V)$, the cost becomes linear in $n$. The
 approximation trades some expressiveness for scalability on long inputs.
 
+#### Deriving the linear-attention reordering
+
+The key algebraic fact is associativity of matrix multiplication. Suppose the
+exponential kernel is replaced by a separable surrogate $\exp(q_i^\top k_j) \approx
+\phi(q_i)^\top \phi(k_j)$ for some nonnegative feature map $\phi: \mathbb{R}^{d_k}
+\to \mathbb{R}^{r}$. The (unnormalized) output at position $i$ is then
+
+$$
+o_i = \sum_{j=1}^{n} \frac{\phi(q_i)^\top \phi(k_j)}{\sum_{m=1}^{n} \phi(q_i)^\top \phi(k_m)}\, v_j
+= \frac{\phi(q_i)^\top \left( \sum_{j=1}^{n} \phi(k_j)\, v_j^\top \right)}
+{\phi(q_i)^\top \left( \sum_{m=1}^{n} \phi(k_m) \right)} .
+$$ {#eq-transformers-linear-attn}
+
+The two sums in @eq-transformers-linear-attn do not depend on $i$. The
+numerator inner sum $\sum_j \phi(k_j) v_j^\top \in \mathbb{R}^{r \times d_v}$ and
+the denominator sum $\sum_m \phi(k_m) \in \mathbb{R}^{r}$ can each be formed once in
+$O(n r d_v)$ work, after which every query is answered by a single $r$-dimensional
+matrix-vector product. Total cost is $O(n r d_v)$ time and $O(r d_v)$ memory, linear
+in $n$ rather than quadratic, with no $n \times n$ matrix ever materialized. The
+price is that $\phi(q)^\top \phi(k)$ is a rank-$r$ similarity: it can only represent
+kernels that factor through an $r$-dimensional feature space, so the exact softmax
+(an infinite-dimensional RBF-type kernel) is recovered only in the limit
+$r \to \infty$. For causal (decoder) attention the running sums become prefix sums,
+which is what makes linear attention equivalent to a linear recurrent state of fixed
+size $r \times d_v$, recovering the constant-memory streaming behavior of an RNN
+while keeping parallel training.
+
+The complexity tradeoffs of the main families are summarized in
+@tbl-transformers-complexity.
+
+| Mechanism | Time | Memory | Exact softmax? |
+|---|---|---|---|
+| Full attention | $O(n^2 d)$ | $O(n^2)$ | yes |
+| FlashAttention | $O(n^2 d)$ | $O(n)$ | yes |
+| Sparse (window $w$) | $O(n w d)$ | $O(n w)$ | no |
+| Linear / kernel | $O(n r d)$ | $O(r d)$ | no |
+
+: Cost of attention variants for sequence length $n$, width $d$, window $w$, and feature dimension $r$. FlashAttention keeps the exact result but tiles the computation so the $n \times n$ matrix is never stored. {#tbl-transformers-complexity}
+
 
 ::: {.callout-warning}
 Sub-quadratic attention is an approximation, not a free lunch. Each
@@ -541,6 +729,59 @@ data it scales beautifully; when it does not, accuracy drops. Match the variant
 to the structure you actually expect in your sequences.
 :::
 
+
+## Choosing the Hyperparameters in Practice
+
+The architecture exposes a small set of dials, and a few rules of thumb cover most
+cases. The model width $d$ (also called $d_{\text{model}}$) and depth (number of
+blocks $L$) are the primary capacity knobs; common families fix the ratio so that
+the parameter count, dominated by $4 d^2$ per attention block plus $2 \cdot 4 d^2 =
+8 d^2$ per feed-forward block, grows like $L d^2$. The number of heads $h$ should
+divide $d$ so that $d_k = d/h$ is an integer; typical values keep $d_k$ in the range
+$32$ to $128$, since too-small heads lose the per-head expressiveness and too-large
+heads defeat the purpose of having several. The feed-forward inner width is almost
+always $4d$. These are not tuned individually so much as inherited from a known
+scale.
+
+For diagnostics, the attention weight matrix is directly inspectable, exactly as in
+the toy example above. Two pathologies are worth watching. *Attention collapse*,
+where every row concentrates on one or two positions (often a leading or
+delimiter token acting as a no-op sink), shows up as near-one-hot rows and signals
+that those heads have stopped routing information; the softmax-Jacobian argument
+above explains why such heads also receive almost no gradient. *Rank collapse*,
+where repeated self-attention without the feed-forward and residual branches drives
+all token representations toward a single vector, is the theoretical reason the
+feed-forward sublayer and residual connections are not optional: they are what keep
+the representations from degenerating as depth grows. A practical monitor is the
+entropy of each attention row, $H_i = -\sum_j A_{ij} \log A_{ij}$, which should sit
+comfortably between zero (collapsed) and $\log n$ (uniform, no selectivity).
+
+::: {.callout-tip title="Where the compute goes"}
+For short sequences the cost is dominated by the feed-forward and projection
+matrices ($O(n d^2)$), not the attention matrix ($O(n^2 d)$). Attention only
+becomes the bottleneck once $n \gtrsim d$. Below that crossover, reaching for a
+sub-quadratic attention variant buys little, the projections still cost the same,
+so profile before optimizing.
+:::
+
+The variance argument behind the $1/\sqrt{d_k}$ scaling is easy to confirm by
+simulation: the standard deviation of unscaled dot products should grow like
+$\sqrt{d_k}$, and dividing by $\sqrt{d_k}$ should restore unit scale.
+
+```{r transformers-scaling-check}
+set.seed(1)
+check_sd <- function(d_k, reps = 20000) {
+    s <- replicate(reps, sum(rnorm(d_k) * rnorm(d_k)))  # q^T k, unit-variance entries
+    c(raw_sd = sd(s), scaled_sd = sd(s / sqrt(d_k)))
+}
+dims <- c(4, 16, 64, 256)
+tab <- t(sapply(dims, check_sd))
+rownames(tab) <- paste0("d_k=", dims)
+round(tab, 3)
+```
+
+The `raw_sd` column tracks $\sqrt{d_k}$ (about 2, 4, 8, 16) while `scaled_sd` stays
+near one, which is exactly the invariance the scaling factor is designed to enforce.
 
 ## Connection to BERT
 

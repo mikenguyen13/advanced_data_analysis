@@ -70,6 +70,14 @@ $$
 
 reproduces the exact sample mean of $x_1, \dots, x_t$. This is the bridge to stochastic approximation below.
 
+To see that the $\eta_t = 1/t$ update is not merely an analogy but an exact algebraic identity, expand it. Write $\bar x_t = \theta_{t+1}$ for the estimate after $t$ points. Then
+
+$$
+\theta_{t+1} = \theta_t - \tfrac{1}{t}(\theta_t - x_t) = \Big(1 - \tfrac{1}{t}\Big)\theta_t + \tfrac{1}{t} x_t = \tfrac{t-1}{t}\theta_t + \tfrac{1}{t} x_t .
+$$
+
+Multiplying through by $t$ gives $t\,\theta_{t+1} = (t-1)\theta_t + x_t$. If $\theta_t = \tfrac1{t-1}\sum_{i=1}^{t-1} x_i$ is the mean of the first $t-1$ points (the induction hypothesis), then $(t-1)\theta_t = \sum_{i=1}^{t-1} x_i$ and so $t\,\theta_{t+1} = \sum_{i=1}^{t} x_i$, i.e. $\theta_{t+1} = \tfrac1t \sum_{i=1}^t x_i$. The base case $t=1$ gives $\theta_2 = x_1$. By induction the recursion holds the exact running mean at every step, with $O(1)$ memory and no stored history. The same telescoping shows why $\eta_t = 1/t$ is the unique decaying schedule that gives each observation equal weight $1/t$ in the final average: any other schedule weights examples unequally, which is exactly what we want when the target moves (older examples should count less), and exactly what we do not want when it is stationary.
+
 ## The Perceptron
 
 The perceptron (Rosenblatt, 1958) is the earliest online classifier and the ancestor of modern neural networks (@sec-neural-networks); it is still the cleanest illustration of mistake-driven learning. Labels are $y_t \in \{-1, +1\}$ and the prediction is $\hat y_t = \operatorname{sign}(\theta_t^\top x_t)$. The update fires only on a mistake:
@@ -138,6 +146,110 @@ Regret reframes the goal. Instead of asking "did we recover the true model?" (wh
 :::
 
 
+### Deriving the $O(\sqrt{T})$ regret bound {#sec-online-learning-ogd-regret-proof}
+
+The $O(\sqrt T)$ bound is not folklore; it follows from one short potential argument that is worth seeing in full, because it also reveals exactly which assumptions are load-bearing. Assume each $\ell_t$ is convex with subgradient $g_t \in \partial \ell_t(\theta_t)$ satisfying $\lVert g_t\rVert \le G$, and that the feasible set $\Theta$ is convex with diameter $\lVert \theta - \theta'\rVert \le D$ for $\theta, \theta' \in \Theta$. Projected OGD is $\theta_{t+1} = \Pi_\Theta(\theta_t - \eta_t g_t)$, where $\Pi_\Theta$ is Euclidean projection onto $\Theta$.
+
+Fix any comparator $\theta^\star \in \Theta$. The potential is the squared distance $\lVert \theta_t - \theta^\star\rVert^2$. Projection onto a convex set is nonexpansive, $\lVert \Pi_\Theta(v) - \theta^\star\rVert \le \lVert v - \theta^\star\rVert$ for $\theta^\star\in\Theta$, so
+
+$$
+\lVert \theta_{t+1} - \theta^\star\rVert^2 \le \lVert \theta_t - \eta_t g_t - \theta^\star\rVert^2
+= \lVert \theta_t - \theta^\star\rVert^2 - 2\eta_t\, g_t^\top(\theta_t - \theta^\star) + \eta_t^2 \lVert g_t\rVert^2 .
+$$
+
+Rearranging for the inner product and using convexity ($\ell_t(\theta_t) - \ell_t(\theta^\star) \le g_t^\top(\theta_t - \theta^\star)$),
+
+$$
+\ell_t(\theta_t) - \ell_t(\theta^\star) \;\le\; \frac{\lVert \theta_t - \theta^\star\rVert^2 - \lVert \theta_{t+1} - \theta^\star\rVert^2}{2\eta_t} + \frac{\eta_t}{2}\lVert g_t\rVert^2 .
+$$
+
+Sum over $t = 1, \dots, T$. With a constant step $\eta_t = \eta$ the first term telescopes to $\big(\lVert\theta_1-\theta^\star\rVert^2 - \lVert\theta_{T+1}-\theta^\star\rVert^2\big)/(2\eta) \le D^2/(2\eta)$, and the second is bounded by $\eta T G^2/2$, giving
+
+$$
+\text{Regret}_T \le \frac{D^2}{2\eta} + \frac{\eta T G^2}{2}.
+$$ {#eq-online-learning-ogd-regret}
+
+Minimizing the right side over $\eta$ sets $\eta^\star = D/(G\sqrt T)$, which yields $\text{Regret}_T \le DG\sqrt T$. With the time-varying schedule $\eta_t = D/(G\sqrt t)$ (which needs no advance knowledge of $T$) the same summation, using $\sum_{t=1}^T 1/\sqrt t \le 2\sqrt T$, gives the stated $\text{Regret}_T \le \tfrac32 GD\sqrt T$. The proof exposes the trade-off behind the step-size conditions of @sec-the-incremental-update-view in static form: shrinking $\eta$ kills the noise term $\eta_t \lVert g_t\rVert^2/2$ but inflates the distance term $D^2/(2\eta)$, and $\eta \propto 1/\sqrt t$ balances the two.
+
+The simulation below confirms the $O(\sqrt T)$ scaling empirically on a stream of random linear losses inside the unit ball: it runs projected OGD, records the realized regret against the best fixed point in hindsight, and checks that regret divided by $\sqrt T$ stays bounded (does not grow) as $T$ increases.
+
+```{r ogd-regret-check, message=FALSE, warning=FALSE}
+set.seed(7)
+d <- 5
+D <- 1                       # domain radius (unit ball)
+proj_ball <- function(v, r = D) {  # project onto radius-r ball
+  nrm <- sqrt(sum(v^2))
+  if (nrm > r) v * (r / nrm) else v
+}
+run_ogd <- function(Tn) {
+  G <- 1                                  # gradient bound
+  grads <- matrix(runif(Tn * d, -1, 1), Tn, d)
+  grads <- grads / sqrt(rowSums(grads^2)) # unit-norm gradients, ||g||=1
+  theta <- rep(0, d)
+  cum_learner <- 0
+  G_sum <- rep(0, d)                       # for the comparator
+  thetas <- matrix(0, Tn, d)
+  for (t in 1:Tn) {
+    eta <- D / (G * sqrt(t))
+    cum_learner <- cum_learner + sum(grads[t, ] * theta)  # linear loss g_t' theta
+    G_sum <- G_sum + grads[t, ]
+    theta <- proj_ball(theta - eta * grads[t, ])
+  }
+  # best fixed point in hindsight minimizes sum_t g_t' theta over the ball:
+  # theta* = -D * G_sum / ||G_sum||
+  best <- -D * G_sum / sqrt(sum(G_sum^2))
+  cum_best <- sum(G_sum * best)
+  cum_learner - cum_best
+}
+Ts <- c(250, 1000, 4000, 16000)
+reg <- sapply(Ts, run_ogd)
+data.frame(T = Ts, regret = round(reg, 2),
+           regret_over_sqrtT = round(reg / sqrt(Ts), 3))
+```
+
+The last column stays roughly flat as $T$ grows by orders of magnitude, confirming $\text{Regret}_T = O(\sqrt T)$: the normalized quantity neither blows up nor heads to zero, exactly as the balanced bound @eq-online-learning-ogd-regret predicts once $\eta$ is tuned to $1/\sqrt T$.
+
+### Strong convexity gives $O(\log T)$ {#sec-online-learning-strong-convex}
+
+If each loss is not just convex but $\mu$-strongly convex, meaning $\ell_t(\theta^\star) \ge \ell_t(\theta_t) + g_t^\top(\theta^\star - \theta_t) + \tfrac{\mu}{2}\lVert\theta^\star - \theta_t\rVert^2$, the regret drops from $\sqrt T$ to $\log T$. Carrying the extra quadratic term through the same expansion gives
+
+$$
+\ell_t(\theta_t) - \ell_t(\theta^\star) \le \frac{\lVert \theta_t - \theta^\star\rVert^2 - \lVert \theta_{t+1} - \theta^\star\rVert^2}{2\eta_t} - \frac{\mu}{2}\lVert\theta_t - \theta^\star\rVert^2 + \frac{\eta_t}{2}\lVert g_t\rVert^2 .
+$$
+
+Choose the schedule $\eta_t = 1/(\mu t)$ and write $a_t = \lVert\theta_t - \theta^\star\rVert^2$. The distance contribution at round $t$ is $\tfrac{1}{2\eta_t}(a_t - a_{t+1}) - \tfrac{\mu}{2}a_t = \tfrac{\mu t}{2}(a_t - a_{t+1}) - \tfrac{\mu}{2}a_t = \tfrac{\mu}{2}\big[(t-1)a_t - t\,a_{t+1}\big]$. Summed over $t = 1, \dots, T$ this telescopes to $\tfrac{\mu}{2}\big[0 \cdot a_1 - T a_{T+1}\big] \le 0$. Only the gradient-noise term survives, and with $\eta_t = 1/(\mu t)$ it is $\sum_t \tfrac{\eta_t}{2}\lVert g_t\rVert^2 \le \tfrac{G^2}{2\mu}\sum_t \tfrac1t$, so
+
+$$
+\text{Regret}_T \le \frac{G^2}{2\mu}\sum_{t=1}^T \frac1t \le \frac{G^2}{2\mu}\big(1 + \ln T\big) = O(\log T).
+$$
+
+This is the online analogue of the familiar fact that strongly convex risks are learned at the fast $1/t$ rate rather than the slow $1/\sqrt t$ rate, and it is why an $\ell_2$ penalty (which makes any convex loss $\mu$-strongly convex) both regularizes and accelerates an online learner. Regularized OGD on $\ell_t(\theta) + \tfrac{\lambda}{2}\lVert\theta\rVert^2$ uses the schedule $\eta_t = 1/(\lambda t)$ and enjoys the logarithmic bound automatically.
+
+
+::: {.callout-note}
+The two rates, $\sqrt T$ for convex and $\log T$ for strongly convex, are both optimal: no online algorithm can beat $\Omega(\sqrt T)$ on general convex losses or $\Omega(\log T)$ on strongly convex ones (Abernethy et al., 2008; Hazan et al., 2007). OGD is therefore minimax optimal up to constants in both regimes, which is part of why such a simple update is so durable.
+:::
+
+
+### Adaptive step sizes: AdaGrad and FTRL {#sec-online-learning-adagrad}
+
+A fixed $\eta_t \propto 1/\sqrt t$ treats every coordinate the same, which is wasteful when features differ wildly in scale or frequency (common with sparse, high-dimensional streams such as text or click data). AdaGrad (Duchi, Hazan, and Singer, 2011) gives each coordinate its own learning rate that shrinks in proportion to the accumulated gradient energy on that coordinate. Let $G_{t,j} = \sum_{s=1}^t g_{s,j}^2$ be the running sum of squared gradients for coordinate $j$. The update is
+
+$$
+\theta_{t+1,j} = \theta_{t,j} - \frac{\eta}{\sqrt{G_{t,j} + \epsilon}}\, g_{t,j} ,
+$$
+
+with $\epsilon > 0$ for numerical safety. Coordinates that receive large or frequent gradients get small steps; rare but informative coordinates keep large steps. AdaGrad attains regret $O\big(\sqrt T \cdot \sum_j \lVert g_{1:T,j}\rVert_2\big)$, which can be much smaller than the dimension-blind $GD\sqrt T$ when gradients are sparse. Its one weakness is that $G_{t,j}$ grows monotonically, so the effective rate decays to zero, which is fatal under drift; RMSProp and Adam replace the sum with an exponential moving average $G_{t,j} = \beta G_{t-1,j} + (1-\beta) g_{t,j}^2$ precisely to keep the learner plastic.
+
+These updates are special cases of Follow-The-Regularized-Leader (FTRL), the unifying view of online convex optimization. FTRL plays, at each round, the minimizer of all past losses plus a regularizer,
+
+$$
+\theta_{t+1} = \arg\min_{\theta \in \Theta} \Big\{ \sum_{s=1}^t g_s^\top \theta + \psi_t(\theta) \Big\} .
+$$
+
+With $\psi_t(\theta) = \tfrac{1}{2\eta}\lVert\theta\rVert^2$ this linearized FTRL reduces exactly to OGD; with a per-coordinate quadratic $\psi_t(\theta) = \tfrac12\sum_j \sqrt{G_{t,j}}\,\theta_j^2$ it reduces to AdaGrad. FTRL-Proximal with an $\ell_1$ term is the workhorse behind production click-through-rate models (McMahan et al., 2013) because it yields exactly sparse weight vectors online, something plain OGD with subgradients of $\lVert\theta\rVert_1$ does not achieve.
+
+
 ## Demo 1: Streaming Mean and Variance (Welford)
 
 We start with the simplest possible streaming statistic, a running mean and variance, because it shows the incremental update template at its barest and introduces a numerical pitfall worth knowing.
@@ -150,6 +262,20 @@ M_{2,t} = M_{2,t-1} + (x_t - \bar x_{t-1})(x_t - \bar x_t),
 $$
 
 and the sample variance is $s_t^2 = M_{2,t} / (t-1)$. Each step is $O(1)$ in time and memory. Notice that the mean update $\bar x_t = \bar x_{t-1} + (x_t - \bar x_{t-1})/t$ is exactly the running-average special case from @sec-the-incremental-update-view, with the gradient $g_t = \theta_t - x_t$ and step size $\eta_t = 1/t$.
+
+The $M_2$ update is not an approximation; it is an exact identity, and deriving it shows where the curious cross term $(x_t - \bar x_{t-1})(x_t - \bar x_t)$ comes from. By definition $M_{2,t} = \sum_{i=1}^t (x_i - \bar x_t)^2$. Split off the newest point and rewrite the older deviations around the new mean:
+
+$$
+M_{2,t} - M_{2,t-1} = (x_t - \bar x_t)^2 + \sum_{i=1}^{t-1}\big[(x_i - \bar x_t)^2 - (x_i - \bar x_{t-1})^2\big] .
+$$
+
+Factor each bracket as a difference of squares, $(x_i - \bar x_t)^2 - (x_i - \bar x_{t-1})^2 = (\bar x_{t-1} - \bar x_t)\big(2 x_i - \bar x_t - \bar x_{t-1}\big)$. Summing over $i = 1,\dots,t-1$ and using $\sum_{i=1}^{t-1} x_i = (t-1)\bar x_{t-1}$,
+
+$$
+\sum_{i=1}^{t-1}\big[(x_i - \bar x_t)^2 - (x_i - \bar x_{t-1})^2\big] = (\bar x_{t-1} - \bar x_t)\big[2(t-1)\bar x_{t-1} - (t-1)(\bar x_t + \bar x_{t-1})\big] = (t-1)(\bar x_{t-1} - \bar x_t)^2 .
+$$
+
+Now substitute the mean recursion $\bar x_{t-1} - \bar x_t = -(x_t - \bar x_{t-1})/t$, so the older-points contribution is $(t-1)(x_t - \bar x_{t-1})^2 / t^2$. The new-point term is $(x_t - \bar x_t)^2 = \big((t-1)/t\big)^2 (x_t - \bar x_{t-1})^2$, since $x_t - \bar x_t = (x_t - \bar x_{t-1})(t-1)/t$. Adding the two and simplifying the coefficient $\big[(t-1)/t^2 + (t-1)^2/t^2\big] = (t-1)/t$ gives $M_{2,t} - M_{2,t-1} = \tfrac{t-1}{t}(x_t - \bar x_{t-1})^2 = (x_t - \bar x_{t-1})(x_t - \bar x_t)$, which is Welford's update. The factored form is what gives the numerical stability: it never forms the large quantity $\sum x_i^2$ and subtracts it from $t\bar x_t^2$, so there is no catastrophic cancellation.
 
 
 ::: {.callout-warning}
@@ -217,7 +343,15 @@ $$
 \nabla_\theta \ell_t(\theta) = (p_t - y_t)\, x_t.
 $$
 
-The OGD update is therefore the compact $\theta \leftarrow \theta - \eta_t (p_t - y_t) x_t$. The gradient is just the prediction error $(p_t - y_t)$ scaled onto the input $x_t$: predict too high and the weights move down along $x_t$, predict too low and they move up. We process one observation at a time, never re-reading past data, and we track the running average log loss to see learning happen. For an honest read on generalization we also compute, before each update, the loss on a held-out test set; this is the prequential idea of test-then-train.^[Prequential (predictive-sequential) evaluation scores each example with the current model *before* that example is used to update it. Because the model never sees an example's label until after it has been graded on it, no future information leaks into the score, so prequential loss is an unbiased running estimate of how the deployed model is doing.]
+The OGD update is therefore the compact $\theta \leftarrow \theta - \eta_t (p_t - y_t) x_t$. The gradient is just the prediction error $(p_t - y_t)$ scaled onto the input $x_t$: predict too high and the weights move down along $x_t$, predict too low and they move up.
+
+The gradient identity is worth deriving once, since the same "(prediction minus target) times input" form appears throughout generalized linear models. With $z = \theta^\top x_t$ and $p_t = \sigma(z)$, the chain rule gives $\nabla_\theta \ell_t = \frac{\partial \ell_t}{\partial p_t}\,\sigma'(z)\, x_t$. The log-loss derivative is $\frac{\partial \ell_t}{\partial p_t} = -\frac{y_t}{p_t} + \frac{1-y_t}{1-p_t} = \frac{p_t - y_t}{p_t(1-p_t)}$, and the logistic derivative is $\sigma'(z) = p_t(1-p_t)$. The factor $p_t(1-p_t)$ cancels exactly, leaving $\nabla_\theta \ell_t = (p_t - y_t)\, x_t$. This cancellation is not a coincidence: it is the canonical-link property of the Bernoulli GLM, under which the gradient of the negative log-likelihood is always (mean minus observation) times the covariate, with no variance factor left over.
+
+::: {.callout-note title="Stochastic vs full-batch Newton"}
+Batch logistic regression is fit by iteratively reweighted least squares, a Newton method using the Hessian $\sum_t p_t(1-p_t) x_t x_t^\top$. The online update above is first-order: it discards curvature, which is why it needs the $\eta_t$ schedule that IRLS does not. A middle ground, online Newton step (Hazan et al., 2007), maintains a running approximation to the inverse Hessian and attains the $O(\log T)$ regret of @sec-online-learning-strong-convex on exp-concave losses such as log loss, at $O(d^2)$ per-step cost instead of $O(d)$.
+:::
+
+A subtlety hidden in the explicit update is stability under a large step. The plain rule $\theta \leftarrow \theta - \eta_t (p_t - y_t) x_t$ can overshoot when $\eta_t \lVert x_t\rVert^2$ is large. The implicit (proximal) update sidesteps this by solving $\theta_{t+1} = \arg\min_\theta \big\{ \ell_t(\theta) + \tfrac{1}{2\eta_t}\lVert\theta - \theta_t\rVert^2 \big\}$, which evaluates the gradient at the new point rather than the old one. For many losses this is as cheap as the explicit step (the minimizer lies along $x_t$, reducing it to a one-dimensional root find) and it is far more robust to step-size misspecification, which is why implicit SGD is the safer default when the input scale is not well controlled. We process one observation at a time, never re-reading past data, and we track the running average log loss to see learning happen. For an honest read on generalization we also compute, before each update, the loss on a held-out test set; this is the prequential idea of test-then-train.^[Prequential (predictive-sequential) evaluation scores each example with the current model *before* that example is used to update it. Because the model never sees an example's label until after it has been graded on it, no future information leaks into the score, so prequential loss is an unbiased running estimate of how the deployed model is doing.]
 
 
 ::: {.callout-warning}
@@ -315,6 +449,14 @@ $$
 
 of its observed average. So if $\bar G_a - \bar G_b > \epsilon$, then with confidence $1-\delta$ feature $a$ really is the best split, and the node can split now without waiting for more data. As $n$ grows, $\epsilon$ shrinks, so even near-ties eventually resolve.
 
+The bound is the additive Hoeffding inequality applied to the per-example split-quality differences. Let $D_i = G_a^{(i)} - G_b^{(i)} \in [-R, R]$ be the contribution of the $i$-th example to the gap between the two candidate features, with sample mean $\bar D = \bar G_a - \bar G_b$ and true mean $\mu_D$. Hoeffding's inequality states that for independent variables bounded in a range of width $w$ (here $w = 2R$ if we work with the gap directly, or $w = R$ per-quality term), $\Pr(\bar D - \mu_D \le -\epsilon) \le \exp(-2 n \epsilon^2 / w^2)$. Setting the right side to $\delta$ and solving for $\epsilon$ gives $\epsilon = w\sqrt{\ln(1/\delta)/(2n)}$, which is the displayed formula with $w = R$ in the convention used above. The chain of logic is then: with probability $1-\delta$, $\mu_D \ge \bar D - \epsilon$, so if $\bar D > \epsilon$ we have $\mu_D > 0$, meaning feature $a$ has genuinely higher expected quality than feature $b$. The error probability $\delta$ is per split decision; over a tree with $S$ splits a union bound gives total failure probability at most $S\delta$, which is why $\delta$ is set extremely small (the pseudocode uses $10^{-7}$).
+
+The payoff is a consistency guarantee. Domingos and Hulten show that the expected disagreement between a Hoeffding tree and the batch tree that would be built from infinite data is bounded by $\delta / p$, where $p$ is the leaf probability, so the streaming tree converges to the batch tree as $\delta \to 0$ and $n \to \infty$. Crucially the data needed at each node to make a decision is $O(R^2 \ln(1/\delta)/\Delta^2)$, where $\Delta$ is the true quality gap, independent of the total stream length, so memory stays bounded even on an infinite stream.
+
+::: {.callout-warning title="The tie-breaking parameter"}
+When two features are genuinely almost equal ($\Delta \approx 0$), $\epsilon$ may never fall below $\bar G_a - \bar G_b$, and the node would wait forever accumulating examples. The tie threshold $\tau$ in the pseudocode forces a split once $\epsilon < \tau$, on the reasoning that if the two best features are within $\tau$ of each other it does not matter which one is chosen. Omitting $\tau$ is a classic VFDT implementation bug that stalls tree growth on correlated features.
+:::
+
 
 ::: {.callout-tip title="Intuition"}
 The Hoeffding bound answers "have I seen enough examples to be sure the leading feature really is leading, and is not ahead by luck?" When the gap between the top two features is larger than the statistical wiggle room $\epsilon$, the answer is yes and the node commits. The remarkable part is that this lets a single streaming pass build a tree whose splits match, with high probability, what a batch tree would have chosen on the same data, while reading each example only once.
@@ -371,6 +513,16 @@ No single mechanism handles every kind of drift, so production systems combine s
 - Forgetting through the learning rate. A non-decaying or slowly-decaying $\eta_t$ keeps the model plastic so recent examples dominate. The cost is more variance and never fully converging.
 - Sliding windows. Train on the last $w$ examples and drop older ones. Window size sets the bias-variance and stability-plasticity trade-off: short windows adapt fast but are noisy.
 - Explicit drift detectors. ADWIN (Adaptive Windowing, Bifet and Gavalda, 2007) maintains a variable-length window and shrinks it when a statistically significant change in the mean error is detected; DDM (Drift Detection Method, Gama et al., 2004) watches the online error rate and signals warning and drift thresholds. On a signal, the model is reset or retrained on recent data.
+
+The two detectors rest on different statistical tests, and knowing which is worth a paragraph each. ADWIN keeps a window $W$ of recent error indicators and, conceptually, checks every split of $W$ into an older sub-window $W_0$ (size $n_0$, mean $\hat\mu_0$) and a newer one $W_1$ (size $n_1$, mean $\hat\mu_1$). It declares drift when $|\hat\mu_0 - \hat\mu_1| > \epsilon_{\text{cut}}$, where the cut threshold comes from a Hoeffding-style bound on the difference of two means,
+
+$$
+\epsilon_{\text{cut}} = \sqrt{\frac{1}{2 m}\,\ln\frac{4 |W|}{\delta}}, \qquad \frac{1}{m} = \frac{1}{n_0} + \frac{1}{n_1},
+$$
+
+with $m$ the harmonic mean of the sub-window sizes. When the test fires, the older portion is dropped, so the window length itself becomes an estimate of how far back the current concept extends. ADWIN comes with a rigorous false-positive rate bounded by $\delta$ and a false-negative bound that shrinks with the magnitude of the change, and an efficient exponential-histogram implementation makes the all-splits check $O(\log |W|)$ rather than $O(|W|)$.
+
+DDM takes a parametric view. If the model's error rate is $p_t$, the number of errors in $t$ trials is binomial, so the standard deviation of the running error rate is $s_t = \sqrt{p_t(1-p_t)/t}$. DDM tracks the minimum of $p_t + s_t$ seen so far, call it $(p_{\min}, s_{\min})$, on the premise that a stationary learner's error should only decrease. It raises a warning when $p_t + s_t \ge p_{\min} + 2 s_{\min}$ and declares drift at $p_t + s_t \ge p_{\min} + 3 s_{\min}$, the familiar two-sigma and three-sigma control-chart limits. Examples seen since the warning are buffered to train the replacement model, so that when drift is confirmed a fresh model is already warmed up. DDM detects abrupt drift well but is slow on gradual drift, which is exactly the regime where ADWIN's nonparametric windowing wins.
 - Ensembles. Keep a pool of models trained on different recent segments and weight them by recent accuracy, retiring stale members; this is ensemble learning (@sec-ensemble-learning) adapted to a moving distribution.
 
 A concrete decision rule: if accuracy is drifting, first check whether $P(x)$ moved (cheap to monitor) before assuming $P(y\mid x)$ did. Covariate shift often just needs more coverage or reweighting, while real drift needs the model to forget.
@@ -410,6 +562,9 @@ To summarize the chapter in one breath: online learning replaces "fit once, ship
 - Robbins, H., and Monro, S. (1951). A stochastic approximation method. *Annals of Mathematical Statistics*. Foundation of stochastic approximation.
 - Welford, B. P. (1962). Note on a method for calculating corrected sums of squares and products. *Technometrics*. The streaming variance update.
 - Zinkevich, M. (2003). Online convex programming and generalized infinitesimal gradient ascent. *ICML*. Online gradient descent and $O(\sqrt{T})$ regret.
+- Hazan, E., Agarwal, A., and Kale, S. (2007). Logarithmic regret algorithms for online convex optimization. *Machine Learning*. The $O(\log T)$ rate for strongly convex and exp-concave losses, and the online Newton step.
+- Duchi, J., Hazan, E., and Singer, Y. (2011). Adaptive subgradient methods for online learning and stochastic optimization. *JMLR*. AdaGrad.
+- McMahan, H. B., et al. (2013). Ad click prediction: a view from the trenches. *KDD*. FTRL-Proximal for sparse online learning at scale.
 - Cesa-Bianchi, N., and Lugosi, G. (2006). *Prediction, Learning, and Games*. Cambridge University Press. Comprehensive treatment of regret and online learning.
 - Shalev-Shwartz, S. (2012). Online learning and online convex optimization. *Foundations and Trends in Machine Learning*. Modern survey with proofs.
 - Domingos, P., and Hulten, G. (2000). Mining high-speed data streams. *KDD*. The Hoeffding tree / VFDT.

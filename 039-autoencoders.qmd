@@ -93,6 +93,30 @@ $$
 
 Let $X$ be the $n \times p$ matrix with the centered observations in its rows and let $\Sigma = \frac{1}{n} X^\top X$ be the sample covariance. The minimizing $M$ is the projection $M = V_k V_k^\top$, where $V_k$ holds the top $k$ eigenvectors of $\Sigma$, equivalently the top $k$ right singular vectors of $X$. This is the Eckart and Young low-rank approximation result, and it is exactly the rank-$k$ representation that PCA produces. See the dimension reduction chapter (@sec-dimension-reduction) for the PCA derivation through the singular value decomposition.
 
+#### Deriving the optimal reconstruction {#sec-autoencoders-eckartyoung}
+
+It is worth carrying the algebra through, because the derivation pins down both the optimal map and the residual error in closed form. Stacking the residuals into the matrix $X - XM^\top$ (each row is $x_i^\top - x_i^\top M^\top$), the objective is the squared Frobenius norm
+
+$$
+\sum_{i=1}^n \lVert x_i - M x_i \rVert^2 = \lVert X - X M^\top \rVert_F^2 .
+$$
+
+When $M = M^\top = P$ is a rank-$k$ orthogonal projector this is $\lVert X - XP \rVert_F^2 = \lVert X(I - P) \rVert_F^2$. Write the SVD $X = U_X D V^\top$ with singular values $d_1 \ge d_2 \ge \cdots \ge d_p \ge 0$. The Eckart and Young theorem states that among all matrices of rank at most $k$, the best Frobenius approximation of $X$ is its truncated SVD $X_k = U_X D_k V^\top$ obtained by zeroing all but the top $k$ singular values, and the residual is
+
+$$
+\min_{\operatorname{rank}(\hat X)\le k} \lVert X - \hat X \rVert_F^2 = \sum_{j=k+1}^{p} d_j^2 .
+$$ {#eq-autoencoders-eckartyoung}
+
+Any reconstruction of the form $XM^\top$ with $\operatorname{rank}(M)\le k$ has rank at most $k$, so it cannot beat the truncated SVD. The truncation is itself achieved by an orthogonal projector, since $X_k = X V_k V_k^\top$, so setting $M = V_k V_k^\top$ attains the bound. Dividing by $n$, the per-observation reconstruction error at the optimum is $\frac{1}{n}\sum_{j=k+1}^{p} d_j^2 = \sum_{j=k+1}^{p}\lambda_j$, the sum of the discarded eigenvalues $\lambda_j$ of $\Sigma$. This is precisely the closed form the demonstration below checks numerically.
+
+A short calculation explains why the projector form is optimal among symmetric candidates and clarifies the link to maximizing variance. For an orthogonal projector $P = V_k V_k^\top$,
+
+$$
+\lVert X(I - P) \rVert_F^2 = \operatorname{tr}\!\big((I-P) X^\top X (I-P)\big) = \operatorname{tr}(X^\top X) - \operatorname{tr}(P\, X^\top X),
+$$
+
+using $P^2 = P = P^\top$. Since $\operatorname{tr}(X^\top X)$ is fixed, minimizing reconstruction error is the same as maximizing $\operatorname{tr}(V_k^\top X^\top X V_k) = n \sum_{j} v_j^\top \Sigma\, v_j$ over orthonormal $V_k$, the total variance captured in the subspace. By the Ky Fan / Rayleigh-Ritz characterization this trace is maximized by the top $k$ eigenvectors of $\Sigma$, recovering PCA. The decoder $U$ need not equal $W^\top$ at the optimum, but @baldi1989 show that at any critical point the column space of $U$ coincides with an invariant subspace of $\Sigma$, and the global optimum selects the dominant one.
+
 Two points are worth stating precisely, because they are easy to get wrong.
 
 -   The autoencoder recovers the span of the top $k$ principal components, not the components themselves. The factorization $M = UW$ is not unique because $UW = (UA)(A^{-1}W)$ for any invertible $A$. So the learned $W$ rows are some basis of the principal subspace, not necessarily orthonormal and not ordered by variance. PCA pins down a specific orthonormal ordered basis through the eigenvalue ordering, which the plain linear autoencoder does not impose.
@@ -123,6 +147,20 @@ $$
 
 The network cannot simply copy because the input it sees is not the target it must produce. To remove noise it has to learn the structure of the clean data, which gives a representation that captures the data distribution rather than the identity map. This works even when the autoencoder is overcomplete.
 
+The denoising objective is not an arbitrary trick: under additive Gaussian corruption it is, in the small-noise limit, an estimator of the score of the data density. Suppose $\tilde x = x + \sigma\varepsilon$ with $\varepsilon \sim \mathcal{N}(0,I)$, and let $r(\tilde x) = g_\phi(f_\theta(\tilde x))$ denote the reconstruction. The population denoising risk is $\mathbb{E}\,\lVert x - r(\tilde x) \rVert^2$. For a fixed corrupted point, the conditional expectation $\mathbb{E}[x \mid \tilde x]$ is the minimizer of squared error, and Tweedie's formula gives it in closed form in terms of the marginal density $p_\sigma(\tilde x)$ of the corrupted data,
+
+$$
+\mathbb{E}[x \mid \tilde x] = \tilde x + \sigma^2 \,\nabla_{\tilde x} \log p_\sigma(\tilde x).
+$$ {#eq-autoencoders-tweedie}
+
+To derive @eq-autoencoders-tweedie, write $p_\sigma(\tilde x) = \int p(x)\,\mathcal{N}(\tilde x; x, \sigma^2 I)\,dx$ and differentiate. Because $\nabla_{\tilde x}\mathcal{N}(\tilde x; x, \sigma^2 I) = -\sigma^{-2}(\tilde x - x)\,\mathcal{N}(\tilde x; x, \sigma^2 I)$,
+
+$$
+\nabla_{\tilde x} \log p_\sigma(\tilde x) = \frac{\nabla_{\tilde x} p_\sigma(\tilde x)}{p_\sigma(\tilde x)} = \frac{\int p(x)\,(-\sigma^{-2})(\tilde x - x)\,\mathcal{N}(\tilde x; x, \sigma^2 I)\,dx}{p_\sigma(\tilde x)} = \sigma^{-2}\big(\mathbb{E}[x \mid \tilde x] - \tilde x\big),
+$$
+
+which rearranges to @eq-autoencoders-tweedie. Therefore the optimal reconstruction satisfies $r^\star(\tilde x) - \tilde x = \sigma^2 \nabla_{\tilde x}\log p_\sigma(\tilde x)$: the residual a trained denoiser produces points back toward the data manifold along the gradient of the log density. This is the basis of denoising score matching (@vincent2011) and the reason denoising autoencoders connect directly to modern score-based and diffusion generative models. The same identity explains why a denoiser learns the data distribution rather than the identity even when overcomplete: the best it can do is report the noise-aware posterior mean, which encodes $p$.
+
 
 ::: {.callout-tip title="Intuition"}
 Filling in a smudged word in a sentence requires understanding the sentence. Forcing the network to undo corruption forces it to learn how the data are supposed to look, which is exactly the structure we want it to capture.
@@ -141,7 +179,7 @@ where $z_i = f_\theta(x_i)$. The $L_1$ penalty pushes most entries of the code t
 
 $$
 \sum_{j=1}^k \mathrm{KL}(\rho \,\Vert\, \hat{\rho}_j) = \sum_{j=1}^k \left[ \rho \log \frac{\rho}{\hat{\rho}_j} + (1-\rho) \log \frac{1-\rho}{1-\hat{\rho}_j} \right] .
-$$
+$$ {#eq-autoencoders-sparse-kl}
 
 Sparsity lets the code be large while keeping each example explained by a few active features, which tends to produce parts-based and interpretable representations. For a face, one unit might respond to a nose, another to an eyebrow, rather than every unit firing a little for everything.
 
@@ -154,6 +192,14 @@ $$
 $$
 
 This pushes the encoder to be flat in most directions and to respond only along the directions in which the data actually vary, so the learned representation is locally invariant to small perturbations off the data manifold.^[The Jacobian $\partial f_\theta(x)/\partial x$ collects all the partial derivatives of the code with respect to the inputs. Its Frobenius norm is large when small input changes produce large code changes, so penalizing it asks the encoder to ignore directions that lead off the data.]
+
+For a single-layer encoder $z_j = s(a_j)$ with pre-activation $a = Wx + b$ and elementwise nonlinearity $s$, the Jacobian penalty has a cheap closed form that avoids ever forming the full matrix. Since $\partial z_j / \partial x_l = s'(a_j)\, W_{jl}$,
+
+$$
+\left\lVert \frac{\partial f_\theta(x)}{\partial x} \right\rVert_F^2 = \sum_{j=1}^k \sum_{l=1}^p \big(s'(a_j)\,W_{jl}\big)^2 = \sum_{j=1}^k s'(a_j)^2 \sum_{l=1}^p W_{jl}^2 = \sum_{j=1}^k s'(a_j)^2 \,\lVert W_{j\cdot} \rVert^2 .
+$$ {#eq-autoencoders-cae-jacobian}
+
+For the logistic sigmoid, $s'(a_j) = z_j(1 - z_j)$, so the penalty is $\sum_j z_j^2 (1-z_j)^2 \lVert W_{j\cdot}\rVert^2$, computable in $O(kp)$ from quantities already available in the forward pass. Two contrasts sharpen the intuition. Against weight decay, which penalizes $\lVert W \rVert_F^2$ uniformly and is data-independent, @eq-autoencoders-cae-jacobian weights each row by the local activation slope $s'(a_j)^2$, so it relaxes the penalty exactly where a unit is saturated and active on the data and tightens it elsewhere. Against the denoising autoencoder, a first-order Taylor expansion of the reconstruction shows that training with small additive Gaussian corruption is, to leading order in $\sigma^2$, equivalent to penalizing the Jacobian of the whole reconstruction $g_\phi \circ f_\theta$; the contractive penalty instead targets the encoder Jacobian directly, making the connection explicit rather than implicit.
 
 To summarize the three: denoising asks the code to survive corruption, sparsity asks it to use few units at a time, and contraction asks it to stay still under small input nudges. All three break the trivial-copy solution, which is what lets an overcomplete autoencoder learn something real.
 
@@ -170,6 +216,36 @@ $$
 $$
 
 The first term rewards reconstructing $x$ from codes drawn from the encoder, and plays the role of the reconstruction loss. The second term pulls the encoder distribution toward the prior, which regularizes the latent space so that nearby codes decode to similar inputs and the space can be sampled to generate new data.
+
+#### Deriving the ELBO {#sec-autoencoders-elbo}
+
+The bound is not assumed; it follows from a single algebraic identity. Multiply and divide inside the log-marginal by the encoder $q_\theta(z\mid x)$ and apply Jensen's inequality to the concave logarithm,
+
+$$
+\log p(x) = \log \int p_\phi(x\mid z)\,p(z)\,dz = \log \mathbb{E}_{q_\theta(z\mid x)}\!\left[\frac{p_\phi(x\mid z)\,p(z)}{q_\theta(z\mid x)}\right] \ge \mathbb{E}_{q_\theta(z\mid x)}\!\left[\log \frac{p_\phi(x\mid z)\,p(z)}{q_\theta(z\mid x)}\right].
+$$
+
+Splitting the logarithm separates a reconstruction term from a prior-matching term,
+
+$$
+\mathbb{E}_{q_\theta}\big[\log p_\phi(x\mid z)\big] + \mathbb{E}_{q_\theta}\!\left[\log \frac{p(z)}{q_\theta(z\mid x)}\right] = \mathbb{E}_{q_\theta}\big[\log p_\phi(x\mid z)\big] - \mathrm{KL}\big(q_\theta(z\mid x)\,\Vert\,p(z)\big),
+$$
+
+which is the ELBO. The gap in the inequality is exactly the posterior approximation error: a direct expansion gives
+
+$$
+\log p(x) - \mathrm{ELBO}(x) = \mathrm{KL}\big(q_\theta(z\mid x)\,\Vert\,p(z\mid x)\big) \ge 0,
+$$ {#eq-autoencoders-elbo-gap}
+
+so maximizing the ELBO simultaneously raises a bound on the likelihood and tightens the encoder toward the true posterior $p(z\mid x)$. The bound is exact precisely when $q_\theta(z\mid x) = p(z\mid x)$.
+
+With a Gaussian encoder $q_\theta = \mathcal{N}(\mu, \operatorname{diag}(\sigma^2))$ and standard normal prior $p(z) = \mathcal{N}(0, I)$ in dimension $k$, the KL term has a closed form that needs no sampling,
+
+$$
+\mathrm{KL}\big(q_\theta(z\mid x)\,\Vert\,p(z)\big) = \frac{1}{2}\sum_{j=1}^{k}\Big(\mu_j^2 + \sigma_j^2 - \log \sigma_j^2 - 1\Big).
+$$ {#eq-autoencoders-vae-kl}
+
+This is the standard KL between two diagonal Gaussians evaluated at unit prior variance and zero prior mean; each coordinate contributes a penalty that is zero only when $\mu_j = 0$ and $\sigma_j = 1$, that is, when the posterior coordinate already matches the prior. Only the reconstruction term needs the Monte Carlo estimate via the reparameterized sample, which is why a VAE trains with a single (or a few) noise draws per example. A practical failure mode follows directly from @eq-autoencoders-vae-kl: when the decoder is powerful enough to model $x$ without using $z$, the optimizer can drive the KL to zero by setting $\mu_j = 0, \sigma_j = 1$, ignoring the input. This is posterior collapse, mitigated by KL warm-up (annealing a weight on the KL term from zero) or by weakening the decoder.
 
 
 ::: {.callout-tip title="Intuition"}
@@ -210,6 +286,31 @@ The pieces above come together in four recurring applications. Each one reuses t
 Anomaly detection is the most common practical use and the easiest to deploy. You need only normal data to train, and the anomaly score is just the reconstruction error, with no labels and no threshold tuning beyond picking a cutoff.
 :::
 
+
+## Practical Considerations and Theory
+
+The variants above share a common set of design decisions and failure modes. This section collects the properties that govern how an autoencoder behaves in practice and how to set its knobs.
+
+### Choosing and diagnosing the code dimension
+
+The single most consequential hyperparameter is the bottleneck width $k$, because it sets the capacity of the representation. For the linear model the optimal reconstruction error is the closed form $\sum_{j>k}\lambda_j$ derived in @eq-autoencoders-eckartyoung, so the reconstruction-error-versus-$k$ curve is exactly the cumulative tail of the eigenvalue spectrum and its elbow estimates the intrinsic dimension. For nonlinear autoencoders no such closed form exists, but the same diagnostic curve applies: train at several values of $k$ and look for the elbow where added capacity stops reducing held-out reconstruction error. Use held-out, not training, error, because a sufficiently wide nonlinear autoencoder can drive training error toward zero by memorizing, the nonlinear analogue of the overcomplete identity map. A nonlinear autoencoder can in principle reconstruct $n$ training points exactly with a code as narrow as $k=1$, since a sufficiently wiggly encoder can map each point to a distinct real number and the decoder can invert it; this is overfitting through the bottleneck rather than around it, and it is why a capacity bound from $k$ alone is not a generalization guarantee.
+
+### Regularization strength and other knobs
+
+Each regularized variant adds one penalty weight whose scale must be tuned, typically by held-out reconstruction error or by a downstream task.
+
+-   Denoising: the noise level $\sigma$ (or the masking probability) is the effective regularizer. Small $\sigma$ recovers the ordinary autoencoder; large $\sigma$ forces stronger reliance on data structure but eventually destroys the signal. As @eq-autoencoders-tweedie shows, $\sigma$ also sets the scale at which the denoiser estimates the score, so it trades resolution against stability.
+-   Sparse: the penalty weight $\lambda$ and, for the KL form, the target rate $\rho$ (often $0.01$ to $0.05$). The KL penalty in @eq-autoencoders-sparse-kl refers to mean activations, so it requires either full-batch or a running estimate of $\hat\rho_j$ across a minibatch.
+-   Contractive: the weight $\lambda$ on the Jacobian penalty of @eq-autoencoders-cae-jacobian. Because the penalty is computed per minibatch in $O(kp)$ for a single layer, it is cheap for shallow encoders but scales with the number of layers when the full deep Jacobian is used.
+-   Variational: the optional weight $\beta$ on the KL term of @eq-autoencoders-vae-kl (the $\beta$-VAE). Raising $\beta$ above one buys a more disentangled, prior-conforming latent space at the cost of reconstruction fidelity; lowering it risks losing the generative smoothness that makes sampling work.
+
+### Computational cost and connections
+
+Training cost is dominated by the forward and backward passes through encoder and decoder, $O(\text{layer widths})$ per example per step, identical to a feedforward network of the same architecture; the autoencoder is unusual only in that its target is its input. Two structural connections are worth keeping in view. First, with linear maps and squared error the autoencoder collapses to PCA exactly (the result derived above), so any departure from PCA performance is attributable to nonlinearity or regularization, not to the autoencoder framing itself. Second, tying the decoder weights to the encoder ($U = W^\top$) halves the parameter count and is a common default; at the linear optimum this is automatically consistent with an orthonormal-basis solution but in the nonlinear case it is a genuine constraint that can help or hurt depending on the architecture.
+
+::: {.callout-warning}
+A low reconstruction error is necessary but not sufficient for a useful code. An overcomplete or over-flexible autoencoder can reconstruct perfectly while learning a representation that is no more informative than the raw input. Always evaluate the code on the downstream purpose (separability, anomaly ranking, generative sample quality), not on reconstruction error alone.
+:::
 
 ## Demonstration: Linear Autoencoder Equals PCA
 

@@ -96,6 +96,52 @@ to $g^\top \delta$ within $[-\epsilon, \epsilon]$ comes from moving each feature
 edge of its allowed range in the direction that increases the loss. FGSM is a single
 gradient evaluation, which is what makes it fast and a standard baseline.
 
+The closed form is an instance of a general fact about linear maximization over a norm
+ball. For a fixed gradient $g$, the linearized inner problem
+$\max_{\lVert \delta \rVert_p \le \epsilon} g^\top \delta$ is solved by Hölder's
+inequality, $g^\top \delta \le \lVert g \rVert_q \lVert \delta \rVert_p$ with the dual
+exponent $1/p + 1/q = 1$, and the bound is attained, so
+
+$$
+\max_{\lVert \delta \rVert_p \le \epsilon} g^\top \delta = \epsilon\, \lVert g \rVert_q ,
+\qquad \tfrac{1}{p} + \tfrac{1}{q} = 1 .
+$$ {#eq-adversarial-learning-holder}
+
+The maximizer is the perturbation that aligns $\delta$ with $g$ in the geometry dual to
+$\ell_p$. Working out the three cases used in practice:
+
+- $p = \infty$ (dual $q = 1$): equality in Hölder holds when each coordinate satisfies
+  $\delta_i = \epsilon\,\operatorname{sign}(g_i)$, recovering FGSM with value
+  $\epsilon \lVert g \rVert_1$.
+- $p = 2$ (dual $q = 2$): the maximizer is $\delta = \epsilon\, g / \lVert g \rVert_2$,
+  the normalized-gradient step, with value $\epsilon \lVert g \rVert_2$.
+- $p = 1$ (dual $q = \infty$): the maximizer puts the entire budget on the single
+  largest-magnitude coordinate, $\delta = \epsilon\,\operatorname{sign}(g_{i^\star})\, e_{i^\star}$
+  with $i^\star = \arg\max_i |g_i|$, a one-feature attack with value
+  $\epsilon \lVert g \rVert_\infty$.
+
+This unifies the attack across norms: the worst-case first-order loss increase under an
+$\ell_p$ budget is $\epsilon \lVert \nabla_x L \rVert_q$, and the direction is read off
+from the equality condition in @eq-adversarial-learning-holder.
+
+::: {.callout-note title="Adversarial training as a gradient-norm penalty"}
+Substituting the linearized worst case back into the robust objective exposes
+adversarial training as implicit regularization. To first order,
+$\max_{\lVert \delta \rVert_p \le \epsilon} L(\theta, x+\delta, y) \approx
+L(\theta, x, y) + \epsilon \lVert \nabla_x L(\theta, x, y) \rVert_q$, so the inner
+maximization adds a penalty on the dual norm of the input gradient:
+
+$$
+\min_\theta\; \mathbb{E}_{(x,y)}\!\Big[\, L(\theta, x, y)
+  + \epsilon \,\lVert \nabla_x L(\theta, x, y) \rVert_q \,\Big].
+$$ {#eq-adversarial-learning-gradpenalty}
+
+Robust training therefore prefers parameters where the loss is flat in input space.
+The exact equivalence holds only in the linear regime; curvature makes the true robust
+loss larger than this first-order surrogate, which is precisely why one-step FGSM
+training can underprepare a model for multi-step attacks.
+:::
+
 ### Projected gradient descent attacks
 
 FGSM takes one big step along a linearized loss. When the loss is genuinely curved,
@@ -114,6 +160,31 @@ clean input, and $\Pi$ clips each coordinate back into that ball. Usually $x^{(0
 a random point inside the ball, which helps escape flat regions. PGD with enough steps
 is treated as a strong first-order attack: if a defense survives PGD, it has cleared a
 meaningful bar, though not a proof of security.
+
+PGD is projected gradient ascent on the constrained inner problem
+$\max_{x' \in \mathcal{B}_\epsilon(x)} L(\theta, x', y)$, with one twist: under the
+$\ell_\infty$ norm the ascent step uses the sign of the gradient rather than the
+gradient itself. This is the steepest-ascent direction in the $\ell_\infty$ geometry,
+exactly as in @eq-adversarial-learning-holder, so each PGD step is an FGSM step of
+size $\alpha$ followed by a projection. The projection $\Pi_{\mathcal{B}_\epsilon(x)}$
+is the Euclidean nearest point in the ball and has a closed form for the common norms.
+For $\ell_\infty$ it is coordinatewise clipping,
+
+$$
+\big[\Pi_{\mathcal{B}_\epsilon^\infty(x)}(u)\big]_i = x_i + \operatorname{clip}\big(u_i - x_i,\, -\epsilon,\, \epsilon\big)
+= \min\!\big(\max(u_i,\, x_i - \epsilon),\, x_i + \epsilon\big) ,
+$$
+
+and for $\ell_2$ it shrinks the deviation toward the ball,
+
+$$
+\Pi_{\mathcal{B}_\epsilon^2(x)}(u) = x + (u - x)\,\min\!\Big(1,\ \frac{\epsilon}{\lVert u - x \rVert_2}\Big) .
+$$
+
+For image inputs one composes this with a clip to the valid pixel range, an intersection
+of two convex sets handled by clipping in sequence. Choosing $\alpha < \epsilon$ and
+taking several steps lets PGD trace the curvature of $L$ that a single FGSM step linearizes
+away, which is why PGD with $K$ steps dominates FGSM as the inner solver.
 
 
 ::: {.callout-warning}
@@ -141,11 +212,68 @@ problem with FGSM or PGD, generate adversarial inputs on each minibatch, and tra
 them (often mixed with clean inputs). This is *adversarial training*, and it remains
 one of the few defenses that holds up under careful evaluation.
 
+### Why training on the attacked point is the right gradient
+
+The saddle-point objective hides a subtlety: the outer loss
+$\phi(\theta) = \max_{\lVert \delta \rVert_p \le \epsilon} L(\theta, x + \delta, y)$
+is itself a maximization, so how do we differentiate it with respect to $\theta$?
+Danskin's theorem answers this. If $L(\theta, x+\delta, y)$ is differentiable in
+$\theta$, the constraint set $\{\delta : \lVert \delta \rVert_p \le \epsilon\}$ is
+compact, and the inner maximizer is unique at
+$\delta^\star(\theta) = \arg\max_{\lVert \delta \rVert_p \le \epsilon} L(\theta, x+\delta, y)$,
+then the maximized loss is differentiable and its gradient is the gradient of $L$
+evaluated at the maximizer, with the dependence of $\delta^\star$ on $\theta$ ignored:
+
+$$
+\nabla_\theta\, \phi(\theta) = \nabla_\theta\, L\big(\theta,\, x + \delta^\star(\theta),\, y\big) .
+$$ {#eq-adversarial-learning-danskin}
+
+The result is intuitive once stated: at an interior maximizer the partial derivative of
+$L$ with respect to $\delta$ vanishes (or is orthogonal to the active constraint), so the
+chain-rule term $\nabla_\delta L \cdot \partial \delta^\star/\partial \theta$ contributes
+nothing, leaving only the explicit dependence on $\theta$. @madry2017towards invoke
+@eq-adversarial-learning-danskin to justify the standard recipe: find a strong
+$\delta^\star$ with PGD, then take an ordinary gradient step on the loss at the perturbed
+point. The theorem requires the inner problem to be solved to optimality; PGD only
+approximates it, so the descent direction is approximate, which is one reason robust
+training is noisier and slower to converge than standard training.
+
 Robustness has a price. Pushing the decision boundary away from the data along every
 direction the attacker might exploit can lower clean accuracy, the *robustness-accuracy
 tradeoff* analyzed by @tsipras2019robustness. Robust models also tend to need more data
 and more capacity. The right operating point depends on the threat: a fraud model facing
 adaptive adversaries may accept a clean-accuracy hit that a benign recommender would not.
+
+### A model where robustness and accuracy genuinely conflict
+
+The tradeoff is not merely empirical; @tsipras2019robustness construct a distribution
+where the most accurate classifier is provably the least robust. Let the label
+$y \in \{-1, +1\}$ be balanced, and let the features be one strongly correlated
+coordinate plus $d$ weakly correlated coordinates:
+
+$$
+x_1 = \begin{cases} +y & \text{w.p. } p \\ -y & \text{w.p. } 1-p \end{cases},
+\qquad
+x_j \sim \mathcal{N}(\eta\, y,\, 1), \quad j = 2, \dots, d+1 ,
+$$
+
+with $p$ slightly above $\tfrac{1}{2}$ (say $p = 0.95$) and $\eta = \Theta(1/\sqrt{d})$
+small. Each weak feature carries little signal, but averaging $d$ of them concentrates:
+$\bar{x} = \tfrac{1}{d}\sum_{j\ge 2} x_j \sim \mathcal{N}(\eta y, 1/d)$, so the classifier
+$\operatorname{sign}(\bar{x})$ achieves accuracy approaching $1$ as $d$ grows, beating the
+$95\%$ ceiling of the robust feature $x_1$. The standard, most-accurate classifier
+therefore leans on the weak features.
+
+Now give an $\ell_\infty$ adversary budget $\epsilon = 2\eta$. The adversary shifts every
+weak coordinate by $-2\eta y$, flipping each $x_j$ from mean $\eta y$ to mean $-\eta y$,
+which inverts the sign of $\bar{x}$ in expectation and drives the accuracy of the
+weak-feature classifier toward $0$. The robust feature $x_1$ cannot be flipped by a small
+$\ell_\infty$ perturbation (it is already $\pm 1$ and $\epsilon < 1$), so a classifier
+that ignores the weak features and uses only $x_1$ keeps accuracy $p$ under attack. The
+conflict is fundamental to this distribution: maximizing clean accuracy forces reliance on
+features that an adversary can overturn, while robustness forces the model to discard
+exactly those features. No amount of capacity or data removes the gap, because it lives in
+the data-generating process, not in the optimizer.
 
 
 ::: {.callout-tip title="When to use this"}
@@ -322,6 +450,32 @@ attacks, and adversarial training is the corresponding defense. The
 linear case just lets us see the closed form and the uniform per-class shift that more
 complex models hide.
 
+The optimality claim in @eq-adversarial-learning-holder is easy to confirm
+numerically: the sign perturbation should attain the bound $\epsilon \lVert g \rVert_1$
+exactly, and no random perturbation inside the $\ell_\infty$ ball should beat it.
+
+```{r adversarial-learning-holder-check, eval=TRUE}
+set.seed(7)
+g  <- rnorm(50)          # an arbitrary loss gradient
+eps <- 0.1
+
+# Closed-form optimum from the Holder argument.
+opt_fgsm  <- sum(g * (eps * sign(g)))   # should equal eps * ||g||_1
+bound     <- eps * sum(abs(g))
+
+# Best of many random perturbations inside the L-infinity ball.
+rand_best <- max(replicate(100000, {
+  d <- runif(length(g), -eps, eps)
+  sum(g * d)
+}))
+
+c(fgsm_value = opt_fgsm, holder_bound = bound, random_best = rand_best)
+```
+
+The FGSM value equals the Hölder bound to machine precision, and the best of 100000
+random perturbations falls short of it, confirming that the sign step is the exact
+maximizer of the linearized loss under an $\ell_\infty$ budget.
+
 ## The adversarial game behind GANs
 
 The minimax pattern that defines robust training is the same one that drives generative
@@ -342,6 +496,42 @@ the outer $\min$ is over model parameters; here the inner $\max$ is over the
 discriminator and the outer $\min$ is over the generator. Same skeleton, different
 players. @goodfellow2014gan show that at the global optimum the generator reproduces the
 data distribution and the discriminator is reduced to guessing, $D \equiv \tfrac{1}{2}$.
+
+The proof of that statement is a short two-step argument worth seeing, because it pins
+down exactly what the generator is minimizing. Let $p_g$ be the distribution of $G(z)$
+and write the objective as
+$V(G, D) = \int p_{\mathrm{data}}(x) \log D(x) + p_g(x) \log(1 - D(x))\, dx$. For fixed
+$G$, the integrand at each $x$ has the form $a \log D + b \log(1 - D)$ with
+$a = p_{\mathrm{data}}(x)$ and $b = p_g(x)$; setting the derivative
+$a/D - b/(1-D) = 0$ gives the optimal discriminator pointwise,
+
+$$
+D^\star(x) = \frac{p_{\mathrm{data}}(x)}{p_{\mathrm{data}}(x) + p_g(x)} .
+$$ {#eq-adversarial-learning-optD}
+
+Substituting $D^\star$ back collapses the inner maximum into a divergence between the two
+distributions. Using $\log 2$ to recenter,
+
+$$
+\begin{aligned}
+V(G, D^\star)
+&= \mathbb{E}_{p_{\mathrm{data}}}\!\Big[\log \tfrac{p_{\mathrm{data}}}{p_{\mathrm{data}} + p_g}\Big]
+ + \mathbb{E}_{p_g}\!\Big[\log \tfrac{p_g}{p_{\mathrm{data}} + p_g}\Big] \\
+&= -\log 4 + \mathrm{KL}\!\Big(p_{\mathrm{data}} \,\Big\|\, \tfrac{p_{\mathrm{data}} + p_g}{2}\Big)
+ + \mathrm{KL}\!\Big(p_g \,\Big\|\, \tfrac{p_{\mathrm{data}} + p_g}{2}\Big) \\
+&= -\log 4 + 2\,\mathrm{JSD}(p_{\mathrm{data}} \,\|\, p_g) ,
+\end{aligned}
+$$ {#eq-adversarial-learning-jsd}
+
+where $\mathrm{JSD}$ is the Jensen-Shannon divergence. Because $\mathrm{JSD} \ge 0$ with
+equality iff $p_g = p_{\mathrm{data}}$, the generator's minimization of
+@eq-adversarial-learning-jsd is uniquely solved at $p_g = p_{\mathrm{data}}$, at which
+point @eq-adversarial-learning-optD gives $D^\star \equiv \tfrac{1}{2}$ and the game
+value is $-\log 4$. This also explains a notorious failure mode: where $p_{\mathrm{data}}$
+and $p_g$ have disjoint supports the JSD is constant at $\log 2$, so its gradient
+vanishes and the generator receives no signal. That flat-gradient pathology motivated
+Wasserstein GANs, which replace the JSD with an earth-mover distance that varies smoothly
+even between non-overlapping distributions (see @sec-generative-models).
 
 
 ::: {.callout-note}
@@ -419,6 +609,69 @@ These are the generative counterparts of the optimization instabilities that als
 adversarial robustness, and they trace back to the same fact: nobody is solving the inner
 problem exactly.
 
+## Certified robustness: guarantees beyond empirical attacks
+
+Empirical robustness against PGD is a lower bound on vulnerability: it tells you the model
+survived the attacks you tried, not that no attack exists. Certified defenses instead
+produce a provable radius $r$ around an input within which the prediction cannot change.
+The most scalable certificate is *randomized smoothing* (@cohen2019certified). Given any
+base classifier $h$, define the smoothed classifier
+
+$$
+\bar{h}(x) = \arg\max_{c}\; \mathbb{P}_{\eta \sim \mathcal{N}(0, \sigma^2 I)}\big[\, h(x + \eta) = c \,\big],
+$$
+
+the majority vote of $h$ under Gaussian noise. If the top class $c_A$ has probability at
+least $\underline{p_A}$ and the runner-up at most $\overline{p_B}$ under the noise, then
+$\bar{h}$ is constant, hence its prediction is certifiably unchanged, for every $\ell_2$
+perturbation of radius
+
+$$
+r = \frac{\sigma}{2}\Big(\Phi^{-1}(\underline{p_A}) - \Phi^{-1}(\overline{p_B})\Big),
+$$ {#eq-adversarial-learning-smoothing}
+
+where $\Phi^{-1}$ is the standard-normal quantile function. The proof rests on the
+isoperimetric property of the Gaussian: shifting the noise distribution by $\delta$ can
+change the probability of any half-space by at most an amount controlled by $\Phi^{-1}$,
+so a margin in probability space translates into a margin in input space. In practice the
+two probabilities are estimated by Monte Carlo sampling of $h(x + \eta)$ with a confidence
+correction, giving a high-probability certificate. The noise level $\sigma$ is the central
+hyperparameter: larger $\sigma$ certifies larger radii (@eq-adversarial-learning-smoothing
+scales with $\sigma$) but blurs the input and lowers clean accuracy, a direct dial on the
+robustness-accuracy tradeoff.
+
+::: {.callout-note title="Certified versus empirical"}
+Empirical robustness can only ever be falsified by a stronger attack; a certificate can
+only ever be loose, never wrong. The two are complementary: report PGD accuracy as an
+upper bound on robustness and a certified radius as a lower bound, and trust a defense
+most when the gap between them is small.
+:::
+
+## Cost, convergence, and hyperparameters at a glance
+
+The dominant cost of robust training is the inner solver. Each PGD step is one
+forward-backward pass, so $K$-step PGD adversarial training costs roughly $K + 1$ times
+standard training per minibatch (the $+1$ for the outer parameter update). FGSM training
+costs about twice standard training. This sets the practical menu:
+
+- **Step size $\alpha$ and steps $K$ for the attack.** A common rule is
+  $\alpha \approx 2.5\,\epsilon / K$ so the iterate can traverse the ball; $K$ between
+  $7$ and $40$ is typical for evaluation, fewer during training. More restarts reduce the
+  chance of reporting an inflated robust accuracy from a bad random start.
+- **Budget $\epsilon$.** Set it from the threat, not from convenience. For $[0,1]$-scaled
+  images, $\ell_\infty$ budgets of $8/255$ are a community benchmark; there is nothing
+  fundamental about that number.
+- **Catastrophic overfitting.** Single-step training can show robust accuracy against PGD
+  suddenly collapsing to near zero within one epoch while FGSM accuracy stays high. The
+  cure is to monitor multi-step robust accuracy, add a random initialization to the FGSM
+  step, or cap the step size; if it appears, fall back to a few PGD steps.
+- **Diagnosing gradient masking.** If robust accuracy is high but (i) the loss gradient
+  norm is near zero, (ii) iterative attacks do no better than single-step, (iii) unbounded
+  $\epsilon$ fails to drive accuracy to zero, or (iv) black-box transfer attacks beat
+  white-box ones, the defense is likely obfuscating gradients rather than being robust
+  (@athalye2018obfuscated). A correct defense should let an unbounded attacker eventually
+  win.
+
 ## Further reading
 
 - Szegedy, Zaremba, Sutskever, Bruna, Erhan, Goodfellow, and Fergus (2013), the paper
@@ -435,3 +688,5 @@ problem exactly.
   (2014), the original generative adversarial networks paper.
 - Ganin, Ustinova, Ajakan, Germain, Larochelle, Laviolette, Marchand, and Lempitsky
   (2016), on domain-adversarial training of neural networks.
+- Cohen, Rosenfeld, and Kolter (2019), on certified $\ell_2$ robustness via randomized
+  smoothing.

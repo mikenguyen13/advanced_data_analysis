@@ -75,6 +75,28 @@ Once a wrong pseudo-label enters the training set, the model becomes *more* conf
 
 Self-training is closely tied to the cluster assumption. Confident points sit far from the boundary, deep inside a class region, so labeling them tends to be safe and tends to push the boundary into the low-density gap between classes.
 
+### Self-training as entropy minimization
+
+The intuitive "trust confident predictions" rule has a precise objective behind it. Write the model as $p_\theta(y \mid x)$. Self-training with hard pseudo-labels is the hard-assignment (classification EM) version of minimizing, over the unlabeled set, the regularized objective
+
+$$
+J(\theta) = -\sum_{i \in L} \log p_\theta(y_i \mid x_i) + \lambda \sum_{i \in U} H\!\big(p_\theta(\cdot \mid x_i)\big), \qquad H(q) = -\sum_c q_c \log q_c,
+$$ {#eq-semi-supervised-learning-entropy-min}
+
+where $H$ is the Shannon entropy of the predicted class distribution. The first term is the ordinary supervised log-loss; the second, the entropy minimization regularizer of Grandvalet and Bengio (2005), pushes the model to be confident (low entropy) on unlabeled points. This is exactly the low-density-separation prior: a boundary cutting through a dense region forces many unlabeled points to sit near $p = 1/2$, which carries high entropy, so minimizing @eq-semi-supervised-learning-entropy-min repels the boundary from dense regions.
+
+To see that pseudo-labeling implements a coordinate descent on a closely related objective, introduce auxiliary soft labels $q_i \in \Delta^{C-1}$ for each unlabeled point and consider
+
+$$
+\tilde J(\theta, q) = -\sum_{i \in L} \log p_\theta(y_i \mid x_i) - \lambda \sum_{i \in U} \sum_c q_{ic} \log p_\theta(c \mid x_i).
+$$ {#eq-semi-supervised-learning-pseudo-em}
+
+For fixed $\theta$, the inner minimization over $q_i$ on the probability simplex of $-\sum_c q_{ic} \log p_\theta(c \mid x_i)$ is a linear program whose optimum is attained at a vertex, namely the one-hot vector on $\arg\max_c p_\theta(c \mid x_i)$. That is precisely the hard pseudo-label. The subsequent retraining step minimizes @eq-semi-supervised-learning-pseudo-em over $\theta$ with $q$ fixed. Alternating the two steps is block coordinate descent, which monotonically decreases $\tilde J$ and therefore converges (to a local optimum). The confirmation-bias failure mode is now transparent: the surrogate $\tilde J$ is nonconvex in $(\theta, q)$, and a poor initial $\theta$ (few labels) can drive the iterates into a bad basin from which the alternating minimization never escapes. The confidence threshold $\tau$ is a practical device that restricts the $q$-update to points where the current vertex assignment is least likely to be wrong, trading bias for a lower chance of locking in errors.
+
+::: {.callout-note}
+The two objectives differ in one detail. Entropy minimization @eq-semi-supervised-learning-entropy-min penalizes the entropy of the model's own output, while the EM surrogate @eq-semi-supervised-learning-pseudo-em treats the pseudo-label as a fixed target. They coincide when the threshold admits a point only if its prediction is already near one-hot, since then $H \approx 0$ and the cross-entropy to the hard label equals the negative log-confidence. This is why a high $\tau$ makes the two views interchangeable.
+:::
+
 
 ::: {.callout-tip title="When to use this"}
 Reach for self-training when you have a single decent classifier, no natural way to split the features, and unlabeled data that clusters cleanly by class. It is the lowest-effort SSL method and a sensible first thing to try.
@@ -94,6 +116,21 @@ When a natural feature split exists, co-training resists confirmation bias bette
 
 ::: {.callout-tip title="When to use this"}
 Co-training pays off when your features genuinely come in two (or more) independent groups, for example text plus metadata, or audio plus transcript. If you cannot point to such a split, the independence the method relies on is fiction and you are better off with plain self-training.
+:::
+
+### Why co-training works: the PAC argument
+
+The two assumptions of Blum and Mitchell (1998) can be stated precisely. Let the instance be $x = (x^{(1)}, x^{(2)})$ drawn from a distribution $\mathcal{D}$ over $X^{(1)} \times X^{(2)}$.
+
+1. Sufficiency (compatibility). Each view alone determines the label: there exist target functions $f^{(1)}, f^{(2)}$ with $f^{(1)}(x^{(1)}) = f^{(2)}(x^{(2)}) = y$ almost surely. Equivalently, $\mathcal{D}$ assigns zero probability to instances on which the two views disagree.
+2. Conditional independence. The views are independent given the label: $p(x^{(1)}, x^{(2)} \mid y) = p(x^{(1)} \mid y)\, p(x^{(2)} \mid y)$.
+
+The force of conditional independence is this. Suppose classifier 1 has reached error rate $\epsilon_1$ on view 1. Pick the points where it is confident and correct, and use them as labels for view 2. Because, conditioned on the true label $y$, the value of $x^{(2)}$ is independent of $x^{(1)}$ (and hence of classifier 1's output), these new labels are an essentially unbiased, randomly drawn labeled sample for the view-2 problem. The pseudo-labels are not adversarially correlated with view 2's mistakes, which is exactly the property single-view self-training lacks. Formally, conditional independence implies that confident, mostly correct predictions from one view supply view 2 with examples that look like fresh i.i.d. draws, so standard PAC generalization applies to the view-2 learner.
+
+Blum and Mitchell prove that under these assumptions, if the target is learnable in the PAC sense from each view and the initial weak predictor is better than chance, then co-training can boost to arbitrarily low error using unlabeled data. The mechanism is a reduction: each round converts the other view's confident predictions into a new labeled batch, and the two PAC learners iteratively reduce each other's error. Later work (Dasgupta, Littman, and McAllester, 2001) gave a generalization bound directly in terms of the rate of disagreement between the two view classifiers: the error of either classifier is bounded by the probability that the two disagree, so minimizing inter-view disagreement on unlabeled data controls test error. This is the theoretical justification for disagreement-based and multi-view variants.
+
+::: {.callout-warning}
+When the views are redundant rather than independent (the extreme being $x^{(1)} = x^{(2)}$), the pseudo-labels from view 1 are perfectly correlated with view 1's own errors, the independence step of the argument collapses, and co-training degenerates to self-training with its full confirmation-bias risk. The graceful degradation noted above is a consequence of the bound through the disagreement term, which simply becomes uninformative as the views align.
 :::
 
 
@@ -154,6 +191,58 @@ subject to $F_i = Y_i$ on the labeled set. Minimizing $E$ means giving similar s
 The word *harmonic* comes from physics. The solution is the discrete analogue of a steady-state heat distribution: fix the temperature at the labeled nodes and let the rest settle to equilibrium. Each unlabeled node ends up at the average temperature of its neighbors, which is precisely the harmonic property.
 :::
 
+#### Deriving the harmonic solution
+
+The closed form @eq-semi-supervised-learning-harmonic-form below can be obtained two equivalent ways: as the fixed point of the clamped iteration, and as the minimizer of the energy. Both are worth seeing because they connect the random-walk picture to the optimization picture.
+
+Energy minimization. Take a single label column $f \in \mathbb{R}^n$ (one binary class; the multiclass case applies the same algebra column by column). The energy
+
+$$
+E(f) = \tfrac{1}{2} \sum_{i,j} W_{ij} (f_i - f_j)^2 = f^\top \mathcal{L} f, \qquad \mathcal{L} = D - W,
+$$
+
+is to be minimized subject to the constraint $f_L = y_L$. Partition $f = (f_L, f_U)$ and the Laplacian conformably,
+
+$$
+\mathcal{L} = \begin{pmatrix} \mathcal{L}_{LL} & \mathcal{L}_{LU} \\ \mathcal{L}_{UL} & \mathcal{L}_{UU} \end{pmatrix}.
+$$
+
+Only the unlabeled block $f_U$ is free. Expanding the quadratic,
+
+$$
+E(f) = f_L^\top \mathcal{L}_{LL} f_L + 2 f_U^\top \mathcal{L}_{UL} f_L + f_U^\top \mathcal{L}_{UU} f_U,
+$$
+
+and setting the gradient with respect to $f_U$ to zero gives the stationarity condition
+
+$$
+\frac{\partial E}{\partial f_U} = 2\,\mathcal{L}_{UL} f_L + 2\,\mathcal{L}_{UU} f_U = 0 \quad\Longrightarrow\quad f_U = -\,\mathcal{L}_{UU}^{-1} \mathcal{L}_{UL}\, y_L.
+$$ {#eq-semi-supervised-learning-harmonic-laplacian}
+
+Because $\mathcal{L} = D - W$ is positive semidefinite and $\mathcal{L}_{UU}$ is positive definite whenever every unlabeled node has a path to some labeled node (the graph connectivity condition), this stationary point is the unique global minimum.
+
+Random-walk form. To connect @eq-semi-supervised-learning-harmonic-laplacian to the transition matrix, write $\mathcal{L}_{UU} = D_{UU} - W_{UU}$ and $\mathcal{L}_{UL} = -W_{UL}$, and recall $P = D^{-1} W$ so that $P_{UU} = D_{UU}^{-1} W_{UU}$ and $P_{UL} = D_{UU}^{-1} W_{UL}$. Then
+
+$$
+f_U = (D_{UU} - W_{UU})^{-1} W_{UL}\, y_L = \big(D_{UU}(I - D_{UU}^{-1} W_{UU})\big)^{-1} W_{UL}\, y_L = (I - P_{UU})^{-1} D_{UU}^{-1} W_{UL}\, y_L,
+$$
+
+which is exactly
+
+$$
+F_U = (I - P_{UU})^{-1} P_{UL}\, Y_L .
+$$ {#eq-semi-supervised-learning-harmonic-form}
+
+This is the formula implemented in the simulation chunk `ssl-propagate`. The harmonic property $f_U = P_{UU} f_U + P_{UL} y_L$, that is, each unlabeled value equals the transition-weighted average of its neighbors, can be read straight off @eq-semi-supervised-learning-harmonic-form by left-multiplying through $(I - P_{UU})$.
+
+Convergence of the iteration. The clamped update on the unlabeled block is the affine map $F_U^{(t+1)} = P_{UU} F_U^{(t)} + P_{UL} Y_L$. Its convergence is governed by the spectral radius of $P_{UU}$. Since $P$ is row-stochastic and $P_{UU}$ is a strict submatrix (rows that leak probability mass to labeled nodes), $\rho(P_{UU}) < 1$ under the connectivity condition. Hence
+
+$$
+F_U^{(t)} = P_{UU}^{t} F_U^{(0)} + \sum_{s=0}^{t-1} P_{UU}^{s} P_{UL} Y_L \;\longrightarrow\; \Big(\sum_{s=0}^{\infty} P_{UU}^{s}\Big) P_{UL} Y_L = (I - P_{UU})^{-1} P_{UL} Y_L,
+$$
+
+a geometric (Neumann) series that converges at linear rate $\rho(P_{UU})$ to the same closed form @eq-semi-supervised-learning-harmonic-form, independent of the initialization $F_U^{(0)}$. A second reading of @eq-semi-supervised-learning-harmonic-form: the $(i,j)$ entry of $(I - P_{UU})^{-1} P_{UL}$ is the probability that a random walk started at unlabeled node $i$, absorbed at the labeled set, is absorbed at labeled node $j$. The soft label of an unlabeled point is therefore the distribution over which labeled point a random walker hits first, an absorbing-Markov-chain interpretation that makes the manifold-following behavior intuitive.
+
 
 ### Label spreading (the regularized variant)
 
@@ -173,9 +262,35 @@ which minimizes
 
 $$
 \mathcal{Q}(F) = \tfrac{1}{2} \sum_{i,j} W_{ij} \left\lVert \frac{F_i}{\sqrt{D_{ii}}} - \frac{F_j}{\sqrt{D_{jj}}} \right\rVert^2 + \frac{1 - \alpha}{\alpha} \sum_i \lVert F_i - Y_i \rVert^2.
-$$
+$$ {#eq-semi-supervised-learning-spreading-Q}
 
 The first term is the normalized smoothness penalty; the second is a fit-to-initial-labels penalty that tolerates some disagreement, which makes label spreading more robust to mislabeled points than hard-clamped propagation.
+
+#### Deriving the label-spreading closed form
+
+Both the convergence of the iteration and its equivalence to minimizing $\mathcal{Q}$ follow from short arguments.
+
+Fixed point of the iteration. The update $F^{(t+1)} = \alpha S F^{(t)} + (1 - \alpha) Y$ is again an affine map. The eigenvalues of $S = D^{-1/2} W D^{-1/2}$ lie in $[-1, 1]$ (it is similar to the stochastic matrix $D^{-1} W$), so the eigenvalues of $\alpha S$ lie in $(-\alpha, \alpha) \subset (-1, 1)$ for $\alpha \in (0,1)$, giving $\rho(\alpha S) = \alpha < 1$. Unrolling the recursion,
+
+$$
+F^{(t)} = (\alpha S)^{t} F^{(0)} + (1 - \alpha) \sum_{s=0}^{t-1} (\alpha S)^{s} Y \;\longrightarrow\; (1 - \alpha)\sum_{s=0}^{\infty}(\alpha S)^s Y = (1 - \alpha)(I - \alpha S)^{-1} Y,
+$$ {#eq-semi-supervised-learning-spreading-form}
+
+since $(\alpha S)^t \to 0$ and the Neumann series converges. The limit is independent of $F^{(0)}$ and matches the stated closed form. The convergence rate is linear with factor $\alpha$, so $\alpha$ near 1 (heavy reliance on the graph) converges more slowly, the usual trade.
+
+Equivalence to the functional. Differentiate $\mathcal{Q}(F)$ in @eq-semi-supervised-learning-spreading-Q. The smoothness term equals $\operatorname{tr}\!\big(F^\top (I - S) F\big)$, because $\tfrac12 \sum_{ij} W_{ij} \lVert D_{ii}^{-1/2} F_i - D_{jj}^{-1/2} F_j \rVert^2 = \operatorname{tr}\!\big(F^\top \mathcal{L}_{\text{sym}} F\big)$ with $\mathcal{L}_{\text{sym}} = I - S$. Setting $\mu = (1-\alpha)/\alpha$ for the fit term, the gradient is
+
+$$
+\nabla_F \mathcal{Q} = 2(I - S) F + 2\mu (F - Y) = 0 \;\Longrightarrow\; \big((1 + \mu) I - S\big) F = \mu Y .
+$$
+
+Dividing through by $(1 + \mu) = 1/\alpha$ and using $\mu/(1+\mu) = 1 - \alpha$,
+
+$$
+\big(I - \alpha S\big) F = (1 - \alpha) Y \;\Longrightarrow\; F^{*} = (1 - \alpha)(I - \alpha S)^{-1} Y,
+$$
+
+identical to @eq-semi-supervised-learning-spreading-form. Since $\mathcal{Q}$ is a strictly convex quadratic ($I - S \succeq 0$ and $\mu > 0$ make the Hessian positive definite), this stationary point is the unique global minimizer. Label propagation is recovered in the limit $\alpha \to 1^{-}$ (the fit penalty $\mu \to 0$ stops correcting the labels) combined with hard clamping, which is why the two methods agree when labels are trusted.
 
 
 ::: {.callout-tip}
@@ -196,6 +311,47 @@ With the four classic methods on the table, it is worth pausing to line them up 
 | Pseudo-labeling (deep) | Teacher labels pool, student trains on union | Cluster (low-density) | With confidence filtering | Inductive | Confident wrong labels |
 
 : Comparison of common semi-supervised methods, listing each method's mechanism, key assumption, robustness to label noise, natural learning goal, and main pitfall. {#tbl-semi-supervised-learning-method-comparison}
+
+## Low-Density Separation and the Transductive SVM
+
+The cluster assumption has a third algorithmic embodiment, distinct from the wrapper methods and from graph diffusion: place the decision boundary directly in the low-density region by treating the unknown labels of $U$ as optimization variables. The transductive SVM (TSVM) of Joachims (1999) is the canonical example and ties this chapter back to @sec-svm.
+
+A standard soft-margin SVM minimizes $\tfrac12 \lVert w \rVert^2 + C \sum_{i \in L} \xi_i$ subject to $y_i(w^\top x_i + b) \ge 1 - \xi_i$, $\xi_i \ge 0$. The TSVM augments this with the unlabeled points, whose labels $y_j^\star \in \{-1, +1\}$ for $j \in U$ are now decision variables:
+
+$$
+\min_{w, b, \{y_j^\star\}} \; \tfrac12 \lVert w \rVert^2 + C \sum_{i \in L} \xi_i + C^\star \sum_{j \in U} \xi_j^\star
+\quad\text{s.t.}\quad
+\begin{cases}
+y_i (w^\top x_i + b) \ge 1 - \xi_i, & i \in L, \\
+y_j^\star (w^\top x_j + b) \ge 1 - \xi_j^\star, & j \in U,
+\end{cases}
+$$ {#eq-semi-supervised-learning-tsvm}
+
+with all slacks nonnegative. Eliminating the labels, each unlabeled point contributes the hat-loss $\xi_j^\star = \max\big(0,\, 1 - |w^\top x_j + b|\big)$, since the best label for a fixed hyperplane is $y_j^\star = \operatorname{sign}(w^\top x_j + b)$, which leaves the signed margin equal to its absolute value. This loss is large for points inside the margin and zero for points safely outside it, so the optimizer is rewarded for sweeping the boundary into regions empty of unlabeled data. That is the cluster assumption operationalized as a penalty on margin violations by unlabeled points.
+
+::: {.callout-warning}
+The unlabeled hat-loss $\max(0, 1 - |z|)$ is nonconvex in $z$ (it is a downward bump centered at the boundary), so @eq-semi-supervised-learning-tsvm is a combinatorial, nonconvex problem, NP-hard in general because of the binary $y_j^\star$. Practical solvers use continuation (annealing $C^\star$ from small to large), label switching (Joachims' $\mathrm{S}^3\mathrm{VM}$), or convex-concave procedures. A balancing constraint, forcing the predicted label proportions on $U$ to match those on $L$, is essential; without it the trivial solution assigns every unlabeled point to one class and pushes the boundary to infinity.
+:::
+
+Entropy minimization @eq-semi-supervised-learning-entropy-min is the probabilistic analogue of the TSVM: the entropy of $p_\theta(\cdot \mid x_j)$ plays the role of the hat-loss, penalizing unlabeled points that sit near the boundary. Both encode low-density separation, one through margins and one through likelihood.
+
+## When Does Unlabeled Data Help? Theory and Failure Modes
+
+The chapter's recurring caution, that SSL can hurt, can be made precise. The cleanest setting is a two-component generative mixture $p(x) = \sum_{c} \pi_c\, p(x \mid y = c; \theta_c)$, which is the model under which the cluster assumption is exactly true.
+
+Sample complexity. Castelli and Cover (1996) analyzed this mixture model and showed a sharp division of labor between the two kinds of data. Identifying the mixture components (the shapes $p(x \mid y = c)$ and the proportions $\pi_c$) is a purely unsupervised task, and its error decreases with the unlabeled count $u$. The labeled data are needed only to break the permutation symmetry, that is, to assign a class name to each estimated component. Under their assumptions the Bayes risk is approached at a rate where labeled examples reduce error exponentially fast,
+
+$$
+R(\hat f) - R^\star \;\lesssim\; \underbrace{O(e^{-\gamma\, l})}_{\text{labeling the components}} \;+\; \underbrace{O(1/u)}_{\text{estimating the components}},
+$$
+
+for some $\gamma > 0$ depending on the component separation. The exponential term in $l$ explains the central empirical observation of this chapter: once the components are well estimated from abundant $U$, a mere handful of labels suffices, exactly what the two-moons simulation showed with three labels per class.
+
+When it backfires. The same analysis reveals the failure mode. The error bound is driven by the correctness of the assumed model for $p(x)$. If the true class-conditional densities are not the assumed mixture (model misspecification), unlabeled data drives the parameter estimates toward the wrong components, and because the unlabeled likelihood term grows with $u$, it can eventually dominate and overwhelm the correct signal from the few labels. Cozman, Cohen, and Cirelo (2003) formalized this: when the modeling assumptions are wrong, adding unlabeled data can increase the asymptotic error, and the degradation grows with the ratio $u/l$. This is the precise sense in which SSL is not a free lunch. The practical reading is that the more unlabeled data you add, the more faith you are placing in the cluster or manifold model, so the model had better be right.
+
+::: {.callout-important title="Key idea"}
+Unlabeled data is information about $p(x)$ only. It helps the prediction of $y$ exactly to the extent that $p(x)$ and $p(y \mid x)$ are linked through a correctly specified assumption (cluster or manifold). When the link is wrong, more unlabeled data makes the prediction worse, not better, because it sharpens an estimate of the wrong thing. There is no purely data-driven escape from this: the assumption is a genuine prior that cannot be validated from unlabeled data alone.
+:::
 
 ## Pseudo-Labeling in Deep Learning
 
@@ -398,6 +554,30 @@ nn_predict <- function(Xtr, ytr, Xte) {
 pred_nn <- nn_predict(X[L, , drop = FALSE], y_obs[L], X)
 ```
 
+### Verifying the closed form against the iteration
+
+The derivation claimed that the clamped random-walk iteration $F_U^{(t+1)} = P_{UU} F_U^{(t)} + P_{UL} Y_L$ converges to the closed form @eq-semi-supervised-learning-harmonic-form. We confirm this numerically by iterating from a zero initialization and comparing to the matrix-inverse solution.
+
+```{r ssl-verify-harmonic}
+# Convergence rate is set by the spectral radius of P_UU.
+rho <- max(abs(eigen(P_UU, only.values = TRUE)$values))
+
+# Iterate the clamped update from F_U = 0 and compare to the closed form.
+F_iter <- matrix(0, length(Uidx), C)
+for (t in 1:5000) {
+  F_iter <- P_UU %*% F_iter + P_UL %*% Y[L, , drop = FALSE]
+}
+max_abs_diff <- max(abs(F_iter - F_U))
+labels_match <- all(max.col(F_iter) == max.col(F_U))
+
+cat("Spectral radius rho(P_UU):", round(rho, 4), "\n")
+cat("Max |iteration - closed form| after 5000 steps:",
+    format(max_abs_diff, scientific = TRUE), "\n")
+cat("Predicted labels identical:", labels_match, "\n")
+```
+
+The iterate matches the closed form @eq-semi-supervised-learning-harmonic-form to within machine precision, confirming that the recursion and the matrix inverse compute the same harmonic solution. The spectral radius $\rho(P_{UU})$ is close to 1 here (a few unlabeled nodes sit far from any label, so probability mass leaks to the absorbing set only slowly), which is why thousands of iterations are needed for full numerical agreement even though the predicted labels, the argmax of each row, stabilize after only a few hundred. This is the linear convergence rate $\rho(P_{UU})$ from the Neumann-series argument made concrete: the closed form is the better choice at this scale precisely because the iteration converges slowly when the graph is weakly absorbing.
+
 ### Accuracy gain from unlabeled data
 
 We score each method on the points that were hidden during training (the unlabeled set), which is the fair comparison: did using the unlabeled structure help recover the true labels?
@@ -480,6 +660,19 @@ When you do apply SSL, a handful of recurring traps account for most failures. E
 - Computational cost. The closed-form graph solutions invert an $n \times n$ (or $u \times u$) matrix, $O(n^3)$ in general. For large $n$ use the iterative form, exploit sparsity from $k$-NN graphs, or use scalable approximations.
 - Calibration. Confidence-based methods assume the model's probabilities mean something. Poorly calibrated models pseudo-label badly; calibrate (for example with temperature scaling) before thresholding.
 - Validation must use real labels. Never tune on pseudo-labels; that measures self-consistency, not accuracy. Hold out a genuinely labeled validation set.
+
+### Computational complexity and scaling
+
+The graph methods have a clear cost profile. Building the full Gaussian kernel is $O(n^2 p)$ time and $O(n^2)$ memory; restricting to a $k$-NN graph (exact brute force) keeps the $O(n^2 p)$ distance computation but reduces storage to $O(nk)$, and approximate nearest-neighbor structures (KD-trees in low dimension, or locality-sensitive hashing and HNSW graphs in high dimension) bring the construction toward $O(n \log n)$ in favorable regimes. The solve is the bottleneck. The direct closed forms @eq-semi-supervised-learning-harmonic-form and @eq-semi-supervised-learning-spreading-form invert a dense $u \times u$ or $n \times n$ system at $O(u^3)$ or $O(n^3)$, which is fine for the few thousand points of the simulation but infeasible past tens of thousands. Two scalable routes exist:
+
+- Iterative solves. Run the fixed-point recursions (the clamped update, or $F \leftarrow \alpha S F + (1-\alpha) Y$) on the sparse $k$-NN matrix. Each iteration costs $O(nk C)$, and convergence to tolerance $\varepsilon$ takes $O\!\big(\log \varepsilon / \log \rho\big)$ iterations, where $\rho$ is the relevant spectral radius ($\rho(P_{UU})$ or $\alpha$). Total cost is near-linear in $n$ for a fixed graph. Conjugate gradient on the symmetric positive-definite systems converges faster when the graph is well conditioned.
+- Anchor and Nystrom approximations. Summarize the graph by $m \ll n$ landmark points and propagate through the landmarks, reducing the solve to $O(m^3 + nm)$.
+
+For self-training and pseudo-labeling the cost is dominated by the repeated retraining: $R$ rounds times the base learner's training cost. Re-evaluating (not freezing) pseudo-labels each round, recommended against confirmation bias, multiplies inference cost over $U$ by $R$ but does not change the asymptotic order.
+
+### Choosing the bandwidth and neighbor count
+
+Distances must be on a sensible scale, so standardize or whiten features before building the graph. For the bandwidth $\sigma$, the median heuristic used in the simulation (set $\sigma$ to the median pairwise distance, or to the median distance to the $k$-th neighbor for a local version) is a robust default that adapts to the data scale. Refine it on a labeled validation fold by grid search over a small multiplicative range, since accuracy is typically a smooth, single-peaked function of $\sigma$. For $k$, values in the range 5 to 20 are standard; too small fragments the graph into disconnected pieces (so some unlabeled nodes have no path to a label and @eq-semi-supervised-learning-harmonic-form has no unique solution on that component), while too large blurs the manifold by connecting across the low-density gap, which defeats the whole purpose. A useful diagnostic is to check the number of connected components of the $k$-NN graph: it should be small and ideally equal to (or fewer than) the number of classes.
 
 ### Inductive use
 

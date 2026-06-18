@@ -130,6 +130,32 @@ In words, fit a separate mean and variance to each feature within each class, th
 
 Gaussian Naive Bayes is closely related to quadratic discriminant analysis (@sec-discriminant-analysis): both model each class with a Gaussian, but here the per-class covariance is forced to be diagonal (the off-diagonal terms vanish under conditional independence). A diagonal covariance is exactly the geometric statement of conditional independence: the contour ellipses of each class are axis-aligned, never tilted, because tilt would encode correlation between features.
 
+#### Deriving the Gaussian estimators {#sec-naive-bayes-gaussian-mle}
+
+The estimators above are the maximum-likelihood solutions, and it is worth seeing the one line of calculus that produces them, since the same pattern recurs for every variant. Restrict attention to the points in class $c$ and to a single feature $j$. The conditional log-likelihood of those $n_c$ observations under the Gaussian model is
+
+$$
+\ell(\mu_{jc}, \sigma_{jc}^2) = \sum_{i : y_i = c} \left[ -\tfrac{1}{2}\log(2\pi) - \tfrac{1}{2}\log \sigma_{jc}^2 - \frac{(x_{ij} - \mu_{jc})^2}{2\sigma_{jc}^2} \right].
+$$
+
+Differentiating in $\mu_{jc}$ and setting the derivative to zero,
+
+$$
+\frac{\partial \ell}{\partial \mu_{jc}} = \frac{1}{\sigma_{jc}^2} \sum_{i : y_i = c} (x_{ij} - \mu_{jc}) = 0
+\;\Longrightarrow\;
+\hat{\mu}_{jc} = \frac{1}{n_c} \sum_{i : y_i = c} x_{ij}.
+$$
+
+Differentiating in $\sigma_{jc}^2$ (treating it as a single variable $v$) and setting to zero,
+
+$$
+\frac{\partial \ell}{\partial v} = -\frac{n_c}{2v} + \frac{1}{2v^2}\sum_{i : y_i = c} (x_{ij} - \mu_{jc})^2 = 0
+\;\Longrightarrow\;
+\hat{\sigma}_{jc}^2 = \frac{1}{n_c} \sum_{i : y_i = c} (x_{ij} - \hat{\mu}_{jc})^2,
+$$
+
+which recovers the formulas quoted above. The variance estimate uses the divisor $n_c$, not $n_c - 1$: maximum likelihood produces the biased (uncorrected) variance. Software differs on this point, but the distinction is immaterial unless some class is very small, and it is exactly the small-$n_c$ regime in which one should worry about a near-zero $\hat\sigma_{jc}^2$ destabilizing the score through the $1/\sigma_{jc}^2$ term. A common fix, used by scikit-learn, is variance smoothing: add a small floor $\varepsilon \cdot \max_j \widehat{\operatorname{Var}}(x_j)$ to every $\hat\sigma_{jc}^2$.
+
 ### Multinomial Naive Bayes
 
 When the features are counts (most often how many times each word appears in a document), a Gaussian makes little sense, since counts are non-negative integers and mostly zero. The right model imagines drawing tokens one at a time from a class-specific vocabulary distribution. For count features, such as word frequencies in a document, treat the vector $x = (x_1, \dots, x_p)$ as draws from a multinomial distribution with class-specific token probabilities $\theta_{jc}$, where $\sum_j \theta_{jc} = 1$. The likelihood of a document of length $\sum_j x_j$ is, up to the multinomial coefficient that is constant across classes,
@@ -145,6 +171,22 @@ $$
 $$
 
 That is, the estimated chance of token $j$ in class $c$ is simply its share of all tokens seen in class-$c$ documents. This variant is the standard baseline for bag-of-words text classification.
+
+#### Deriving the multinomial estimator {#sec-naive-bayes-multinomial-mle}
+
+The intuitive "share of tokens" formula is the constrained maximum-likelihood solution, and the constraint $\sum_j \theta_{jc} = 1$ is what makes the derivation instructive. Write $N_{jc} = \sum_{i : y_i = c} x_{ij}$ for the total count of token $j$ across class-$c$ documents and $N_c = \sum_{j} N_{jc}$ for the total token count in the class. The class-$c$ log-likelihood, dropping the constant multinomial coefficients, is $\sum_j N_{jc} \log \theta_{jc}$. Maximize it subject to the simplex constraint using a Lagrange multiplier $\lambda$:
+
+$$
+\mathcal{L} = \sum_{j=1}^{p} N_{jc} \log \theta_{jc} - \lambda \Big( \sum_{j=1}^{p} \theta_{jc} - 1 \Big).
+$$
+
+Setting $\partial \mathcal{L} / \partial \theta_{jc} = N_{jc}/\theta_{jc} - \lambda = 0$ gives $\theta_{jc} = N_{jc}/\lambda$. Summing over $j$ and using the constraint forces $\sum_j N_{jc}/\lambda = 1$, so $\lambda = \sum_j N_{jc} = N_c$. Substituting back,
+
+$$
+\hat{\theta}_{jc} = \frac{N_{jc}}{N_c} = \frac{\sum_{i : y_i = c} x_{ij}}{\sum_{j'} \sum_{i : y_i = c} x_{ij'}},
+$$
+
+exactly the share quoted above. The multiplier $\lambda$ turned out to be the total token count, which is the recurring signature of a multinomial MLE: each probability is its own count divided by the grand total.
 
 ### Bernoulli Naive Bayes
 
@@ -180,6 +222,22 @@ $$
 
 so that no estimated probability is ever exactly zero. The choice $\alpha = 1$ is Laplace smoothing; smaller values ($\alpha < 1$, Lidstone smoothing) shrink less. The pseudocount can be read as a symmetric Dirichlet prior on the token probabilities, with the smoothed estimate being the posterior mean. Smoothing is a form of regularization: it trades a little bias for a large reduction in the variance caused by rare features.
 
+#### Smoothing as a Dirichlet posterior mean {#sec-naive-bayes-dirichlet}
+
+The pseudocount is not an arbitrary patch; it is the exact posterior mean under a conjugate prior, which is why $\alpha$ behaves like a regularization strength. Place a symmetric Dirichlet prior $\theta_{\cdot c} \sim \text{Dir}(\alpha, \dots, \alpha)$ on the token probabilities, with density $p(\theta_{\cdot c}) \propto \prod_j \theta_{jc}^{\alpha - 1}$. Multiplying by the multinomial likelihood $\prod_j \theta_{jc}^{N_{jc}}$ and collecting exponents,
+
+$$
+p(\theta_{\cdot c} \mid \text{data}) \propto \prod_{j=1}^{p} \theta_{jc}^{\,N_{jc} + \alpha - 1},
+$$
+
+which is again Dirichlet, now with parameters $N_{jc} + \alpha$ (this is conjugacy: the posterior stays in the prior's family). The mean of a $\text{Dir}(a_1, \dots, a_p)$ distribution is $a_j / \sum_{j'} a_{j'}$, so the posterior mean of $\theta_{jc}$ is
+
+$$
+\mathbb{E}[\theta_{jc} \mid \text{data}] = \frac{N_{jc} + \alpha}{\sum_{j'} (N_{j'c} + \alpha)} = \frac{N_{jc} + \alpha}{N_c + \alpha p},
+$$
+
+which is precisely the additive-smoothing estimate. The interpretation is concrete: $\alpha$ acts as $\alpha$ phantom observations of every token added before counting. As $\alpha \to 0$ the estimate returns to the raw MLE, and as $\alpha \to \infty$ it shrinks every $\hat\theta_{jc}$ toward the uniform $1/p$. The same calculation with $p = 2$ gives the Bernoulli (Beta posterior) smoothed estimate $\hat\theta_{jc} = (\alpha + \sum_i x_{ij}) / (2\alpha + n_c)$.
+
 ## Why Naive Bayes Works Despite the Assumption
 
 It is fair to be suspicious at this point. We built the whole method on an assumption we admitted is usually false, so why should we trust its predictions? The answer is one of the more pleasant surprises in statistics, and it is worth understanding because it tells you *when* to trust the model and when not to.
@@ -196,9 +254,49 @@ Classification asks only for the correct $\arg\max$, not for accurate probabilit
 
 There is also a structural reason rooted in the bias-variance tradeoff. The diagonal-covariance restriction imposes strong bias (the model literally cannot represent within-class correlation) but drastically reduces the number of parameters, hence the variance. That trade pays off when training data are limited or the feature dimension is high, precisely the regime where a more flexible model would overfit. A slightly wrong model fit reliably can beat a correct model fit noisily.
 
+### Double-Counting: Why the Probabilities Break {#sec-naive-bayes-double-counting}
+
+The failure mode is precise enough to write down, and doing so shows exactly why the predicted *label* survives while the predicted *probability* does not. Suppose feature $x_1$ is informative and we simply duplicate it, so $x_2 = x_1$. Conditional on the class these two features are perfectly dependent, the opposite of the model's assumption. Naive Bayes treats them as separate evidence and multiplies their factors, so the contribution of $x_1$ to the log-odds is counted twice:
+
+$$
+\log \frac{p(y=1 \mid x)}{p(y=0 \mid x)} = \log \frac{p(y=1)}{p(y=0)} + 2 \log \frac{p(x_1 \mid y=1)}{p(x_1 \mid y=0)},
+$$
+
+whereas the correct model would include that term once. The sign of the evidence is unchanged, so the $\arg\max$ (and hence the decision boundary) is often preserved, but its magnitude is inflated, which is exactly why correlated features drive the posterior toward $0$ or $1$ and produce systematic overconfidence. In general, $k$ copies of a feature multiply its log-odds contribution by $k$. This is the mechanism behind the calibration warnings in the practical notes: redundant or correlated features do not usually flip the prediction, they corrupt its confidence. It also motivates the standard remedy of pruning or decorrelating highly collinear features before fitting.
+
+### Computational and Statistical Complexity {#sec-naive-bayes-complexity}
+
+The cost structure is one of the model's main selling points. Training visits each of the $n$ training points once and, for each, updates a constant number of sufficient statistics per feature (a running count and sum for the discrete variants, a sum and sum of squares for the Gaussian), so training is $O(np)$ time in a single streaming pass and $O(Cp)$ memory for the parameter tables, independent of $n$. For sparse inputs such as text the time is $O(\bar{d}\,n)$ where $\bar{d}$ is the average number of nonzero features per document, since absent tokens cost nothing in the multinomial model. Prediction scores each of the $C$ classes by summing $p$ log-factors, giving $O(Cp)$ per test point (again $O(C\bar d)$ for sparse multinomial inputs).
+
+Because every parameter is estimated from a one-dimensional marginal slice of the data, there are only $O(Cp)$ parameters total, and each is a simple average or count. This is the statistical counterpart of the speed: the per-parameter sample size stays large even when $p$ is large, which is the formal reason Naive Bayes converges quickly and resists overfitting in high dimensions. As noted by @ng2002discriminative, this gives a sample complexity of order $\log p$ to reach the asymptotic error, against order $p$ for the discriminative logistic-regression counterpart. The price is that the asymptotic error itself is bounded away from the Bayes rate whenever conditional independence fails, so more data cannot drive the Naive Bayes error to zero on a problem with genuine within-class correlation; it converges, but to a biased limit.
+
 ### Relationship to Logistic Regression {#sec-relationship-to-logistic-regression}
 
 Gaussian Naive Bayes and logistic regression form a classic generative-discriminative pair. With shared variances across classes, the Naive Bayes posterior $\log \frac{p(y=1 \mid x)}{p(y=0 \mid x)}$ is linear in $x$, which is exactly the functional form of logistic regression. The two methods fit the same parametric family of decision boundaries but estimate the parameters differently: Naive Bayes maximizes the joint likelihood $p(x, y)$ (generative), while logistic regression maximizes the conditional likelihood $p(y \mid x)$ (discriminative).
+
+The linearity claim deserves the explicit derivation, because it is the cleanest way to see what Naive Bayes and logistic regression share and where they part. Take two classes and assume the per-feature variance $\sigma_j^2$ is shared across classes (only the means $\mu_{j0}, \mu_{j1}$ differ). The log posterior odds are
+
+$$
+\log \frac{p(y=1 \mid x)}{p(y=0 \mid x)}
+= \log \frac{p(y=1)}{p(y=0)} + \sum_{j=1}^{p} \log \frac{p(x_j \mid y=1)}{p(x_j \mid y=0)}.
+$$
+
+For each feature the Gaussian log-ratio, after the $-\tfrac{1}{2}\log(2\pi\sigma_j^2)$ normalizers cancel, is
+
+$$
+\log \frac{p(x_j \mid y=1)}{p(x_j \mid y=0)}
+= -\frac{(x_j - \mu_{j1})^2}{2\sigma_j^2} + \frac{(x_j - \mu_{j0})^2}{2\sigma_j^2}
+= \frac{\mu_{j1} - \mu_{j0}}{\sigma_j^2}\, x_j - \frac{\mu_{j1}^2 - \mu_{j0}^2}{2\sigma_j^2}.
+$$
+
+The quadratic $x_j^2$ terms cancel precisely because the variance is shared, leaving a function linear in $x_j$. Summing over $j$ gives $\log \frac{p(y=1 \mid x)}{p(y=0 \mid x)} = w_0 + \sum_j w_j x_j$ with
+
+$$
+w_j = \frac{\mu_{j1} - \mu_{j0}}{\sigma_j^2}, \qquad
+w_0 = \log \frac{p(y=1)}{p(y=0)} - \sum_{j=1}^{p} \frac{\mu_{j1}^2 - \mu_{j0}^2}{2\sigma_j^2}.
+$$
+
+Applying the logistic (sigmoid) transform to a linear log-odds recovers exactly $p(y=1 \mid x) = \sigma(w_0 + w^\top x)$, the logistic-regression form. The two models therefore live in the same hypothesis class of linear decision boundaries; they differ only in how the weights $w$ are set. Naive Bayes computes them in closed form from per-class means and variances (plugging moment estimates into the formula above), while logistic regression chooses $w$ to directly maximize conditional likelihood, which can correct for the bias that the conditional-independence assumption injects into the plug-in weights. If the per-feature variances are allowed to differ across classes, the $x_j^2$ terms no longer cancel and the boundary becomes quadratic, the diagonal-covariance special case of quadratic discriminant analysis.
 
 @ng2002discriminative analyzed this pair and reached two conclusions. The discriminative method (logistic regression) has lower asymptotic error, so with enough data it tends to win. But the generative method (Naive Bayes) approaches its (higher) asymptotic error faster, needing on the order of $\log p$ training examples to converge versus on the order of $p$ for logistic regression. As a result Naive Bayes can outperform logistic regression in the small-sample regime, with the two curves crossing as the sample size grows.
 
@@ -314,6 +412,35 @@ mean(pred_corr == sim$y[-s_train])
 ```
 
 The classifier still separates the classes reasonably well, but its accuracy is lower than a method that models the within-class correlation (such as linear discriminant analysis, see @sec-discriminant-analysis, or logistic regression) would achieve here, because Naive Bayes treats the two highly redundant features as if each carried independent information.
+
+### Verifying the Gaussian-to-Logistic Weight Formula
+
+The derivation in @sec-relationship-to-logistic-regression claims that, with shared variances, the Gaussian Naive Bayes log-odds are linear in $x$ with slope $w_j = (\mu_{j1} - \mu_{j0})/\sigma_j^2$. We can confirm this numerically by computing the closed-form weights from the per-class moments and checking that they reproduce the model's own log-odds on test points. We pool the variance across classes to match the shared-variance assumption.
+
+```{r nb-logit-check, eval=TRUE}
+d <- iris[iris$Species != "setosa", ]
+d$y <- as.integer(d$Species == "virginica")  # 1 = virginica, 0 = versicolor
+X <- as.matrix(d[, 1:4]); p <- ncol(X)
+
+mu1 <- colMeans(X[d$y == 1, ]); mu0 <- colMeans(X[d$y == 0, ])
+# pooled within-class variance per feature (shared-variance assumption)
+v <- sapply(1:p, function(j)
+  (sum((X[d$y == 1, j] - mu1[j])^2) + sum((X[d$y == 0, j] - mu0[j])^2)) / nrow(X))
+
+prior <- mean(d$y)
+w  <- (mu1 - mu0) / v
+w0 <- log(prior / (1 - prior)) - sum((mu1^2 - mu0^2) / (2 * v))
+
+# closed-form log-odds vs. a direct Gaussian-density computation
+logodds_formula <- as.numeric(w0 + X %*% w)
+logodds_direct <- log(prior/(1-prior)) + rowSums(
+  dnorm(X, matrix(mu1, nrow(X), p, byrow = TRUE), matrix(sqrt(v), nrow(X), p, byrow = TRUE), log = TRUE) -
+  dnorm(X, matrix(mu0, nrow(X), p, byrow = TRUE), matrix(sqrt(v), nrow(X), p, byrow = TRUE), log = TRUE))
+
+max(abs(logodds_formula - logodds_direct))  # ~0 up to floating point
+```
+
+The maximum discrepancy is at the level of floating-point error, confirming that the per-feature Gaussian factors collapse exactly into the linear log-odds derived above.
 
 ## Practical Notes
 

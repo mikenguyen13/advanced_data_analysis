@@ -91,6 +91,19 @@ A known positive should score $1$ under the true model $f$. If the naive model $
 :::
 
 
+### How the propensity and the prior are linked
+
+The two nuisance constants of PU learning, the propensity $c = p(s=1 \mid y=1)$ and the class prior $\pi = p(y=1)$, are not independent. They are tied through the one quantity you can always observe directly: the labeled fraction $p(s=1)$. Marginalizing over $y$ and using $s=1 \Rightarrow y=1$,
+
+$$
+p(s=1) = p(s=1, y=1) = p(s=1 \mid y=1)\,p(y=1) = c\,\pi .
+$$ {#eq-weakly-supervised-pu-labelfrac}
+
+The left side is estimated with no assumptions by the empirical labeled rate $\hat p(s=1) = |P| / (|P| + |U|)$, where $|P|$ counts labeled positives and $|U|$ the unlabeled pool. Equation @eq-weakly-supervised-pu-labelfrac therefore says that knowing either constant pins down the other: $\pi = p(s=1)/c$ and $c = p(s=1)/\pi$. Estimating $c$ on held-out positives (the Elkan-Noto recipe) implicitly fixes the prior at $\hat\pi = \hat p(s=1)/\hat c$, and conversely a risk-based estimator that takes $\pi$ as input implies a propensity $\hat c = \hat p(s=1)/\hat\pi$. This is the precise sense in which the callout below means "estimating one constrains the other."
+
+There is a second Elkan-Noto estimator of $c$ that exposes its variance properties. Because $g(x)=c\,f(x)$ and $f(x)\le 1$, the propensity is also $c = \mathbb{E}_{x\sim p(\cdot\mid y=1)}[g(x)]$, which the held-out average $\hat c = |P_{\text{val}}|^{-1}\sum_{x\in P_{\text{val}}} \hat g(x)$ estimates. Since each $\hat g(x)\in[0,1]$ with mean $c$, the estimator has variance $\mathrm{Var}(\hat c) = \mathrm{Var}(g(x)\mid y=1)/|P_{\text{val}}| \le c(1-c)/|P_{\text{val}}|$, so it is $\sqrt{|P_{\text{val}}|}$-consistent. The bound is loosest, meaning $\hat c$ is noisiest, when classes overlap heavily (so $g$ spreads over $[0,1]$ on positives) and tightest when positives are cleanly separable (so $g\approx c$ on every positive). A small validation set of positives is the usual bottleneck, because dividing every score by a noisy $\hat c$ injects a multiplicative error $c/\hat c$ into the entire calibration.
+
+
 ### The class-prior view and the nnPU risk
 
 A second route reframes PU learning as learning from class priors. Let $\pi = p(y = 1)$ be the true positive prior. The unlabeled distribution is a mixture,
@@ -106,6 +119,49 @@ R(h) = \pi\, \mathbb{E}_{p}\big[\ell(h(x), +1)\big] \;+\; \underbrace{\Big( \mat
 $$
 
 where $\mathbb{E}_p$ averages over labeled positives and $\mathbb{E}_{\text{u}}$ over the unlabeled pool. The bracketed term estimates the negative-class risk by subtracting the positive contribution out of the unlabeled mixture. This is the unbiased PU (uPU) risk. Its flaw: with a flexible model the bracketed estimate can go negative, which is impossible for a real risk and signals overfitting. Kiryo, Niu, du Plessis, and Sugiyama (2017) fixed this by clamping the negative-risk term at zero, giving the non-negative PU (nnPU) risk that is the default for deep PU models built on neural networks (@sec-neural-networks) today.
+
+#### Deriving the unbiased risk
+
+Write the clean risk of a score $h$ under loss $\ell$, with the convention that $\ell(h(x),+1)$ penalizes calling $x$ positive-class and $\ell(h(x),-1)$ penalizes calling it negative-class. Splitting by the true label and using $\pi = p(y=1)$,
+
+$$
+R(h) = \pi\,\mathbb{E}_{p}[\ell(h(x),+1)] + (1-\pi)\,\mathbb{E}_{n}[\ell(h(x),-1)] ,
+$$ {#eq-weakly-supervised-pu-cleanrisk}
+
+where $\mathbb{E}_p$ and $\mathbb{E}_n$ are expectations under the class-conditional densities $p(x\mid y{=}1)$ and $p(x\mid y{=}0)$. The first term is estimable: we have labeled positives. The obstacle is $(1-\pi)\,\mathbb{E}_n[\cdot]$, since we never sample the negative density. The PU trick rewrites it using only the marginal mixture. From
+
+$$
+p_{\text{u}}(x) = \pi\,p(x\mid y{=}1) + (1-\pi)\,p(x\mid y{=}0)
+$$
+
+we get, for any integrable test function $\phi$,
+
+$$
+(1-\pi)\,\mathbb{E}_n[\phi] = \mathbb{E}_{\text{u}}[\phi] - \pi\,\mathbb{E}_p[\phi] ,
+$$ {#eq-weakly-supervised-pu-negexp}
+
+simply by integrating $\phi$ against both sides of the mixture and rearranging. Setting $\phi(x)=\ell(h(x),-1)$ and substituting into @eq-weakly-supervised-pu-cleanrisk gives the uPU risk
+
+$$
+\widehat{R}_{\text{uPU}}(h) = \pi\,\mathbb{E}_{p}[\ell(h(x),+1)] + \Big(\mathbb{E}_{\text{u}}[\ell(h(x),-1)] - \pi\,\mathbb{E}_{p}[\ell(h(x),-1)]\Big) ,
+$$
+
+which is exactly the displayed estimator above. The construction is unbiased by @eq-weakly-supervised-pu-negexp: $\mathbb{E}[\widehat{R}_{\text{uPU}}(h)] = R(h)$ for every fixed $h$, with no SCAR-specific step beyond knowing $\pi$.
+
+#### Why the bracket goes negative, and the nnPU fix
+
+The bracketed estimator of the negative risk, $\widehat{R}_n^-(h) = \mathbb{E}_{\text{u}}[\ell(h(x),-1)] - \pi\,\mathbb{E}_{p}[\ell(h(x),-1)]$, estimates a true risk $(1-\pi)\,\mathbb{E}_n[\ell(h(x),-1)] \ge 0$. But it is a difference of two empirical averages, and with a high-capacity $h$ that drives $\ell(h(x),-1)$ near zero on the unlabeled sample while it stays positive on the positive sample, the empirical bracket can dip below zero. That is impossible for a real nonnegative risk; it is the signature of overfitting, and minimizing an unbounded-below objective lets training diverge. Kiryo et al. (2017) clamp it:
+
+$$
+\widehat{R}_{\text{nnPU}}(h) = \pi\,\mathbb{E}_{p}[\ell(h(x),+1)] + \max\!\Big\{0,\ \mathbb{E}_{\text{u}}[\ell(h(x),-1)] - \pi\,\mathbb{E}_{p}[\ell(h(x),-1)]\Big\} .
+$$ {#eq-weakly-supervised-pu-nnpu}
+
+In practice the maximum is applied per minibatch; when a batch's bracket is negative, the optimizer takes a gradient-ascent step on that term instead (deliberately worsening fit there) to climb back into the feasible region. The clamp introduces a small downward bias in the estimated risk (Jensen's inequality applied to $\max\{0,\cdot\}$, a convex function, gives $\mathbb{E}[\max\{0,Z\}] \ge \max\{0,\mathbb{E}[Z]\}$, so the clamped risk overestimates the negative risk slightly), but it sharply reduces variance and, critically, restores a lower bound so the objective cannot diverge. Kiryo et al. prove the nnPU estimator is biased but its estimation error still shrinks at the parametric rate: with $n_p$ positives and $n_u$ unlabeled, the deviation of the empirical minimizer's risk from the optimum is $O_p(1/\sqrt{n_p} + 1/\sqrt{n_u})$ for a function class of bounded Rademacher complexity. The bias decays exponentially in those sample sizes, so for moderate data the nnPU minimizer is effectively as good as the (lower-variance) corrected estimator while never overfitting into negative-risk territory.
+
+
+::: {.callout-warning}
+The uPU and nnPU risks need the prior $\pi$ as a known input. A wrong $\pi$ biases the correction: too large a $\pi$ oversubtracts the positive contribution and pushes the negative-risk estimate down (more clamping, more bias); too small a $\pi$ undercorrects and the model drifts back toward the naive classifier. Mixture-proportion estimation (for example the methods surveyed by Bekker and Davis, 2020) supplies $\hat\pi$ from PU data alone, but it is the most fragile step in the pipeline and deserves a sensitivity check.
+:::
 
 
 ::: {.callout-note}
@@ -262,6 +318,38 @@ $$
 
 with the per-LF accuracies $p(\lambda_{ij} \mid y_i)$ as parameters fit by maximizing the marginal likelihood of the observed votes (the $y_i$ are integrated out, an EM-style estimation). The output is a soft label $p(y_i = 1 \mid \lambda_{i\cdot})$ per example, which then trains a downstream "end model" exactly as if it were a noisy ground-truth label.
 
+#### The EM updates, derived
+
+Parameterize each LF $j$ by an abstain rate $\beta_j = p(\lambda_{ij}=0)$ and a conditional accuracy $\alpha_j = p(\lambda_{ij}=y_i \mid \lambda_{ij}\neq 0)$, with class prior $\pi=p(y_i=1)$. The observed-data log-likelihood marginalizes the latent label,
+
+$$
+\ell(\theta) = \sum_{i=1}^{n} \log \sum_{y\in\{0,1\}} p(y)\prod_{j=1}^{m} p(\lambda_{ij}\mid y) ,
+$$
+
+which is not concave in $\theta=(\pi,\alpha,\beta)$ because of the sum inside the log. EM optimizes it by alternating a tractable lower bound. Introduce the responsibility $r_i = p(y_i=1\mid \lambda_{i\cdot};\theta)$.
+
+E-step. By Bayes' rule under conditional independence,
+
+$$
+r_i = \frac{\pi\prod_j p(\lambda_{ij}\mid y{=}1)}{\pi\prod_j p(\lambda_{ij}\mid y{=}1) + (1-\pi)\prod_j p(\lambda_{ij}\mid y{=}0)} .
+$$ {#eq-weakly-supervised-pu-estep}
+
+Abstentions ($\lambda_{ij}=0$) contribute the same factor $\beta_j$ to numerator and denominator and so cancel, which is why the code adds $0$ to the log-likelihood on abstain and only non-abstaining votes move the posterior. This is the source of the logistic-style update in the demo: working in log space, $\log r_i - \log(1-r_i) = \mathrm{logit}(\pi) + \sum_{j:\lambda_{ij}\neq 0} \big(\mathbf{1}[\lambda_{ij}=1]-\mathbf{1}[\lambda_{ij}=-1]\big)\,\log\frac{\alpha_j}{1-\alpha_j}$, so each firing LF casts a vote weighted by its log-accuracy-odds, and the demo recovers $r_i$ via the sigmoid of this log-odds.
+
+M-step. Maximize the expected complete-data log-likelihood $Q(\theta) = \sum_i \mathbb{E}_{y_i\sim r_i}[\log p(y_i) + \sum_j \log p(\lambda_{ij}\mid y_i)]$. The terms separate, so each parameter has a closed form. Setting $\partial Q/\partial\pi = 0$ gives $\hat\pi = \frac1n\sum_i r_i$. For $\alpha_j$, a firing vote is "correct" with responsibility-weighted indicator $w_{ij} = r_i\mathbf{1}[\lambda_{ij}=1] + (1-r_i)\mathbf{1}[\lambda_{ij}=-1]$, and maximizing the Bernoulli log-likelihood over fired examples yields
+
+$$
+\hat\alpha_j = \frac{\sum_{i:\lambda_{ij}\neq 0} w_{ij}}{\sum_{i:\lambda_{ij}\neq 0} 1} ,
+\qquad
+\hat\beta_j = \frac1n\sum_{i} \mathbf{1}[\lambda_{ij}=0] .
+$$ {#eq-weakly-supervised-pu-mstep}
+
+The accuracy update @eq-weakly-supervised-pu-mstep is exactly the M-step the demo computes ("expected fraction of correct non-abstains"), and the abstain rate is just the empirical firing complement, which is why the demo never updates it. EM monotonically increases $\ell(\theta)$ and converges to a stationary point; like all EM it is sensitive to initialization (the demo seeds every accuracy at $0.7$).
+
+#### Identifiability and its failure mode
+
+The likelihood has an exact symmetry: relabeling $y\mapsto 1-y$ and $\alpha_j\mapsto 1-\alpha_j$ for all $j$ leaves every observed vote distribution unchanged. The model can only learn accuracies up to this global flip, so it cannot tell "all LFs are good" from "all LFs are systematically wrong." Two conventions break it: assume each $\alpha_j>1/2$ (LFs are better than chance), or pin orientation with a single labeled example. The deeper failure is the conditional-independence assumption: if a subset of LFs share an upstream resource (the same dictionary or parser), their errors correlate, the product in @eq-weakly-supervised-pu-estep double-counts agreeing votes, and the label model becomes overconfident, assigning $r_i$ near $0$ or $1$ on examples where the correlated cluster merely agrees with itself. Snorkel's later "MeTaL" formulation models such dependencies as edges in a graphical model and estimates accuracies from the observed agreement covariance rather than full EM, which scales better and tolerates known correlations.
+
 
 ::: {.callout-important title="Key idea"}
 Majority vote treats every labeling function as equally trustworthy. A label model learns from the *agreement and disagreement structure* of the votes which LFs to trust, even with no labeled data, because a consistently-outvoted LF reveals itself as unreliable. This is the same latent-variable trick as crowd-sourcing aggregation (Dawid and Skene, 1979).
@@ -353,6 +441,53 @@ $$
 $$
 
 so that minimizing average $\tilde\ell$ on noisy data is equivalent to minimizing $\ell$ on clean data. This is the same "subtract out the contamination, then renormalize" move as the uPU risk, and it is why the three topics in this chapter are really one idea applied through different noise lenses.
+
+#### Deriving the unbiased correction
+
+We want a surrogate $\tilde\ell$ whose expectation over the noisy label, conditional on the true label, equals the clean loss: $\mathbb{E}_{\tilde y\mid y}[\tilde\ell(h(x),\tilde y)] = \ell(h(x),y)$. Fix $x$ and abbreviate $\ell_{+}=\ell(h(x),+1)$, $\ell_{-}=\ell(h(x),-1)$, and likewise $\tilde\ell_{\pm}$, writing labels as $\pm 1$. Condition on the true class. If $y=+1$ the noisy label is $+1$ with probability $1-\rho_{+}$ and flips to $-1$ with probability $\rho_{+}$; if $y=-1$ it is $-1$ with probability $1-\rho_{-}$ and flips to $+1$ with probability $\rho_{-}$. The unbiasedness requirement is the linear system
+
+$$
+\begin{aligned}
+(1-\rho_{+})\,\tilde\ell_{+} + \rho_{+}\,\tilde\ell_{-} &= \ell_{+},\\
+\rho_{-}\,\tilde\ell_{+} + (1-\rho_{-})\,\tilde\ell_{-} &= \ell_{-}.
+\end{aligned}
+$$ {#eq-weakly-supervised-pu-noisysystem}
+
+This is two equations in the two unknowns $\tilde\ell_{+},\tilde\ell_{-}$. The coefficient matrix has determinant $(1-\rho_{+})(1-\rho_{-}) - \rho_{+}\rho_{-} = 1-\rho_{+}-\rho_{-}$, which is nonzero precisely when the noise is not so severe that the labels become uninformative ($\rho_{+}+\rho_{-}\neq 1$). Solving by Cramer's rule,
+
+$$
+\tilde\ell_{+} = \frac{(1-\rho_{-})\,\ell_{+} - \rho_{+}\,\ell_{-}}{1-\rho_{+}-\rho_{-}},
+\qquad
+\tilde\ell_{-} = \frac{(1-\rho_{+})\,\ell_{-} - \rho_{-}\,\ell_{+}}{1-\rho_{+}-\rho_{-}} .
+$$ {#eq-weakly-supervised-pu-natarajan}
+
+The two cases of @eq-weakly-supervised-pu-natarajan are summarized by the single expression stated above, with $\rho_{\tilde y}$ the flip rate out of the observed class and $\rho_{-\tilde y}$ the flip rate into it. Because the correction is taken inside the expectation, $\mathbb{E}_{\tilde y\mid y}[\tilde\ell] = \ell$ holds for every $x$, so the empirical noisy risk is an unbiased estimator of the clean risk and its minimizer is consistent (Natarajan et al. 2013 give the matching estimation-error bound). The price is variance: the $1/(1-\rho_{+}-\rho_{-})$ factor inflates the loss as noise approaches the uninformative boundary, so the corrected estimator is high-variance exactly when the labels are nearly useless. Note that $\tilde\ell$ can be negative even when $\ell$ is not, which is the same non-convexity hazard the nnPU clamp addresses, and a reminder that loss correction trades unbiasedness for stability.
+
+Specializing to PU under SCAR ($\rho_{-}=0$, $\rho_{+}=1-c$) collapses @eq-weakly-supervised-pu-natarajan to $\tilde\ell_{+}=\ell_{+}/c - (1-c)\ell_{-}/c$ and $\tilde\ell_{-}=\ell_{-}$, the loss-space twin of the Elkan-Noto and uPU corrections: a positive label is the clean positive loss net of a discounted negative loss, scaled by $1/c$, while an unlabeled point contributes only the negative loss. The three results are one identity viewed in posterior space, risk space, and loss space.
+
+The following short simulation verifies @eq-weakly-supervised-pu-natarajan numerically: averaging the corrected loss over noisy labels reproduces the clean loss.
+
+```{r weakly-supervised-pu-natarajan-check, eval=TRUE}
+set.seed(11)
+rho_p <- 0.30; rho_n <- 0.15            # flip rates p(yt=0|y=1), p(yt=1|y=0)
+ell_p <- 0.8; ell_n <- 0.2              # arbitrary clean losses l(h,+1), l(h,-1)
+den <- 1 - rho_p - rho_n
+# Corrected losses from eq-natarajan.
+tl_p <- ((1 - rho_n) * ell_p - rho_p * ell_n) / den   # corrected loss for yt=+1
+tl_n <- ((1 - rho_p) * ell_n - rho_n * ell_p) / den   # corrected loss for yt=-1
+
+# Monte Carlo: draw noisy labels for a true positive and a true negative,
+# average the corrected loss, and compare to the clean loss.
+N <- 2e6
+yt_pos <- ifelse(runif(N) < rho_p, -1, 1)             # true y = +1
+yt_neg <- ifelse(runif(N) < rho_n,  1, -1)            # true y = -1
+mc_pos <- mean(ifelse(yt_pos == 1, tl_p, tl_n))       # should equal ell_p
+mc_neg <- mean(ifelse(yt_neg == 1, tl_p, tl_n))       # should equal ell_n
+cat(sprintf("E[corrected | y=+1] = %.4f  (clean l_+ = %.4f)\n", mc_pos, ell_p))
+cat(sprintf("E[corrected | y=-1] = %.4f  (clean l_- = %.4f)\n", mc_neg, ell_n))
+```
+
+The two Monte Carlo averages match the clean losses to sampling error, confirming the correction is unbiased term by term.
 
 
 ::: {.callout-tip title="When to use this"}

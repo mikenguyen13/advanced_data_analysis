@@ -83,9 +83,86 @@ The goal is the optimal policy $\pi^*$ whose value dominates every other policy.
 
 $$
 Q^*(s, a) = R(s, a) + \gamma \sum_{s'} P(s' \mid s, a) \max_{a'} Q^*(s', a').
-$$
+$$ {#eq-deep-reinforcement-learning-bellman-opt}
 
 Once $Q^*$ is known, acting optimally is trivial: pick $\pi^*(s) = \arg\max_a Q^*(s, a)$. This is why so much of RL focuses on estimating $Q^*$.
+
+### Deriving the Bellman equations from the return
+
+The recursion in @eq-deep-reinforcement-learning-bellman-opt is not an assumption; it follows from the definition of the return by linearity of expectation and the Markov property. Write the discounted return as $G_t = r_t + \gamma G_{t+1}$, which is immediate from $G_t = \sum_{k \ge 0} \gamma^k r_{t+k}$. Taking the conditional expectation under $\pi$,
+
+$$
+\begin{aligned}
+Q^\pi(s,a) &= \mathbb{E}_\pi[\, r_t + \gamma G_{t+1} \mid s_t = s, a_t = a \,] \\
+&= R(s,a) + \gamma\, \mathbb{E}_\pi[\, G_{t+1} \mid s_t = s, a_t = a \,] \\
+&= R(s,a) + \gamma \sum_{s'} P(s' \mid s,a)\, \mathbb{E}_\pi[\, G_{t+1} \mid s_{t+1} = s' \,] \\
+&= R(s,a) + \gamma \sum_{s'} P(s' \mid s,a)\, V^\pi(s'),
+\end{aligned}
+$$ {#eq-deep-reinforcement-learning-bellman-derive}
+
+where the third line uses the Markov property (conditioning on $(s,a)$ then on $s'$, the future no longer depends on the past) and the fourth uses $V^\pi(s') = \mathbb{E}_\pi[G_{t+1} \mid s_{t+1} = s']$. Substituting $V^\pi(s') = \sum_{a'} \pi(a' \mid s')\, Q^\pi(s',a')$ recovers the action-value Bellman equation stated above. For the optimal value, $V^*(s') = \max_{a'} Q^*(s',a')$, which gives @eq-deep-reinforcement-learning-bellman-opt.
+
+### The Bellman operator is a contraction
+
+The reason value iteration and, asymptotically, Q-learning converge is that the Bellman optimality update is a contraction in the supremum norm. Define the Bellman optimality operator $\mathcal{T}$ acting on any action-value table $Q$ by
+
+$$
+(\mathcal{T} Q)(s,a) = R(s,a) + \gamma \sum_{s'} P(s' \mid s,a) \max_{a'} Q(s',a').
+$$ {#eq-deep-reinforcement-learning-bellman-operator}
+
+For any two tables $Q_1, Q_2$, fix a pair $(s,a)$. Using $|\max_{a'} f(a') - \max_{a'} g(a')| \le \max_{a'} |f(a') - g(a')|$,
+
+$$
+\begin{aligned}
+\big|(\mathcal{T}Q_1)(s,a) - (\mathcal{T}Q_2)(s,a)\big|
+&= \gamma \left| \sum_{s'} P(s'\mid s,a)\Big( \max_{a'} Q_1(s',a') - \max_{a'} Q_2(s',a') \Big) \right| \\
+&\le \gamma \sum_{s'} P(s'\mid s,a)\, \big| \max_{a'} Q_1(s',a') - \max_{a'} Q_2(s',a') \big| \\
+&\le \gamma \sum_{s'} P(s'\mid s,a)\, \max_{a'} \big| Q_1(s',a') - Q_2(s',a') \big| \\
+&\le \gamma \, \| Q_1 - Q_2 \|_\infty.
+\end{aligned}
+$$
+
+Taking the supremum over $(s,a)$ on the left gives $\| \mathcal{T}Q_1 - \mathcal{T}Q_2 \|_\infty \le \gamma \, \| Q_1 - Q_2 \|_\infty$. Because $\gamma < 1$, $\mathcal{T}$ is a $\gamma$-contraction, so by the Banach fixed-point theorem it has a unique fixed point, which is $Q^*$, and the iteration $Q_{k+1} = \mathcal{T} Q_k$ converges geometrically: $\| Q_k - Q^* \|_\infty \le \gamma^k \| Q_0 - Q^* \|_\infty$. This is also why $\gamma$ near $1$ slows convergence, since the per-iteration error shrinks only by a factor $\gamma$.
+
+::: {.callout-note}
+The same argument shows the policy-evaluation operator $\mathcal{T}^\pi$ (the version of @eq-deep-reinforcement-learning-bellman-operator with $\max_{a'}$ replaced by $\sum_{a'} \pi(a'\mid s')$) is also a $\gamma$-contraction, with fixed point $V^\pi$. Policy iteration alternates evaluation (solve $V^\pi$) and greedy improvement; each improvement step weakly increases the value at every state (the policy improvement theorem), and since there are finitely many deterministic policies in a finite MDP, it terminates at $\pi^*$ in finitely many iterations.
+:::
+
+We can confirm the geometric contraction rate $\| Q_k - Q^* \|_\infty \le \gamma^k \| Q_0 - Q^* \|_\infty$ numerically on a tiny random MDP using only base R. We build a known model, iterate the Bellman optimality operator to a fixed point $Q^*$, then check that the error contracts by a factor of at most $\gamma$ each step.
+
+```{r bellman-contraction-check}
+set.seed(42)
+nS <- 5L; nA <- 3L; gamma <- 0.9
+
+# Random transition model P[s, a, s'] and reward R[s, a].
+P <- array(runif(nS * nA * nS), dim = c(nS, nA, nS))
+for (s in 1:nS) for (a in 1:nA) P[s, a, ] <- P[s, a, ] / sum(P[s, a, ])
+R <- matrix(runif(nS * nA), nS, nA)
+
+# Bellman optimality operator on a Q-table.
+bellman_T <- function(Q) {
+  V <- apply(Q, 1, max)               # V(s') = max_a Q(s', a)
+  TQ <- matrix(0, nS, nA)
+  for (s in 1:nS) for (a in 1:nA)
+    TQ[s, a] <- R[s, a] + gamma * sum(P[s, a, ] * V)
+  TQ
+}
+
+# Iterate to the fixed point Q*.
+Qstar <- matrix(0, nS, nA)
+for (i in 1:500) Qstar <- bellman_T(Qstar)
+
+# Track the sup-norm error from an arbitrary start.
+Q <- matrix(10, nS, nA)
+errs <- numeric(15)
+for (k in 1:15) { Q <- bellman_T(Q); errs[k] <- max(abs(Q - Qstar)) }
+
+ratios <- errs[-1] / errs[-length(errs)]   # successive contraction ratios
+cat("max successive ratio:", round(max(ratios), 4),
+    " (should be <= gamma =", gamma, ")\n")
+```
+
+The largest observed ratio sits at or below $\gamma$, confirming the contraction bound.
 
 
 ::: {.callout-important title="Key idea"}
@@ -99,7 +176,7 @@ When the transition model $P$ and reward $R$ are known, you can solve the Bellma
 
 $$
 Q(s, a) \leftarrow Q(s, a) + \alpha \Big[\, r + \gamma \max_{a'} Q(s', a') - Q(s, a) \,\Big],
-$$
+$$ {#eq-deep-reinforcement-learning-qlearn-update}
 
 where $\alpha \in (0, 1]$ is the learning rate. The bracketed term is the TD error: the difference between the bootstrapped target $r + \gamma \max_{a'} Q(s', a')$ and the current estimate. "Bootstrapping" here means the update uses the current (imperfect) estimate of the next state's value to improve the estimate of this state, rather than waiting for the true return.^[This is what separates temporal difference methods from Monte Carlo methods. Monte Carlo waits until the episode ends and uses the actual observed return; TD updates immediately using its own prediction of the future. TD trades a little bias for much lower variance and the ability to learn online, step by step.]
 
@@ -110,6 +187,26 @@ Each Q-learning update nudges the current estimate a fraction $\alpha$ of the wa
 
 
 To ensure exploration, a common behavior policy is $\varepsilon$-greedy: with probability $1 - \varepsilon$ take the greedy action $\arg\max_a Q(s, a)$, and with probability $\varepsilon$ take a uniformly random action. Decaying $\varepsilon$ over time shifts the agent from exploring early to exploiting later.
+
+### Why Q-learning converges: stochastic approximation
+
+The update @eq-deep-reinforcement-learning-qlearn-update is a stochastic-approximation (Robbins-Monro) scheme for finding the fixed point of the Bellman operator $\mathcal{T}$. To see this, rewrite the update as
+
+$$
+Q_{t+1}(s_t,a_t) = (1 - \alpha_t)\, Q_t(s_t,a_t) + \alpha_t \big[\, r_t + \gamma \max_{a'} Q_t(s_{t+1}, a') \,\big],
+$$
+
+and note that the bracketed sample target is an unbiased estimate of $(\mathcal{T} Q_t)(s_t,a_t)$, because $\mathbb{E}[\, r_t + \gamma \max_{a'} Q_t(s_{t+1},a') \mid s_t,a_t \,] = R(s_t,a_t) + \gamma \sum_{s'} P(s'\mid s_t,a_t) \max_{a'} Q_t(s',a') = (\mathcal{T}Q_t)(s_t,a_t)$. Writing the target as $(\mathcal{T}Q_t)(s_t,a_t)$ plus mean-zero noise, the iteration is the noisy fixed-point search $Q_{t+1} = Q_t + \alpha_t (\mathcal{T}Q_t - Q_t + \text{noise})$. The contraction property of $\mathcal{T}$ supplies the descent direction.
+
+The classical convergence theorem (Watkins and Dayan, 1992; Jaakkola, Jordan, and Singh, 1994) states that $Q_t \to Q^*$ with probability one provided:
+
+- every state-action pair $(s,a)$ is visited infinitely often (so exploration never stops, which $\varepsilon$-greedy with $\varepsilon > 0$ guarantees), and
+- the per-pair learning rates satisfy the Robbins-Monro conditions
+$$
+\sum_{t} \alpha_t(s,a) = \infty, \qquad \sum_{t} \alpha_t(s,a)^2 < \infty.
+$$ {#eq-deep-reinforcement-learning-robbins-monro}
+
+The first condition forces the steps to be large enough in aggregate to reach $Q^*$ from any start; the second forces them to shrink fast enough that the injected noise averages out. A schedule such as $\alpha_t(s,a) = 1 / (1 + n_t(s,a))$, where $n_t(s,a)$ counts visits, satisfies both. A constant $\alpha$ violates the square-summability condition: the estimates then do not converge to a point but instead hover in a neighborhood of $Q^*$ whose radius scales with $\alpha$, trading asymptotic accuracy for faster tracking. The gridworld demo below uses a constant $\alpha$ for exactly this reason: fast, stable enough on a tiny problem, and the residual noise is invisible at the policy level.
 
 
 ::: {.callout-note}
@@ -173,6 +270,18 @@ dqn_train_step <- function(batch, gamma = 0.99) {
 # Periodically: target_net |> set_weights(get_weights(online_net))
 ```
 
+### Maximization bias and Double Q-learning
+
+The $\max$ in the Q target systematically overestimates. The issue is that $\mathbb{E}[\max_a \hat{Q}(s',a)] \ge \max_a \mathbb{E}[\hat{Q}(s',a)]$ by Jensen's inequality, since the maximum is convex. When the $\hat{Q}(s',a)$ are noisy estimates of equal true values, the same noisy sample is used both to pick the maximizing action and to read off its value, so positive errors are selectively propagated into the target and the bias compounds through bootstrapping. As a concrete case, if $\hat{Q}(s',a) = \mu + \epsilon_a$ with i.i.d. mean-zero noise of variance $\sigma^2$ across $m$ actions whose true values are all $\mu$, then $\mathbb{E}[\max_a \hat{Q}(s',a)] = \mu + \mathbb{E}[\max_a \epsilon_a] > \mu$, and for Gaussian noise the bias grows like $\sigma \sqrt{2 \log m}$, increasing with the number of actions.
+
+Double Q-learning (van Hasselt, 2010) removes this by decoupling selection from evaluation. Maintain two estimators $Q^A, Q^B$. To update $Q^A$, select the greedy action with $Q^A$ but evaluate it with $Q^B$:
+
+$$
+Q^A(s,a) \leftarrow Q^A(s,a) + \alpha \Big[\, r + \gamma\, Q^B\big(s', \arg\max_{a'} Q^A(s',a')\big) - Q^A(s,a) \,\Big],
+$$ {#eq-deep-reinforcement-learning-double-q}
+
+and symmetrically for $Q^B$ (choosing which to update at random each step). Because the noise in the selector $Q^A$ is independent of the noise in the evaluator $Q^B$, the selected action's value is no longer biased upward in expectation. Double DQN (van Hasselt et al., 2016) applies the same idea cheaply in the deep setting by reusing the online network for selection and the target network for evaluation, replacing the DQN target with $r + \gamma\, Q(s', \arg\max_{a'} Q(s',a'; \theta); \theta^-)$.
+
 ## Policy based methods
 
 So far the agent has learned a value and then read off a policy by taking the action with the highest value. There is a more direct route. Policy based methods skip the value table and parameterize the policy itself as $\pi_\theta(a \mid s)$, then optimize the expected return $J(\theta) = \mathbb{E}_{\pi_\theta}[G_0]$ by gradient ascent. This is attractive when the action space is continuous or very large (where taking a $\max$ over actions is awkward or impossible), and when a stochastic policy is genuinely desirable, for example in games where being predictable is a weakness.
@@ -189,15 +298,55 @@ The policy gradient theorem gives an expression for $\nabla_\theta J$ that does 
 
 $$
 \nabla_\theta J(\theta) = \mathbb{E}_{\pi_\theta}\!\left[ \sum_{t \ge 0} \nabla_\theta \log \pi_\theta(a_t \mid s_t)\, G_t \right].
+$$ {#eq-deep-reinforcement-learning-pg}
+
+#### Deriving the policy gradient
+
+The trajectory form is the cleanest derivation. Let $\tau = (s_0, a_0, s_1, a_1, \dots)$ be a trajectory, $R(\tau) = \sum_{t} \gamma^t r_t$ its return, and
+
 $$
+p_\theta(\tau) = \rho_0(s_0) \prod_{t \ge 0} \pi_\theta(a_t \mid s_t)\, P(s_{t+1} \mid s_t, a_t)
+$$
+
+its probability under policy $\pi_\theta$, where $\rho_0$ is the initial-state distribution. The objective is $J(\theta) = \mathbb{E}_{\tau \sim p_\theta}[R(\tau)] = \int p_\theta(\tau) R(\tau)\, d\tau$. Differentiating and applying the log-derivative identity $\nabla_\theta p_\theta = p_\theta \nabla_\theta \log p_\theta$,
+
+$$
+\nabla_\theta J(\theta) = \int \nabla_\theta p_\theta(\tau)\, R(\tau)\, d\tau
+= \int p_\theta(\tau)\, \nabla_\theta \log p_\theta(\tau)\, R(\tau)\, d\tau
+= \mathbb{E}_{\tau}\!\left[ \nabla_\theta \log p_\theta(\tau)\, R(\tau) \right].
+$$
+
+The key simplification is that in $\log p_\theta(\tau)$ only the policy factors depend on $\theta$; the dynamics $P$ and the initial distribution $\rho_0$ drop out under the gradient:
+
+$$
+\nabla_\theta \log p_\theta(\tau) = \nabla_\theta \Big[ \log \rho_0(s_0) + \sum_t \log \pi_\theta(a_t \mid s_t) + \sum_t \log P(s_{t+1}\mid s_t,a_t) \Big] = \sum_t \nabla_\theta \log \pi_\theta(a_t \mid s_t).
+$$
+
+This is why policy gradients are model-free: the gradient never references $P$. Substituting gives $\nabla_\theta J = \mathbb{E}_\tau\big[ (\sum_t \nabla_\theta \log \pi_\theta(a_t\mid s_t))\, R(\tau) \big]$. A further refinement uses causality: an action $a_t$ cannot influence rewards earned before time $t$, so each $\nabla_\theta \log \pi_\theta(a_t \mid s_t)$ may be multiplied by only the return from $t$ onward, $G_t$, rather than the full $R(\tau)$. The discarded cross-terms have expectation zero, leaving @eq-deep-reinforcement-learning-pg.
 
 The intuition is the log likelihood trick: increase the log probability of actions that led to high return and decrease it for actions that led to low return, weighted by how good the return was. It is reinforcement in the literal sense, make the good actions more likely next time. REINFORCE (Williams, 1992) is the Monte Carlo estimate of this gradient. It runs full episodes, computes the realized return $G_t$ from each step, and takes an ascent step. The estimator is unbiased but high variance, so a state dependent baseline $b(s_t)$ is subtracted (it does not change the expectation):
 
 $$
 \nabla_\theta J(\theta) = \mathbb{E}_{\pi_\theta}\!\left[ \sum_{t \ge 0} \nabla_\theta \log \pi_\theta(a_t \mid s_t)\, \big(G_t - b(s_t)\big) \right].
-$$
+$$ {#eq-deep-reinforcement-learning-pg-baseline}
 
-A natural choice of baseline is an estimate of $V(s_t)$, which leads directly to actor-critic methods.
+#### Why the baseline is unbiased, and why it helps
+
+Subtracting any baseline $b(s_t)$ that does not depend on the action leaves the gradient unchanged in expectation. The added term vanishes because the score function integrates to zero. Conditioning on $s_t$,
+
+$$
+\mathbb{E}_{a_t \sim \pi_\theta(\cdot \mid s_t)}\!\big[ \nabla_\theta \log \pi_\theta(a_t \mid s_t)\, b(s_t) \big]
+= b(s_t) \sum_{a} \pi_\theta(a \mid s_t)\, \nabla_\theta \log \pi_\theta(a \mid s_t)
+= b(s_t)\, \nabla_\theta \sum_a \pi_\theta(a \mid s_t) = b(s_t)\, \nabla_\theta 1 = 0.
+$$ {#eq-deep-reinforcement-learning-baseline-zero}
+
+So @eq-deep-reinforcement-learning-pg-baseline is an unbiased estimator for any state-dependent $b$. Its value is variance reduction. For a scalar parameter, the per-step contribution is $g(a) = \nabla_\theta \log \pi_\theta(a\mid s)\,(G - b)$, whose variance is $\mathrm{Var}(g) = \mathbb{E}[(\nabla_\theta\log\pi_\theta)^2 (G-b)^2] - (\nabla_\theta J)^2$. Minimizing over $b$ by setting $\partial \mathrm{Var}/\partial b = 0$ gives the variance-optimal baseline
+
+$$
+b^\star = \frac{\mathbb{E}\big[(\nabla_\theta \log \pi_\theta)^2\, G\big]}{\mathbb{E}\big[(\nabla_\theta \log \pi_\theta)^2\big]},
+$$ {#eq-deep-reinforcement-learning-optimal-baseline}
+
+a gradient-magnitude-weighted average return. In practice the simpler choice $b(s) = V^\pi(s)$ captures most of the benefit: it centers $G_t$ on its conditional mean so the weight $G_t - V(s_t)$ becomes the advantage, which is small whenever the action was merely average and large only when it genuinely beat or missed expectations. This is the formal reason actor-critic methods reduce variance, and it motivates using a learned $V_w$ as the baseline.
 
 ### Actor-critic methods
 
@@ -209,10 +358,29 @@ $$
 
 which measures how much better action $a_t$ was than the policy's average behavior in state $s_t$. A positive advantage means "that action beat expectations, do more of it"; a negative advantage means the opposite. The actor update becomes $\nabla_\theta \log \pi_\theta(a_t \mid s_t)\, A(s_t, a_t)$ and the critic is fit to reduce its own TD error.
 
+The one-step advantage $\delta_t = r_t + \gamma V_w(s_{t+1}) - V_w(s_t)$ has low variance but is biased whenever $V_w \ne V^\pi$. The opposite extreme, the Monte Carlo advantage $G_t - V_w(s_t)$, is nearly unbiased but high variance. Generalized advantage estimation (GAE; Schulman et al., 2016) interpolates between them with a parameter $\lambda \in [0,1]$ by taking an exponentially weighted sum of the TD residuals:
+
+$$
+\hat{A}_t^{\text{GAE}(\gamma,\lambda)} = \sum_{l \ge 0} (\gamma \lambda)^l\, \delta_{t+l}, \qquad \delta_t = r_t + \gamma V_w(s_{t+1}) - V_w(s_t).
+$$ {#eq-deep-reinforcement-learning-gae}
+
+Setting $\lambda = 0$ recovers the one-step advantage $\delta_t$ (low variance, biased); $\lambda = 1$ telescopes to $\sum_{l\ge0}\gamma^l r_{t+l} - V_w(s_t) = G_t - V_w(s_t)$ (the Monte Carlo advantage, unbiased, high variance). Intermediate $\lambda$, typically $0.9$ to $0.97$, trades the two off and is one of the most important knobs in modern policy-gradient implementations.
+
 
 ::: {.callout-tip title="Intuition"}
 Think of the actor as a student trying actions and the critic as a coach. The coach does not dictate moves; it just says "that was better than I expected" or "worse than I expected," and the student adjusts. Because the coach's running expectation absorbs most of the variability, the feedback is far less noisy than raw returns. Modern algorithms in this family (A2C, PPO, SAC) add tricks to stay stable, such as clipping the size of each policy update (PPO, Schulman et al., 2017). PPO in particular is the workhorse behind the RLHF stage of instruction tuned language models.
 :::
+
+
+#### The PPO clipped objective
+
+Vanilla policy gradient takes one update per batch of fresh on-policy data, which is sample-inefficient. We would like to reuse a batch for several gradient steps, but after the policy moves the data is no longer on-policy. Importance sampling corrects for this: with $r_t(\theta) = \pi_\theta(a_t\mid s_t) / \pi_{\theta_{\text{old}}}(a_t \mid s_t)$ the ratio between the current and data-collecting policies, the surrogate objective $\mathbb{E}[\, r_t(\theta)\, \hat{A}_t \,]$ has the same gradient at $\theta = \theta_{\text{old}}$ as the policy gradient. The danger is that maximizing it freely lets $r_t$ blow up, taking a destructively large step. PPO (Schulman et al., 2017) bounds the step by clipping the ratio:
+
+$$
+L^{\text{CLIP}}(\theta) = \mathbb{E}_t\Big[ \min\big( r_t(\theta)\, \hat{A}_t,\; \operatorname{clip}(r_t(\theta), 1-\epsilon, 1+\epsilon)\, \hat{A}_t \big) \Big].
+$$ {#eq-deep-reinforcement-learning-ppo}
+
+The $\min$ with the clipped term makes the objective a pessimistic (lower) bound on the unclipped surrogate. When $\hat{A}_t > 0$, the objective stops rewarding increases in $r_t$ beyond $1 + \epsilon$; when $\hat{A}_t < 0$, it stops past $1 - \epsilon$. Either way the incentive to move the policy far from $\theta_{\text{old}}$ in a single batch is removed, which approximates the trust-region constraint of TRPO without a second-order solve. Typical $\epsilon$ is $0.1$ to $0.2$. This clipped surrogate, combined with a value-function loss and an entropy bonus, is the full PPO loss used in RLHF.
 
 
 ## Comparing the method families
@@ -407,6 +575,12 @@ The arrow grid shows the payoff: every cell points along a sensible route toward
 The fitted policy reflects the reward you wrote, not your unstated intentions. If you had forgotten the small per step penalty, the agent would have no reason to prefer short paths and might wander indefinitely. This small example already illustrates the single most important lesson in applied RL: the reward function is the specification.
 :::
 
+
+## Computational and sample complexity
+
+The cost of the exact, model-based solvers is easy to state. One sweep of value iteration evaluates @eq-deep-reinforcement-learning-bellman-operator at every $(s,a)$ pair, each requiring a sum over next states, for $O(|\mathcal{S}|^2 |\mathcal{A}|)$ work per sweep, and the contraction bound says $O(\log(1/\epsilon) / \log(1/\gamma))$ sweeps reach error $\epsilon$. Policy iteration needs far fewer outer iterations (often a handful) but each evaluation step solves a linear system, $O(|\mathcal{S}|^3)$ if done exactly. The horizon dependence is captured by the effective horizon $1/(1-\gamma)$: as $\gamma \to 1$ both the number of sweeps and the variance of sampled returns grow, which is the quantitative reason large $\gamma$ slows learning.
+
+Sample complexity is the binding constraint in the model-free, deep setting. For tabular Q-learning with a generative model, near-optimal value estimation requires on the order of $\tilde{O}\big(|\mathcal{S}||\mathcal{A}| / ((1-\gamma)^3 \epsilon^2)\big)$ samples, and the $(1-\gamma)^{-3}$ factor makes long-horizon problems expensive. With function approximation there is no general polynomial guarantee, and the table tradeoff (@tbl-deep-reinforcement-learning-method-families) reflects this empirically: off-policy value methods reuse each transition many times through the replay buffer and so are more sample-efficient per environment step, whereas on-policy Monte Carlo policy gradients discard data after each update and need more interaction. The deadly triad explains the lack of guarantees: when function approximation, bootstrapping, and off-policy training are combined, the composite update is no longer a contraction in any fixed norm, so the fixed-point argument that underwrites tabular convergence fails and divergence is possible. The DQN devices (replay, target networks, gradient clipping) are heuristics that empirically keep the iteration inside a stable region rather than guarantees that it is a contraction.
 
 ## Practical guidance and pitfalls
 

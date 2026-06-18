@@ -43,6 +43,40 @@ $$
 
 The right-hand side is the payoff: the fitted value is a *linear combination* of the observed $y_i$, with weights $l_i(x_0)$ that depend only on the $x$ values and the kernel, not on the responses. These weights blend the kernel weights with the least squares machinery, and the resulting weighting function is called the equivalent kernel.^[The equivalent kernel is a helpful diagnostic: it tells you, for a given target point, exactly how much each observation contributes to the fit. Near a boundary it automatically reshapes itself so that the fit stops being dragged inward, which is the mathematical reason local linear fits beat local averages at the edges.]
 
+### Deriving the weighted least squares solution {#sec-local-wls-derivation}
+
+It is worth seeing where the matrix formula comes from, because the derivation is short and it makes the structure of $l_i(x_0)$ explicit. Fix the target $x_0$ and abbreviate $\beta = (\alpha(x_0), \beta(x_0))^T$ and $w_i = K_\lambda(x_0, x_i)$. The objective is
+
+$$
+J(\beta) = \sum_{i=1}^n w_i \big(y_i - b(x_i)^T \beta\big)^2 = (\mathbf{y} - \mathbf{B}\beta)^T \mathbf{W}(x_0)(\mathbf{y} - \mathbf{B}\beta).
+$$ {#eq-local-wls-obj}
+
+Expanding gives $J(\beta) = \mathbf{y}^T\mathbf{W}\mathbf{y} - 2\beta^T \mathbf{B}^T\mathbf{W}\mathbf{y} + \beta^T \mathbf{B}^T\mathbf{W}\mathbf{B}\,\beta$. Differentiating with respect to $\beta$ and setting the gradient to zero,
+
+$$
+\frac{\partial J}{\partial \beta} = -2\,\mathbf{B}^T\mathbf{W}\mathbf{y} + 2\,\mathbf{B}^T\mathbf{W}\mathbf{B}\,\beta = 0
+\;\Longrightarrow\;
+\hat{\beta}(x_0) = (\mathbf{B}^T\mathbf{W}(x_0)\mathbf{B})^{-1}\mathbf{B}^T\mathbf{W}(x_0)\mathbf{y}.
+$$ {#eq-local-wls-soln}
+
+The Hessian $\partial^2 J/\partial\beta\partial\beta^T = 2\,\mathbf{B}^T\mathbf{W}\mathbf{B}$ is positive definite whenever $\mathbf{W}$ has at least two strictly positive weights at distinct design points, so the stationary point is the unique global minimum. Reading the fit at $x_0$ gives $\hat{f}(x_0) = b(x_0)^T\hat{\beta}(x_0)$, and collecting the row vector that multiplies $\mathbf{y}$,
+
+$$
+l(x_0)^T = b(x_0)^T (\mathbf{B}^T\mathbf{W}(x_0)\mathbf{B})^{-1}\mathbf{B}^T\mathbf{W}(x_0),
+$$ {#eq-local-equiv-kernel}
+
+so $\hat{f}(x_0) = \sum_i l_i(x_0) y_i$ as claimed. The weights in @eq-local-equiv-kernel are the equivalent kernel.
+
+### Why local linear fits reproduce lines: the moment conditions {#sec-local-moments}
+
+The equivalent kernel satisfies discrete moment conditions that explain the boundary-bias correction directly. Because the local fit is the projection of $\mathbf{y}$ onto the column space of $\mathbf{B}$ in the $\mathbf{W}$-inner product, it reproduces any function that lies in that column space exactly. Concretely, for $\hat{f}(x_0) = \sum_i l_i(x_0) y_i$, substituting $y_i = b(x_i)^T c$ for any fixed coefficient vector $c$ recovers $b(x_0)^T c$, which forces
+
+$$
+\sum_{i=1}^n l_i(x_0) = 1, \qquad \sum_{i=1}^n (x_i - x_0)\, l_i(x_0) = 0
+$$ {#eq-local-moments}
+
+for the local linear basis $b(x)^T = (1, x)$ (and, more generally, $\sum_i (x_i - x_0)^j l_i(x_0) = 0$ for $j = 1, \dots, d$ at polynomial degree $d$). The first condition says the weights sum to one, so constants pass through untouched. The second condition is the one a plain kernel average lacks: it says the equivalent kernel has zero first moment, so a linear trend also passes through untouched, even at a boundary where the raw kernel weights are lopsided. This is the precise sense in which "the line can tilt to follow the trend off the edge."
+
 
 ::: {.callout-note}
 Because $\hat{f}(x_0) = \sum_i l_i(x_0) y_i$ is linear in $\mathbf{y}$, local regression is a *linear smoother*. That linearity makes quantities like effective degrees of freedom and pointwise standard errors easy to compute, just as in ordinary linear regression.
@@ -50,6 +84,43 @@ Because $\hat{f}(x_0) = \sum_i l_i(x_0) y_i$ is linear in $\mathbf{y}$, local re
 
 
 The advantage of moving from constants to lines is concrete: local linear regression corrects the boundary bias to first order, meaning the leading bias term now depends only on the second derivative of $f$ and so is small on average. The price is small. The fit tends to be slightly biased in regions where the true function curves sharply, because a straight line cannot bend.
+
+### Bias and variance of the local linear estimator {#sec-local-bias-variance}
+
+The moment conditions in @eq-local-moments translate into a clean expansion of the bias, which is what makes the boundary claim rigorous. Assume the model $y_i = f(x_i) + \varepsilon_i$ with $\mathbb{E}[\varepsilon_i] = 0$, $\operatorname{Var}(\varepsilon_i) = \sigma^2$, and independent errors. Conditioning on the design, the estimator $\hat{f}(x_0) = \sum_i l_i(x_0) y_i$ is linear, so
+
+$$
+\mathbb{E}[\hat{f}(x_0)] = \sum_{i=1}^n l_i(x_0) f(x_i), \qquad
+\operatorname{Var}(\hat{f}(x_0)) = \sigma^2 \sum_{i=1}^n l_i(x_0)^2 = \sigma^2 \,\|l(x_0)\|^2.
+$$ {#eq-local-mean-var}
+
+To get the bias, expand $f$ around $x_0$ in a Taylor series, $f(x_i) = f(x_0) + f'(x_0)(x_i - x_0) + \tfrac12 f''(x_0)(x_i - x_0)^2 + o((x_i - x_0)^2)$, and substitute into @eq-local-mean-var. The constant term contributes $f(x_0)\sum_i l_i(x_0) = f(x_0)$ by the first moment condition, and the linear term contributes $f'(x_0)\sum_i (x_i - x_0) l_i(x_0) = 0$ by the second. Both vanish, leaving
+
+$$
+\mathbb{E}[\hat{f}(x_0)] - f(x_0) = \tfrac12 f''(x_0) \sum_{i=1}^n (x_i - x_0)^2 l_i(x_0) + o(\cdot),
+$$ {#eq-local-bias-leading}
+
+so the leading bias is proportional to $f''(x_0)$ and to the kernel's second moment, and it carries no contribution from $f'$. This is exactly why a sharp slope near a boundary does not bias a local linear fit, while it does bias a local average (whose equivalent kernel violates the second moment condition). For a kernel of bandwidth $h$ in the interior, $\sum_i (x_i - x_0)^2 l_i(x_0) = O(h^2)$ and $\|l(x_0)\|^2 = O(1/(nh))$, giving the canonical one-dimensional rates
+
+$$
+\text{bias} = O(h^2), \qquad \text{variance} = O\!\Big(\frac{1}{nh}\Big).
+$$ {#eq-local-rates}
+
+Minimizing the pointwise mean squared error $\text{bias}^2 + \text{variance} = O(h^4) + O(1/(nh))$ over $h$ balances the two terms at $h \asymp n^{-1/5}$, yielding the optimal MSE rate $O(n^{-4/5})$. This is the standard nonparametric rate for estimating a twice-differentiable function in one dimension, and it is slower than the parametric $O(n^{-1})$, the price of not assuming a global form for $f$.
+
+::: {.callout-note}
+The variance factor $\|l(x_0)\|^2 = \sum_i l_i(x_0)^2$ is computable directly from the smoother weights and needs no knowledge of $f$. It is the basis for the pointwise standard error bands that `loess` and `predict` report: $\widehat{\operatorname{se}}(\hat{f}(x_0)) = \hat\sigma\,\|l(x_0)\|$, with $\hat\sigma^2$ estimated from the residuals.
+:::
+
+### Effective degrees of freedom {#sec-local-edf}
+
+Stacking the equivalent-kernel rows for the $n$ fitted values gives the smoother matrix $\mathbf{L}$, whose $i$-th row is $l(x_i)^T$, so that $\hat{\mathbf{f}} = \mathbf{L}\mathbf{y}$. By analogy with the hat matrix of ordinary regression, where the trace counts parameters, the effective degrees of freedom of a linear smoother are defined as
+
+$$
+\mathrm{df} = \operatorname{tr}(\mathbf{L}) = \sum_{i=1}^n l_i(x_i).
+$$ {#eq-local-edf}
+
+A small span makes each local fit hug its own observation, pushing $l_i(x_i)$ toward one and $\mathrm{df}$ toward $n$ (a wiggly, high-variance fit); a large span spreads the weights and shrinks $\mathrm{df}$ toward the number of local parameters (a smooth, stiff fit). This single number summarizes model complexity and feeds directly into the model-selection criteria below. In R, `loess` reports it as the `trace.hat`-based equivalent number of parameters in `summary(fit)`.
 
 ## Going to higher-degree polynomials
 
@@ -69,6 +140,8 @@ The accumulated wisdom on which degree to use can be summarized in a few rules o
 - Local quadratic fits ($d=2$) buy little at the boundaries but pay a steep variance cost there.
 - Local quadratic fits earn their keep in the *interior*, where they trim the bias caused by curvature in the true function.
 - Asymptotically, local polynomials of odd degree dominate those of even degree, because asymptotic mean squared error is dominated by boundary effects, where the odd-degree fits do better.
+
+The odd-degree advantage has a clean explanation through the moment conditions. A local polynomial of degree $d$ forces the equivalent kernel to have zero moments up to order $d$ (the generalization of @eq-local-moments), so by the Taylor argument of @sec-local-bias-variance the leading bias is governed by the $(d+1)$-th moment $\sum_i (x_i - x_0)^{d+1} l_i(x_0)$ times $f^{(d+1)}(x_0)$. In the interior, where the design is locally symmetric about $x_0$, all odd moments of the equivalent kernel vanish by symmetry. For even $d$ this is no help, the bias is already set by the order-$(d+1)$ (odd) moment, but for odd $d$ the order-$(d+1)$ moment is even and nonzero while the next odd moment is killed by symmetry, so going from $d = 2m$ to $d = 2m+1$ removes a variance penalty (one fewer parameter than the next even degree at the same bias order) without adding bias order. The practical consequence is that $d = 1$ and $d = 3$ are the sensible choices, and $d = 1$ is the default.
 
 
 ::: {.callout-tip title="When to use this"}
@@ -197,3 +270,46 @@ legend(
 ```
 
 The red curve (`span = 0.2`) wiggles to track local features in the data, while the blue curve (`span = 0.5`) is noticeably smoother because each fitted point borrows strength from a wider neighborhood. This single picture captures the bias-variance trade-off that runs through the whole chapter: widen the neighborhood to reduce variance and you risk smoothing away real structure, narrow it to reduce bias and you let noise back into the fit. Choosing the span (by cross-validation or by judgment) is therefore the central practical decision when using local regression.
+
+### Choosing the span {#sec-local-span-selection}
+
+The span plays the role of the bandwidth $h$ from @sec-local-bias-variance, but `loess` parameterizes it as the *fraction* of observations in each neighborhood, which makes the bandwidth adapt to the local data density (nearest-neighbor bandwidth). Three principled routes to a value exist.
+
+The first is leave-one-out cross-validation. Because local regression is a linear smoother, the leave-one-out residuals have the closed form that avoids refitting,
+
+$$
+\mathrm{CV}(\text{span}) = \frac{1}{n}\sum_{i=1}^n \left(\frac{y_i - \hat{f}(x_i)}{1 - L_{ii}}\right)^2,
+$$ {#eq-local-loocv}
+
+where $L_{ii} = l_i(x_i)$ is the $i$-th diagonal of the smoother matrix (the leverage), exactly as in ordinary least squares. The whole CV curve over a grid of spans costs only the diagonal of $\mathbf{L}$ per fit, not $n$ separate refits.
+
+The second is generalized cross-validation, which replaces each $L_{ii}$ by the average $\operatorname{tr}(\mathbf{L})/n = \mathrm{df}/n$,
+
+$$
+\mathrm{GCV}(\text{span}) = \frac{n \sum_{i=1}^n (y_i - \hat{f}(x_i))^2}{(n - \operatorname{tr}(\mathbf{L}))^2}.
+$$ {#eq-local-gcv}
+
+The third is an AIC-type criterion that penalizes the residual sum of squares by the effective degrees of freedom from @eq-local-edf; `fANCOVA::loess.as` automates span selection by AICc or GCV and is the convenient choice in practice. All three trade the same quantities: smaller span lowers the residual sum of squares but raises $\mathrm{df}$, and the criterion picks the span where the marginal reduction in fit error no longer pays for the added complexity.
+
+::: {.callout-tip title="Computational cost"}
+A single fit at one target costs $O(n_h\, p^2 + p^3)$, the weighted cross-products over the $n_h$ neighbors plus a $(p\!+\!1)\!\times\!(p\!+\!1)$ solve, where $n_h = \text{span}\times n$. Naively evaluating all $n$ targets is $O(n \cdot n_h)$, which is quadratic when the span is a fixed fraction. `loess` avoids this by fitting exactly at the vertices of a $k$-d tree and interpolating elsewhere (the `surface = "interpolate"` default), which is what makes it fast on large $n$. Set `surface = "direct"` to fit at every point when you need exact values, accepting the higher cost.
+:::
+
+The leverage identity behind @eq-local-loocv is easy to confirm directly from a `loess` fit, which also verifies that the equivalent kernel and effective degrees of freedom are exactly the trace-based quantities defined above.
+
+```{r local-edf-check}
+#| eval: false
+# Verify df = tr(L) by reconstructing the smoother matrix column by column:
+# fitting loess on the i-th unit vector returns the i-th column of L.
+n   <- length(age)
+ord <- order(age)
+fit_unit <- function(j) {
+  e <- numeric(n); e[j] <- 1
+  predict(loess(e ~ age, span = 0.5, degree = 1,
+                control = loess.control(surface = "direct")))
+}
+L  <- sapply(seq_len(n), fit_unit)   # n x n smoother matrix, hat = L
+df_from_trace <- sum(diag(L))
+df_reported   <- loess(wage ~ age, span = 0.5, degree = 1)$trace.hat
+c(trace = df_from_trace, reported = df_reported)  # should match closely
+```

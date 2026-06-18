@@ -199,6 +199,28 @@ The learning rate is the single most important tuning parameter in SGD: too larg
 When in doubt, start with Adam and its default settings. It is rarely the best optimizer for a given problem, but it is rarely far off, and it saves you from hand tuning the learning rate schedule.
 :::
 
+#### Why SGD Works, and How Fast
+
+Two facts justify replacing the full gradient with a mini-batch gradient: the substitute is unbiased, and the resulting iteration converges under mild conditions on the learning rate. Both are worth stating precisely. Write the objective as an expectation $Q(\boldsymbol{\theta}) = \mathbb{E}_{\xi}[\,q(\boldsymbol{\theta}; \xi)\,]$ over a random training example $\xi$, and let the mini-batch estimate be $\mathbf{g} = \tfrac{1}{m}\sum_{i=1}^m \nabla_{\boldsymbol\theta} q(\boldsymbol\theta; \xi_i)$ with the $\xi_i$ drawn independently. Then
+
+$$
+\mathbb{E}[\mathbf{g}] = \nabla_{\boldsymbol\theta} Q(\boldsymbol\theta),
+\qquad
+\operatorname{Var}(\mathbf{g}) = \frac{1}{m}\operatorname{Var}\!\left(\nabla_{\boldsymbol\theta} q(\boldsymbol\theta; \xi)\right),
+$$ {#eq-neural-networks-sgd-unbiased}
+
+so the mini-batch gradient is an unbiased estimate of the true gradient whose variance falls only as $1/m$. This $1/m$ rate is the crux of the cost-accuracy tradeoff: cutting the gradient noise in half requires quadrupling the batch, so beyond a point larger batches buy little extra accuracy per unit of computation, which is the formal basis for preferring small batches early in training.
+
+For convergence, the classical Robbins-Monro conditions on the step sizes $\epsilon_r$ are sufficient (for a suitably regular, here possibly non-convex, $Q$ with bounded gradient variance):
+
+$$
+\sum_{r=1}^{\infty} \epsilon_r = \infty,
+\qquad
+\sum_{r=1}^{\infty} \epsilon_r^2 < \infty .
+$$ {#eq-neural-networks-robbins-monro}
+
+The first condition lets the iterates travel an unbounded distance, so they can reach the optimum from any start; the second forces the steps to shrink fast enough that the injected gradient noise is eventually damped out. A schedule such as $\epsilon_r = \epsilon_0 / r$ satisfies both, whereas a constant step size violates the second and leaves the iterates bouncing in a noise ball of radius proportional to $\epsilon_0$ around the optimum, which is why a fixed learning rate must eventually be decayed to converge. For a convex $Q$, SGD attains $\mathbb{E}[Q(\bar{\boldsymbol\theta}_R)] - Q(\boldsymbol\theta^\ast) = O(1/\sqrt{R})$ after $R$ steps on the running average $\bar{\boldsymbol\theta}_R$, a rate that is dimension-free but slower than the $O(1/R)$ of full-batch gradient descent; SGD trades a worse per-iteration rate for a per-iteration cost independent of $n$, which is the winning trade when $n$ is large.
+
 
 No matter which optimizer you choose, gradient based training of nonlinear models brings a recurring set of challenges. The loss surface is not convex, so the algorithm can fail to converge or settle into a poor local minimum; the starting values matter; and with many parameters the model will overfit unless we rein it in. Regularization, which shrinks the estimates toward zero, is the standard remedy, and it works exactly as in the regression chapters:
 
@@ -298,6 +320,37 @@ A single hidden layer network is just a flexible, learnable nonlinear transforma
 :::
 
 
+### Universal Approximation, Made Precise
+
+The opening section promised that a single hidden layer can represent essentially any function. It is worth stating exactly what is and is not guaranteed, because the precise theorem clarifies both the power and the limitation. Consider the class of single hidden layer networks with a single linear output,
+
+$$
+f_J(\mathbf{x}) = \sum_{j=1}^J \beta_j\, g\!\left(\boldsymbol{\alpha}_j^\top \mathbf{x} + \alpha_{j0}\right),
+$$ {#eq-neural-networks-uat-class}
+
+where $g$ is a fixed activation. Cybenko (1989) and Hornik (1991) proved the following.
+
+::: {.callout-note title="Universal approximation theorem"}
+Let $g$ be a continuous, bounded, nonconstant activation function (for example the sigmoid). Then finite sums of the form @eq-neural-networks-uat-class are dense in $C(K)$, the space of continuous functions on any compact set $K \subset \mathbb{R}^p$, under the supremum norm. That is, for every continuous target $f^\ast$ and every $\varepsilon > 0$ there exist an integer $J$ and parameters $\{\beta_j, \boldsymbol{\alpha}_j, \alpha_{j0}\}$ such that
+$$
+\sup_{\mathbf{x} \in K} \left| f^\ast(\mathbf{x}) - f_J(\mathbf{x}) \right| < \varepsilon .
+$$
+Hornik (1991) further showed the result holds for any nonconstant, bounded, continuous $g$, and that boundedness can be relaxed; the property is a statement about the architecture, not about a special activation.
+:::
+
+Three caveats keep this result in perspective, and together they explain why depth and not just width is pursued in practice.
+
+First, the theorem is purely existential. It asserts that some weight configuration achieves accuracy $\varepsilon$; it gives no guarantee that gradient descent from a random initialization will find that configuration, and the loss surface is non-convex, so it usually finds a local optimum instead.
+
+Second, the required width $J$ can be enormous. The constructive proofs and later quantitative versions show that for a target with smoothness controlled by a quantity such as $\int \|\boldsymbol{\omega}\| \, |\hat{f}^\ast(\boldsymbol{\omega})|\, d\boldsymbol{\omega} = C_{f^\ast}$ (a measure built from the Fourier transform $\hat f^\ast$), Barron (1993) proved a single hidden layer achieves squared $L_2$ error of order
+$$
+\| f^\ast - f_J \|_{L_2}^2 \;\le\; \frac{(2 C_{f^\ast})^2}{J},
+$$ {#eq-neural-networks-barron}
+which is remarkable for being free of the input dimension $p$ in its rate. The catch is that $C_{f^\ast}$ itself can grow rapidly with $p$ for typical targets, so the curse of dimensionality reappears inside the constant.
+
+Third, and most important for the rest of this chapter, certain functions that a deep network represents with $O(L)$ units in $L$ layers provably require a number of units growing exponentially, on the order of $2^{\Omega(L)}$, to represent with a single hidden layer. Depth is therefore not redundant with width: it is exponentially more parameter efficient for the compositional functions that natural data tend to exhibit. This is the formal counterpart to the intuition that depth buys compositional representations.
+
+
 ### Discrimination Problem
 
 The same architecture handles classification once we change the output activation and the loss to match the task. We take the two standard cases in turn.
@@ -335,6 +388,61 @@ and the loss is again cross-entropy, now the negative multinomial log-likelihood
 $$
 Q(.) = - \sum_l \sum_k \tilde{y}_{kl} \log(y_{kl})
 $$
+
+#### Why the Softmax and Cross-Entropy Fit Together
+
+The combination of a softmax output and cross-entropy loss is not an arbitrary pairing; it produces a gradient of exactly the same simple form as squared error with a linear output, namely "prediction minus target." Deriving this once explains the remark made later under backpropagation that no fresh derivation is needed for classification, and it explains why this pairing trains stably.
+
+Fix a single observation $l$ and drop the index. Write the pre-activation scores (logits) as $o_k = \sum_j \beta_{kj} z_j$, the softmax outputs $y_k = e^{o_k}/\sum_{k'} e^{o_{k'}}$, and the loss $Q = -\sum_k \tilde y_k \log y_k$ with a one-hot target $\tilde{\mathbf y}$ (so $\sum_k \tilde y_k = 1$). The Jacobian of the softmax is the standard result
+
+$$
+\frac{\partial y_k}{\partial o_m} = y_k(\delta_{km} - y_m),
+$$ {#eq-neural-networks-softmax-jac}
+
+where $\delta_{km}$ is the Kronecker delta, obtained by differentiating the quotient $e^{o_k}/\sum_{k'} e^{o_{k'}}$ and recognizing the softmax in each piece. Applying the chain rule and using $\sum_k \tilde y_k = 1$,
+
+$$
+\begin{aligned}
+\frac{\partial Q}{\partial o_m}
+&= -\sum_k \frac{\tilde y_k}{y_k}\,\frac{\partial y_k}{\partial o_m}
+= -\sum_k \frac{\tilde y_k}{y_k}\, y_k(\delta_{km} - y_m) \\
+&= -\sum_k \tilde y_k(\delta_{km} - y_m)
+= -\tilde y_m + y_m \sum_k \tilde y_k
+= y_m - \tilde y_m .
+\end{aligned}
+$$ {#eq-neural-networks-softmax-ce-grad}
+
+The cross terms in the softmax Jacobian cancel exactly against the $1/y_k$ from the log loss, leaving the residual $y_m - \tilde y_m$. The gradient with respect to an output weight then follows immediately,
+
+$$
+\frac{\partial Q}{\partial \beta_{mj}}
+= \frac{\partial Q}{\partial o_m}\,\frac{\partial o_m}{\partial \beta_{mj}}
+= (y_m - \tilde y_m)\, z_j ,
+$$ {#eq-neural-networks-softmax-ce-weight}
+
+which is identical in form to the squared-error output gradient @eq-nn-3, with the residual now being the difference between predicted probability and observed label. The same cancellation happens for the sigmoid output with binary cross-entropy: there $\partial Q / \partial o = y - \tilde y$ as well.
+
+::: {.callout-tip title="Why not squared error on a softmax"}
+If one instead paired softmax with squared error, the gradient would carry an extra factor of $y_m(1 - y_m)$ from @eq-neural-networks-softmax-jac. That factor vanishes precisely when the network is confidently wrong ($y_m \to 0$ on the true class), so learning stalls exactly where it is most needed. Cross-entropy removes this factor, which is the concrete reason it gives stronger gradients on confident mistakes.
+:::
+
+We can confirm @eq-neural-networks-softmax-ce-grad numerically in base R by comparing the closed-form residual $\mathbf{y} - \tilde{\mathbf{y}}$ against a finite-difference gradient of the cross-entropy.
+
+```{r}
+set.seed(1)
+o <- rnorm(4)                       # logits for K = 4 classes
+softmax <- function(o) exp(o) / sum(exp(o))
+ytilde  <- c(0, 1, 0, 0)            # one-hot target
+ce <- function(o) -sum(ytilde * log(softmax(o)))   # cross-entropy
+
+analytic <- softmax(o) - ytilde     # claimed gradient y - ytilde
+eps <- 1e-6                         # central finite differences
+numeric <- sapply(seq_along(o), function(m) {
+  ou <- o; ol <- o; ou[m] <- ou[m] + eps; ol[m] <- ol[m] - eps
+  (ce(ou) - ce(ol)) / (2 * eps)
+})
+max(abs(analytic - numeric))        # agreement to numerical precision
+```
 
 To make this concrete, the following example from [@james2013, Ch. 10] sets up a regression problem on the baseball `Hitters` data so we can compare a neural network against simpler baselines. We start by loading the data, dropping rows with missing values, and reserving a third of the observations as a test set.
 
@@ -457,6 +565,49 @@ You will essentially never derive these gradients by hand in practice. Modern li
 :::
 
 
+#### The General Backpropagation Recursion
+
+The single layer derivation above shows the mechanics, but the reason backpropagation scales to networks of arbitrary depth is that the chain rule organizes itself into a clean recursion. Stating it once, in matrix form, makes the algorithm and its cost transparent. Index layers by $\ell = 1, \dots, L$. Each layer applies an affine map followed by an elementwise activation,
+
+$$
+\mathbf{a}^{(\ell)} = \mathbf{W}^{(\ell)} \mathbf{z}^{(\ell-1)} + \mathbf{b}^{(\ell)},
+\qquad
+\mathbf{z}^{(\ell)} = g_\ell\!\left(\mathbf{a}^{(\ell)}\right),
+$$ {#eq-neural-networks-bp-forward}
+
+with $\mathbf{z}^{(0)} = \mathbf{x}$ the input and $\mathbf{z}^{(L)}$ the output. Define the *error signal* (the "delta") of layer $\ell$ as the gradient of the loss with respect to that layer's pre-activations,
+
+$$
+\boldsymbol{\delta}^{(\ell)} \equiv \frac{\partial Q}{\partial \mathbf{a}^{(\ell)}}.
+$$ {#eq-neural-networks-bp-delta-def}
+
+At the output, the delta is the loss derivative passed through the output activation,
+
+$$
+\boldsymbol{\delta}^{(L)} = g_L'\!\left(\mathbf{a}^{(L)}\right) \odot \frac{\partial Q}{\partial \mathbf{z}^{(L)}},
+$$ {#eq-neural-networks-bp-delta-L}
+
+which, for the matched output-and-loss pairs of the previous section, simplifies to the residual $\mathbf{z}^{(L)} - \tilde{\mathbf{y}}$. The key step is that the delta of one layer is obtained from the delta of the layer above by multiplying with the transposed weight matrix and then applying the local activation derivative,
+
+$$
+\boldsymbol{\delta}^{(\ell)} = \left( \mathbf{W}^{(\ell+1)\top} \boldsymbol{\delta}^{(\ell+1)} \right) \odot g_\ell'\!\left( \mathbf{a}^{(\ell)} \right).
+$$ {#eq-neural-networks-bp-recursion}
+
+This is the backward pass: errors flow from layer $\ell+1$ to layer $\ell$ exactly as the inputs flowed forward, but through $\mathbf{W}^{(\ell+1)\top}$ rather than $\mathbf{W}^{(\ell+1)}$. Once every delta is known, the parameter gradients are outer products of the local delta with the local input,
+
+$$
+\frac{\partial Q}{\partial \mathbf{W}^{(\ell)}} = \boldsymbol{\delta}^{(\ell)} \, \mathbf{z}^{(\ell-1)\top},
+\qquad
+\frac{\partial Q}{\partial \mathbf{b}^{(\ell)}} = \boldsymbol{\delta}^{(\ell)} .
+$$ {#eq-neural-networks-bp-grads}
+
+Equations @eq-neural-networks-bp-delta-L through @eq-neural-networks-bp-grads are the entire algorithm. Their structure also pins down the cost: each layer's forward and backward operations are dominated by a matrix-vector product, so a forward-backward sweep costs $O\!\left(\sum_\ell n_\ell n_{\ell-1}\right)$ floating point operations, the same order as the forward pass alone, and storage is $O\!\left(\sum_\ell n_\ell\right)$ because every $\mathbf{a}^{(\ell)}$ must be cached during the forward pass for reuse in @eq-neural-networks-bp-recursion. That backpropagation computes the full gradient at only a small constant multiple of the cost of one forward evaluation, regardless of the number of parameters, is the single fact that makes training large networks tractable; computing the same gradient by finite differences would cost one forward pass per parameter.
+
+::: {.callout-note}
+The recursion @eq-neural-networks-bp-recursion is exactly reverse-mode automatic differentiation specialized to the layered structure. The "two passes" of backpropagation are the forward sweep that records intermediate values and the backward sweep that accumulates derivatives, which is why autodiff libraries reproduce it without any network-specific code.
+:::
+
+
 ### Deep Feedforward Networks
 
 Deep feedforward networks, also called *multilayer perceptrons*, are simply the single layer model with the hidden layer repeated. The output of one hidden layer becomes the input of the next, and only the final layer produces the prediction. This depth is what lets the network tackle problems with rich structure, such as acoustic, image, and natural language processing, where a shallow model would need to be impractically wide.
@@ -570,6 +721,18 @@ Several practical points flesh out how convolution is used inside a network.
 -   *Data augmentation.* As with deep networks generally, augmenting the training images with random but believable transformations enlarges the effective dataset.
 
 -   *Pretrained networks.* A network trained on a large dataset such as ImageNet has already learned a spatial hierarchy of features that serves as a generic model of the visual world. There are two ways to reuse it: in *feature extraction* you freeze the convolutional base and train only new fully connected layers on top; in *fine-tuning* you unfreeze the top few convolutional layers and train them jointly with the new layers, but only after the new top layers have first been trained on their own.
+
+#### Equivariance and the Parameter Saving, Made Precise
+
+Two claims recur in the description above, that convolution is translation invariant and that it dramatically reduces the parameter count, and both can be stated exactly. The property convolution actually enjoys is *equivariance* to translation, not invariance. Let $T_{\boldsymbol\tau}$ denote a shift of an image by $\boldsymbol\tau$ and let $\Phi$ denote convolution with a fixed filter. Then
+
+$$
+\Phi\!\left(T_{\boldsymbol\tau}\, g\right) = T_{\boldsymbol\tau}\!\left(\Phi\, g\right),
+$$ {#eq-neural-networks-cnn-equiv}
+
+that is, shifting the input shifts the feature map by the same amount rather than leaving it unchanged. Invariance, the property that the network's final decision does not move when the input is shifted, is produced separately by pooling, which discards location within each block. The distinction matters in practice: convolution preserves *where* a pattern is so later layers can use it, and pooling is what eventually throws that location away.
+
+The parameter saving is equally concrete. A fully connected layer mapping an $H \times W$ single-channel image to an output of the same size uses $(HW)^2$ weights. A convolutional layer with a single $k \times k$ filter computes the same kind of local response everywhere using only $k^2$ weights, independent of image size, because the weights are shared across all spatial locations. Equivalently, a convolution is a linear map whose matrix is a doubly block Toeplitz matrix with $(HW)^2$ entries but only $k^2$ distinct values; weight sharing is the constraint that ties all those entries to a handful of free parameters. For a layer with $C_{\text{in}}$ input channels and $C_{\text{out}}$ filters of size $k \times k$ the count is $C_{\text{out}}(C_{\text{in}}\,k^2 + 1)$, again free of $H$ and $W$. This is the formal content of the statement that weight sharing is a "dramatic reduction in the parameter space," and it is also a strong prior: the network is constrained, before seeing any data, to look for local patterns that recur across the image.
 
 The convolution itself is computationally expensive. A classic speedup exploits the *fast Fourier transform* (FFT) and the convolution theorem. Writing $F(f)$ and $F(g)$ for the Fourier transforms of $f$ and $g$,
 
@@ -698,6 +861,26 @@ We train an RNN the same way as any other network: define a loss and minimize it
 ::: {.callout-warning}
 Vanishing and exploding gradients are the central difficulty of training RNNs. A plain ("vanilla") RNN can rarely learn dependencies more than a handful of steps apart, which is why the gated architectures below were invented.
 :::
+
+The reason this happens can be read straight off the BPTT gradient, and the argument is worth making precise because it shows that the difficulty is structural rather than incidental. Differentiating the loss at time $T$ with respect to a hidden state at an earlier time $t$ requires the chain rule across all intervening steps,
+
+$$
+\frac{\partial \mathbf{h}_T}{\partial \mathbf{h}_t} = \prod_{s=t+1}^{T} \frac{\partial \mathbf{h}_s}{\partial \mathbf{h}_{s-1}}
+= \prod_{s=t+1}^{T} \mathbf{D}_s \,\mathbf{W}_{hh}^\top,
+$$ {#eq-neural-networks-bptt-jac}
+
+where $\mathbf{D}_s = \operatorname{diag}\!\left(g_h'(\cdot)\right)$ is the diagonal of activation derivatives at step $s$. The gradient that reaches step $t$ is therefore governed by a product of $T - t$ Jacobians. Taking norms and writing $\sigma_{\max}$ for the largest singular value of $\mathbf{W}_{hh}$ and $\gamma = \sup |g_h'|$ (so $\gamma = 1$ for tanh, $\gamma = \tfrac14$ for the sigmoid), submultiplicativity gives
+
+$$
+\left\| \frac{\partial \mathbf{h}_T}{\partial \mathbf{h}_t} \right\|
+\;\le\; \left( \gamma\, \sigma_{\max} \right)^{\,T-t}.
+$$ {#eq-neural-networks-bptt-bound}
+
+The bound is exponential in the time gap, and its base $\gamma\,\sigma_{\max}$ decides the regime. If $\gamma\,\sigma_{\max} < 1$ the gradient contracts geometrically and the influence of step $t$ on the loss at $T$ decays to zero, the *vanishing* case; if the smallest singular value exceeds $1/\gamma$ the norm grows without bound, the *exploding* case. Only the knife-edge $\gamma\,\sigma_{\max} \approx 1$ preserves long-range signal, and a plain RNN cannot hold a single recurrent matrix at that edge across all directions at once. Exploding gradients have a blunt fix, *gradient clipping*, which rescales the gradient whenever its norm exceeds a threshold $\tau$,
+$$
+\mathbf{g} \leftarrow \mathbf{g} \cdot \min\!\left(1, \tfrac{\tau}{\|\mathbf{g}\|}\right),
+$$
+preserving direction while capping magnitude. Vanishing gradients have no such fix within the vanilla architecture, because shrinking that has already happened cannot be undone; this is precisely the problem the additive memory path of the LSTM is designed to bypass. In an LSTM the cell update $\mathbf{c}_t = \mathbf{c}_{t-1} \odot \mathbf{f} + \mathbf{g} \odot \mathbf{i}$ has Jacobian $\partial \mathbf{c}_t / \partial \mathbf{c}_{t-1} = \operatorname{diag}(\mathbf{f})$, so when the forget gate is near 1 the gradient passes through nearly unattenuated, replacing the repeated multiplication by $\mathbf{W}_{hh}^\top$ with a gated near-identity.
 
 
 The fix is to add *gates*, small learned controllers that decide what information to keep, overwrite, or pass along at each step. By providing a protected path along which information (and gradient) can flow nearly unchanged, gates let the network remember things over long spans. The two most important gated architectures are LSTMs and GRUs.
@@ -852,6 +1035,30 @@ $$
 $$
 
 where $\eta$ is a constant and $g^i = \partial L / \partial w$ is the gradient at the $i$-th update. The effect is that parameters with consistently large gradients get smaller steps and those with small gradients get larger steps, automatically balancing the learning across the network. The trade-off is that the accumulating sum in the denominator makes every rate shrink over time, which is the issue RMSProp later fixed (see [Stochastic Gradient Descent]). For more detail, see these slides^[<https://courses.cs.washington.edu/courses/cse547/15sp/slides/adagrad.pdf>].
+
+It is worth writing out Adam explicitly, since it is the default in most practice yet was only described in words earlier. Let $g_t$ be the (per-parameter) gradient at step $t$. Adam maintains exponential moving averages of the gradient and its square,
+
+$$
+m_t = \beta_1 m_{t-1} + (1-\beta_1) g_t,
+\qquad
+v_t = \beta_2 v_{t-1} + (1-\beta_2) g_t^2,
+$$ {#eq-neural-networks-adam-moments}
+
+which estimate the first moment (a momentum term) and the second moment (the RMSProp term). Because both are initialized at zero, they are biased toward zero for small $t$; Adam corrects this with
+
+$$
+\hat m_t = \frac{m_t}{1 - \beta_1^{\,t}},
+\qquad
+\hat v_t = \frac{v_t}{1 - \beta_2^{\,t}},
+$$ {#eq-neural-networks-adam-bias}
+
+and then takes the step
+
+$$
+w \leftarrow w - \eta\, \frac{\hat m_t}{\sqrt{\hat v_t} + \varepsilon}.
+$$ {#eq-neural-networks-adam-step}
+
+The bias correction is easy to verify: taking expectations in @eq-neural-networks-adam-moments under a stationary gradient gives $\mathbb{E}[v_t] = (1-\beta_2^{\,t})\,\mathbb{E}[g_t^2]$, so dividing by $1 - \beta_2^{\,t}$ in @eq-neural-networks-adam-bias restores an unbiased estimate, and likewise for $m_t$. The recommended defaults $\beta_1 = 0.9$, $\beta_2 = 0.999$, $\varepsilon = 10^{-8}$ work across a wide range of problems, which is why Adam is the common starting point. RMSProp is the special case that keeps only $v_t$ and uses the raw gradient in the numerator; AdaGrad is the further special case $\beta_2 \to 1$ with no decay, which recovers the ever-growing denominator above.
 
 ### Momentum (recipe)
 

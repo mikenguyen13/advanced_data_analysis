@@ -73,6 +73,69 @@ This asymmetric weighting is what pins the fit to a particular quantile. Suppose
 
 Because $|e|$ has a kink at zero, the objective is not differentiable, so there is no closed-form normal-equation solution as in OLS. Instead the problem is solved as a linear program, classically with the simplex method, and standard errors are commonly obtained by the bootstrap rather than from a formula.^[The piecewise-linear, convex objective makes this a well-behaved optimization: a global optimum always exists, and efficient specialized algorithms handle even large problems.]
 
+### Precise formulation: the check loss {#sec-quantile-reg-formulation}
+
+To reason about the estimator we need notation that is both compact and exact. Define the *check function* (also called the pinball or tilted absolute loss) at level $q \in (0,1)$,
+
+$$
+\rho_q(u) = u\bigl(q - \mathbb{1}\{u < 0\}\bigr) =
+\begin{cases}
+q\,u, & u \ge 0,\\[2pt]
+(q-1)\,u, & u < 0,
+\end{cases}
+$$ {#eq-quantile-reg-check}
+
+where $\mathbb{1}\{\cdot\}$ is the indicator. Both branches are nonnegative: for $u \ge 0$ the loss is $qu \ge 0$, and for $u < 0$ the loss is $(q-1)u = (1-q)|u| \ge 0$. The objective $Q(\beta_q)$ written out term by term above is exactly $\sum_{i=1}^N \rho_q\!\left(y_i - x_i'\beta_q\right)$, with the two summation ranges corresponding to the two branches of @eq-quantile-reg-check. The quantile-regression estimator is
+
+$$
+\hat\beta_q = \arg\min_{\beta \in \mathbb{R}^p} \sum_{i=1}^N \rho_q\!\left(y_i - x_i'\beta\right).
+$$ {#eq-quantile-reg-estimator}
+
+The *conditional quantile* being estimated is defined through the conditional distribution function $F_{y|x}$: the $q$th conditional quantile is
+
+$$
+Q_q(y \mid x) = \inf\{\, t : F_{y\mid x}(t) \ge q \,\} = F_{y\mid x}^{-1}(q),
+$$ {#eq-quantile-reg-cqf}
+
+and the linear model asserts $Q_q(y\mid x) = x'\beta_q$. Crucially this is a *model of the quantile*, not of the mean plus an additive error of fixed shape: nothing requires the errors $e_i = y_i - x_i'\beta_q$ to be identically distributed or symmetric, only that the $q$th conditional quantile of $e_i$ given $x_i$ be zero, that is $\Pr(e_i \le 0 \mid x_i) = q$. This single restriction is the entire stochastic assumption.
+
+### Why minimizing the check loss returns a quantile {#sec-quantile-reg-derivation}
+
+The asymmetric weighting story is correct but informal. Here is the derivation that makes it exact, first for the unconditional case (an intercept-only model), which already contains the whole idea.
+
+Let $Y$ be a random variable with distribution function $F$ and consider choosing a single number $t$ to minimize the expected check loss,
+
+$$
+R(t) = \mathbb{E}\,\rho_q(Y - t)
+= q\!\int_{t}^{\infty}\!(y-t)\,dF(y) \;+\; (1-q)\!\int_{-\infty}^{t}\!(t-y)\,dF(y).
+$$
+
+Differentiate with respect to $t$. Using Leibniz's rule (the integrand vanishes at the moving endpoint $y=t$, so only the explicit $t$ inside the integrands contributes),
+
+$$
+R'(t) = -q\!\int_{t}^{\infty}\! dF(y) + (1-q)\!\int_{-\infty}^{t}\! dF(y)
+= -q\bigl(1 - F(t)\bigr) + (1-q)F(t).
+$$
+
+Setting $R'(t)=0$ and solving,
+
+$$
+-q + qF(t) + F(t) - qF(t) = 0 \;\Longrightarrow\; F(t) = q,
+$$
+
+so the minimizer satisfies $F(t) = q$, that is $t = F^{-1}(q)$, the $q$th quantile. The second derivative is $R''(t) = f(t) \ge 0$ wherever the density exists, confirming a minimum, and convexity of $\rho_q$ guarantees it is the global one. Setting $q = \tfrac12$ recovers $F(t) = \tfrac12$, the median, and the symmetric absolute loss. This is the population analogue of the fact that the sample check-loss minimizer puts a fraction $q$ of points below the fit.
+
+For the regression case the same calculation runs on the subgradient. Because $\rho_q$ is convex but kinked at $0$, $\hat\beta_q$ is characterized by the condition that the zero vector lies in the subdifferential of @eq-quantile-reg-estimator. Away from the kink, $\rho_q'(u) = q - \mathbb{1}\{u<0\} = \psi_q(u)$, and the optimality (normal-equation analogue) condition is
+
+$$
+\sum_{i=1}^N x_i\,\psi_q\!\left(y_i - x_i'\hat\beta_q\right) = 0,
+\qquad \psi_q(u) = q - \mathbb{1}\{u < 0\},
+$$ {#eq-quantile-reg-foc}
+
+with the residuals that are exactly zero contributing subgradient values in $[\,q-1,\,q\,]$ chosen to balance the sum. Compare this to the OLS normal equation $\sum_i x_i(y_i - x_i'\hat\beta) = 0$: quantile regression replaces the raw residual by the *bounded, sign-and-tilt* score $\psi_q$, which is why a far-away point exerts influence only through its sign, not its magnitude. That bounded score is the precise source of the robustness claimed earlier.
+
+A useful corollary of @eq-quantile-reg-foc: take the row corresponding to the intercept, where $x_{i1}=1$. Then $\sum_i \psi_q(\hat e_i) = 0$, i.e. $q N$ equals the number of strictly negative residuals plus a fractional contribution from the exact zeros. In general position a fitted quantile plane interpolates exactly $p$ observations (the residuals at those points are zero), and a fraction approximately $q$ of the remaining residuals are negative. This is the regression generalization of "the median has half the data on each side."
+
 
 ::: {.callout-note}
 "Not differentiable" sounds like trouble but is not. The loss is still convex, so the optimization is reliable; we just use linear-programming machinery instead of calculus. The `quantreg` package handles all of this for you.
@@ -93,6 +156,45 @@ In words: at the $q$th quantile of $y$, a one-unit increase in $x_j$ is associat
 ::: {.callout-important title="Key idea"}
 A single OLS regression gives you one slope per predictor. Quantile regression run across many values of $q$ gives you a *curve* of slopes, one per quantile, showing whether a predictor matters more at the bottom, the middle, or the top of the outcome distribution.
 :::
+
+
+### The linear-programming representation {#sec-quantile-reg-lp}
+
+The claim that @eq-quantile-reg-estimator "is a linear program" can be made literal, which both explains how `rq` computes the fit and exposes the dual that drives inference. Split each residual into its positive and negative parts, $u_i = (y_i - x_i'\beta)^+ \ge 0$ and $v_i = (y_i - x_i'\beta)^- \ge 0$, so that $y_i - x_i'\beta = u_i - v_i$ and $\rho_q(y_i - x_i'\beta) = q\,u_i + (1-q)\,v_i$. The estimation problem becomes the linear program
+
+$$
+\min_{\beta,\,u,\,v}\; q\,\mathbf{1}'u + (1-q)\,\mathbf{1}'v
+\quad\text{s.t.}\quad X\beta + u - v = y,\;\; u \ge 0,\;\; v \ge 0,
+$$ {#eq-quantile-reg-lp}
+
+with $\beta$ free. This has $N$ equality constraints and $2N + p$ variables; its solution is a basic feasible point at which $p$ residuals are zero, recovering the interpolation property noted above. The classical solver is a simplex method specialized to this structure (Barrodale to Roberts, used by `rq(method="br")`, exact and excellent for small to moderate $N$); for large $N$ an interior-point method with preprocessing (`method="pfn"` or the Frisch to Newton variant) scales much better. The dual variables $a_i$ of @eq-quantile-reg-lp lie in $[q-1,\,q]$ and are the "regression rank scores" used by one family of inference procedures.
+
+::: {.callout-note}
+The cost of a single quantile fit is comparable to that of a least-squares fit for moderate sizes: $O(N p^2)$-ish for the linear algebra, with the simplex overhead. Fitting a whole grid of quantiles is cheap because `rq` can warm-start each fit from the neighboring one (the entire solution path in $q$ is itself piecewise constant in $\beta$, and `rq(tau=-1)` returns it exactly via parametric programming).
+:::
+
+
+### Asymptotic distribution and inference {#sec-quantile-reg-asymptotics}
+
+The estimator is consistent and asymptotically normal under mild conditions (continuous conditional density positive at the quantile, finite design moments). Writing $\beta_q$ for the truth and $f_{y\mid x}$ for the conditional density of $y$, the standard result (@Roger_1996) is
+
+$$
+\sqrt{N}\,\bigl(\hat\beta_q - \beta_q\bigr) \;\xrightarrow{d}\; \mathcal{N}\!\left(0,\; \tau\,(1-\tau)\,D_1^{-1} D_0\, D_1^{-1}\right),
+$$ {#eq-quantile-reg-asymp}
+
+with $\tau = q$, $D_0 = \mathbb{E}\!\left[x x'\right]$ and the *sparsity-weighted* matrix
+
+$$
+D_1 = \mathbb{E}\!\left[\,f_{y\mid x}\!\bigl(x'\beta_q \mid x\bigr)\, x x'\,\right].
+$$
+
+The sandwich has the same algebraic shape as in M-estimation: the meat $\tau(1-\tau)D_0$ is the variance of the score $\psi_q$ (note $\operatorname{Var}\psi_q = q(1-q)$), and the bread $D_1^{-1}$ is the inverse expected Jacobian. The density factor $f_{y\mid x}$ inside $D_1$ is the catch: precision degrades where the conditional density is low, so estimates in the far tails (small or large $q$) are noisier, and the reciprocal density $1/f$ is called the *sparsity function*. In the special case of i.i.d. errors with density $f$, $D_1 = f(F^{-1}(q))\,D_0$ and the covariance collapses to the textbook form
+
+$$
+\operatorname{Avar}(\hat\beta_q) = \frac{q(1-q)}{N\,f\!\left(F^{-1}(q)\right)^2}\,D_0^{-1},
+$$ {#eq-quantile-reg-iid-avar}
+
+which is exactly the LAD/median result with the familiar $1/(2f(\text{median}))$ scale at $q=\tfrac12$. The practical difficulty is estimating $f(F^{-1}(q))$; `summary.rq` offers several routes: a difference-quotient (Siddiqui to Hall to Sheather) estimate of the sparsity (`se="nid"` for the non-i.i.d. sandwich, `se="iid"` for @eq-quantile-reg-iid-avar), the rank-score inversion (`se="rank"`, which avoids density estimation entirely and gives the confidence intervals shown by default), and the bootstrap (`se="boot"`), which is the most robust default when in doubt.
 
 
 ## Application
@@ -197,5 +299,40 @@ plot(summary(qr2), parm = "x")
 ```
 
 This time, as @fig-quantile-reg-coef-homo shows, the quantile coefficients stay essentially flat across $q$ and lie within the least-squares band: every quantile responds to $x$ in the same way, so the mean already summarizes the relationship and quantile regression adds little. Comparing the two coefficient plots is the practical heart of the method: the first dataset shows quantile regression earning its keep, while the second shows the case where OLS suffices.
+
+## Theory, variants, and failure modes {#sec-quantile-reg-advanced}
+
+### Quantile crossing {#sec-quantile-reg-crossing}
+
+Each quantile is fit by a separate optimization in @eq-quantile-reg-estimator, with no constraint tying the fits together. Monotonicity of the true conditional quantiles ($Q_{q_1}(y\mid x) \le Q_{q_2}(y\mid x)$ for $q_1 < q_2$) is therefore not guaranteed in the *estimated* fits: two fitted lines for different $q$ can cross, implying the absurd conclusion that a lower quantile exceeds a higher one for some $x$. This is most common at extreme $q$, in sparse regions of the design, or far from the data centroid where the linear extrapolation is least trustworthy. Two standard remedies exist. The first is *rearrangement* (Chernozhukov, Fernandez-Val, and Galichon, 2010): at any fixed $x$, sort the estimated $\{\hat Q_q(y\mid x)\}_q$ into increasing order; the sorted curve is a valid, monotone quantile function and is provably at least as accurate (in $L_p$) as the unsorted one. The second is to fit all quantiles jointly under non-crossing constraints. Crossing is a diagnostic as much as a nuisance: heavy crossing inside the data range signals that the linear-in-$x$ specification is inadequate.
+
+### Connections to other methods {#sec-quantile-reg-connections}
+
+Quantile regression sits inside several larger families. It is an *M-estimator* with the non-smooth, asymmetric score $\psi_q$ of @eq-quantile-reg-foc, which is why the asymptotics in @eq-quantile-reg-asymp take the standard sandwich form. It has an exact *Bayesian* reading through the asymmetric Laplace distribution (ALD): the negative log-likelihood of an ALD with location $x'\beta$ and asymmetry $q$ is, up to constants, proportional to the check loss, so maximizing that likelihood reproduces @eq-quantile-reg-estimator and a prior on $\beta$ yields a posterior whose mode is the penalized quantile estimate. This connects to the regularized variants: adding an $\ell_1$ penalty gives the *LASSO quantile regression* (`rq` with `method="lasso"` or the `rqPen` package),
+
+$$
+\hat\beta_q^{\text{lasso}} = \arg\min_\beta \sum_{i=1}^N \rho_q\!\left(y_i - x_i'\beta\right) + \lambda \sum_{j=2}^p |\beta_j|,
+$$
+
+which remains a linear program (both pieces are piecewise linear) and performs simultaneous quantile estimation and variable selection. Beyond linearity, the check loss can be paired with splines (additive quantile models), with kernels and gradient boosting (quantile loss is the objective behind prediction-interval forests and gradient-boosted quantile estimators), and with the pinball loss used to train neural networks that output predictive quantiles. Finally, the estimated quantiles are natural ingredients for distribution-free prediction intervals, the link to conformal methods drawn in @sec-conformal-prediction.
+
+### Failure modes {#sec-quantile-reg-failure}
+
+Beyond the ties-and-zeros caveat already raised, three failure modes deserve emphasis. First, *tail estimation is intrinsically hard*: by @eq-quantile-reg-iid-avar the variance scales like $1/f(F^{-1}(q))^2$, which blows up as $q \to 0$ or $q \to 1$ because the density thins, so a "90th-percentile slope" from a few hundred observations can be very imprecise even when the median slope is sharp. Second, *the linear specification can be locally wrong even when it is right on average*; because each quantile is fit independently, a misspecified mean shape shows up as systematic crossing or as quantile curves that are individually implausible. Third, *inference is delicate*: the asymptotic variance depends on the unknown sparsity $1/f$, and naive plug-in density estimates can be unstable, which is why the rank-score or bootstrap standard errors are usually preferred to the i.i.d. formula in finite samples.
+
+### Verifying the population result {#sec-quantile-reg-verify}
+
+The derivation in @sec-quantile-reg-derivation predicts that the minimizer of the average check loss over a sample is the corresponding empirical quantile. We can confirm this directly with base R, with no model matrix at all.
+
+```{r}
+set.seed(1)
+z  <- rnorm(2000)
+qq <- 0.8
+check <- function(t) mean(ifelse(z >= t, qq*(z - t), (qq - 1)*(z - t)))
+t_hat <- optimize(check, interval = range(z))$minimum
+c(check_loss_minimizer = t_hat, empirical_quantile = unname(quantile(z, qq)))
+```
+
+The check-loss minimizer matches the empirical 0.8 quantile (and both track the theoretical value `qnorm(0.8)` $\approx 0.842$), exactly as @eq-quantile-reg-cqf and the first-order condition require.
 
 To sum up, quantile regression generalizes the familiar mean model by targeting any quantile of the outcome through an asymmetric absolute-error loss. It is robust to outliers, makes no distributional assumption on the errors, and is invariant to monotone transformations. Its real strength shows up when the effect of a predictor varies across the distribution: by fitting and comparing many quantiles, we recover the changing spread and shape that a single mean line conceals. Estimated quantiles also serve as building blocks for distribution-free prediction intervals, a connection developed further in the conformal prediction chapter (@sec-conformal-prediction).

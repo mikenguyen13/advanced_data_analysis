@@ -83,6 +83,16 @@ where each $h_m(X)$ is either a function drawn from the collection $C$ or a prod
 
 Once the set of terms $h_m$ is fixed, estimating the coefficients $\beta_m$ is the easy part: we use ordinary least squares, minimizing the residual sum of squares. The hard and important part is choosing which $h_m(X)$ to include, and that is where the adaptive search comes in.
 
+### Formulation: the regression problem MARS solves {-}
+
+Fix the structure of the model, that is, the list of terms $h_0 \equiv 1, h_1, \dots, h_M$. Collect them into the $n \times (M+1)$ design matrix $\mathbf{B}$ with entries $B_{im} = h_m(x_i)$, so column $0$ is a column of ones. Stacking the responses into $\mathbf{y} \in \mathbb{R}^n$ and the coefficients into $\boldsymbol\beta = (\beta_0, \beta_1, \dots, \beta_M)^\top$, MARS solves the ordinary least squares problem
+
+$$
+\hat{\boldsymbol\beta} = \arg\min_{\boldsymbol\beta} \; \big\| \mathbf{y} - \mathbf{B}\boldsymbol\beta \big\|_2^2 = (\mathbf{B}^\top \mathbf{B})^{-1} \mathbf{B}^\top \mathbf{y},
+$$ {#eq-MARS-ols}
+
+with fitted values $\hat{\mathbf{y}} = \mathbf{B}\hat{\boldsymbol\beta} = \mathbf{H}\mathbf{y}$ and hat matrix $\mathbf{H} = \mathbf{B}(\mathbf{B}^\top \mathbf{B})^{-1}\mathbf{B}^\top$. The statistical model behind @eq-MARS-ols is the usual one, $y_i = f(x_i) + \varepsilon_i$ with $\mathbb{E}[\varepsilon_i] = 0$ and $\mathrm{Var}(\varepsilon_i) = \sigma^2$, and $f$ assumed to lie (approximately) in the span of products of hinge functions. The space of functions reachable by MARS is the linear span of the constant together with all products $\prod_{k} (\pm(X_{j_k} - t_k))_+$ that respect two structural constraints stated later: each variable appears at most once in a product, and (by convention) lower-order parts of any product are also present. Within that span the fit is linear in $\boldsymbol\beta$, so for a fixed structure everything reduces to least squares; the difficulty, and all of the adaptivity, is in choosing the structure.
+
 ### The forward pass: adding terms greedily {-}
 
 We start as simply as possible. The model begins with the constant function $h_0(X) = 1$, and every function in $C$ is a candidate to be added next.
@@ -131,6 +141,18 @@ For example, the third choice can produce an interaction term such as $(X_1 - x_
 
 The forward pass continues until a pre-specified number of terms is in the model. By design this gives a large model that overfits the data, which is exactly what we want before pruning.
 
+### Derivation: the gain from adding a reflected pair {-}
+
+It is worth seeing exactly what quantity the forward pass maximizes, because it explains why the search is only $O(n)$ per variable and why knots can be tested incrementally. Suppose the current model has design matrix $\mathbf{B}$ and projects $\mathbf{y}$ onto $\mathrm{col}(\mathbf{B})$, leaving residual $\mathbf{r} = \mathbf{y} - \mathbf{B}\hat{\boldsymbol\beta} = (\mathbf{I} - \mathbf{H})\mathbf{y}$. We consider adding the two new columns $\mathbf{u}(t) = h_l \odot (X_j - t)_+$ and $\mathbf{v}(t) = h_l \odot (t - X_j)_+$ (elementwise products evaluated at the data, for a fixed parent $h_l$, variable $j$, and knot $t$). The decrease in residual sum of squares from appending columns $\mathbf{Z} = [\mathbf{u}(t), \mathbf{v}(t)]$ to a model that already contains $\mathbf{B}$ is, by the standard formula for the extra sum of squares of a projection onto the orthogonal complement,
+
+$$
+\Delta \mathrm{RSS}(j,t,l) = \tilde{\mathbf{Z}}^\top \mathbf{r} \,\big( \tilde{\mathbf{Z}}^\top \tilde{\mathbf{Z}} \big)^{-1} \tilde{\mathbf{Z}}^\top \mathbf{r}, \qquad \tilde{\mathbf{Z}} = (\mathbf{I} - \mathbf{H})\mathbf{Z},
+$$ {#eq-MARS-gain}
+
+where $\tilde{\mathbf{Z}}$ is $\mathbf{Z}$ orthogonalized against the existing columns. To see @eq-MARS-gain, write the augmented projection in block form: regressing $\mathbf{y}$ on $[\mathbf{B}, \mathbf{Z}]$ is equivalent, by the Frisch to Waugh to Lovell theorem, to first removing $\mathbf{B}$ from both $\mathbf{y}$ and $\mathbf{Z}$ and then regressing the residual $\mathbf{r}$ on $\tilde{\mathbf{Z}}$. The reduction in RSS achieved by that second regression is the squared length of the projection of $\mathbf{r}$ onto $\mathrm{col}(\tilde{\mathbf{Z}})$, namely $\mathbf{r}^\top \tilde{\mathbf{Z}} (\tilde{\mathbf{Z}}^\top \tilde{\mathbf{Z}})^{-1} \tilde{\mathbf{Z}}^\top \mathbf{r}$, which is @eq-MARS-gain. The forward pass selects the triple $(j,t,l)$ maximizing this gain, which is the same as choosing the candidate that minimizes the new training RSS, since the old RSS is fixed.
+
+Two facts make this cheap. First, only $\mathbf{r}$ enters, so the parent fit is computed once per stage. Second, as the knot $t$ sweeps through the sorted values $x_{(1)j} > x_{(2)j} > \dots$ of variable $j$, the column $(X_j - t)_+$ changes by a simple, incremental amount: lowering the knot past one data point adds a constant slope contribution over the points already to the right of $t$. The inner products $\tilde{\mathbf{Z}}^\top \mathbf{r}$ and the small Gram matrix $\tilde{\mathbf{Z}}^\top \tilde{\mathbf{Z}}$ can therefore be updated in $O(1)$ per knot using running sums, giving $O(n)$ work to scan all knots of one variable rather than the naive $O(n^2)$. This is the precise sense of the locality and efficiency claims made later.
+
 
 ::: {.callout-tip title="Intuition"}
 The strategy is deliberately "grow too big, then trim." Greedily adding terms is fast but tends to keep some terms that only help on the training set. Pruning afterward removes them.
@@ -140,6 +162,14 @@ The strategy is deliberately "grow too big, then trim." Greedily adding terms is
 ### The backward pass: pruning {-}
 
 To undo the overfitting, MARS uses backward deletion. At each step it removes the single term whose removal causes the smallest increase in residual squared error. Running this all the way down produces, for each model size $\lambda$ (the number of terms), an estimated "best" model $\hat{f}_\lambda$ of that size.
+
+The cost of deleting a term mirrors @eq-MARS-gain. If $\mathbf{B}$ is the current design and we drop column $m$, leaving $\mathbf{B}_{-m}$, the increase in RSS equals the squared length of the part of $\hat{\mathbf{y}}$ that $\mathbf{B}_{-m}$ cannot recover. Writing $\hat\beta_m$ for the fitted coefficient of column $m$ and $\mathbf{w}_m = (\mathbf{I} - \mathbf{H}_{-m})\mathbf{b}_m$ for column $m$ orthogonalized against the others (where $\mathbf{b}_m$ is the $m$th column and $\mathbf{H}_{-m}$ the hat matrix of $\mathbf{B}_{-m}$),
+
+$$
+\Delta \mathrm{RSS}_{\text{drop } m} = \hat\beta_m^2 \, \|\mathbf{w}_m\|_2^2 .
+$$ {#eq-MARS-drop}
+
+Backward deletion removes, at each step, the surviving term with the smallest value of @eq-MARS-drop (the constant $h_0$ is never removed). The asymmetry with the forward pass is deliberate: the forward pass must add reflected pairs to keep the candidate set rich, but backward deletion removes terms one at a time, so it can keep a useful "up" hinge while discarding its unused mirror image.
 
 ## Choosing the model size {-}
 
@@ -160,6 +190,46 @@ In practice the effective parameter count is taken to be $M(\lambda) = r + cK$. 
 -   $c$: a per-knot penalty, typically $c = 3$, or $c = 2$ if the model is restricted to be additive (no interactions).
 
 We then choose the size $\lambda$ that minimizes $GCV(\lambda)$.
+
+### Why GCV approximates cross-validation {-}
+
+GCV is not an arbitrary penalty; it is a computable surrogate for leave-one-out cross-validation. For a linear smoother $\hat{\mathbf{y}} = \mathbf{H}\mathbf{y}$ with a fixed structure, the leave-one-out residual has the well known closed form
+
+$$
+y_i - \hat{f}^{(-i)}(x_i) = \frac{y_i - \hat{f}(x_i)}{1 - H_{ii}},
+$$ {#eq-MARS-loocv}
+
+so the leave-one-out error is $\frac{1}{n}\sum_i \big( (y_i - \hat{f}(x_i)) / (1 - H_{ii}) \big)^2$. GCV replaces each leverage $H_{ii}$ by the average leverage $\frac{1}{n}\,\mathrm{tr}(\mathbf{H}) = \mathrm{tr}(\mathbf{H})/n$, which turns @eq-MARS-loocv into
+
+$$
+\mathrm{GCV} = \frac{1}{n} \frac{\sum_{i=1}^n (y_i - \hat{f}(x_i))^2}{\big(1 - \mathrm{tr}(\mathbf{H})/n\big)^2}.
+$$ {#eq-MARS-gcv-derived}
+
+For a least squares fit with $r$ independent columns, $\mathrm{tr}(\mathbf{H}) = r$, which recovers the denominator $(1 - r/n)^2$. The numerator above is the mean residual sum of squares rather than the total; the version in the text drops the leading $1/n$, which does not change the minimizing $\lambda$. The one extra ingredient particular to MARS is that knot selection consumes degrees of freedom that the ordinary trace does not see: each of the $K$ knots was chosen by searching over the data, behaving empirically like roughly $c$ additional fitted parameters. Replacing $\mathrm{tr}(\mathbf{H}) = r$ by the inflated count $M(\lambda) = r + cK$ is exactly this correction, and it is why GCV here charges for the search and not only for the coefficients. Without it, GCV would systematically prefer models that are too large.
+
+::: {.callout-note}
+The substitution of the mean leverage $\mathrm{tr}(\mathbf{H})/n$ for the individual $H_{ii}$ is what makes GCV invariant to rotations of the response and removes the need to compute the full hat matrix. It is exact when all leverages are equal and a good approximation otherwise, which is the same justification used for GCV in smoothing splines and ridge regression.
+:::
+
+The leave-one-out shortcut @eq-MARS-loocv is the load-bearing step, so it is worth confirming numerically on a small linear fit (the same identity MARS relies on for any fixed structure).
+
+```{r mars-loocv-check}
+#| eval: false
+set.seed(1)
+n <- 40
+X <- cbind(1, matrix(rnorm(n * 3), n, 3))   # fixed design
+y <- X %*% c(1, 2, -1, 0.5) + rnorm(n)
+H <- X %*% solve(crossprod(X), t(X))         # hat matrix
+res <- as.numeric(y - H %*% y)               # ordinary residuals
+shortcut <- res / (1 - diag(H))              # via eq-MARS.qmd-loocv
+
+# brute-force leave-one-out residuals
+brute <- sapply(seq_len(n), function(i) {
+  fit <- lm.fit(X[-i, ], y[-i])
+  y[i] - sum(X[i, ] * fit$coefficients)
+})
+max(abs(shortcut - brute))                    # ~ 1e-13
+```
 
 
 ::: {.callout-tip}
@@ -186,6 +256,56 @@ evimp(mars_fit)
 ```
 
 In the summary, each row of the model is a hinge term such as `h(rm-6.43)`, which is the positive part $(rm - 6.43)_+$, a basis function that is zero until the average number of rooms `rm` exceeds 6.43 and then increases linearly. Reading the selected terms tells you directly where the curve bends for each predictor and which predictors interact, which is a large part of why MARS models are easy to interpret.
+
+## Theoretical properties {-}
+
+### The ANOVA decomposition {-}
+
+Because each term is a product of hinges in distinct variables, the fitted MARS model collects naturally into a functional ANOVA decomposition. Group the terms by the set of variables they involve:
+
+$$
+\hat{f}(X) = \beta_0 + \sum_{j} f_j(X_j) + \sum_{j<k} f_{jk}(X_j, X_k) + \sum_{j<k<l} f_{jkl}(X_j, X_k, X_l) + \cdots,
+$$ {#eq-MARS-anova}
+
+where $f_j$ collects all terms involving only $X_j$ (a one-dimensional piecewise-linear curve), $f_{jk}$ collects all terms that are products in exactly $X_j$ and $X_k$ (a two-dimensional surface), and so on. The `degree` hyperparameter caps the highest order present: `degree = 1` keeps only the main-effect terms $f_j$ and yields a purely additive model, `degree = 2` adds pairwise surfaces, and so forth. This decomposition is the formal reason MARS is interpretable: one can plot each $f_j$ and each $f_{jk}$ separately and read off where the response bends and which pairs of variables interact. It also explains the additive penalty choice $c = 2$, since restricting to @eq-MARS-anova at first order shrinks the candidate space the forward search explores.
+
+### Connections to other methods {-}
+
+MARS sits at the intersection of several methods covered elsewhere. With `degree = 1` and the hierarchy convention it is a forward-stagewise additive model in a linear-spline basis, closely related to the additive splines of @sec-gam, but with knots chosen adaptively rather than fixed. As noted earlier, with hinges replaced by step indicators and parents made non-reusable it reduces exactly to CART (@sec-regression-trees); MARS can be read as "CART with continuous, reusable basis functions," which is precisely what lets it represent smooth additive structure that a single tree fits poorly. The forward greedy search is the same matching-pursuit idea that underlies boosting (@sec-gradient-boosting): both repeatedly append the basis element most correlated with the current residual. The difference is that MARS refits all coefficients by least squares at every step (it is fully corrective) and then prunes, whereas gradient boosting takes small shrunken steps and never deletes, which is one reason boosting generalizes better while MARS stays more interpretable.
+
+### Bias, variance, and complexity {-}
+
+The forward to backward to GCV pipeline is a bias-variance control device. Increasing the number of terms (or `degree`) lowers approximation bias by enriching the spline basis but raises variance, since each adaptively chosen knot fits noise as well as signal; the inflated parameter count $r + cK$ in GCV is what arrests this before variance dominates. Adaptive knot selection means MARS can achieve low bias in regions where the true function bends sharply while spending few parameters in flat regions, which is its main statistical advantage over a fixed-knot basis.
+
+Computationally, one forward step costs $O(n\,p\,|M|)$: for each of the $|M|$ parents and $p$ variables, an $O(n)$ knot scan using the incremental updates of @eq-MARS-gain. Running the forward pass to $M_{\max}$ terms therefore costs roughly $O(n\,p\,M_{\max}^2)$, and the backward pass adds $O(M_{\max}^3)$ for the deletion sequence. Memory is dominated by the $n \times M_{\max}$ design matrix. The quadratic dependence on $M_{\max}$ is the practical limit on model size.
+
+### Failure modes {-}
+
+::: {.callout-warning title="When MARS breaks"}
+The greedy forward search is myopic: it can miss an interaction whose two parents are individually useless but jointly predictive (a pure interaction with no main effects), because neither parent will be selected first. The `fast.k` and parent-eligibility heuristics in `earth` trade accuracy for speed and can worsen this. MARS is also sensitive to correlated predictors, since it may pick an arbitrary one of several near-duplicate columns, making the selected variable set unstable across resamples. Hinge fits extrapolate linearly beyond the outermost knot, so predictions far outside the training range can grow without bound, and a knot placed near a sparse boundary region produces high-variance, sometimes wild, behavior there. Finally, GCV depends on the penalty $c$; if $c$ is set too small the model is consistently overfit, and on heteroscedastic or heavy-tailed noise the GCV size estimate degrades because it assumes constant-variance errors.
+:::
+
+## Practical guidance {-}
+
+### Hyperparameters and how to choose them {-}
+
+The few knobs that matter, in the `earth` parameterization, are:
+
+-   `degree` (maximum interaction order). Start with `degree = 1` (additive) as a baseline and try `degree = 2` to allow pairwise interactions. Going beyond `degree = 3` is rarely worthwhile and hurts interpretability and stability. Choose by cross-validated error rather than GCV when interaction order is in doubt, since GCV is itself only an approximation.
+
+-   `nk` (maximum number of terms in the forward pass, the $M_{\max}$ above). The default in `earth` is roughly $\min(200, \max(20, 2p)) + 1$. It must be large enough that the forward pass overshoots the eventual model; if the selected size equals `nk` the model is being truncated and `nk` should be raised.
+
+-   `penalty` (the GCV per-knot cost $c$). Defaults to $3$ for `degree > 1` and $2$ for additive models. Increase it to force a sparser, smoother model; setting it to $0$ disables the knot penalty and tends to overfit.
+
+-   `thresh` and `minspan`/`endspan`. `thresh` is the minimum relative RSS improvement required to keep adding terms (a forward-pass stopping rule). `minspan` controls the minimum number of observations between adjacent knots, which prevents knots from chasing individual points; the default uses Friedman's formula scaling with $\log n$. Increasing `minspan` regularizes against boundary instability.
+
+### Diagnostics {-}
+
+Use `plotmo()` to view the fitted $f_j$ and $f_{jk}$ surfaces from @eq-MARS-anova, `plot()` on the fitted object for residual and model-selection diagnostics (the GCV curve against model size should show a clear minimum, not a truncation at `nk`), and `evimp()` for variable importance as shown in the example. To assess stability under correlated predictors, refit on bootstrap resamples and check whether the selected variables and knot locations are consistent. Always sanity-check predictions near and beyond the data boundary, where linear extrapolation can mislead.
+
+::: {.callout-tip}
+Because the entire forward to backward search is fast, wrapping `earth` in an outer cross-validation loop (refitting the whole pipeline on each fold) is affordable and gives a more honest error estimate than GCV alone, especially for choosing `degree`. The `nfold` argument to `earth` does exactly this.
+:::
 
 ## Strengths and limitations {-}
 

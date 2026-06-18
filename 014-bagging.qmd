@@ -30,12 +30,66 @@ $$
 Averaging keeps the bias of the base model roughly the same while shrinking its variance. That is why we deliberately grow each tree large and unpruned: large trees have low bias but high variance, and averaging takes care of the variance.
 :::
 
+### The variance-reduction identity {#sec-bagging-variance}
+
+Fix a test point $x$ and treat each base prediction $\hat f^b(x)$ as a random variable, with the randomness coming from the training sample (and, for bootstrap bagging, from the resampling). Suppose the $B$ predictors are identically distributed, each with mean $\mu(x) = \mathbb{E}[\hat f^b(x)]$ and variance $\sigma^2(x) = \operatorname{Var}(\hat f^b(x))$, and with a common pairwise correlation
+$$
+\rho(x) \;=\; \operatorname{Corr}\!\big(\hat f^b(x),\,\hat f^{b'}(x)\big), \qquad b \neq b'.
+$$
+The bagged predictor is the average $\hat f_{bag}(x) = \tfrac{1}{B}\sum_b \hat f^b(x)$. Its mean is unchanged, $\mathbb{E}[\hat f_{bag}(x)] = \mu(x)$, so bagging does not alter bias under this model. For the variance, expand the variance of a sum:
+$$
+\operatorname{Var}\!\Big(\tfrac{1}{B}\textstyle\sum_{b=1}^B \hat f^b(x)\Big)
+= \frac{1}{B^2}\Big[\sum_{b=1}^B \operatorname{Var}(\hat f^b) + \sum_{b\neq b'}\operatorname{Cov}(\hat f^b,\hat f^{b'})\Big].
+$$
+There are $B$ variance terms each equal to $\sigma^2$, and $B(B-1)$ covariance terms each equal to $\rho\sigma^2$. Substituting,
+$$
+\operatorname{Var}(\hat f_{bag}(x)) = \frac{1}{B^2}\big[B\sigma^2 + B(B-1)\rho\sigma^2\big]
+= \rho\,\sigma^2 + \frac{1-\rho}{B}\,\sigma^2 .
+$$ {#eq-bagging-varbag}
+
+@eq-bagging-varbag is the central theoretical fact about bagging. Read it term by term:
+
+- As $B \to \infty$ the second term vanishes, leaving the floor $\rho\sigma^2$. You cannot average away the part of the variance that the trees share. This is exactly why decorrelating the trees, by sampling a subset of $m < p$ predictors at each split, lowers the floor and motivates random forests (@sec-random-forest).
+- If the predictors were independent ($\rho = 0$) the variance would collapse to $\sigma^2/B$, the classical $1/B$ rate for averaging i.i.d. quantities. Bootstrap samples overlap heavily, so in practice $\rho$ is well above zero and most of the gain is realized within the first one to two hundred trees.
+
+::: {.callout-note}
+The decomposition assumes a common correlation $\rho \ge 0$, which holds for bootstrap-trained trees because they share the same underlying data. Adding trees can only reduce $\operatorname{Var}(\hat f_{bag})$ toward the floor $\rho\sigma^2$; it never increases it. This is the precise sense in which "more trees never overfit" in bagging: $B$ is a smoothing parameter for the Monte Carlo average, not a model-complexity knob.
+:::
+
+### Why bagging helps unstable learners and can hurt stable ones {#sec-bagging-jensen}
+
+Variance reduction is not a free lunch for every base learner. Consider the idealized aggregated predictor that averages over the true sampling distribution of the data, $f_{A}(x) = \mathbb{E}_{\mathcal D}[\hat f(x;\mathcal D)]$, where $\mathcal D$ is a training set of size $n$. For squared-error loss with a fixed target $y$, expand around $f_A$:
+$$
+\mathbb{E}_{\mathcal D}\big[(y - \hat f(x;\mathcal D))^2\big]
+= (y - f_A(x))^2 + \mathbb{E}_{\mathcal D}\big[(\hat f(x;\mathcal D) - f_A(x))^2\big]
+\ge (y - f_A(x))^2 .
+$$ {#eq-bagging-jensen}
+
+The cross term cancels because $\mathbb{E}_{\mathcal D}[\hat f - f_A] = 0$, and the remaining term is the variance of the base learner. @eq-bagging-jensen says the aggregated predictor's squared error never exceeds the average squared error of the base learner, and the gap is precisely the variance. The more variable (unstable) the learner, the larger the improvement; for a perfectly stable learner the gap is zero and bagging does nothing. Bagging approximates $f_A$ by the bootstrap average, so it inherits this behavior: large gains for high-variance learners like deep trees, negligible or even slightly negative effects for low-variance learners like linear regression, because the bootstrap approximation introduces its own small error.
+
+::: {.callout-warning}
+For classification the squared-error argument does not transfer directly, and voting can in rare cases make a good classifier worse. If the base classifier is already better than random in a region, majority voting pushes its accuracy toward $1$ there; but in regions where it is worse than random, voting amplifies the error toward $0$. Bagging therefore helps "order-correct" classifiers and can degrade poor ones. In practice with reasonable trees this almost never bites, but it explains why bagging is not universally beneficial.
+:::
+
 
 ## The bootstrap: many data sets from one
 
 There is a practical problem with the recipe above. In reality we almost never have $B$ independent training sets; we have a single sample. The bootstrap solves this by manufacturing surrogate data sets from the one we have. To create a bootstrap sample, we draw observations from the original training set at random with replacement until we have a data set of the same size. Because we sample with replacement, some observations appear more than once and others not at all, so each bootstrap sample differs slightly from the original.
 
 We generate $B$ such bootstrap samples, fit a model on each, and average the fits. The bagged prediction $\hat{f}_{bag}(x)$ is the average of the fits from these $B$ bootstrap samples, exactly as in the formula above but with bootstrap samples standing in for genuine independent training sets.
+
+### How much of the data does a bootstrap sample see? {#sec-bagging-omission}
+
+The "roughly one third left out" figure quoted below is not a rule of thumb but an exact limit. A bootstrap sample is drawn by taking $n$ independent draws, each uniform over the $n$ training indices. The probability that a particular observation $i$ is missed on a single draw is $1 - \tfrac{1}{n}$, and since the draws are independent the probability it is missed on all $n$ draws is
+$$
+\Pr(i \notin \text{bootstrap sample}) = \Big(1 - \frac{1}{n}\Big)^{n}.
+$$ {#eq-bagging-oob}
+
+Using $\big(1 - \tfrac{1}{n}\big)^{n} = \exp\!\big[n\ln(1 - \tfrac1n)\big]$ and the expansion $\ln(1 - \tfrac1n) = -\tfrac1n - \tfrac{1}{2n^2} - \cdots$, the exponent tends to $-1$, so
+$$
+\lim_{n\to\infty}\Big(1 - \frac{1}{n}\Big)^{n} = e^{-1} \approx 0.368 .
+$$
+About $36.8\%$ of observations are out-of-bag for any given tree, and the complementary $\approx 63.2\%$ are in-bag (a fraction appearing more than once). The convergence is fast: even at $n = 20$ the omission probability is $0.358$. This single number underlies both the out-of-bag error estimate below and the effective training-set size each tree sees.
 
 
 ::: {.callout-note}
@@ -52,9 +106,30 @@ A pleasant side effect of the bootstrap is that we can estimate test error witho
 The procedure works as follows. For a given tree, the observations that were not selected into its bootstrap sample are called the out-of-bag (OOB) observations for that tree.^[On average, each bootstrap sample omits about one third of the original observations, so every observation is OOB for roughly a third of the trees, giving us plenty of trees to average over.] To get an OOB prediction for the $i$-th observation, we use only the trees in which that observation was OOB, and average their predictions. Comparing these OOB predictions against the true responses gives the OOB MSE for regression, or the OOB classification error for classification.
 
 
+Formally, let $O_i = \{\, b : i \notin \text{bootstrap sample } b \,\}$ be the set of trees for which observation $i$ is out-of-bag. The OOB prediction and the OOB error estimate are
+$$
+\hat f^{\,\text{oob}}(x_i) = \frac{1}{|O_i|}\sum_{b \in O_i} \hat f^b(x_i),
+\qquad
+\widehat{\text{Err}}_{\text{oob}} = \frac{1}{n}\sum_{i=1}^n L\big(y_i,\, \hat f^{\,\text{oob}}(x_i)\big),
+$$ {#eq-bagging-ooberr}
+with $L$ the squared error for regression or the $0/1$ loss (via the OOB majority vote) for classification. Because each $\hat f^{\,\text{oob}}(x_i)$ averages over only $|O_i| \approx 0.368\,B$ trees, the OOB estimate for a forest of $B$ trees behaves like a test estimate for a smaller forest of about $0.368\,B$ trees; it is therefore mildly pessimistic when $B$ is small, and the bias disappears as $B$ grows. The OOB estimate is nearly equivalent to leave-one-out cross-validation but costs nothing extra, since the trees are already fit. Its main limitation is that the $\hat f^{\,\text{oob}}(x_i)$ are not independent across $i$ (they share trees), so the OOB error has no simple standard error.
+
 ::: {.callout-important title="Key idea"}
 The OOB error is a valid estimate of the test error because each observation is predicted only by trees that never saw it during training. No data point judges a model that was trained on it.
 :::
+
+We can confirm the omission probability of @eq-bagging-oob and the resulting OOB share by direct simulation.
+
+```{r}
+set.seed(1)
+n <- 200
+B <- 2000
+in_bag <- replicate(B, sort(unique(sample(1:n, n, replace = TRUE))))
+oob_fraction <- mean(sapply(in_bag, function(s) (n - length(s)) / n))
+c(simulated = oob_fraction, theoretical = (1 - 1/n)^n, limit = exp(-1))
+```
+
+The simulated out-of-bag fraction matches $(1 - 1/n)^n$ and its limit $e^{-1}$.
 
 
 ## The cost: losing interpretability
@@ -67,6 +142,26 @@ To recover some interpretation, we track how much each predictor contributes to 
 - For classification, the total amount by which the Gini index is decreased by splits on a given predictor, averaged over all $B$ trees.
 
 A predictor that consistently produces large reductions in error across the ensemble is judged important, even though we can no longer point to a single tree to explain why. Variable importance is one of several tools for understanding otherwise opaque models, a topic taken up more broadly in the interpretable machine learning chapter (@sec-interpretable-machine-learning).
+
+### Two importance measures, made precise {#sec-bagging-importance}
+
+The `randomForest` output reports two distinct quantities, and it is worth stating each exactly because they can disagree.
+
+**Impurity (Gini / RSS) importance.** When a split on variable $j$ at node $t$ in tree $b$ reduces node impurity by $\Delta i_t$ (the drop in RSS for regression, or in the Gini index $G_t = \sum_k \hat p_{tk}(1 - \hat p_{tk})$ for classification), accumulate that decrease. The importance of $X_j$ is the total over all nodes that split on $j$, averaged over trees:
+$$
+\text{Imp}^{\text{imp}}(X_j) = \frac{1}{B}\sum_{b=1}^B \;\sum_{t \in T_b\,:\, v(t)=j} \Delta i_t ,
+$$ {#eq-bagging-impgini}
+where $v(t)$ is the variable used at node $t$. This is computed for free during training but is known to be biased toward variables with many possible split points (continuous or high-cardinality categorical predictors), because such variables get more chances to reduce impurity by chance.
+
+**Permutation (mean-decrease-in-accuracy) importance.** For each tree $b$, compute the OOB error $e_b$. Then randomly permute the values of $X_j$ among the OOB observations, breaking the association between $X_j$ and $y$ while preserving its marginal distribution, and recompute the OOB error $e_b^{(j)}$. The importance is the average increase in error:
+$$
+\text{Imp}^{\text{perm}}(X_j) = \frac{1}{B}\sum_{b=1}^B \big(e_b^{(j)} - e_b\big).
+$$ {#eq-bagging-impperm}
+This is model-agnostic in spirit and far less biased by cardinality, but it is more expensive (one extra OOB pass per variable) and is itself biased when predictors are strongly correlated: permuting one of two collinear predictors leaves the information available through the other, so both can look unimportant. Conditional permutation schemes address this.
+
+::: {.callout-warning}
+Do not over-interpret a single importance ranking. Impurity importance inflates high-cardinality variables, and permutation importance splits credit between correlated predictors. When two predictors carry the same signal, the ensemble may rely on either, so their individual importances can be unstable across reruns even when their joint contribution is large.
+:::
 
 ## Bagging in R
 
@@ -127,6 +222,18 @@ mean((yhat.bag - boston.test) ^ 2)
 ::: {.callout-tip}
 More trees rarely hurt accuracy and never cause overfitting in bagging, so the practical question is how many trees you can afford rather than how many you should risk. Fewer trees mainly trade away a little stability for faster computation.
 :::
+
+### Hyperparameters, cost, and diagnostics {#sec-bagging-howto}
+
+Bagging has few knobs, which is part of its appeal. The choices that matter:
+
+- **Number of trees $B$ (`ntree`).** Not a complexity parameter. By @eq-bagging-varbag the Monte Carlo part of the variance falls like $(1-\rho)\sigma^2/B$, so returns diminish quickly. Choose $B$ by watching the OOB error stabilize: `plot(bag.boston)` shows error against the number of trees, and you stop where the curve flattens. A few hundred trees is typical; use more only if you also need stable importance scores or OOB estimates.
+- **Tree size.** Grow deep, essentially unpruned trees (in `randomForest`, controlled by `nodesize`, default $5$ for regression and $1$ for classification, and `maxnodes`). Deep trees have low bias and high variance, and @eq-bagging-jensen says the high variance is exactly what averaging removes. Pruning would reintroduce bias that averaging cannot fix.
+- **`mtry`.** Setting `mtry = p` gives pure bagging; values $m < p$ give a random forest. Because the variance floor in @eq-bagging-varbag is $\rho\sigma^2$ and smaller $m$ lowers $\rho$, tuning `mtry` (by OOB error) is usually the single most effective adjustment, which is why random forests typically dominate plain bagging.
+
+Computationally, training is $O(B \cdot n \log n \cdot p)$ for the trees (each tree sorts features at each level), trivially parallel across the $B$ trees since they are independent. Memory scales with the total number of nodes stored. Prediction is $O(B \cdot \text{depth})$ per query.
+
+For diagnostics, prefer the OOB error of @eq-bagging-ooberr over a separate validation split when data is scarce, since it uses all observations. Compare the OOB MSE printed in the model summary against the held-out test MSE: large disagreement signals distribution shift between train and test, or too few trees making the OOB estimate noisy.
 
 
 ## From bagging to random forests

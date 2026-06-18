@@ -141,6 +141,40 @@ Read this formula slowly, because it is the engine of GP prediction. The conditi
 
 With this single tool, GP prediction becomes a matter of identifying which quantities play the roles of $\mathbf{v}$ (the data) and $\mathbf{v}_*$ (the value we want to predict).
 
+### Deriving the conditioning formula {#sec-gaussian-process-reg-conditioning-derivation}
+
+The conditional formula is so central that it is worth deriving rather than quoting. Write the joint precision (inverse covariance) matrix in block form and use the Schur complement. Let
+
+$$
+\mathbf{\Sigma} =
+\begin{pmatrix}
+\mathbf{\Sigma}_{vv} & \mathbf{\Sigma}_{v*} \\
+\mathbf{\Sigma}_{*v} & \mathbf{\Sigma}_{**}
+\end{pmatrix},
+\qquad
+\mathbf{S} \equiv \mathbf{\Sigma}_{**} - \mathbf{\Sigma}_{*v}\mathbf{\Sigma}_{vv}^{-1}\mathbf{\Sigma}_{v*}
+$$ {#eq-gaussian-process-reg-schur}
+
+where $\mathbf{S}$ is the Schur complement of the $\mathbf{\Sigma}_{vv}$ block. The block-matrix inverse is
+
+$$
+\mathbf{\Sigma}^{-1} =
+\begin{pmatrix}
+\mathbf{\Sigma}_{vv}^{-1} + \mathbf{\Sigma}_{vv}^{-1}\mathbf{\Sigma}_{v*}\mathbf{S}^{-1}\mathbf{\Sigma}_{*v}\mathbf{\Sigma}_{vv}^{-1} & -\mathbf{\Sigma}_{vv}^{-1}\mathbf{\Sigma}_{v*}\mathbf{S}^{-1} \\
+-\mathbf{S}^{-1}\mathbf{\Sigma}_{*v}\mathbf{\Sigma}_{vv}^{-1} & \mathbf{S}^{-1}
+\end{pmatrix}.
+$$ {#eq-gaussian-process-reg-blockinv}
+
+The conditional density $p(\mathbf{v}_* \mid \mathbf{v})$ is proportional to the joint density viewed as a function of $\mathbf{v}_*$ with $\mathbf{v}$ held fixed. Expanding the quadratic form $-\tfrac{1}{2}(\cdot)^T\mathbf{\Sigma}^{-1}(\cdot)$ and collecting the terms in $\mathbf{v}_*$, the coefficient of the quadratic term is $\mathbf{S}^{-1}$ (the lower-right block of @eq-gaussian-process-reg-blockinv), so the conditional covariance is $\mathbf{S}$. Completing the square in $\mathbf{v}_*$ identifies the conditional mean as the point where the linear term vanishes,
+
+$$
+E[\mathbf{v}_* \mid \mathbf{v}] = \mathbf{\mu}_* + \mathbf{\Sigma}_{*v}\mathbf{\Sigma}_{vv}^{-1}(\mathbf{v} - \mathbf{\mu}),
+\qquad
+\operatorname{cov}[\mathbf{v}_* \mid \mathbf{v}] = \mathbf{\Sigma}_{**} - \mathbf{\Sigma}_{*v}\mathbf{\Sigma}_{vv}^{-1}\mathbf{\Sigma}_{v*}.
+$$ {#eq-gaussian-process-reg-condderived}
+
+Matching $\mathbf{\Sigma}_{*v} = \mathbf{\Sigma}_*^T$ recovers the formula stated above. Two facts fall out immediately. The conditional covariance does not depend on the observed value $\mathbf{v}$, only on the covariance structure, which is special to the Gaussian case. And because $\mathbf{S}$ is a Schur complement of a positive-definite matrix it is itself positive semi-definite, so $\mathbf{\Sigma}_{**} - \mathbf{\Sigma}_{*v}\mathbf{\Sigma}_{vv}^{-1}\mathbf{\Sigma}_{v*} \preceq \mathbf{\Sigma}_{**}$: conditioning never increases variance, confirming the claim in the callout above.
+
 ## Optimal Linear Prediction
 
 We want to predict $Y(x_0)$, the latent value at some arbitrary input $x_0$, given the data $\mathbf{z} \equiv (z_1, \dots, z_n)^T$. To keep things concrete, assume the mean function $\mu(x)$ is known for all $x$ (for instance, a constant).
@@ -155,6 +189,31 @@ $$
 $$
 
 A standard result is that the optimal linear predictor (under squared error) is also the conditional expectation $E(Y(x_0) |\mathbf{z})$. That is good news, because it means we do not have to solve a separate optimization problem: we can read the answer straight off the conditional distribution $Y(x_0) |\mathbf{z}$, using the multivariate-normal formula from the previous section.
+
+### Why the optimal weights are the conditioning weights {#sec-gaussian-process-reg-optimal-weights}
+
+It is worth seeing directly that minimizing the mean squared prediction error reproduces the conditioning formula, since this is what justifies calling the conditional mean "optimal." Take the mean function known and center the variables ($\mu_0 = 0$, $\mathbf{\mu} = \mathbf{0}$) without loss of generality, so the predictor is $\hat{Y}(x_0) = \mathbf{w}_0^T \mathbf{z}$. The objective is
+
+$$
+\text{MSPE}(\mathbf{w}_0) = E\!\left[(Y(x_0) - \mathbf{w}_0^T\mathbf{z})^2\right]
+= c_{0,0} - 2\,\mathbf{w}_0^T \mathbf{c}_0 + \mathbf{w}_0^T \mathbf{C}_z \mathbf{w}_0,
+$$ {#eq-gaussian-process-reg-mspe-quad}
+
+using $E[Y(x_0)^2] = c_{0,0}$, $E[Y(x_0)\mathbf{z}] = \mathbf{c}_0$, and $E[\mathbf{z}\mathbf{z}^T] = \mathbf{C}_z$. This is a strictly convex quadratic in $\mathbf{w}_0$ because $\mathbf{C}_z$ is positive definite. Setting the gradient to zero,
+
+$$
+\nabla_{\mathbf{w}_0}\,\text{MSPE} = -2\,\mathbf{c}_0 + 2\,\mathbf{C}_z \mathbf{w}_0 = \mathbf{0}
+\;\Longrightarrow\;
+\mathbf{w}_0 = \mathbf{C}_z^{-1}\mathbf{c}_0,
+$$ {#eq-gaussian-process-reg-normal-eq}
+
+which is exactly the weight vector read off the conditional mean (this is the linear projection theorem; @eq-gaussian-process-reg-normal-eq are the normal equations). Note that this derivation uses only second moments, not Gaussianity: $\mathbf{w}_0 = \mathbf{C}_z^{-1}\mathbf{c}_0$ is the best *linear* predictor for any process with these covariances. Gaussianity is what upgrades it to the best predictor among all functions of $\mathbf{z}$, since under joint normality the conditional expectation is linear and the two coincide. Substituting the optimal weights back into @eq-gaussian-process-reg-mspe-quad gives the minimized error
+
+$$
+\text{MSPE}(\mathbf{w}_0^\star) = c_{0,0} - \mathbf{c}_0^T \mathbf{C}_z^{-1}\mathbf{c}_0,
+$$ {#eq-gaussian-process-reg-mspe-min}
+
+which is identical to the prediction variance $\sigma^2_{Y_0}$ derived from conditioning. The prediction variance is therefore not a separate quantity: it *is* the achieved mean squared error of the optimal predictor.
 
 To apply that formula we first write the data model in vector form,
 
@@ -323,6 +382,51 @@ To get valid covariance functions in space and time, several families are common
 
 -   The Gaussian (squared-exponential) class, which produces very smooth functions.
 
+### Standard covariance functions, explicitly {#sec-gaussian-process-reg-cov-explicit}
+
+It helps to have the common stationary families written out, with $r = \|x - x'\|$ the distance, $\sigma^2$ the marginal variance (signal scale), and $\ell > 0$ a length-scale (the same role as the range parameter $\theta$ above).
+
+The squared-exponential (Gaussian, radial basis) kernel is
+
+$$
+c_{\text{SE}}(r) = \sigma^2 \exp\!\left(-\frac{r^2}{2\ell^2}\right).
+$$ {#eq-gaussian-process-reg-se}
+
+It is infinitely differentiable, so sample paths are smooth ($C^\infty$). This smoothness is often unrealistically strong and makes the resulting $\mathbf{C}_z$ severely ill-conditioned, which is why a small "nugget" (a tiny $\sigma_\epsilon^2$ added to the diagonal) is almost always needed numerically even for deterministic data.
+
+The Matern family interpolates between rough and smooth through an order parameter $\nu > 0$:
+
+$$
+c_{\nu}(r) = \sigma^2 \frac{2^{1-\nu}}{\Gamma(\nu)}\left(\frac{\sqrt{2\nu}\,r}{\ell}\right)^{\!\nu} K_\nu\!\left(\frac{\sqrt{2\nu}\,r}{\ell}\right),
+$$ {#eq-gaussian-process-reg-matern}
+
+where $K_\nu$ is the modified Bessel function of the second kind. The key structural fact is that a Matern-$\nu$ process is $\lceil \nu \rceil - 1$ times mean-square differentiable, so $\nu$ directly controls path smoothness. Half-integer $\nu$ gives closed forms that avoid the Bessel function: $\nu = 1/2$ recovers the exponential kernel $\sigma^2 e^{-r/\ell}$ (Ornstein-Uhlenbeck, continuous but nowhere differentiable paths); $\nu = 3/2$ gives $\sigma^2\big(1 + \tfrac{\sqrt{3}r}{\ell}\big)e^{-\sqrt{3}r/\ell}$; and $\nu \to \infty$ recovers the squared-exponential @eq-gaussian-process-reg-se. In spatial work $\nu = 3/2$ or $\nu = 5/2$ is a common, robust default because it avoids both the excessive smoothness of SE and the roughness of exponential.
+
+The power-exponential family $c(r) = \sigma^2 \exp\{-(r/\theta)^p\}$ with $0 < p \le 2$ spans exponential ($p=1$) to Gaussian ($p=2$); the `GPfit` package used below fits exactly this form.
+
+For multidimensional inputs with possibly different scales per coordinate, one uses an anisotropic (automatic relevance determination) version, for example
+
+$$
+c_{\text{SE-ARD}}(\mathbf{x},\mathbf{x}') = \sigma^2 \exp\!\left(-\tfrac{1}{2}\sum_{d=1}^{D}\frac{(x_d - x_d')^2}{\ell_d^2}\right),
+$$ {#eq-gaussian-process-reg-ard}
+
+where a large estimated $\ell_d$ means input $d$ is nearly irrelevant (its variations barely change the correlation), so the fitted length-scales double as a soft feature-selection diagnostic.
+
+::: {.callout-note title="Positive definiteness, concretely"}
+A function $c$ is a valid covariance if and only if the matrix $[c(x_i,x_j)]$ is positive semi-definite for every finite set of inputs. By Bochner's theorem, a continuous stationary $c$ is positive definite exactly when it is the Fourier transform of a finite nonnegative measure (its spectral density). This is why you cannot freely invent covariance functions: the families above are precisely the ones with a valid spectral density.
+:::
+
+### The function-space prior and sampling from it {#sec-gaussian-process-reg-function-space}
+
+The conditioning view treats the GP as a tool for computing the predictor. The complementary function-space view makes the Bayesian reading explicit and is what underlies the "distribution over functions" slogan. Before seeing data, the prior over the latent function evaluated at any finite set of inputs $X = (x_1,\dots,x_m)$ is
+
+$$
+\mathbf{f} = (f(x_1),\dots,f(x_m))^T \sim N(\mathbf{m}, \mathbf{K}),
+\qquad K_{ij} = c(x_i, x_j).
+$$ {#eq-gaussian-process-reg-prior}
+
+A draw from this multivariate normal is a sampled function (evaluated on the grid $X$), and drawing several shows the prior's typical wiggliness, set entirely by $c$. To draw such samples, factor $\mathbf{K} = \mathbf{L}\mathbf{L}^T$ (Cholesky) and set $\mathbf{f} = \mathbf{m} + \mathbf{L}\mathbf{u}$ with $\mathbf{u}\sim N(\mathbf{0},\mathbf{I})$; then $\operatorname{cov}(\mathbf{f}) = \mathbf{L}\mathbf{L}^T = \mathbf{K}$ as required. Conditioning @eq-gaussian-process-reg-prior on the noisy observations via @eq-gaussian-process-reg-condderived turns these prior draws into posterior draws, which all pass near the data and fan out in the gaps, the function-space picture of the prediction band.
+
 Once a family is chosen, the parameters of the covariance function (and of the mean function) have to be estimated. There are two main routes:
 
 1.  From a frequentist perspective, estimate the parameters with REML or MLE, exactly as in [Linear Mixed Models](https://bookdown.org/mike/data_analysis/linear-mixed-models.html), and predict the random process with BLUP.
@@ -331,6 +435,32 @@ Once a family is chosen, the parameters of the covariance function (and of the m
 
 ::: {.callout-warning}
 Whichever route you take, large numbers of data locations make estimation expensive, because of the same high-dimensional covariance matrices $\mathbf{C}_z, \mathbf{C}_y$ (and their inverses) that complicate prediction. Scaling GPs to large data sets is an active research area.
+:::
+
+### The marginal likelihood and how to optimize it {#sec-gaussian-process-reg-marginal-likelihood}
+
+The standard frequentist (equivalently, empirical Bayes type-II maximum likelihood) route estimates the covariance parameters $\mathbf{\theta}$ by maximizing the marginal likelihood, the probability of the observed data with the latent function integrated out. Because $\mathbf{z} = \mathbf{Y} + \mathbf{\epsilon}$ is a sum of independent Gaussians, that integral is closed form: $\mathbf{z} \sim N(\mathbf{\mu}, \mathbf{C}_z)$ with $\mathbf{C}_z = \mathbf{C}_y(\mathbf{\theta}) + \sigma_\epsilon^2 \mathbf{I}$. Taking the mean known and centering, the log marginal likelihood is
+
+$$
+\log p(\mathbf{z}\mid\mathbf{\theta})
+= -\tfrac{1}{2}\,\mathbf{z}^T \mathbf{C}_z^{-1}\mathbf{z}
+\;-\; \tfrac{1}{2}\log|\mathbf{C}_z|
+\;-\; \tfrac{n}{2}\log 2\pi .
+$$ {#eq-gaussian-process-reg-logml}
+
+The three terms have a clean reading. The data-fit term $-\tfrac{1}{2}\mathbf{z}^T\mathbf{C}_z^{-1}\mathbf{z}$ rewards covariance settings that explain the data; the complexity penalty $-\tfrac{1}{2}\log|\mathbf{C}_z|$ punishes overly flexible (large-determinant) covariances; and the constant fixes the normalization. The trade-off between these two is exactly Occam's razor, and it is what lets the marginal likelihood select length-scales and noise levels without a separate validation set.
+
+The gradient needed for optimization has a compact form. Writing $\mathbf{\alpha} = \mathbf{C}_z^{-1}\mathbf{z}$ and using $\partial \log|\mathbf{C}_z| = \operatorname{tr}(\mathbf{C}_z^{-1}\partial\mathbf{C}_z)$ together with $\partial \mathbf{C}_z^{-1} = -\mathbf{C}_z^{-1}(\partial\mathbf{C}_z)\mathbf{C}_z^{-1}$,
+
+$$
+\frac{\partial \log p(\mathbf{z}\mid\mathbf{\theta})}{\partial \theta_j}
+= \tfrac{1}{2}\,\operatorname{tr}\!\left[\left(\mathbf{\alpha}\mathbf{\alpha}^T - \mathbf{C}_z^{-1}\right)\frac{\partial \mathbf{C}_z}{\partial \theta_j}\right].
+$$ {#eq-gaussian-process-reg-mlgrad}
+
+These are plugged into a gradient-based optimizer (typically L-BFGS). One parameter admits a shortcut: the marginal variance $\sigma^2$ enters $\mathbf{C}_z$ as a multiplicative scale, so setting its derivative to zero gives the closed-form profile estimate $\hat{\sigma}^2 = \tfrac{1}{n}\mathbf{z}^T \mathbf{R}^{-1}\mathbf{z}$ where $\mathbf{R}$ is the correlation matrix (covariance with $\sigma^2$ factored out), reducing the dimension of the numerical search by one. REML differs from this by also integrating out the regression coefficients $\mathbf{\beta}$ of a parametric mean, which removes the downward bias in the variance and range estimates that plain MLE suffers in small samples, the same reason REML is preferred in linear mixed models.
+
+::: {.callout-warning title="Failure mode: a nonconvex surface"}
+@eq-gaussian-process-reg-logml is generally not concave in $\mathbf{\theta}$ and can have multiple local optima with genuinely different interpretations, for example a "long length-scale, large noise" basin (the signal is a slow trend, the rest is noise) versus a "short length-scale, small noise" basin (the signal is wiggly and nearly noiseless). Restart the optimizer from several initializations and inspect which basin you land in rather than trusting a single run.
 :::
 
 
@@ -342,6 +472,22 @@ A few connections and special cases are worth keeping in mind:
 
 -   We can also allow non-Gaussian observations conditioned on the GP, exactly as in a [GLMM](https://bookdown.org/mike/data_analysis/nonlinear-and-generalized-linear-mixed-models.html).
 
+### Connection to kernel ridge regression and RKHS {#sec-gaussian-process-reg-krr}
+
+The GP posterior mean is not merely analogous to a kernel method, it is one. With a zero mean and homoscedastic noise $\mathbf{C}_z = \mathbf{K} + \sigma_\epsilon^2 \mathbf{I}$ (writing $\mathbf{K}$ for the kernel matrix of the latent process), the predictor @eq-gaussian-process-reg-condderived becomes
+
+$$
+\hat{Y}(x_0) = \mathbf{k}_0^T (\mathbf{K} + \sigma_\epsilon^2 \mathbf{I})^{-1}\mathbf{z}
+= \sum_{i=1}^n \alpha_i\, c(x_0, x_i),
+\qquad \mathbf{\alpha} = (\mathbf{K} + \sigma_\epsilon^2\mathbf{I})^{-1}\mathbf{z}.
+$$ {#eq-gaussian-process-reg-krr}
+
+This is exactly the kernel ridge regression solution, where $\sigma_\epsilon^2$ plays the role of the ridge regularization parameter $\lambda$. The representer theorem explains why the predictor is a finite sum over training points despite living in an infinite-dimensional function space: the minimizer of the regularized loss $\sum_i (z_i - f(x_i))^2 + \lambda\|f\|_{\mathcal H}^2$ over the reproducing kernel Hilbert space $\mathcal H$ with kernel $c$ always has the form @eq-gaussian-process-reg-krr. The GP adds what kernel ridge regression by itself does not provide: the predictive variance $\sigma^2_{Y_0}$ and a principled (marginal-likelihood) way to choose $\lambda = \sigma_\epsilon^2$ and the kernel parameters. There is also a weight-space view: if $c(x,x') = \phi(x)^T\phi(x')$ for a (possibly infinite) feature map $\phi$, then the GP is identical to Bayesian linear regression $f(x) = \phi(x)^T\mathbf{w}$ with prior $\mathbf{w}\sim N(\mathbf{0},\mathbf{I})$, and @eq-gaussian-process-reg-krr is the "kernel trick" applied to that regression.
+
+### Theoretical properties and failure modes {#sec-gaussian-process-reg-theory}
+
+A few properties orient the method among its competitors. The posterior mean is the conditional expectation, hence unbiased for the latent value under the assumed model, but it shrinks toward the prior mean away from data, so its frequentist bias is nonzero whenever the true function leaves the prior's typical set; the price of the honest variance is this prior-driven shrinkage. Posterior contraction results (van der Vaart and van Zanten) show that with a well-chosen kernel the posterior concentrates on the truth at near-minimax rates governed by the match between the kernel's smoothness ($\nu$ for Matern) and the true function's smoothness; a kernel that is too smooth oversmooths and a kernel that is too rough fails to borrow strength, both degrading the rate. Computationally, training costs $O(n^3)$ for the factorization and $O(n^2)$ memory for $\mathbf{C}_z$, and each prediction costs $O(n)$ for the mean and $O(n^2)$ for the variance after factorization. The dominant failure modes are: (i) numerical, when a too-smooth kernel or near-duplicate inputs make $\mathbf{C}_z$ ill-conditioned, cured by a nugget; (ii) misspecification, when stationarity is false (e.g. the function is smooth in one region and rough in another), which a single global length-scale cannot represent; and (iii) scale, the cubic cost, which motivates sparse/inducing-point approximations (Nystrom, FITC, variational SVGP) and structure-exploiting methods (Kronecker, KISS-GP) for large $n$.
+
 
 ::: {.callout-tip title="When to use this"}
 Reach for GP regression when you want smooth nonparametric predictions *with* honest uncertainty estimates, when your data set is small to moderate in size (so the $n^3$ cost is bearable), and when you have a sensible notion of which inputs should behave similarly. The design and analysis of computer experiments, where each "observation" is an expensive simulation run, is a classic fit.
@@ -349,6 +495,47 @@ Reach for GP regression when you want smooth nonparametric predictions *with* ho
 
 
 With the theory assembled, we turn to a worked example.
+
+### Computing the predictor stably {#sec-gaussian-process-reg-cholesky}
+
+In practice one never forms $\mathbf{C}_z^{-1}$ explicitly. The numerically stable recipe (Rasmussen and Williams, Algorithm 2.1) factors $\mathbf{C}_z = \mathbf{L}\mathbf{L}^T$ once with the Cholesky decomposition, then solves triangular systems:
+
+$$
+\mathbf{\alpha} = \mathbf{L}^T \backslash (\mathbf{L} \backslash \mathbf{z}),
+\qquad
+\hat{Y}(x_0) = \mathbf{c}_0^T \mathbf{\alpha},
+\qquad
+\sigma^2_{Y_0} = c_{0,0} - \mathbf{w}^T\mathbf{w}\ \text{with}\ \mathbf{w} = \mathbf{L}\backslash\mathbf{c}_0,
+$$ {#eq-gaussian-process-reg-cholpred}
+
+where $\backslash$ denotes triangular solve. This is cheaper and far better conditioned than inversion, and it yields the log-determinant in @eq-gaussian-process-reg-logml for free as $\log|\mathbf{C}_z| = 2\sum_i \log L_{ii}$. If the Cholesky factorization fails, the cure is to add a small jitter (nugget) $\eta\mathbf{I}$ with $\eta$ a few orders of magnitude below the signal variance.
+
+::: {.callout-tip title="Verifying the formula numerically"}
+The following short simulation confirms that the optimal-linear-predictor weights from @eq-gaussian-process-reg-normal-eq reproduce the Cholesky-based predictor and that both match a brute-force least-squares solve, on a squared-exponential kernel.
+
+```{r}
+set.seed(42)
+n <- 12
+xs <- sort(runif(n))
+x0 <- 0.5
+se <- function(a, b, l = 0.2, s2 = 1) s2 * exp(-outer(a, b, "-")^2 / (2 * l^2))
+sig2 <- 0.01                            # observation noise
+Cz <- se(xs, xs) + sig2 * diag(n)       # observation covariance
+c0 <- as.numeric(se(x0, xs))            # cov(target, data)
+z  <- sin(2 * pi * xs) + rnorm(n, sd = sqrt(sig2))
+
+# (1) direct weights w0 = Cz^{-1} c0
+yhat_direct <- as.numeric(crossprod(solve(Cz, c0), z))
+# (2) Cholesky recipe
+L <- chol(Cz)                           # upper-triangular: Cz = t(L) %*% L
+alpha <- backsolve(L, forwardsolve(t(L), z))
+yhat_chol <- sum(c0 * alpha)
+c(direct = yhat_direct, cholesky = yhat_chol,
+  diff = abs(yhat_direct - yhat_chol))
+```
+
+The two predictors agree to machine precision, confirming @eq-gaussian-process-reg-cholpred is just a stable rearrangement of @eq-gaussian-process-reg-normal-eq.
+:::
 
 ## Application
 

@@ -127,13 +127,41 @@ $$
 q_\pi(s, a) = \sum_{s', r} p(s', r \mid s, a)\Big[r + \gamma \sum_{a'} \pi(a' \mid s')\, q_\pi(s', a')\Big].
 $$
 
+### Deriving the Bellman expectation equation
+
+The equation follows from the return recursion and the law of total expectation, with no extra assumptions beyond the Markov property. Starting from the definition and inserting $G_t = R_{t+1} + \gamma G_{t+1}$,
+
+$$
+v_\pi(s) = \mathbb{E}_\pi[G_t \mid S_t = s] = \mathbb{E}_\pi[R_{t+1} + \gamma\, G_{t+1} \mid S_t = s].
+$$
+
+Condition on the first action $A_t = a$ and the resulting transition $(S_{t+1}, R_{t+1}) = (s', r)$, which under $\pi$ and $p$ occur with probability $\pi(a \mid s)\, p(s', r \mid s, a)$:
+
+$$
+v_\pi(s) = \sum_a \pi(a \mid s) \sum_{s', r} p(s', r \mid s, a)\, \mathbb{E}_\pi[\,r + \gamma\, G_{t+1} \mid S_{t+1} = s'\,].
+$$
+
+The reward $r$ is already fixed by the conditioning, so it passes through the inner expectation. For the second term, the Markov property makes $G_{t+1}$ depend on the history only through $S_{t+1}$, and the agent continues to follow $\pi$, so $\mathbb{E}_\pi[G_{t+1} \mid S_{t+1} = s'] = v_\pi(s')$. Substituting,
+
+$$
+v_\pi(s) = \sum_a \pi(a \mid s) \sum_{s', r} p(s', r \mid s, a)\big[r + \gamma\, v_\pi(s')\big],
+$$
+
+which is the Bellman expectation equation. The action-value form is obtained identically by conditioning on $A_t = a$ before averaging, and the two are tied by $v_\pi(s) = \sum_a \pi(a \mid s)\, q_\pi(s, a)$ and $q_\pi(s,a) = \sum_{s',r} p(s',r\mid s,a)[r + \gamma\, v_\pi(s')]$.
+
 For a finite MDP with $|\mathcal{S}|$ states, the Bellman expectation equation for $v_\pi$ is a system of $|\mathcal{S}|$ linear equations in $|\mathcal{S}|$ unknowns. In matrix form, with $\mathbf{v}_\pi$ the vector of state values, $\mathbf{r}_\pi$ the vector of expected immediate rewards under $\pi$, and $\mathbf{P}_\pi$ the state-transition matrix induced by $\pi$,
 
 $$
 \mathbf{v}_\pi = \mathbf{r}_\pi + \gamma\, \mathbf{P}_\pi \mathbf{v}_\pi \quad\Longrightarrow\quad \mathbf{v}_\pi = (\mathbf{I} - \gamma \mathbf{P}_\pi)^{-1}\, \mathbf{r}_\pi.
 $$
 
-So evaluating a fixed policy is, in principle, a single matrix inversion. The inverse exists whenever $\gamma < 1$, since then the spectral radius of $\gamma \mathbf{P}_\pi$ is below 1.
+So evaluating a fixed policy is, in principle, a single matrix inversion. The inverse exists whenever $\gamma < 1$. To see why, note that $\mathbf{P}_\pi$ is a stochastic matrix (its rows are probability distributions, so they sum to 1), which forces its spectral radius to be exactly $\rho(\mathbf{P}_\pi) = 1$: the all-ones vector $\mathbf{1}$ satisfies $\mathbf{P}_\pi \mathbf{1} = \mathbf{1}$, and no eigenvalue can exceed 1 in modulus because $\|\mathbf{P}_\pi\|_\infty = 1$. Hence $\rho(\gamma \mathbf{P}_\pi) = \gamma < 1$, the eigenvalues of $\mathbf{I} - \gamma \mathbf{P}_\pi$ are $1 - \gamma \lambda_i \neq 0$, and the inverse exists. Expanding it as a Neumann series gives a probabilistic reading of policy evaluation:
+
+$$
+\mathbf{v}_\pi = (\mathbf{I} - \gamma \mathbf{P}_\pi)^{-1}\, \mathbf{r}_\pi = \sum_{k=0}^{\infty} \gamma^k \mathbf{P}_\pi^k\, \mathbf{r}_\pi.
+$$
+
+The term $\mathbf{P}_\pi^k \mathbf{r}_\pi$ is the vector of expected rewards $k$ steps ahead under $\pi$, so the value is exactly the discounted sum of future expected rewards, recovering the definition of the return from the linear algebra.
 
 ## The Bellman optimality equations
 
@@ -177,6 +205,36 @@ $$
 
 Each sweep applies the right-hand side using the current estimate $v_k$ to produce $v_{k+1}$. Because the Bellman expectation operator is a $\gamma$-contraction in the max-norm, the iterates converge to $v_\pi$ regardless of the starting values.
 
+### Why the backups converge: the contraction property
+
+Both DP operators are contraction mappings, and this single fact delivers existence, uniqueness, and a convergence rate at once. Define the Bellman *optimality* operator $T$ acting on a value vector $v$ by
+
+$$
+(Tv)(s) = \max_a \sum_{s', r} p(s', r \mid s, a)\big[r + \gamma\, v(s')\big].
+$$
+
+We claim $T$ is a $\gamma$-contraction in the max-norm $\|v\|_\infty = \max_s |v(s)|$, that is, $\|Tu - Tv\|_\infty \le \gamma \|u - v\|_\infty$ for any $u, v$. Fix a state $s$ and let $a^*$ be the action attaining the max in $(Tu)(s)$. Then
+
+$$
+(Tu)(s) - (Tv)(s) \le \sum_{s'} P(s' \mid s, a^*)\big[r + \gamma\, u(s')\big] - \sum_{s'} P(s' \mid s, a^*)\big[r + \gamma\, v(s')\big],
+$$
+
+because the second term is the max over actions evaluated at $v$, which is at least as large as the same expression at the suboptimal $a^*$. The immediate rewards cancel, leaving
+
+$$
+(Tu)(s) - (Tv)(s) \le \gamma \sum_{s'} P(s' \mid s, a^*)\big[u(s') - v(s')\big] \le \gamma \sum_{s'} P(s' \mid s, a^*)\, \|u - v\|_\infty = \gamma\, \|u - v\|_\infty,
+$$
+
+using that transition probabilities sum to 1. By symmetry the same bound holds for $(Tv)(s) - (Tu)(s)$, so $|(Tu)(s) - (Tv)(s)| \le \gamma \|u - v\|_\infty$ for every $s$, and taking the max over $s$ proves the claim. The Bellman expectation operator $T_\pi$ is a $\gamma$-contraction by the same argument with the $\max_a$ replaced by the policy average $\sum_a \pi(a \mid s)$, which is also a convex combination and therefore non-expansive.
+
+By the Banach fixed-point theorem, a $\gamma$-contraction on the complete metric space $(\mathbb{R}^{|\mathcal{S}|}, \|\cdot\|_\infty)$ has a unique fixed point, and iterating from any starting vector converges to it geometrically. The fixed point of $T$ is $v_*$ (it is the unique solution of the Bellman optimality equation) and the fixed point of $T_\pi$ is $v_\pi$. The error contracts by a factor $\gamma$ each sweep,
+
+$$
+\|v_k - v_*\|_\infty \le \gamma^k\, \|v_0 - v_*\|_\infty,
+$$ {#eq-rl-foundations-vi-rate}
+
+so value iteration converges *linearly* (geometrically) with rate $\gamma$. Reaching accuracy $\epsilon$ takes $O\!\big(\log(1/\epsilon) / \log(1/\gamma)\big)$ sweeps, which grows as $\gamma \to 1$: a $\gamma$ near 1 is far-sighted but slow, exactly the trade-off flagged later for the discount factor. A standard stopping rule uses the Bellman residual: if $\|v_{k+1} - v_k\|_\infty < \epsilon (1 - \gamma) / \gamma$ then $\|v_{k+1} - v_*\|_\infty < \epsilon$, which is how the tolerance check in the code below is justified.
+
 *Policy improvement* takes a value function and produces a greedy policy that is provably at least as good:
 
 $$
@@ -184,6 +242,28 @@ $$
 $$
 
 The *policy improvement theorem* guarantees $v_{\pi'}(s) \ge v_\pi(s)$ for every state, with strict improvement somewhere unless $\pi$ is already optimal.
+
+### Deriving the policy improvement theorem
+
+The greedy choice of $\pi'$ means that acting greedily for one step and then reverting to $\pi$ is at least as good as following $\pi$ from the start:
+
+$$
+q_\pi(s, \pi'(s)) = \max_a q_\pi(s, a) \ge q_\pi(s, \pi(s)) = v_\pi(s) \quad \text{for all } s.
+$$ {#eq-rl-foundations-pit}
+
+The theorem upgrades this one-step inequality to a statement about full returns. Starting from @eq-rl-foundations-pit and unrolling the definition of $q_\pi$ one step at a time, always following $\pi'$ and bounding the tail by the same inequality,
+
+$$
+\begin{aligned}
+v_\pi(s) &\le q_\pi(s, \pi'(s)) = \mathbb{E}\big[R_{t+1} + \gamma\, v_\pi(S_{t+1}) \mid S_t = s,\, A_t = \pi'(s)\big] \\
+&\le \mathbb{E}_{\pi'}\big[R_{t+1} + \gamma\, q_\pi(S_{t+1}, \pi'(S_{t+1})) \mid S_t = s\big] \\
+&\le \mathbb{E}_{\pi'}\big[R_{t+1} + \gamma R_{t+2} + \gamma^2 v_\pi(S_{t+2}) \mid S_t = s\big] \\
+&\;\;\vdots \\
+&\le \mathbb{E}_{\pi'}\big[R_{t+1} + \gamma R_{t+2} + \gamma^2 R_{t+3} + \cdots \mid S_t = s\big] = v_{\pi'}(s).
+\end{aligned}
+$$
+
+Each step replaces a trailing $v_\pi$ by $q_\pi(\cdot, \pi'(\cdot)) \ge v_\pi$ and peels off one more real reward generated under $\pi'$. The discount $\gamma < 1$ makes the residual term $\gamma^k v_\pi(S_{t+k})$ vanish, so the limit is $v_{\pi'}(s)$. Thus $v_{\pi'} \ge v_\pi$ everywhere. If equality holds at every state then $v_\pi(s) = \max_a q_\pi(s, a)$ for all $s$, which is precisely the Bellman optimality equation, so $\pi$ is already optimal. Otherwise the improvement is strict somewhere, and because there are only finitely many deterministic policies and each iteration of policy iteration strictly improves until optimality, the algorithm terminates at $\pi_*$ in a finite number of steps.
 
 Two algorithms combine these operations differently. *Policy iteration* alternates full policy evaluation with policy improvement until the policy stops changing; because the number of deterministic policies is finite and each step strictly improves, it converges to $\pi_*$ in finitely many iterations. *Value iteration* skips waiting for full evaluation and instead applies the Bellman *optimality* update directly:
 
@@ -305,6 +385,28 @@ greedy_policy <- function(V, trans, rew, gamma, terminal) {
 vi <- value_iteration(trans, rew, gamma, terminal)
 vi_policy <- greedy_policy(vi$V, trans, rew, gamma, terminal)
 cat("Value iteration converged in", vi$iterations, "iterations\n")
+```
+
+We can verify the geometric convergence rate from @eq-rl-foundations-vi-rate empirically. Starting from $v_0 = 0$ and applying the Bellman optimality backup, the max-norm error to the converged $v_*$ should shrink by no more than a factor $\gamma$ each sweep.
+
+```{r rl-foundations-contraction-check}
+V <- rep(0, n_states)
+err <- numeric(0)
+for (k in 1:40) {
+  Vn <- V
+  for (s in seq_len(n_states)) {
+    if (s %in% terminal) { Vn[s] <- 0; next }
+    Vn[s] <- max(rew[s, ] + gamma * V[trans[s, ]])
+  }
+  V <- Vn
+  err <- c(err, max(abs(V - vi$V)))
+}
+# Per-sweep contraction ratios should all be at or below gamma = 0.9.
+# Restrict to sweeps where the denominator is non-negligible to avoid 0/0.
+keep <- err[-length(err)] > 1e-12
+ratios <- (err[-1] / err[-length(err)])[keep]
+cat("Max observed contraction ratio:", round(max(ratios), 4),
+    "<= gamma =", gamma, ":", all(ratios <= gamma + 1e-8), "\n")
 ```
 
 Policy iteration solves the same MDP a different way: it evaluates the current policy exactly (here by the matrix solve $\mathbf{v}_\pi = (\mathbf{I} - \gamma \mathbf{P}_\pi)^{-1} \mathbf{r}_\pi$), then acts greedily, and repeats until the policy is stable.
@@ -455,6 +557,16 @@ knitr::kable(
 ```
 
 In practice the two interpolate into a family called *generalized policy iteration*: any interleaving of partial evaluation and partial improvement converges, with full policy iteration and single-sweep value iteration as the endpoints. Real implementations often run a few evaluation sweeps between improvements, taking the middle of that spectrum.
+
+### Computational complexity
+
+A single Bellman backup at one state evaluates $|\mathcal{A}|$ actions, each summing over successor states, so a full value-iteration sweep costs $O(|\mathcal{S}|^2 |\mathcal{A}|)$ for a dense transition model and $O(|\mathcal{S}| |\mathcal{A}| B)$ when each state-action pair has at most $B$ reachable successors (in the deterministic gridworld $B = 1$). Combined with the iteration bound from @eq-rl-foundations-vi-rate, value iteration runs in $O\!\big(|\mathcal{S}|^2 |\mathcal{A}| \cdot \tfrac{\log(1/\epsilon)}{1 - \gamma}\big)$ to reach $\epsilon$-accuracy, using $\log(1/\gamma) \approx 1 - \gamma$ for $\gamma$ near 1.
+
+Policy iteration trades more work per iteration for far fewer iterations. Each evaluation by the direct solve costs $O(|\mathcal{S}|^3)$ (the matrix factorization), plus $O(|\mathcal{S}|^2 |\mathcal{A}|)$ for the improvement step. The payoff is that the number of policy-improvement steps is typically tiny, on the order of a handful in practice. The known worst-case bounds are striking: the number of iterations of policy iteration is at most the number of deterministic policies $|\mathcal{A}|^{|\mathcal{S}|}$, but much sharper results hold. For a fixed discount $\gamma$, Howard's policy iteration converges in a number of iterations that is *strongly polynomial*, bounded by $O\!\big(\tfrac{|\mathcal{S}|^2 |\mathcal{A}|}{1 - \gamma} \log \tfrac{1}{1-\gamma}\big)$ (Ye, 2011), independent of the reward magnitudes. This is why policy iteration usually wins on small to medium MDPs where the $O(|\mathcal{S}|^3)$ solve is affordable, while value iteration is preferred when $|\mathcal{S}|$ is large enough that a cubic solve is prohibitive but cheap per-sweep linear backups are not.
+
+::: {.callout-note}
+The exponential factor $|\mathcal{A}|^{|\mathcal{S}|}$ is a loose upper bound, not the typical behavior. On almost all problems policy iteration converges in single-digit or low double-digit iterations because each improvement changes the policy at many states at once and the value increases monotonically toward $v_*$.
+:::
 
 ## Practical guidance and pitfalls
 

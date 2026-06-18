@@ -111,6 +111,68 @@ Reading these pieces in plain language: the last constraint guarantees that ever
 
 <br>
 
+### Why the margin equals $1/\|\beta\|$ {#sec-svm.qmd-margin-geom}
+
+The optimization above is stated with the constraint $\|\beta\| = 1$, which keeps $M$ equal to a genuine perpendicular distance. It is worth deriving that geometric fact, because it leads directly to the equivalent and more convenient formulation used in practice.
+
+Fix a hyperplane $\{x : \beta_0 + x^T\beta = 0\}$ with $\beta \neq 0$ (we do not yet impose $\|\beta\| = 1$). Take any point $x_0$ and let $x_p$ be its orthogonal projection onto the hyperplane. The vector $x_0 - x_p$ is parallel to the normal direction $\beta/\|\beta\|$, so $x_0 - x_p = t\,\beta/\|\beta\|$ for some scalar $t$ whose absolute value is the distance we want. Since $\beta_0 + x_p^T\beta = 0$,
+
+$$
+\beta_0 + x_0^T\beta = \beta_0 + (x_p + t\,\beta/\|\beta\|)^T\beta = \underbrace{(\beta_0 + x_p^T\beta)}_{=\,0} + t\,\frac{\beta^T\beta}{\|\beta\|} = t\,\|\beta\|.
+$$
+
+Hence the signed distance from $x_0$ to the hyperplane is
+
+$$
+\frac{\beta_0 + x_0^T\beta}{\|\beta\|},
+$$ {#eq-svm-signed-dist}
+
+and the functional margin $y_i(\beta_0 + x_i^T\beta)$ becomes the true geometric margin once divided by $\|\beta\|$. This is precisely why fixing $\|\beta\| = 1$ makes the constraint $y_i(\beta_0 + x_i^T\beta) \ge M$ read as "every point is at least geometric distance $M$ from the boundary."
+
+The normalization $\|\beta\| = 1$ is awkward for an optimizer because it is a nonconvex equality constraint. We can remove it by a standard reparameterization. Drop $\|\beta\| = 1$ and instead require, from @eq-svm-signed-dist,
+
+$$
+\frac{1}{\|\beta\|}\, y_i(\beta_0 + x_i^T\beta) \ge M, \qquad i = 1, \dots, n.
+$$
+
+The hyperplane is unchanged if we rescale $(\beta_0, \beta)$ by any positive constant, so we are free to fix that scale by setting $\|\beta\| = 1/M$, which turns the constraints into $y_i(\beta_0 + x_i^T\beta) \ge 1$. Maximizing $M$ is then the same as minimizing $\|\beta\|$, or equivalently $\tfrac{1}{2}\|\beta\|^2$, giving the canonical convex program
+
+$$
+\min_{\beta_0, \beta} \ \frac{1}{2}\|\beta\|^2 \quad \text{subject to} \quad y_i(\beta_0 + x_i^T\beta) \ge 1, \ i = 1, \dots, n.
+$$ {#eq-svm-primal-hard}
+
+This is a quadratic program with a strictly convex objective and linear inequality constraints, so it has a unique solution. The margin width recovered from the optimum is $2/\|\hat\beta\|$ (the distance $1/\|\hat\beta\|$ on each side).
+
+### The Lagrangian dual and support vectors {#sec-svm.qmd-dual}
+
+The dual of @eq-svm-primal-hard is where the support vectors and, later, the kernel trick come from, so we derive it in full. Introduce one multiplier $\alpha_i \ge 0$ per constraint and form the Lagrangian
+
+$$
+\mathcal{L}(\beta_0, \beta, \alpha) = \frac{1}{2}\|\beta\|^2 - \sum_{i=1}^n \alpha_i\big[y_i(\beta_0 + x_i^T\beta) - 1\big].
+$$ {#eq-svm-lagrangian}
+
+Setting the partial derivatives to zero gives the stationarity conditions
+
+$$
+\frac{\partial \mathcal{L}}{\partial \beta} = \beta - \sum_{i=1}^n \alpha_i y_i x_i = 0 \ \Rightarrow\ \beta = \sum_{i=1}^n \alpha_i y_i x_i, \qquad
+\frac{\partial \mathcal{L}}{\partial \beta_0} = -\sum_{i=1}^n \alpha_i y_i = 0.
+$$ {#eq-svm-stationary}
+
+Substituting $\beta = \sum_i \alpha_i y_i x_i$ back into @eq-svm-lagrangian and using $\sum_i \alpha_i y_i = 0$ to kill the $\beta_0$ term, the quadratic term becomes $\tfrac12\sum_{i,i'}\alpha_i\alpha_{i'}y_iy_{i'}x_i^Tx_{i'}$ and the linear term contributes $-\sum_{i,i'}\alpha_i\alpha_{i'}y_iy_{i'}x_i^Tx_{i'} + \sum_i\alpha_i$, leaving the Wolfe dual
+
+$$
+\max_{\alpha} \ \sum_{i=1}^n \alpha_i - \frac{1}{2}\sum_{i=1}^n\sum_{i'=1}^n \alpha_i \alpha_{i'} y_i y_{i'} \, x_i^T x_{i'}
+\quad \text{s.t.} \quad \alpha_i \ge 0, \ \sum_{i=1}^n \alpha_i y_i = 0.
+$$ {#eq-svm-dual-hard}
+
+Two features of @eq-svm-dual-hard are decisive. First, the data enter only through the inner products $x_i^T x_{i'}$; nowhere do we need the raw coordinates. This is exactly the opening through which the kernel trick later enters, by replacing $x_i^T x_{i'}$ with $K(x_i, x_{i'})$. Second, the Karush-Kuhn-Tucker (KKT) complementary slackness condition
+
+$$
+\alpha_i\big[y_i(\beta_0 + x_i^T\beta) - 1\big] = 0
+$$ {#eq-svm-kkt}
+
+forces $\alpha_i = 0$ for every point strictly outside the margin (where $y_i(\beta_0 + x_i^T\beta) > 1$). Only points lying exactly on the margin, where $y_i(\beta_0 + x_i^T\beta) = 1$, can have $\alpha_i > 0$. These are the support vectors, and by @eq-svm-stationary the solution $\hat\beta = \sum_{i\in S}\hat\alpha_i y_i x_i$ depends on them alone. This is the algebraic origin of the "only the support vectors matter" property asserted geometrically above. The offset is recovered from any margin point $i$ with $\hat\alpha_i > 0$ via $\hat\beta_0 = y_i - x_i^T\hat\beta$, usually averaged over all support vectors for numerical stability.
+
 This clean story has limits. The method breaks down if no separating hyperplane exists, that is, if no flat boundary can split the two classes. And even when a perfect separator does exist, it may not be the boundary we want. There are two situations where insisting on perfect separation is a bad idea:
 
 1.  The separating hyperplane has a very small margin, so the classifier is barely committed to either class near the boundary.
@@ -181,6 +243,34 @@ Turning that dial in either direction has predictable effects:
 -   $C$ large: wide margins, more violations, more bias but less variance, and many support vectors.
 
 As before, the support vectors are the observations that lie on or inside the margins. Because the decision rule depends only on this relatively small set of points, the support vector classifier is robust to the behavior of observations far from the hyperplane. This is a real contrast with linear discriminant rules (see @sec-discriminant-analysis), which let every observation, even distant ones, pull on the boundary.
+
+### The soft-margin program and its dual {#sec-svm.qmd-soft-dual}
+
+The textbook formulation above measures the budget $C$ in units of margin width, which is geometric but inconvenient for solvers. The equivalent and far more common form, the one implemented in `e1071`, `kernlab`, and LIBSVM, applies the rescaling of @sec-svm.qmd-margin-geom (set $\|\beta\| = 1/M$, write $\xi_i = M\epsilon_i$) to obtain a convex quadratic program in standardized slacks $\xi_i \ge 0$:
+
+$$
+\min_{\beta_0, \beta, \xi} \ \frac{1}{2}\|\beta\|^2 + C\sum_{i=1}^n \xi_i
+\quad \text{s.t.} \quad y_i(\beta_0 + x_i^T\beta) \ge 1 - \xi_i, \ \ \xi_i \ge 0.
+$$ {#eq-svm-primal-soft}
+
+::: {.callout-warning title="Two meanings of C"}
+The cost $C$ in @eq-svm-primal-soft is not the budget $C$ of the geometric formulation; the two are inversely related. In @eq-svm-primal-soft a large $C$ heavily penalizes violations and yields a narrow, hard margin, whereas in the budget formulation a large $C$ permits more violations and a wider margin. Software almost always uses the cost convention of @eq-svm-primal-soft, so read the documentation before tuning.
+:::
+
+The dual is derived as before. With multipliers $\alpha_i \ge 0$ on the margin constraints and $\mu_i \ge 0$ on $\xi_i \ge 0$, stationarity in $\xi_i$ gives $C - \alpha_i - \mu_i = 0$, hence $0 \le \alpha_i \le C$. The other stationarity conditions are identical to @eq-svm-stationary, and the dual is the same objective as the separable case but with a box constraint:
+
+$$
+\max_{\alpha} \ \sum_{i=1}^n \alpha_i - \frac{1}{2}\sum_{i,i'} \alpha_i \alpha_{i'} y_i y_{i'}\, x_i^T x_{i'}
+\quad \text{s.t.} \quad 0 \le \alpha_i \le C, \ \sum_{i=1}^n \alpha_i y_i = 0.
+$$ {#eq-svm-dual-soft}
+
+The KKT conditions now sort the points into three groups, which is the most useful diagnostic the dual offers. From $\alpha_i[y_i f(x_i) - 1 + \xi_i] = 0$ and $\mu_i \xi_i = (C - \alpha_i)\xi_i = 0$:
+
+- $\alpha_i = 0$: the point is strictly outside the margin ($y_i f(x_i) > 1$), not a support vector;
+- $0 < \alpha_i < C$: then $\xi_i = 0$ and $y_i f(x_i) = 1$, a margin support vector lying exactly on the margin (these are used to solve for $\hat\beta_0$);
+- $\alpha_i = C$: then $\xi_i \ge 0$ and the point is inside the margin or misclassified, a bound support vector.
+
+The fraction of points with $\alpha_i = C$ is a direct read on how aggressively the budget is being spent. The closely related $\nu$-SVM reparameterizes $C$ as $\nu \in (0,1]$, which bounds the fraction of margin errors from above and the fraction of support vectors from below, giving the tuning parameter a concrete interpretation.
 
 ## Nonlinear Decision Boundaries
 
@@ -284,6 +374,33 @@ $$
 
 Notice what just happened: by evaluating one simple kernel, we implicitly worked in a six-dimensional feature space without ever writing those six features down. This is the powerful idea behind regularized (penalized) modeling known as Reproducing Kernel Hilbert Spaces (RKHS), which we develop next.
 
+### When is a function a valid kernel? {#sec-svm.qmd-mercer}
+
+We have been asserting that a "positive definite kernel" can be written as an inner product $K(x,\tilde x) = \langle h(x), h(\tilde x)\rangle$. That assertion is not free; it is the content of Mercer's theorem, and the condition it requires is exactly what must be checked before a candidate similarity function may be used in @eq-svm-dual-soft.
+
+A symmetric function $K$ is a (positive semdefinite) kernel if for every finite set $x_1, \dots, x_n$ the Gram matrix $\mathbf{K}$ with entries $K_{ii'} = K(x_i, x_{i'})$ satisfies
+
+$$
+c^T \mathbf{K} c = \sum_{i=1}^n\sum_{i'=1}^n c_i c_{i'} K(x_i, x_{i'}) \ge 0 \qquad \text{for all } c \in \mathbb{R}^n.
+$$ {#eq-svm-psd}
+
+This condition matters operationally for two reasons. First, it is exactly what makes the dual objective @eq-svm-dual-soft concave (the Gram matrix is the Hessian, so positive semidefiniteness guarantees a single global optimum). Second, it certifies that an implicit feature map exists, so the geometric picture of a separating hyperplane in feature space is legitimate. A useful calculus follows from @eq-svm-psd: sums of kernels, positive scalar multiples, products, and limits of kernels are again kernels, which is how one verifies the radial basis kernel $\exp(-\gamma\|x-\tilde x\|^2)$ from the simpler building blocks. The neural network ("sigmoid") kernel $\tanh(\kappa_1\langle x,\tilde x\rangle + \kappa_2)$ is the cautionary case: it fails @eq-svm-psd for many parameter values, so its Gram matrix can be indefinite and the dual loses its convexity guarantee.
+
+We can verify the kernel-equals-inner-product identity numerically. The chunk below computes the degree-2 polynomial kernel directly and via the six explicit basis functions $h(x)$ derived above, and confirms they agree, and separately checks that an RBF Gram matrix satisfies the positive-semidefiniteness condition @eq-svm-psd (all eigenvalues nonnegative).
+
+```{r}
+#| label: svm-kernel-check
+set.seed(1)
+x  <- runif(2); xt <- runif(2)                 # two points in R^2
+h  <- function(z) c(1, sqrt(2)*z[1], sqrt(2)*z[2], z[1]^2, z[2]^2, sqrt(2)*z[1]*z[2])
+c(kernel = (1 + sum(x*xt))^2, feature_inner = sum(h(x)*h(xt)))
+
+X <- matrix(runif(20*3), 20, 3)                # 20 points in R^3
+D <- as.matrix(dist(X))^2
+K <- exp(-0.5 * D)                             # RBF Gram matrix
+min(eigen(K, symmetric = TRUE, only.values = TRUE)$values)  # >= 0 (up to rounding)
+```
+
 ### Regularization by RKHS
 
 This section [@hastie2001a, 5.8] places the SVM inside a much broader framework. The reward for the extra abstraction is a single result that covers many methods at once: it shows that an apparently infinite-dimensional problem collapses to a finite one.
@@ -334,6 +451,14 @@ $$
 ::: {.callout-important title="Key idea"}
 Although the optimization is set up over an infinite-dimensional space of functions, the solution is finite-dimensional, indexed by the $n$ training points. This is the **kernel trick**, and it is what makes kernel methods usable in practice.
 :::
+
+This is the representer theorem, and the argument behind it is short enough to give. Any $f \in H_K$ can be split into a part lying in the span of the kernel sections at the training points and a part orthogonal to it,
+
+$$
+f = \sum_{i=1}^n \alpha_i K(\cdot, x_i) + g, \qquad \langle g, K(\cdot, x_i)\rangle_{H_K} = 0 \ \text{ for all } i.
+$$
+
+By the reproducing property $f(x_i) = \langle f, K(\cdot, x_i)\rangle_{H_K}$, the orthogonal part $g$ contributes nothing to any fitted value $f(x_i)$, hence nothing to the loss term $L(y_i, f(x_i))$. But $g$ does inflate the penalty, since by the Pythagorean identity $\|f\|^2_{H_K} = \|\sum_i \alpha_i K(\cdot,x_i)\|^2_{H_K} + \|g\|^2_{H_K}$. Because the penalty $J(f) = \|f\|^2_{H_K}$ is strictly increasing, the minimizer must take $g = 0$. The optimum therefore lies in the $n$-dimensional span $\{K(\cdot, x_i)\}_{i=1}^n$ regardless of how large the underlying space $H_K$ is. This is what reduces the infinite program @eq-svm-reg2 to the finite program @eq-svm-reg3.
 
 
 In fact, the infinite-dimensional problem reduces to the finite-dimensional optimization
@@ -390,6 +515,26 @@ Because only support vectors carry nonzero $\alpha_i$, a fitted SVM stores and u
 :::
 
 
+### Theoretical properties and what they cost {#sec-svm.qmd-properties}
+
+A few facts give the SVM its place among classifiers and set expectations for cost and behavior.
+
+The hinge loss is a calibrated surrogate. Its population minimizer is $f^\star(x) = \operatorname{sign}(2\eta(x) - 1)$, where $\eta(x) = \Pr(Y=1\mid x)$, so the SVM decision rule targets the Bayes classifier directly. The price for the sparsity it buys is that, unlike logistic loss, the hinge loss does not recover the conditional probability $\eta(x)$ itself, only the sign of $2\eta(x)-1$; this is why a fitted SVM gives a decision but not a calibrated probability without an extra step such as Platt scaling.
+
+Margin theory, not dimension, controls generalization. Classical VC bounds for linear classifiers degrade with the feature-space dimension, which would be fatal for kernels that map into infinite-dimensional spaces. The relevant guarantee instead bounds the expected error by a quantity of order $R^2/(M^2 n)$, where $R$ bounds $\|x\|$ in feature space and $M$ is the achieved margin. Because the bound depends on the margin and not the ambient dimension, a high-dimensional kernel embedding does not by itself cause overfitting, which is the theoretical explanation for the SVM's empirical robustness in $p \gg n$ settings.
+
+Computational cost is the main practical limit. Forming the Gram matrix is $O(n^2 p)$ in time and the matrix itself is $O(n^2)$ in memory, and solving the dual QP is between $O(n^2)$ and $O(n^3)$ depending on the number of support vectors. Decomposition methods such as SMO (sequential minimal optimization), which repeatedly optimizes the dual over a pair of $\alpha_i$ analytically, make this tractable, but kernel SVMs still scale poorly past roughly $10^4$ to $10^5$ observations. For large $n$ with a linear kernel, primal solvers (for example LIBLINEAR) run in roughly $O(np)$ and are far faster; for nonlinear kernels, low-rank Nystrom or random-feature approximations of $\mathbf{K}$ are the standard escape. Prediction costs $O(|S|\,p)$ per query, so a model with many support vectors is slow at test time as well as a sign of overfitting.
+
+Failure modes. The kernel SVM degrades when features are on wildly different scales (the radial kernel is dominated by the largest-variance coordinate, so standardize inputs first), when $\gamma$ is too large (the radial kernel becomes a near-nearest-neighbor rule that memorizes the training set), and when classes are severely imbalanced (a single global $C$ lets the majority class dominate; per-class weights $C_+ , C_-$ are the fix).
+
+### Choosing the kernel and its hyperparameters {#sec-svm.qmd-howto}
+
+For the radial basis kernel the two knobs are the cost $C$ of @eq-svm-primal-soft and the bandwidth $\gamma$, and they interact, so they must be tuned jointly on a two-dimensional grid by cross-validation rather than one at a time. A geometric (logarithmic) grid is standard, for example $C \in \{2^{-5}, \dots, 2^{15}\}$ and $\gamma \in \{2^{-15}, \dots, 2^{3}\}$. A useful default scale for $\gamma$ is the inverse of the median squared pairwise distance between training points (the "median heuristic"), which gives a sensible starting point before refining the grid. Always standardize features before fitting an RBF SVM.
+
+::: {.callout-tip title="Practical recipe"}
+Standardize inputs; start from the median-heuristic $\gamma$ and $C = 1$; cross-validate on a log-spaced $(C, \gamma)$ grid; then inspect the support-vector fraction. If nearly every point is a support vector, $\gamma$ is too large or $C$ too small and the boundary is overfit; if very few points are, the boundary may be too rigid.
+:::
+
 Alternative Loss Functions. The hinge loss is not the only sensible choice. One useful alternative is the Huberized loss, which blends the attractive features of two worlds: it keeps the support-point sparsity of the hinge loss while staying smooth like logistic regression (so you can estimate probabilities), and it behaves well in the presence of outliers.
 
 Extensions to Multiple Classes. Everything above assumed two classes. Extending the SVM to more than two is not obvious, because the notion of a single separating hyperplane does not generalize cleanly beyond the binary case. Two standard work-arounds reduce the multiclass problem to many binary problems. The one-versus-one approach, for $K > 2$ classes, fits $\binom{K}{2}$ SVMs, one for each pair of classes. Given a new observation, every classifier votes, and the class chosen most often wins. The one-versus-all approach (often preferable) instead fits $K$ SVMs, each comparing one class against all the others, producing $K$ functions $f_k(x), k = 1, \dots, K$. For a test observation $x^*$ we choose the class $k$ for which $f_k(x^*)$ is largest. Given that logistic regression gives results similar to SVMs in the binary case, a multinomial-logistic classifier (using a multinomial loss function) may in fact be a better route to classification when $K>2$.
@@ -421,6 +566,27 @@ In classification the margin is a buffer between classes; in regression the anal
 
 
 This $\epsilon$-insensitive loss resembles other robust regression losses, such as the Huber loss, in that it limits the influence of moderate errors and keeps the fit from chasing every point.
+
+To turn the tube into an optimization the solver can handle, split each residual into a part above the tube and a part below it using two nonnegative slacks $\xi_i, \xi_i^\ast$, giving the primal
+
+$$
+\min_{\beta_0,\beta,\xi,\xi^\ast} \ \frac{1}{2}\|\beta\|^2 + C\sum_{i=1}^n(\xi_i + \xi_i^\ast)
+\quad \text{s.t.} \quad
+\begin{cases}
+y_i - f(x_i) \le \epsilon + \xi_i,\\
+f(x_i) - y_i \le \epsilon + \xi_i^\ast,\\
+\xi_i, \xi_i^\ast \ge 0.
+\end{cases}
+$$ {#eq-svm-svr-primal}
+
+The same Lagrangian steps as in @sec-svm.qmd-dual, now with multipliers $\alpha_i, \alpha_i^\ast \in [0, C]$ on the two constraint families, give the dual
+
+$$
+\max_{\alpha,\alpha^\ast} \ -\frac{1}{2}\sum_{i,i'}(\alpha_i-\alpha_i^\ast)(\alpha_{i'}-\alpha_{i'}^\ast)K(x_i,x_{i'})
+- \epsilon\sum_i(\alpha_i+\alpha_i^\ast) + \sum_i y_i(\alpha_i-\alpha_i^\ast)
+$$ {#eq-svm-svr-dual}
+
+subject to $\sum_i(\alpha_i - \alpha_i^\ast)=0$ and $0\le \alpha_i,\alpha_i^\ast \le C$. The fitted function is $f(x)=\beta_0+\sum_i(\alpha_i-\alpha_i^\ast)K(x,x_i)$. The KKT conditions make the tube concrete: points strictly inside the tube have $\alpha_i = \alpha_i^\ast = 0$ and drop out entirely, so once again only the points on or outside the tube are support vectors. The width $\epsilon$ is now an extra hyperparameter alongside $C$; enlarging $\epsilon$ admits a flatter fit with fewer support vectors. The $\nu$-SVR variant replaces $\epsilon$ with a parameter $\nu$ that controls the fraction of points allowed to lie outside the tube, which is often easier to set than $\epsilon$ directly.
 
 ## Vector Quantization
 

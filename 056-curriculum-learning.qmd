@@ -91,6 +91,31 @@ Dropping the hard examples early is like blurring a photo before tracing its out
 
 The catch is that this is a heuristic, not a guarantee. Continuation methods provably help only when the smoothed surface really is a good guide to the true one. If "easy" examples imply a different solution than the full dataset, the early steps walk toward the wrong region and the curriculum hurts. We return to this failure mode in the practical guidance.
 
+### Smoothing made precise: the homotopy formalism
+
+To see why down-weighting hard examples literally smooths the objective, fix the weighting to a soft, temperature-controlled form rather than a hard threshold. Let the difficulty score enter through a temperature $\tau > 0$ and define the weights
+
+$$
+w_i(\tau) = \exp\!\big(-\,d_i / \tau\big),
+\qquad
+L_\tau(\theta) = \frac{\sum_i w_i(\tau)\,\ell_i(\theta)}{\sum_i w_i(\tau)} .
+$$ {#eq-curriculum-learning-homotopy}
+
+At high temperature $\tau \to \infty$ all weights tend to $1$ and $L_\tau \to L$, the true average loss. At low temperature $\tau \to 0^+$ the weights collapse onto the single easiest example ($\arg\min_i d_i$), so $L_\tau$ becomes that one example's loss, which is maximally smooth. A curriculum that starts at small $\tau$ and anneals it upward is a continuation in $\tau$: it traces a path $\theta^\star(\tau)$ of minimizers from the easy surrogate $L_0$ to the target $L = L_\infty$. The hard-threshold pacing of @eq-curriculum-learning-homotopy's predecessor is the $\tau \to 0$ limit of a step weight; the soft form is the differentiable relaxation used in practice.
+
+The connection to Gaussian-homotopy continuation is exact when the surrogate is a convolution. Define the smoothed loss
+
+$$
+L_\sigma(\theta) = \mathbb{E}_{u \sim \mathcal{N}(0,\,\sigma^2 I)}\big[L(\theta + u)\big]
+= (L * \phi_\sigma)(\theta),
+$$ {#eq-curriculum-learning-gaussian}
+
+the convolution of $L$ with a Gaussian of width $\sigma$. As $\sigma \to \infty$ the surface $L_\sigma$ becomes convex (a quadratic in the limit) with a single, easily found minimizer; as $\sigma \to 0$ it returns to $L$. Tracking $\arg\min_\theta L_\sigma$ while annealing $\sigma$ downward is the prototypical continuation method, and a difficulty-ordered curriculum is a data-space analogue: instead of blurring $\theta$, it blurs the empirical measure over examples, removing the high-curvature contributions of the hard, near-boundary points first. The two coincide exactly when the per-example losses that get down-weighted are precisely those whose Hessians carry the ruggedness, which is the formal content of the "blur the photo" intuition.
+
+::: {.callout-warning title="Why continuation is not a free lunch"}
+Continuation tracks a *connected* path of minimizers. The guarantee that the path of $L_\sigma$ minimizers connects to a good minimizer of $L$ holds only under conditions (for example, no minimizer is created or destroyed along the path, or the smoothing is strong enough to convexify) that data-space curricula do not enforce. When the easy-data minimizer sits in a different basin than the full-data minimizer, the path breaks and the curriculum tracks the wrong branch. This is the precise sense in which the bottom row of @tbl-curriculum-learning-when is dangerous.
+:::
+
 ## Self-paced learning
 
 A fixed curriculum needs the teacher to know the difficulty order in advance. Self-paced learning, introduced by Kumar, Packer, and Koller in 2010, removes that requirement by letting the model judge difficulty from its own loss and learn the example weights jointly with the parameters. The objective adds a binary weight $v_i \in \{0, 1\}$ per example and a regularizer that prefers to include examples:
@@ -111,6 +136,78 @@ v_i^\star =
 $$
 
 So at the current parameters the model trains on exactly those examples whose loss is below the threshold $1/K$: the ones it already finds easy. Training alternates between solving for $v$ (select the currently easy examples) and a gradient step on $\theta$ over the selected set. Annealing $K$ downward over time raises the threshold $1/K$, admitting harder examples as training proceeds, so the schedule emerges from the loss instead of being fixed by a teacher.
+
+### Deriving the self-paced threshold
+
+The closed form for $v_i^\star$ follows from the fact that the objective is separable in the weights. Write the SPL objective with the regularizer named $f(v; K)$,
+
+$$
+F(\theta, v) = \sum_{i=1}^{n} v_i\, \ell_i(\theta) + f(v; K),
+\qquad
+f(v; K) = -\frac{1}{K}\sum_{i=1}^{n} v_i ,
+$$
+
+and minimize over $v \in \{0,1\}^n$ with $\theta$ held fixed. Because the objective decouples across $i$, each $v_i$ is chosen independently to minimize $v_i\,\big(\ell_i(\theta) - 1/K\big)$. The coefficient of $v_i$ is $\ell_i(\theta) - 1/K$. Choosing $v_i = 1$ is optimal exactly when that coefficient is negative, $v_i = 0$ when it is positive, and either is optimal at equality:
+
+$$
+v_i^\star = \arg\min_{v_i \in \{0,1\}} v_i\big(\ell_i(\theta) - \tfrac{1}{K}\big)
+= \mathbb{1}\{\ell_i(\theta) < 1/K\} .
+$$ {#eq-curriculum-learning-spl-hard}
+
+This recovers the stated result and shows the threshold $1/K$ is nothing more than the price, set by the regularizer, that an example's loss must beat to earn a weight. Define the optimal-weight loss $L_K(\theta) = \min_{v} F(\theta, v)$. Substituting @eq-curriculum-learning-spl-hard gives
+
+$$
+L_K(\theta) = \sum_{i=1}^{n} \min\!\Big(\ell_i(\theta),\ \tfrac{1}{K}\Big) - \frac{n}{K},
+$$ {#eq-curriculum-learning-spl-capped}
+
+a constant shift of the *capped* loss $\sum_i \min(\ell_i, 1/K)$. So minimizing the SPL objective over $\theta$ after the inner $v$-minimization is exactly minimizing a robust, loss-capped objective: examples whose loss exceeds $1/K$ contribute the constant $1/K$ and therefore have zero gradient. This is the same capping that makes redescending M-estimators robust to outliers, which is why SPL doubles as an outlier-rejection scheme and why a too-aggressive (large) $K$ can permanently silence the hardest examples.
+
+### Soft self-paced weights as MM
+
+The soft variant replaces the binary regularizer with one that yields fractional weights. A common choice (Jiang and colleagues, 2014) is the linear soft regularizer
+
+$$
+f(v; K) = \frac{1}{K}\sum_{i=1}^{n}\Big(\tfrac{1}{2} v_i^2 - v_i\Big),
+\qquad v_i \in [0,1].
+$$
+
+Minimizing $v_i \ell_i + \tfrac{1}{K}(\tfrac12 v_i^2 - v_i)$ over $v_i \in [0,1]$ by setting the derivative $\ell_i + \tfrac{1}{K}(v_i - 1)$ to zero and clipping gives the closed form
+
+$$
+v_i^\star = \max\!\Big(0,\ 1 - K\,\ell_i(\theta)\Big),
+$$ {#eq-curriculum-learning-spl-soft}
+
+a linearly decaying weight: full weight at zero loss, fading to zero at loss $1/K$. Easy examples still dominate, but a near-threshold example is down-weighted smoothly rather than dropped, removing the hard in-or-out flips that destabilize the binary scheme.
+
+We can confirm both closed forms numerically by checking them against a brute-force minimization of the per-example objective over the feasible set, with no fitting involved so the check is fully deterministic.
+
+```{r curriculum-learning-spl-check}
+set.seed(1)
+losses <- runif(2000, 0, 2)
+K <- 3
+
+# hard SPL: closed form vs brute force over v_i in {0, 1}
+v_hard_closed <- as.integer(losses < 1 / K)
+v_hard_brute <- sapply(losses, function(l) {
+  c(0, 1)[which.min(c(0, 1) * (l - 1 / K))]
+})
+
+# soft SPL: closed form max(0, 1 - K*loss) vs brute force over [0, 1]
+v_soft_closed <- pmax(0, 1 - K * losses)
+v_soft_brute <- sapply(losses, function(l) {
+  g <- seq(0, 1, length.out = 20001)
+  g[which.min(g * l + (1 / K) * (0.5 * g^2 - g))]
+})
+
+c(
+  hard_forms_agree = all(v_hard_closed == v_hard_brute),
+  soft_max_abs_error = max(abs(v_soft_closed - v_soft_brute))
+)
+```
+
+The hard weights match exactly and the soft weights agree to grid resolution, confirming @eq-curriculum-learning-spl-hard and @eq-curriculum-learning-spl-soft.
+
+The alternating scheme is not an arbitrary heuristic: it is a block-coordinate (alternating convex search) descent on $F(\theta, v)$. The objective is biconvex when each $\ell_i$ is convex in $\theta$, that is, convex in $\theta$ for fixed $v$ and convex in $v$ for fixed $\theta$. Each alternating step weakly decreases $F$, so $F$ is monotonically non-increasing and, being bounded below, converges. Equivalently, the inner minimization over $v$ produces a majorizer of the capped objective @eq-curriculum-learning-spl-capped, making the whole procedure an instance of majorize-minimize (MM): the $v$-step builds a tight upper bound on $L_K$ at the current $\theta$, and the $\theta$-step drives that bound down. This explains both the stability of soft SPL and its limitation: MM only guarantees convergence to a stationary point of the (nonconvex, capped) surrogate, not to the global minimizer of the original average loss.
 
 
 ::: {.callout-important title="Key idea"}
@@ -369,6 +466,34 @@ Two points in that table deserve emphasis. First, for a strictly convex objectiv
 A curriculum is a bet that the easy examples and the hard examples want the same model. When that bet is right, easy-first is a head start. When it is wrong, easy-first is a detour that points the optimizer at the wrong answer before the hard examples ever get a vote.
 :::
 
+
+## Why ordering changes the path but not the destination
+
+The claim that a curriculum is "purely a convergence-speed effect" for convex learners can be made quantitative. Consider full-batch gradient descent on a convex, $\beta$-smooth objective $L$ (gradient $\beta$-Lipschitz) with step size $\eta \le 1/\beta$. The standard descent guarantee, after $T$ steps from $\theta_0$, is
+
+$$
+L(\theta_T) - L(\theta^\star) \le \frac{\|\theta_0 - \theta^\star\|^2}{2\eta T},
+$$ {#eq-curriculum-learning-convex-rate}
+
+a rate of $O(1/T)$ governed entirely by the distance from the initialization to the optimum. A curriculum does not touch $\theta^\star$ (the minimizer of the full convex objective is unique and order-independent), nor the smoothness constant $\beta$. What it can change is the *effective* per-step geometry: early steps taken on the easy subset operate on a smoother, better-conditioned objective $L_\sigma$ with a smaller local smoothness constant and a Hessian whose condition number is lower, allowing a larger stable step and faster early progress. The curriculum thus improves the constant and the early transient in @eq-curriculum-learning-convex-rate without altering its $O(1/T)$ form or its limit. This is exactly what the simulation measures: a gap in steps-to-target that shrinks as $T$ grows, and final losses that converge to the same value.
+
+The picture changes for strongly convex $L$ (parameter $\mu$), where gradient descent is linearly convergent,
+
+$$
+L(\theta_T) - L(\theta^\star) \le \Big(1 - \tfrac{\mu}{\beta}\Big)^{T} \big(L(\theta_0) - L(\theta^\star)\big),
+$$
+
+with rate set by the condition number $\kappa = \beta/\mu$. A curriculum that improves the conditioning of the early surrogate effectively lowers $\kappa$ during the warm-up, which compounds geometrically; this is the regime where ordering buys the most, and it explains why curricula tend to help precisely the ill-conditioned, rugged problems flagged in @tbl-curriculum-learning-when. In the non-convex case there is no such clean bound: ordering changes which stationary point the iterates approach, so the effect on the *destination* is real and can be either sign, which is why all guarantees above are stated for the convex case.
+
+::: {.callout-note title="Stochastic gradients and minibatch order"}
+With stochastic gradients the relevant quantity is the gradient noise variance $\sigma_g^2$, which enters the SGD bound as an additive $O(\eta \sigma_g^2)$ floor. Easy examples typically have lower per-example gradient variance, so an easy-first schedule lowers $\sigma_g^2$ early and raises it later. This is a second, distinct mechanism from the smoothing argument: even for a convex objective, curriculum ordering can reduce the early-iteration noise floor and so reach a given accuracy in fewer iterations, though it cannot change the asymptotic floor reached once the full noisy set is in play.
+:::
+
+## Sample complexity and generalization
+
+Curriculum learning is an optimization intervention, so its first-order effect is on training dynamics, not on the hypothesis class. The capacity-based generalization bounds (VC dimension, Rademacher complexity) that control the gap between training and test error depend on the hypothesis space and the final empirical risk, neither of which a curriculum changes at convergence. To first order, then, a curriculum trained to the same training loss as random ordering inherits the same generalization bound.
+
+The second-order story is where curricula can genuinely help generalization. When the optimization is non-convex, the *implicit bias* of the trajectory matters: different paths reach different minimizers with different flatness, margin, and norm, and these correlate with test error. By steering early iterates into a basin shaped by the clean, easy examples, a curriculum can act as a data-dependent regularizer that biases the model toward solutions consistent with the low-noise structure, much as the capped objective @eq-curriculum-learning-spl-capped down-weights label-noise examples whose losses stay high. Empirically (Hacohen and Weinshall, 2019) the largest gains appear early in training and in the small-data or high-noise regime, consistent with this regularization view rather than a capacity reduction. The honest summary is that curriculum learning offers no sample-complexity guarantee in the worst case; its generalization benefit, when present, is a trajectory effect that is hard to bound a priori and must be validated empirically against a random-order baseline.
 
 ## Practical guidance and pitfalls
 

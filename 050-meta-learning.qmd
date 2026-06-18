@@ -64,6 +64,27 @@ where $\theta$ are the meta-parameters, $A(\theta, \mathcal{S})$ is the adaptati
 
 The reason episodic training works is that we never let the model see the query labels during adaptation; we only score on them. The gradient through that score teaches $\theta$ to make adaptation generalize, not to memorize.
 
+### The meta-objective as a bilevel program
+
+It is worth stating the meta-objective precisely, because every family in this chapter is an instance of the same two-level (bilevel) optimization. Write the population meta-risk as
+
+$$
+\mathcal{R}(\theta) = \mathbb{E}_{\mathcal{T}_i \sim p(\mathcal{T})}\,\mathbb{E}_{(\mathcal{S}_i,\mathcal{Q}_i)}\,
+\big[\, \mathcal{L}_{\mathcal{Q}_i}\big(A(\theta,\mathcal{S}_i)\big)\,\big],
+$$ {#eq-meta-learning-bilevel}
+
+with the inner level defining the adapted predictor. For MAML the inner level is itself an optimization, $A(\theta,\mathcal{S}) = \arg\min_{\phi} \mathcal{L}_{\mathcal{S}}(\phi)$ approximated by a few gradient steps from $\phi^{(0)}=\theta$; for metric methods the inner level is a closed-form map (compute prototypes), so $A$ is differentiable in $\theta$ with no implicit dependence to unroll. In practice we minimize the empirical counterpart of @eq-meta-learning-bilevel over a finite sample of $B$ episodes,
+
+$$
+\widehat{\mathcal{R}}(\theta) = \frac{1}{B}\sum_{i=1}^{B} \mathcal{L}_{\mathcal{Q}_i}\big(A(\theta,\mathcal{S}_i)\big).
+$$
+
+Two distinct sources of variance enter $\widehat{\mathcal{R}}$: the sampling of tasks $\mathcal{T}_i$ and, within each task, the sampling of the support and query sets. The generalization quantity of interest is the gap between performance on meta-training tasks and on tasks freshly drawn from $p(\mathcal{T})$. This is a generalization bound over a *task distribution*, not over examples, which is why class-disjoint splits (discussed later) are essential: reusing classes makes the empirical $\widehat{\mathcal{R}}$ an optimistic estimate of $\mathcal{R}$.
+
+::: {.callout-note}
+The bilevel view also clarifies the difference from ordinary multi-task learning. Multi-task learning minimizes $\sum_i \mathcal{L}_i(\theta)$ over a *shared* $\theta$ with no inner adaptation, so it seeks one parameter good for all tasks on average. Meta-learning inserts the adaptation map $A$ inside the loss, so it seeks a $\theta$ that is good *after* adapting, which is a strictly weaker and usually easier requirement.
+:::
+
 
 ::: {.callout-tip title="Intuition"}
 Train the way you will be tested. If deployment means "adapt from a handful of labels, then predict on new points," then every training episode should rehearse exactly that, adapt on a support set, predict on a held-out query set. The meta-objective rewards adaptation rules that transfer.
@@ -95,6 +116,48 @@ $$
 $$
 
 The intuition: MAML does not look for parameters that are good on any single task. It looks for an initialization from which a *short* gradient run lands on a good task-specific solution. First-order variants (FOMAML, Reptile from Nichol, Achiam, and Schulman, 2018) drop the Hessian term and work well in practice at lower cost.
+
+### Derivation of the meta-gradient
+
+The expansion above is worth deriving carefully, because the Hessian term is the entire content of "second-order MAML." Fix a task $i$ and define the inner map $\theta_i'(\theta) = \theta - \alpha \nabla_\theta \mathcal{L}_{\mathcal{S}_i}(\theta)$. Its Jacobian with respect to $\theta$ is, entry by entry,
+
+$$
+\frac{\partial \theta_i'}{\partial \theta}
+= I - \alpha\, \nabla^2_\theta \mathcal{L}_{\mathcal{S}_i}(\theta),
+$$ {#eq-meta-learning-inner-jac}
+
+a symmetric $d \times d$ matrix, where $d = \dim(\theta)$ and $\nabla^2_\theta \mathcal{L}_{\mathcal{S}_i}$ is the Hessian of the support loss. By the chain rule, the meta-gradient of the per-task query loss is the Jacobian transpose times the query gradient evaluated at the adapted point,
+
+$$
+\nabla_\theta\, \mathcal{L}_{\mathcal{Q}_i}\big(\theta_i'(\theta)\big)
+= \Big(\frac{\partial \theta_i'}{\partial \theta}\Big)^{\!\top}\,
+\nabla_{\theta'} \mathcal{L}_{\mathcal{Q}_i}(\theta_i')
+= \big(I - \alpha\, \nabla^2_\theta \mathcal{L}_{\mathcal{S}_i}(\theta)\big)\,
+\nabla_{\theta'} \mathcal{L}_{\mathcal{Q}_i}(\theta_i'),
+$$ {#eq-meta-learning-maml-grad}
+
+which is exactly the displayed result (the Hessian is symmetric so the transpose drops out). Reading @eq-meta-learning-maml-grad term by term: the $I$ piece is the naive "pretend the init does not move" gradient, and the $-\alpha \nabla^2 \mathcal{L}_{\mathcal{S}_i}$ piece is the correction that accounts for how perturbing $\theta$ changes where one inner step lands. FOMAML simply sets the second term to zero, using $\nabla_\theta \mathcal{L}_{\mathcal{Q}_i}(\theta_i') \approx \nabla_{\theta'} \mathcal{L}_{\mathcal{Q}_i}(\theta_i')$, which is the gradient of the query loss evaluated at $\theta_i'$ but treated as if $\theta_i'$ were a constant.
+
+For $m$ inner steps with iterates $\theta^{(0)}=\theta,\, \theta^{(t+1)} = \theta^{(t)} - \alpha \nabla \mathcal{L}_{\mathcal{S}_i}(\theta^{(t)})$, the Jacobian chains multiplicatively:
+
+$$
+\frac{\partial \theta^{(m)}}{\partial \theta}
+= \prod_{t=0}^{m-1}\big(I - \alpha\, \nabla^2_\theta \mathcal{L}_{\mathcal{S}_i}(\theta^{(t)})\big),
+$$
+
+so the exact meta-gradient is a product of $m$ Hessian-perturbed factors applied to $\nabla_{\theta^{(m)}} \mathcal{L}_{\mathcal{Q}_i}$. Materializing these $d \times d$ factors is infeasible for large $d$; instead, reverse-mode automatic differentiation computes the required Hessian-vector products $\nabla^2 \mathcal{L}_{\mathcal{S}_i}\, v$ in $O(d)$ time each (Pearlmutter's trick), giving the meta-gradient in time and memory $O(md)$, the memory cost coming from storing the $m$ intermediate activations needed for the backward pass.
+
+### Reptile and why first-order works
+
+Reptile dispenses with the support/query split inside a task: it runs $m$ steps of ordinary SGD on a task to reach $\theta^{(m)}$, then moves the meta-parameters toward that point, $\theta \leftarrow \theta + \epsilon\,(\theta^{(m)} - \theta)$. To see why this approximates MAML, Taylor-expand the per-step gradients around $\theta$. For two steps, writing $g_t = \nabla \mathcal{L}_t(\theta)$ and $H_t = \nabla^2 \mathcal{L}_t(\theta)$ for the loss on the $t$-th minibatch, the expected Reptile update direction is
+
+$$
+\mathbb{E}\big[\theta^{(m)} - \theta\big]
+= -\alpha\sum_t \mathbb{E}[g_t]
++ \alpha^2 \sum_{t < t'} \mathbb{E}[H_{t'} g_t] + O(\alpha^3).
+$$
+
+The leading term is joint minimization of the average task loss (ordinary multi-task pretraining), while the second term $\mathbb{E}[H_{t'} g_t]$ is an inner product between gradients of different minibatches of the *same* task. Maximizing that cross term pushes the gradients of distinct batches to align, which is precisely the quantity MAML's Hessian term optimizes: an initialization where within-task gradients agree generalizes from few examples. This is why dropping the explicit second-order term costs little. The expensive Hessian is recovered, in expectation, by the interaction of successive first-order steps.
 
 MAML is "model-agnostic" because $A$ is just gradient descent, so it applies to any differentiable model. The price is the inner loop: each meta-update requires adapting and backpropagating through adaptation, which is memory-hungry and sensitive to the inner step count and learning rate.
 
@@ -130,6 +193,41 @@ $$
 
 Training minimizes the negative log probability of the true class on query points, averaged over episodes. A clean fact: with squared Euclidean distance, the prototype rule is a linear classifier in embedding space, since expanding $-\lVert u - \mathbf{p}_c \rVert^2$ gives a term linear in $u$ plus a per-class bias. This is why nearest-centroid classification is the natural base-R stand-in for a prototypical network with a fixed (or identity) encoder.
 
+#### Derivation: prototypes give a linear classifier
+
+Let $u = f_\theta(x^\*)$ be the query embedding. Expand the negative squared distance that forms the logit for class $c$:
+
+$$
+-\lVert u - \mathbf{p}_c \rVert_2^2
+= -u^\top u + 2\,\mathbf{p}_c^\top u - \mathbf{p}_c^\top \mathbf{p}_c .
+$$
+
+The term $-u^\top u$ does not depend on $c$, so it cancels in the softmax (and in any argmax over classes). Discarding it leaves a logit that is affine in $u$,
+
+$$
+\ell_c(u) = w_c^\top u + b_c,
+\qquad
+w_c = 2\,\mathbf{p}_c,
+\qquad
+b_c = -\,\mathbf{p}_c^\top \mathbf{p}_c = -\lVert \mathbf{p}_c\rVert_2^2 .
+$$ {#eq-meta-learning-proto-linear}
+
+Hence $P(y^\*=c\mid x^\*) = \mathrm{softmax}_c(\ell_c(u))$ is exactly a linear softmax (multinomial logistic) classifier whose weight vectors and biases are *tied to the prototypes* rather than learned freely. The decision boundary between classes $c$ and $c'$ is the locus $\ell_c(u) = \ell_{c'}(u)$, i.e. $2(\mathbf{p}_c - \mathbf{p}_{c'})^\top u = \lVert \mathbf{p}_c\rVert^2 - \lVert \mathbf{p}_{c'}\rVert^2$, which is the perpendicular bisector hyperplane of the segment joining the two prototypes. This is the classical nearest-centroid (and, under equal isotropic covariances, linear discriminant) geometry, now living in the learned embedding space.
+
+#### Connection to Gaussian generative classification
+
+The squared-Euclidean choice is not arbitrary. Suppose that, in embedding space, class $c$ is Gaussian with mean $\mathbf{p}_c$ and shared isotropic covariance $\sigma^2 I$, and classes are equally likely a priori. The class posterior is
+
+$$
+P(c\mid u) \propto \exp\!\Big(-\tfrac{1}{2\sigma^2}\lVert u - \mathbf{p}_c\rVert^2\Big),
+$$
+
+which is exactly the prototypical softmax with logits scaled by $1/(2\sigma^2)$. Snell, Swersky, and Zemel (2017) make this precise: with squared Euclidean distance the prototypical network is performing linear discriminant analysis in feature space, and more generally it is a Bregman-divergence centroid classifier. For any regular Bregman divergence $d_\varphi$, the cluster representative that minimizes mean within-class divergence is the arithmetic mean, $\mathbf{p}_c = \tfrac{1}{|\mathcal{S}_c|}\sum_{x\in\mathcal{S}_c} f_\theta(x)$, which is why the *mean* is the correct prototype. Squared Euclidean distance is the Bregman divergence generated by $\varphi(z)=\lVert z\rVert^2$. This also explains a common empirical finding: cosine distance often underperforms squared Euclidean for prototypical networks precisely because cosine is not a Bregman divergence, so the support mean is no longer the divergence-optimal representative.
+
+::: {.callout-note}
+The Bregman view tells you when averaging support embeddings is the right thing to do. If your distance is squared Euclidean (or any Bregman divergence), the prototype should be the mean. If you switch to cosine or another non-Bregman metric, the mean is no longer optimal and you may need a different aggregation (for example $\ell_2$-normalizing embeddings first, which makes squared Euclidean and cosine agree up to a constant).
+:::
+
 ### Matching networks
 
 Matching networks (Vinyals et al., 2016) predict by a weighted vote over support labels, where the weights are an attention kernel (see @sec-transformers) between the query and each support embedding:
@@ -141,7 +239,9 @@ a(x^\*, x_j) = \frac{\exp\!\big(\cos(f_\theta(x^\*), g_\theta(x_j))\big)}
 {\sum_{k} \exp\!\big(\cos(f_\theta(x^\*), g_\theta(x_k))\big)}.
 $$
 
-When $K = 1$, prototypical and matching networks coincide up to the choice of distance (squared Euclidean versus cosine), because each prototype is just the single support point. For $K > 1$, prototypes average within a class while matching networks keep every support point as a separate voter.
+Here the prediction $\hat y^\*$ is read as the vector of class scores: stacking the indicators $\mathbf{1}[y_j=c]$ over classes, the matching-network output is $P(y^\*=c\mid x^\*) = \sum_{j} a(x^\*,x_j)\,\mathbf{1}[y_j=c]$, a convex combination of one-hot support labels with attention weights $a(x^\*,x_j)\ge 0$ summing to one. This is exactly a Nadaraya-Watson kernel estimator (@sec-kernel) with a softmax-of-cosine kernel: the prediction is a kernel-weighted average of support labels, learned end to end through the embedding $f_\theta$, $g_\theta$. Viewed this way, matching networks are nonparametric (their effective model grows with the support set), whereas prototypical networks compress the support into $N$ parametric prototypes before predicting.
+
+When $K = 1$, prototypical and matching networks coincide up to the choice of distance (squared Euclidean versus cosine), because each prototype is just the single support point. For $K > 1$, prototypes average within a class while matching networks keep every support point as a separate voter. The bias-variance trade-off between them is the usual parametric-versus-nonparametric one: prototypes lower variance by averaging (good when within-class clusters are unimodal and roughly isotropic, as the Gaussian model above assumes) but incur bias if a class is multimodal, in which case the per-point voting of matching networks, which can represent several modes per class, is less biased at the cost of higher variance from individual noisy support points.
 
 ### Comparison of the main families
 
@@ -275,6 +375,51 @@ ggplot(plot_df, aes(shots, accuracy, color = noise)) +
 ```
 
 Two patterns are worth reading off the curve. First, even 1-shot accuracy is far above the chance line of $0.2$, because a single support point already locates each blob roughly. Second, the gain from $K=1$ to $K=5$ is large and then flattens, which is the $1/K$ variance reduction of the prototype estimate in action. Raising the noise shifts the whole curve down because the classes overlap more, so no amount of averaging fully separates them.
+
+### Why accuracy rises and saturates: the $1/K$ law
+
+The shape of the curve follows from a short calculation. Take the demo's generative model: class $c$ has true center $\mu_c$ and support points $x \sim \mathcal{N}(\mu_c, \sigma^2 I_p)$ drawn independently. The prototype is the sample mean of $K$ such points,
+
+$$
+\mathbf{p}_c = \frac{1}{K}\sum_{j=1}^{K} x_{c,j},
+\qquad
+\mathbb{E}[\mathbf{p}_c] = \mu_c,
+\qquad
+\mathrm{Cov}(\mathbf{p}_c) = \frac{\sigma^2}{K} I_p .
+$$ {#eq-meta-learning-proto-var}
+
+So the prototype is an unbiased estimate of the class center whose error covariance shrinks like $1/K$. Consider the two-class subproblem $c$ versus $c'$ with separation $\Delta = \lVert \mu_c - \mu_{c'}\rVert$. A query from class $c$ is $x^\* = \mu_c + \eta$, $\eta\sim\mathcal{N}(0,\sigma^2 I_p)$, and the nearest-centroid rule assigns it to $c$ when it is closer to $\mathbf{p}_c$ than to $\mathbf{p}_{c'}$. Projecting onto the prototype-difference direction, a standard LDA-style calculation gives, in the limit $K\to\infty$ where prototypes equal true centers, an error probability
+
+$$
+P(\text{misclassify}) = \Phi\!\Big(-\frac{\Delta}{2\sigma}\Big),
+$$
+
+with $\Phi$ the standard normal CDF. For finite $K$, the prototype noise adds to the query noise. Because $\mathbf{p}_c$ and $x^\*$ are independent, their contributions along the decision direction add in variance, inflating the effective noise from $\sigma^2$ to $\sigma^2\,(1 + 1/K)$ for the query-versus-one-prototype comparison (one factor $\sigma^2$ from the query, one factor $\sigma^2/K$ from the prototype). The Bayes-style two-class error becomes approximately
+
+$$
+P_K(\text{misclassify}) \approx \Phi\!\left(-\frac{\Delta}{2\sigma\sqrt{1 + 1/K}}\right).
+$$ {#eq-meta-learning-proto-err}
+
+This reproduces both features of the plot. As $K\to\infty$ the $1/K$ term vanishes and the error saturates at the irreducible $\Phi(-\Delta/2\sigma)$, the error of a classifier that knows the true centers; the residual gap at large $K$ is set entirely by class overlap $\Delta/\sigma$, not by the number of shots. The marginal gain from one more shot is the derivative of @eq-meta-learning-proto-err in $1/K$, which is largest at small $K$ and decays, matching the steep-then-flat curve. Raising $\sigma$ lowers $\Delta/\sigma$ and shifts the whole curve down, exactly as the high-noise line shows. Note the sample-complexity reading: to halve the *excess* error over the irreducible floor you need to drive $1/K$ down, so returns diminish quadratically fast, and there is little reason to collect many shots once $K$ is around $5$ to $10$ for well-separated classes.
+
+```{r proto-var-check, eval=TRUE}
+# Verify the 1/K shrinkage of prototype variance (eq-meta-learning.qmd-proto-var).
+set.seed(1301)
+sigma <- 1.3; p <- 4; reps <- 4000
+emp_var <- function(K) {
+  # Monte Carlo variance of one coordinate of the K-point sample mean.
+  means <- replicate(reps, mean(rnorm(K, sd = sigma)))
+  var(means)
+}
+Ks <- c(1, 2, 5, 10, 20)
+data.frame(
+  K          = Ks,
+  empirical  = round(sapply(Ks, emp_var), 4),
+  theory_1_K = round(sigma^2 / Ks, 4)
+)
+```
+
+The empirical per-coordinate variance of the prototype tracks $\sigma^2/K$ to Monte Carlo error, confirming @eq-meta-learning-proto-var that drives the accuracy curve.
 
 ### A sketch of an encoder-based prototypical network (not run)
 

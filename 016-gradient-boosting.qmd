@@ -54,6 +54,34 @@ We then fit the base learner $f_m$ to the pseudo-residuals $\{(x_i, r_{im})\}$ b
 Gradient descent says "move in this direction." A tree is how we make "this direction" into a reusable function of the features instead of a one-off adjustment to the training points.
 :::
 
+### The generic algorithm and the line search {#sec-gradient-boosting-generic}
+
+It is worth writing the procedure once in full generality, because every system in this chapter is a special case of it. This is Friedman's (2001) gradient boosting machine. We work in the function space $\mathcal{H}$ of base learners (here, regression trees with $J$ terminal nodes), and we seek $F$ minimizing the empirical risk $\mathcal{L}(F) = \sum_{i=1}^n l(y_i, F(x_i))$.
+
+1. Initialize with the best constant, $F_0 = \arg\min_{c} \sum_{i=1}^n l(y_i, c)$. For squared error this is $\bar y$; for logistic loss it is the log-odds $\log\frac{\bar y}{1-\bar y}$.
+2. For $m = 1, \dots, M$:
+   a. Compute pseudo-residuals $r_{im} = -\partial l(y_i, F(x_i)) / \partial F(x_i)\big|_{F_{m-1}}$.
+   b. Fit a regression tree to $\{(x_i, r_{im})\}$, giving terminal regions $R_{jm}$, $j = 1, \dots, J_m$.
+   c. For each region solve the one-dimensional line search
+      $$
+      \gamma_{jm} = \arg\min_{\gamma} \sum_{x_i \in R_{jm}} l\big(y_i,\, F_{m-1}(x_i) + \gamma\big).
+      $$ {#eq-gradient-boosting-linesearch}
+   d. Update $F_m(x) = F_{m-1}(x) + \nu \sum_{j=1}^{J_m} \gamma_{jm}\, \mathbb{1}(x \in R_{jm})$.
+
+Two subtleties deserve emphasis. First, the tree in step (b) is fit to the gradient by **least squares regardless of the loss** $l$: the squared-error fit is what projects the unconstrained negative-gradient direction onto the space of trees, exactly as steepest descent projects the gradient onto a feasible direction. Second, the leaf values are then **re-optimized** in step (c) for the true loss $l$, not the squared-error surrogate. For squared error the two coincide (the line search returns the leaf mean), which is why the simpler "fit to residuals" story is exact there. For other losses they differ, and skipping (c) costs accuracy. For logistic loss @eq-gradient-boosting-linesearch has no closed form, so Friedman uses a single Newton step per leaf,
+$$
+\gamma_{jm} = \frac{\sum_{x_i \in R_{jm}} r_{im}}{\sum_{x_i \in R_{jm}} p_{i,m-1}(1 - p_{i,m-1})},
+$$
+which is precisely the XGBoost leaf weight (with $\lambda = 0$) derived later. Friedman's "MART" and XGBoost differ mainly in that XGBoost uses the Newton step to choose the tree **structure** too, not just the leaf values.
+
+### Why fit the gradient by least squares
+
+The projection claim above can be made precise. In ideal (unconstrained) functional steepest descent we would move $F$ by $-\nabla \mathcal{L}$, i.e. set the increment at each training point equal to $r_{im}$. We cannot realize an arbitrary vector $(r_{1m}, \dots, r_{nm})$ as a tree, so we pick the tree $h$ most parallel to the negative gradient. Maximizing the cosine between the increment vector $(h(x_1), \dots, h(x_n))$ and the gradient, at fixed norm, is equivalent to
+$$
+f_m = \arg\min_{h \in \mathcal{H}} \sum_{i=1}^n \big(r_{im} - h(x_i)\big)^2,
+$$
+which is exactly the least-squares fit in step (b). The negative gradient is thus the target a tree should approximate as closely as possible, and squared error is the natural metric for "closely" because it measures Euclidean distance in the same prediction space the gradient lives in.
+
 
 ### Squared error gives ordinary residuals
 
@@ -64,6 +92,44 @@ $$
 $$
 
 The pseudo-residual is exactly the ordinary residual, which recovers the "fit a tree to the residuals" algorithm from the boosting chapter (@sec-boosting). The optimal leaf value for a terminal region is the mean of the residuals in that region. So the intuitive picture from the start of the chapter is not an analogy; for squared error it is literally what the gradient view prescribes.
+
+#### L2 boosting as an operator and its shrinkage interpretation {#sec-gradient-boosting-l2}
+
+For squared error the whole expansion has a clean linear-algebra form that exposes what boosting does to the bias-variance trade-off. Let each base learner be a fixed linear smoother, $\hat r = S r$, where $S \in \mathbb{R}^{n \times n}$ is the smoother (hat) matrix mapping a response vector to its fitted values (for a tree, $S$ is the block-constant averaging operator induced by the terminal regions). Starting from $F_0 = 0$ and using learning rate $\nu$, the residual after $m$ rounds is $r^{(m)} = (I - \nu S) r^{(m-1)}$, so
+$$
+r^{(m)} = (I - \nu S)^m\, y, \qquad \hat y^{(m)} = \big[I - (I - \nu S)^m\big]\, y.
+$$ {#eq-gradient-boosting-l2op}
+The effective fit operator is $B_m = I - (I - \nu S)^m$. If $S$ has eigendecomposition with eigenvalues $s_k \in [0,1]$ (true for symmetric averaging smoothers), then $B_m$ has eigenvalues
+$$
+b_k^{(m)} = 1 - (1 - \nu s_k)^m \;\xrightarrow{m \to \infty}\; 1 \quad (\text{for } s_k > 0).
+$$
+The structure is illuminating. Components with large $s_k$ (smooth, high-signal directions) are recovered after only a few rounds, while components with small $s_k$ (rough, noise-like directions) are damped as $(1 - \nu s_k)^m$ and only enter slowly. Boosting is thus a **regularization path**: the number of rounds $M$ plays the role of an inverse penalty, fitting structured signal first and noise last, which is exactly why early stopping works and why it behaves like ridge-type shrinkage in eigen-space (Bühlmann and Yu 2003). The degrees of freedom $\operatorname{tr}(B_m)$ grow monotonically with $m$, formalizing "more rounds means more flexibility."
+
+::: {.callout-note}
+@eq-gradient-boosting-l2op also explains the learning-rate-versus-rounds duality quantitatively. For small $\nu$, $1 - (1-\nu s_k)^m \approx 1 - e^{-\nu s_k m}$, which depends on $\nu$ and $m$ only through the product $\nu m$. Halving $\nu$ and doubling $m$ leaves the fit (to first order) unchanged, the precise statement behind the "two ends of the same lever" intuition.
+:::
+
+The operator identity @eq-gradient-boosting-l2op is exact, so we can confirm it in a line of base R: boost a fixed smoother by hand and check the residuals match $(I - \nu S)^m y$.
+
+```{r gb-l2-verify}
+mat_pow <- function(M, p) { R <- diag(nrow(M)); for (i in seq_len(p)) R <- R %*% M; R }
+
+set.seed(1)
+n <- 40
+S <- matrix(rnorm(n * n), n, n); S <- (S + t(S)) / 2  # symmetric smoother
+S <- S / (max(abs(eigen(S, only.values = TRUE)$values)) * 2)  # keep |eig| small
+y <- rnorm(n)
+nu <- 0.3; m <- 25
+
+# explicit stagewise boosting of the smoother S
+F <- rep(0, n)
+for (k in seq_len(m)) F <- F + nu * as.vector(S %*% (y - F))
+
+# closed form from eq-l2op
+F_closed <- as.vector((diag(n) - mat_pow(diag(n) - nu * S, m)) %*% y)
+
+max(abs(F - F_closed))  # ~ machine epsilon
+```
 
 ### Logistic loss gives probability residuals
 
@@ -189,6 +255,16 @@ The first two terms are the structure scores of the children, the third is the s
 
 It is worth seeing that this general machinery collapses to the familiar cases. For squared error, $g_i = \hat y_i - y_i$ and $h_i = 1$, so $w_j^* = -G_j / (|I_j| + \lambda)$, a shrunken mean of the residuals: the residual-averaging rule from before, now with a regularization term in the denominator. For logistic loss, $g_i = p_i - y_i$ and $h_i = p_i(1-p_i)$, which is exactly the gradient and Hessian we derived in the classification subsection. The same two-line objective handles regression and classification by plugging in a different $g$ and $h$.
 
+### What `min_child_weight` and `lambda` actually do {#sec-gradient-boosting-mcw}
+
+Two regularizers in the structure score have a precise reading worth spelling out, because they are among the most useful knobs in practice. The denominator $H_j + \lambda$ is the total Hessian mass in a leaf plus the L2 penalty. The quantity $H_j = \sum_{i \in I_j} h_i$ is exactly what XGBoost calls the **cover** of a leaf, and the hyperparameter `min_child_weight` is a floor on it: a split is rejected if either child has $H < \text{min\_child\_weight}$. For squared error $h_i = 1$, so cover is just the number of points and `min_child_weight` is a minimum leaf size. For logistic loss $h_i = p_i(1-p_i)$, so a leaf full of confidently classified points (each $p_i(1-p_i) \approx 0$) has tiny cover even if it contains many rows; `min_child_weight` then refuses to keep splitting regions the model already explains, a loss-aware version of "minimum samples per leaf."
+
+The role of $\lambda$ is equally concrete. The optimal leaf weight $w_j^* = -G_j/(H_j + \lambda)$ is the unregularized Newton step $-G_j/H_j$ multiplied by the shrinkage factor $H_j/(H_j + \lambda)$. Leaves with little curvature mass (few or low-confidence points) are shrunk hardest toward zero, which is exactly the behavior we want: trust the leaves backed by data, distrust the rest. Setting $\lambda = 0$ and $\gamma = 0$ recovers Friedman's Newton-step MART; positive $\lambda$ and $\gamma$ are what make the structure score, and therefore split selection itself, regularization-aware.
+
+### Computational complexity {#sec-gradient-boosting-complexity}
+
+The cost of one boosting round is dominated by split finding. With $n$ rows, $d$ features, and a tree of depth $D$, the exact greedy search of XGBoost pre-sorts each feature once ($O(n d \log n)$ amortized via cached sorted blocks) and then, at each of the $O(D)$ levels, scans every feature over every candidate threshold, accumulating $G$ and $H$ in a single linear pass. This gives $O(d \cdot n \cdot D)$ per tree after sorting, or $O(M \cdot d \cdot n \cdot D)$ for the full ensemble. The histogram method (LightGBM, and XGBoost's `hist`) replaces the per-threshold scan with accumulation into $b$ bins, costing $O(d \cdot n)$ to build histograms per level (independent of the number of distinct values) plus $O(d \cdot b)$ to scan them, with $b \ll n$. A further trick is that a node's histogram can be obtained by subtracting a sibling's histogram from the parent's, halving the build cost. Memory is $O(n d)$ for the binned matrix, which is why histogram methods, not the exact method, are used at scale.
+
 ## LightGBM, CatBoost, and the Speed Tricks
 
 The objective and split formulas above describe what XGBoost computes. The remaining differences between the major libraries are mostly about how fast they compute it on large data, and how gracefully they handle categorical features. Understanding these tricks helps you choose a library and read its parameter list, even though the underlying boosting story is the same.
@@ -208,9 +284,35 @@ LightGBM's leaf-wise growth is powerful but easy to overfit with. A tree control
 
 CatBoost rounds out the trio with a different concern: bias. Ordinary gradient boosting uses the same rows to both fit the model and compute the residuals it will fit next, which subtly leaks information and biases the predictions, an effect its authors call prediction shift. CatBoost addresses this with ordered boosting, which computes the residual for each observation using a model trained only on earlier observations in a random permutation. It also has strong native handling of categorical features through ordered target statistics, so categorical columns can be passed in directly rather than one-hot encoded by hand.
 
+#### Prediction shift made precise
+
+The bias has a clean source. At round $t$ the gradient $g_i = \partial l(y_i, F_{t-1}(x_i))/\partial F_{t-1}(x_i)$ is evaluated at $F_{t-1}$, which was itself fit using $(x_i, y_i)$. The conditional distribution of $g_i \mid x_i$ over the training set therefore differs from the distribution at a fresh test point $x$, because for the training point the model has already partly absorbed $y_i$. The fitted increment $f_t$ is an estimate of $\mathbb{E}[g \mid x]$, but it is trained on targets whose conditional law is shifted; the resulting $f_t(x)$ is a biased estimate of the population gradient, and the bias compounds over rounds. Prokhorenko et al. (2018) show this bias is $O(1/n)$ in magnitude but does not vanish in the relevant finite-sample regimes. Ordered boosting removes it by maintaining, for a random permutation $\sigma$, a model $M_i$ for each $i$ that is trained only on the points preceding $i$ in $\sigma$; the residual for $i$ is then computed with $M_i$, which has never seen $y_i$. This is an online, leakage-free estimate of the gradient at the cost of maintaining several supporting models.
+
+#### Ordered target statistics
+
+The same leakage problem afflicts the simplest categorical encoding, target (mean) encoding, which replaces a category $c$ by the average response of rows with that category. Computed on all rows, $\hat\mu_c = \frac{1}{|\{i: x_i = c\}|}\sum_{i: x_i=c} y_i$ uses $y_i$ to encode row $i$, leaking the target directly. CatBoost's ordered target statistic fixes this by, again, using only the prefix of a random permutation:
+$$
+\hat{x}_i = \frac{\sum_{j < i,\; x_j = x_i} y_j + a\, p}{\sum_{j < i,\; x_j = x_i} 1 + a},
+$$
+where $p$ is a prior (the global mean) and $a > 0$ is a smoothing strength. The numerator and denominator use only earlier rows, so $y_i$ never enters its own encoding; the prior term $a p$ is a Bayesian shrinkage that stabilizes rare categories, exactly the same regularization motive as $\lambda$ in the leaf weight. This turns a high-cardinality categorical into a single informative numeric feature without one-hot blowup and without leakage.
+
 
 ::: {.callout-tip title="When to use this"}
 Reach for LightGBM when you have many rows and want speed; reach for CatBoost when categorical features dominate and you want sensible defaults with minimal preprocessing; reach for XGBoost as a mature, widely supported baseline. In practice all three are competitive, and the choice often comes down to ecosystem and familiarity.
+:::
+
+## Theoretical Properties and Connections {#sec-gradient-boosting-theory}
+
+Beyond the mechanics, gradient boosting sits inside a well-understood statistical picture. Three results frame what it can and cannot do.
+
+**Boosting as coordinate descent in a basis.** Consider the dictionary of all possible trees $\{h_1, h_2, \dots\}$ and the linear model $F = \sum_k \beta_k h_k$. Forward stagewise boosting with infinitesimal steps ($\nu \to 0$) traces out, under mild conditions, the same path as the L1-regularized (lasso) solution $\min_\beta \sum_i l(y_i, \sum_k \beta_k h_k(x_i)) + t\lVert\beta\rVert_1$ as the budget $t$ grows (Efron et al. 2004; Rosset, Zhu and Hastie 2004). This is the precise sense in which shrinkage plus many rounds gives an implicit L1 penalty over base learners: small $\nu$ does not merely slow learning, it changes which solution you converge toward, favoring sparse combinations of trees. It also explains why very small $\nu$ with early stopping reliably outperforms large $\nu$: large steps overshoot the regularization path.
+
+**Consistency.** For appropriate losses and base-learner classes, boosting with early stopping is consistent: the population risk of $F_M$ converges to the Bayes risk as $n \to \infty$, provided $M = M_n$ grows at a controlled rate and the step size is small (Zhang and Yu 2005; Bühlmann 2006). The key tension is that $\mathcal{L}(F_M) \to 0$ on the training set as $M \to \infty$ (interpolation), so $M$ must be stopped before overfitting; consistency results give rates for how fast $M_n$ may grow. Without early stopping or shrinkage, boosting to convergence can overfit, especially with noisy labels, which is the theoretical counterpart to the upturn in @fig-gradient-boosting-losscurve.
+
+**Bias-variance and tree depth.** The interaction order is set by depth: a depth-$D$ tree is a sum of basis functions each involving at most $D$ features, so the ensemble is a member of the ANOVA-style functional class with interactions up to order $D$ (the connection to generalized additive models in @sec-gam is exact at $D=1$, where boosting fits an additive model). Increasing $D$ lowers approximation bias but raises variance and the chance of fitting spurious high-order interactions. Friedman's recommendation of $4 \le J \le 8$ leaves ($D \approx 2$ to $3$) reflects that most real interaction structure is low-order.
+
+::: {.callout-warning title="Failure modes"}
+Gradient boosting breaks in characteristic ways. (1) It does not extrapolate: trees are piecewise constant, so predictions are flat outside the training range, unlike linear models. (2) It is sensitive to label noise; because it chases residuals, mislabeled points get fit with ever-deeper trees, and a heavy-tailed loss such as squared error lets a few outliers dominate (use Huber or quantile loss instead). (3) Severe class imbalance makes the Hessian $p(1-p)$ tiny for the majority class, starving minority-class splits of cover; reweighting or `scale_pos_weight` is needed. (4) With $M$ too large and no validation set it will silently interpolate the training data.
 :::
 
 
@@ -434,6 +536,15 @@ The native missing-value handling in these libraries is a real convenience, but 
 :::
 
 
+### Monotonic and interaction constraints {#sec-gradient-boosting-constraints}
+
+All three libraries can enforce that the prediction is monotone in a feature (`monotone_constraints`), which is useful when domain knowledge demands it (price should not decrease in square footage). The mechanism follows directly from the split-gain machinery: when a split on a monotone-constrained feature is considered, the candidate is only kept if the resulting left and right leaf weights respect the required ordering, and downstream splits are bounded so the constraint cannot be violated lower in the tree. This is a hard constraint on the function class, not a penalty, so it can only reduce training fit, but it often improves generalization and always improves trust. Similarly, `interaction_constraints` restrict which features may appear together on a single root-to-leaf path, capping the interaction order between specified groups, which is the practical lever for the depth/interaction-order trade-off from @sec-gradient-boosting-theory.
+
+::: {.callout-note}
+Because boosted trees cannot extrapolate (failure mode 1 above), monotone constraints are especially valuable at the edges of the training distribution: they let you guarantee sensible behavior in regions where the data is sparse and the unconstrained model would otherwise produce flat or erratic predictions.
+:::
+
+
 To summarize the chapter: gradient boosting is functional gradient descent that builds an additive model of trees, each fit to the negative gradient of the loss. XGBoost sharpens this with a regularized, second-order objective whose leaf weights and split gains have closed forms. LightGBM and CatBoost keep that core and add speed and categorical-handling tricks. In practice you fix a small learning rate, let early stopping pick the number of trees, and tune tree shape and subsampling around that, watching the validation loss curve the entire time.
 
 ## Further Reading
@@ -441,3 +552,7 @@ To summarize the chapter: gradient boosting is functional gradient descent that 
 - Friedman, J. H. (2001). Greedy function approximation: a gradient boosting machine. Annals of Statistics. The functional gradient descent view used throughout this chapter.
 - Chen, T. and Guestrin, C. (2016). XGBoost: A scalable tree boosting system. KDD. The regularized objective, second-order split gain, and systems design.
 - Ke, G. et al. (2017). LightGBM: A highly efficient gradient boosting decision tree. NeurIPS. Histogram splits, GOSS, and EFB.
+- Prokhorenkova, L. et al. (2018). CatBoost: unbiased boosting with categorical features. NeurIPS. Prediction shift, ordered boosting, and ordered target statistics.
+- Bühlmann, P. and Yu, B. (2003). Boosting with the L2 loss. JASA. The operator/eigenvalue view of L2 boosting and its shrinkage interpretation.
+- Rosset, S., Zhu, J. and Hastie, T. (2004). Boosting as a regularized path to a maximum margin classifier. JMLR. The implicit L1 (lasso) path of infinitesimal forward stagewise boosting.
+- Zhang, T. and Yu, B. (2005). Boosting with early stopping: convergence and consistency. Annals of Statistics. Consistency and stopping rates.

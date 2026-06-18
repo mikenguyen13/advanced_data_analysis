@@ -102,6 +102,80 @@ log-likelihood is the same loss you have seen for logistic regression and softma
 classifiers elsewhere in the book. A language model is, at each position, a
 classifier over the vocabulary, so it inherits exactly that objective.]
 
+#### The model class and the softmax head {.unnumbered}
+
+To be precise about what is being optimized, fix the parametric form. A
+Transformer decoder with parameters $\theta$ maps a context $x_{<t}$ to a
+real-valued vector of logits $z_t = f_\theta(x_{<t}) \in \mathbb{R}^{|V|}$, one
+entry per vocabulary item. The conditional distribution is the softmax of those
+logits,
+
+$$
+p_\theta(x_t = v \mid x_{<t}) = \frac{\exp(z_{t,v})}{\sum_{w \in V} \exp(z_{t,w})},
+\qquad v \in V.
+$$ {#eq-llms-softmax}
+
+The full objective over a corpus of $N$ sequences $\{x^{(i)}\}$ is the negative
+conditional log-likelihood,
+
+$$
+\hat{\theta} = \arg\min_\theta \; -\sum_{i=1}^{N} \sum_{t=1}^{T_i}
+\log p_\theta\!\left(x^{(i)}_t \mid x^{(i)}_{<t}\right),
+$$
+
+which is exactly the maximum-likelihood estimator under the autoregressive
+factorization. The only assumptions are (i) the chain-rule factorization, which
+is exact, and (ii) the parametric family $f_\theta$, which is the modeling
+choice. Everything that distinguishes an n-gram from a Transformer lives in
+$f_\theta$; the loss is identical.
+
+#### Gradient of the cross-entropy through the softmax {.unnumbered}
+
+The reason this objective is convenient is that its gradient with respect to the
+logits is strikingly simple. Writing the per-position loss as
+$\ell_t = -\log p_\theta(x_t \mid x_{<t})$ and letting $y_t \in \{0,1\}^{|V|}$ be
+the one-hot indicator of the true next token, the derivative with respect to the
+logit of class $v$ is
+
+$$
+\frac{\partial \ell_t}{\partial z_{t,v}}
+= p_\theta(x_t = v \mid x_{<t}) - y_{t,v}.
+$$ {#eq-llms-softmax-grad}
+
+To see this, note $\ell_t = -z_{t,x_t} + \log \sum_w \exp(z_{t,w})$. The first
+term contributes $-y_{t,v}$. The second contributes
+$\exp(z_{t,v}) / \sum_w \exp(z_{t,w}) = p_\theta(x_t = v \mid x_{<t})$ by direct
+differentiation of the log-sum-exp. The gradient is therefore the predicted
+distribution minus the target, the same "prediction error" form that drives
+logistic and softmax regression. Backpropagation simply carries this residual
+back into $\theta$ through $f_\theta$.
+
+The following base R check confirms @eq-llms-softmax-grad by comparing the
+analytic gradient $p - y$ against a finite-difference approximation of the
+cross-entropy loss at random logits.
+
+```{r softmax-grad-check}
+set.seed(1)
+softmax <- function(z) exp(z - max(z)) / sum(exp(z - max(z)))
+z <- rnorm(6)            # random logits over a 6-token vocabulary
+true_class <- 3          # index of the observed next token
+loss <- function(z) -log(softmax(z)[true_class])
+
+# Analytic gradient: predicted distribution minus the one-hot target.
+y <- numeric(6); y[true_class] <- 1
+analytic <- softmax(z) - y
+
+# Finite-difference gradient.
+eps <- 1e-6
+numeric_grad <- sapply(seq_along(z), function(j) {
+  zp <- z; zp[j] <- zp[j] + eps
+  zm <- z; zm[j] <- zm[j] - eps
+  (loss(zp) - loss(zm)) / (2 * eps)
+})
+
+max(abs(analytic - numeric_grad))   # ~1e-9, confirming the derivation
+```
+
 ### Perplexity
 
 The headline evaluation metric for a language model is perplexity (PPL),
@@ -118,6 +192,36 @@ equally likely tokens at each step. A perplexity of 1 means perfect prediction;
 a perplexity equal to the vocabulary size means the model learned nothing beyond
 a uniform guess. Lower is better. Because perplexity is a deterministic function
 of cross-entropy, reducing the loss and reducing perplexity are the same goal.
+
+#### Perplexity, cross-entropy, and KL divergence {.unnumbered}
+
+The "effective number of guesses" reading is not a metaphor; it is the
+information-theoretic content of perplexity. Suppose the test tokens are drawn
+from a true conditional distribution $p^\star$ and the model predicts $p_\theta$.
+As $T \to \infty$, the sample average in @eq-llms-softmax converges by the law
+of large numbers to a cross-entropy expectation,
+
+$$
+\frac{1}{T}\sum_{t=1}^{T} -\log p_\theta(x_t \mid x_{<t})
+\;\xrightarrow{\;a.s.\;}\;
+H(p^\star, p_\theta)
+= \underbrace{H(p^\star)}_{\text{irreducible}}
++ \underbrace{D_{\mathrm{KL}}\!\left(p^\star \,\|\, p_\theta\right)}_{\ge 0},
+$$ {#eq-llms-ce-decomp}
+
+using $H(p^\star, p_\theta) = H(p^\star) + D_{\mathrm{KL}}(p^\star \| p_\theta)$.
+Exponentiating, $\mathrm{PPL} = \exp(H(p^\star, p_\theta))$. Two consequences
+follow. First, perplexity is bounded below by $\exp(H(p^\star))$, the entropy of
+language itself; no model, however large, can drive perplexity below the
+intrinsic uncertainty of the next token. Second, the only term a model can reduce
+is the KL gap $D_{\mathrm{KL}}(p^\star \| p_\theta) \ge 0$, which vanishes if and
+only if $p_\theta = p^\star$ almost everywhere. Minimizing cross-entropy is
+therefore exactly forward-KL projection of the model onto the true distribution,
+and scaling laws (below) are empirically the rate at which that KL gap shrinks.
+
+The uniform-guess bound is the special case $p_\theta(\cdot \mid x_{<t}) =
+1/|V|$, which gives $\mathcal{L} = \log |V|$ and $\mathrm{PPL} = |V|$, confirming
+the claim that a vocabulary-size perplexity signals a model that learned nothing.
 
 
 ::: {.callout-tip title="Intuition"}
@@ -160,7 +264,59 @@ $$
 A bigram model ($n = 2$) conditions on one previous token, a trigram
 ($n = 3$) on two. The conditional probabilities are estimated by counting how
 often each continuation follows each context in a training corpus and
-normalizing. N-gram models are fast and transparent, but they suffer from data
+normalizing.
+
+#### Why counting is the maximum-likelihood estimate {.unnumbered}
+
+The "count and normalize" recipe is not an ad hoc heuristic; it is the MLE for a
+multinomial model. Fix a context $c = (x_{t-n+1}, \dots, x_{t-1})$ and let
+$\theta_{w \mid c} = p(w \mid c)$ be the parameters of the conditional
+distribution, subject to $\sum_{w} \theta_{w \mid c} = 1$. If the context $c$
+occurs with the various continuations $w$ counted as $N(c, w)$ times, the
+log-likelihood contributed by that context is $\sum_w N(c,w) \log \theta_{w\mid
+c}$. Maximizing under the simplex constraint with a Lagrange multiplier
+$\lambda$,
+
+$$
+\frac{\partial}{\partial \theta_{w\mid c}}
+\left[ \sum_w N(c,w)\log\theta_{w\mid c}
++ \lambda\Big(1 - \sum_w \theta_{w\mid c}\Big) \right]
+= \frac{N(c,w)}{\theta_{w\mid c}} - \lambda = 0,
+$$
+
+so $\theta_{w\mid c} = N(c,w)/\lambda$, and the constraint forces $\lambda =
+\sum_w N(c,w) = N(c)$. The MLE is therefore the relative frequency
+
+$$
+\hat{\theta}^{\,\mathrm{MLE}}_{w\mid c} = \frac{N(c,w)}{N(c)},
+$$ {#eq-llms-ngram-mle}
+
+which is exactly the unsmoothed counting estimator.
+
+#### Add-one smoothing as MAP estimation {.unnumbered}
+
+Add-one smoothing is the Bayesian counterpart of this MLE. Place a symmetric
+Dirichlet prior $\theta_{\cdot \mid c} \sim \mathrm{Dir}(\alpha, \dots, \alpha)$
+over the $|V|$ continuations. The Dirichlet is conjugate to the multinomial, so
+the posterior is $\mathrm{Dir}\big(\alpha + N(c, w)\big)_w$, and the posterior
+mean (equivalently the MAP estimate up to the usual mode-versus-mean offset) is
+
+$$
+\hat{\theta}^{\,\mathrm{smooth}}_{w\mid c}
+= \frac{N(c,w) + \alpha}{N(c) + \alpha |V|}.
+$$ {#eq-llms-ngram-smooth}
+
+Setting $\alpha = 1$ recovers add-one (Laplace) smoothing exactly, the formula
+implemented as `(count_full + 1) / (count_ctx + vocab_size)` in the demo below.
+The prior acts as $\alpha$ pseudo-counts spread uniformly over the vocabulary: it
+pulls every conditional toward the uniform distribution, guarantees strictly
+positive probability for unseen continuations (hence finite perplexity), and its
+influence fades as $N(c)$ grows. Smaller $\alpha$ (for example $\alpha = 0.01$,
+Lidstone smoothing) smooths less and is usually preferable when contexts are
+moderately well observed; add-one is known to over-smooth large vocabularies
+because it moves a mass proportional to $|V|$ into the denominator.
+
+N-gram models are fast and transparent, but they suffer from data
 sparsity (most long contexts are never seen) and they cannot capture
 dependencies beyond the fixed window. Smoothing techniques such as add-one
 (Laplace) smoothing are used to avoid assigning zero probability to unseen
@@ -202,6 +358,36 @@ The attention mechanism, multi-head attention, and positional information are
 covered in the attention and Transformers chapter (@sec-transformers) and in the
 chapter on BERT (@sec-bert), which uses the encoder half of the same architecture. The decoder used by LLMs is
 that architecture with causal masking and a next-token objective.
+
+#### Causal self-attention, made precise {.unnumbered}
+
+Concretely, let $X \in \mathbb{R}^{T \times d}$ stack the $d$-dimensional
+representations of the $T$ context positions. A single attention head projects
+$X$ into queries, keys, and values, $Q = X W_Q$, $K = X W_K$, $V = X W_V$ with
+$W_Q, W_K \in \mathbb{R}^{d \times d_k}$ and $W_V \in \mathbb{R}^{d \times d_v}$,
+and computes
+
+$$
+\mathrm{Attn}(Q, K, V) = \mathrm{softmax}\!\left(
+\frac{Q K^\top}{\sqrt{d_k}} + M \right) V,
+$$ {#eq-llms-attention}
+
+where the softmax is applied row-wise. The causal mask $M$ has $M_{tj} = 0$ for
+$j \le t$ and $M_{tj} = -\infty$ for $j > t$, which drives the softmax weight on
+future positions to zero and so enforces $p(x_t \mid x_{<t})$ depending only on
+the past. The $\sqrt{d_k}$ scaling keeps the dot products $q_t^\top k_j$ at unit
+variance: if the entries of $q_t$ and $k_j$ are independent with variance $1$,
+then $\mathrm{Var}(q_t^\top k_j) = d_k$, and dividing by $\sqrt{d_k}$ rescales to
+variance $1$, preventing the softmax from saturating into near one-hot vectors
+with vanishing gradients. Multi-head attention runs $h$ such heads in parallel on
+$d_k = d/h$-dimensional subspaces and concatenates the outputs, letting different
+heads specialize on different relations.
+
+The computational signature of this mechanism is the one that governs context
+length. Forming $Q K^\top$ costs $O(T^2 d_k)$ time and $O(T^2)$ memory for the
+attention matrix, quadratic in sequence length $T$. This quadratic term is why
+context windows are expensive to extend and why a large body of work pursues
+linear-attention and sparse-attention approximations.
 
 
 ::: {.callout-tip title="Intuition"}
@@ -255,6 +441,30 @@ means the loss falls by a roughly constant fraction each time you multiply a
 resource by a constant factor. Plotted on log-log axes it looks like a straight
 line, which is what makes extrapolation feasible.]
 
+#### The parametric form of the scaling law {.unnumbered}
+
+The Chinchilla analysis makes the power laws explicit. Writing $N$ for the number
+of parameters and $D$ for the number of training tokens, the test loss is fit by
+
+$$
+L(N, D) = E + \frac{A}{N^{\alpha}} + \frac{B}{D^{\beta}},
+$$ {#eq-llms-scaling}
+
+with empirical exponents near $\alpha \approx \beta \approx 0.34$ and $E$ the
+irreducible loss (the entropy floor $H(p^\star)$ of @eq-llms-ce-decomp). The
+two additive terms are the finite-model and finite-data penalties; each falls as
+a straight line on log-log axes, which is what "power law" means. The
+compute-optimal allocation follows by constrained optimization. Training compute
+is approximately $C \approx 6 N D$ (the factor $6$ counts the forward and
+backward floating-point operations per parameter per token). Minimizing
+@eq-llms-scaling subject to $6ND = C$ with a Lagrange multiplier gives the
+stationarity condition $\alpha A / N^{\alpha} = \beta B / D^{\beta}$, whose
+solution scales as $N^\star \propto C^{\,\beta/(\alpha+\beta)}$ and $D^\star
+\propto C^{\,\alpha/(\alpha+\beta)}$. With $\alpha \approx \beta$ both exponents
+are near $1/2$, so the optimum grows $N$ and $D$ in near-equal proportion. This
+is the formal content of the Chinchilla rule: doubling the compute budget should
+roughly double both model size and data, not pour it all into parameters.
+
 Hoffmann et al. (2022), the Chinchilla study, refined this picture for a
 fixed compute budget. The earlier work tended to make models very large relative
 to the data they were trained on. Chinchilla showed that, for a given amount of
@@ -307,6 +517,34 @@ trainable parameters drops by orders of magnitude while accuracy stays close to
 full fine-tuning. PEFT makes it feasible to maintain many task-specific
 adaptations of one shared base model.
 
+#### The LoRA reparameterization {.unnumbered}
+
+Make the LoRA construction precise. Let $W_0 \in \mathbb{R}^{d \times k}$ be a
+frozen pretrained weight matrix. Full fine-tuning would learn an updated
+$W_0 + \Delta W$ with $\Delta W$ a dense $d \times k$ matrix, that is $dk$ free
+parameters. LoRA constrains the update to low rank by writing
+
+$$
+W = W_0 + \Delta W = W_0 + \frac{\alpha}{r}\, B A,
+\qquad B \in \mathbb{R}^{d \times r}, \; A \in \mathbb{R}^{r \times k},
+$$ {#eq-llms-lora}
+
+with rank $r \ll \min(d, k)$. Only $A$ and $B$ are trained, so the parameter
+count drops from $dk$ to $r(d + k)$, a reduction by a factor of roughly
+$dk / (r(d+k))$, which for typical $d = k = 4096$ and $r = 8$ is over two hundred
+fold. The scalar $\alpha/r$ decouples the update magnitude from the rank so that
+tuning $\alpha$ does not require retuning the learning rate as $r$ changes. At
+initialization $A$ is random and $B = 0$, hence $\Delta W = 0$, so training
+starts exactly at the pretrained model. The forward pass is $h = W_0 x + (\alpha/r)
+B(Ax)$: the low-rank branch is computed separately and added, costing only
+$O(r(d+k))$ extra multiply-adds. Because $\Delta W$ can be folded back into $W_0$
+after training ($W \leftarrow W_0 + (\alpha/r)BA$), LoRA adds no inference latency,
+and a single frozen $W_0$ can be served with different $(A, B)$ pairs swapped in
+per task. The implicit assumption is that the task-specific adaptation has low
+intrinsic rank, which holds empirically for fine-tuning but can fail when the
+target task differs sharply from pretraining, in which case larger $r$ or full
+fine-tuning is needed.
+
 
 ::: {.callout-tip title="When to use this"}
 Reach for PEFT (LoRA in particular) when you want
@@ -347,6 +585,63 @@ original model. Ouyang et al. (2022), the InstructGPT work, showed that this
 procedure can make a smaller aligned model more helpful than a much larger
 unaligned one. The takeaway is that alignment to preferences, not just scale,
 drives perceived quality.
+
+#### The reward model and the Bradley-Terry likelihood {.unnumbered}
+
+The two stages have clean objectives. In stage one, a human ranks a pair of
+responses $(y_w, y_l)$ to a prompt $x$, where $y_w$ is preferred to $y_l$. The
+reward model $r_\phi(x, y)$ is fit under the Bradley-Terry model of pairwise
+comparison, which posits
+
+$$
+P(y_w \succ y_l \mid x)
+= \frac{\exp r_\phi(x, y_w)}{\exp r_\phi(x, y_w) + \exp r_\phi(x, y_l)}
+= \sigma\!\big(r_\phi(x, y_w) - r_\phi(x, y_l)\big),
+$$ {#eq-llms-bt}
+
+with $\sigma$ the logistic function. Maximum likelihood over the preference
+dataset minimizes $-\mathbb{E}\big[\log \sigma(r_\phi(x,y_w) - r_\phi(x,y_l))\big]$,
+which is ordinary logistic regression on reward differences. Note that $r_\phi$
+is identified only up to an additive constant per prompt, since the difference is
+all that enters.
+
+#### The KL-regularized policy objective {.unnumbered}
+
+In stage two, the policy $\pi_\theta$ (the language model) is optimized to
+maximize expected reward while staying near the supervised reference policy
+$\pi_{\mathrm{ref}}$,
+
+$$
+\max_{\pi_\theta} \;
+\mathbb{E}_{x,\, y \sim \pi_\theta(\cdot \mid x)}
+\big[ r_\phi(x, y) \big]
+- \beta \, D_{\mathrm{KL}}\!\big(\pi_\theta(\cdot \mid x) \,\|\,
+\pi_{\mathrm{ref}}(\cdot \mid x)\big).
+$$ {#eq-llms-rlhf}
+
+The KL penalty with coefficient $\beta$ keeps the policy from collapsing onto
+whatever degenerate output maximizes an imperfect reward model (reward hacking)
+and from forgetting the fluency learned in pretraining. This objective has a
+closed-form optimum. Treating each prompt separately and maximizing pointwise
+over the distribution $\pi(\cdot \mid x)$ subject to normalization, the optimal
+policy is the reference tilted by the exponentiated reward,
+
+$$
+\pi^\star(y \mid x) = \frac{1}{Z(x)}\,
+\pi_{\mathrm{ref}}(y \mid x)\, \exp\!\Big(\tfrac{1}{\beta} r_\phi(x, y)\Big),
+\qquad
+Z(x) = \sum_{y} \pi_{\mathrm{ref}}(y \mid x)\, \exp\!\Big(\tfrac{1}{\beta} r_\phi(x, y)\Big).
+$$ {#eq-llms-rlhf-opt}
+
+In practice the partition function $Z(x)$ is intractable to sum over all
+sequences, so proximal policy optimization (PPO) approximates this solution by
+gradient ascent. Recognizing the closed form @eq-llms-rlhf-opt and inverting
+it to express the reward in terms of the policy is precisely the insight behind
+direct preference optimization (DPO), which substitutes
+$r_\phi = \beta \log(\pi_\theta/\pi_{\mathrm{ref}}) + \beta \log Z(x)$ into the
+Bradley-Terry likelihood @eq-llms-bt; the $\log Z(x)$ terms cancel in the
+difference, yielding a supervised classification loss on preference pairs that
+avoids reinforcement learning altogether.
 
 
 ::: {.callout-note}

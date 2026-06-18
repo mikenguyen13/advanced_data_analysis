@@ -55,6 +55,35 @@ The histogram has two flaws that motivate everything after it. First, it is disc
 
 The bin width $h$ is the smoothing knob. Wide bins give a blocky, low-variance, high-bias picture; narrow bins give a spiky, high-variance, low-bias one. A common automatic choice is Scott's rule, $h = 3.49\,\hat{\sigma}\,n^{-1/3}$, which minimizes the asymptotic integrated squared error for roughly Gaussian data, where $\hat{\sigma}$ is the sample standard deviation.
 
+### Bias, variance, and where Scott's rule comes from {#density-estimation-hist-theory}
+
+The histogram is worth analyzing carefully because it is the simplest setting in which the bias-variance machinery and the slow nonparametric rate appear explicitly, and the algebra previews the KDE analysis that follows. Fix a bin $B = [x_0, x_0 + h)$ and let $x$ lie in it. The bin count $\nu = \sum_{i=1}^n \mathbf{1}\{x_i \in B\}$ is binomial with $n$ trials and success probability $p_B = \int_B p(u)\,du$, so $\mathbb{E}[\nu] = n p_B$ and $\operatorname{Var}(\nu) = n p_B(1 - p_B)$. With $\hat{p}_{\text{hist}}(x) = \nu/(nh)$,
+
+$$
+\mathbb{E}[\hat{p}_{\text{hist}}(x)] = \frac{p_B}{h}, \qquad
+\operatorname{Var}\bigl(\hat{p}_{\text{hist}}(x)\bigr) = \frac{p_B(1 - p_B)}{n h^2}.
+$$
+
+A first-order Taylor expansion of $p$ about the bin center $c = x_0 + h/2$ gives $p_B = \int_B p(u)\,du = h\,p(c) + O(h^3)$, where the linear term integrates to zero by symmetry about $c$. Hence $\mathbb{E}[\hat{p}_{\text{hist}}(x)] = p(c) + O(h^2)$, and expanding $p(x)$ around $c$ as well yields the leading bias at an interior point $x$,
+
+$$
+\operatorname{Bias}\bigl(\hat{p}_{\text{hist}}(x)\bigr) \;\approx\; \Bigl(c - x\Bigr) p'(x), \qquad c - x \in \bigl[-\tfrac{h}{2}, \tfrac{h}{2}\bigr).
+$$
+
+The bias is $O(h)$ pointwise and depends on $p'$, but it averages out across the bin: integrating the squared bias over $B$ and using $\int_B (c - x)^2 dx = h^3/12$ gives an integrated squared bias of $\tfrac{1}{12} h^2 \int p'(x)^2 dx$ to leading order. For the variance, $p_B(1 - p_B)/(nh^2) \approx p(x)/(nh)$ since $p_B = O(h)$, so integrating gives $1/(nh)$ (because $\int p = 1$). Combining,
+
+$$
+\mathrm{AMISE}_{\text{hist}}(h) \;=\; \frac{1}{nh} \;+\; \frac{h^2}{12} \int p'(x)^2\, dx.
+$$ {#eq-density-estimation-hist-amise}
+
+Setting $\tfrac{d}{dh}\mathrm{AMISE}_{\text{hist}} = -1/(nh^2) + \tfrac{h}{6}\int p'^2 = 0$ gives the optimal bin width
+
+$$
+h_{\text{hist}}^\star = \left( \frac{6}{\int p'(x)^2\, dx} \right)^{1/3} n^{-1/3} \;\propto\; n^{-1/3},
+$$
+
+and substituting back shows $\mathrm{AMISE}_{\text{hist}} = O(n^{-2/3})$. Scott's rule is the special case obtained by plugging the Gaussian reference $p = \mathcal{N}(\cdot \mid \mu, \sigma^2)$, for which $\int p'^2 = 1/(4\sqrt{\pi}\,\sigma^3)$, so that $h_{\text{hist}}^\star = (24\sqrt{\pi})^{1/3}\,\sigma\, n^{-1/3} \approx 3.49\,\sigma\, n^{-1/3}$ with $\sigma$ replaced by $\hat\sigma$. Note the rate $n^{-2/3}$ is strictly worse than the KDE rate $n^{-4/5}$ derived below: the histogram pays for its discontinuity with a larger error exponent, because its $O(h)$ pointwise bias never cancels the way a symmetric kernel's does.
+
 
 ::: {.callout-tip title="Intuition"}
 A histogram answers "how many points landed in this bucket?" The two problems are that the buckets have hard walls (discontinuity) and that someone had to decide where the first wall goes (bin-edge dependence). Kernel density estimation removes both by letting every point carry its own smooth, centered bump.
@@ -75,19 +104,31 @@ The kernel $K$ is itself a density: $K(u) \ge 0$ and $\int K(u)\, du = 1$, usual
 
 ### Why the kernel choice is secondary and the bandwidth is everything {#density-estimation-bias-variance}
 
-A standard asymptotic analysis makes the bias-variance trade-off precise. For a smooth density and a symmetric kernel, the bias of $\hat{p}_h(x)$ is approximately
+A standard asymptotic analysis makes the bias-variance trade-off precise, and it is short enough to give in full. Assume $K$ is a symmetric density ($\int K = 1$, $\int u K(u)\,du = 0$, $\mu_2(K) = \int u^2 K(u)\,du < \infty$) and that $p$ is twice continuously differentiable. Because the summands in $\hat p_h$ are i.i.d., the expectation reduces to a single term,
+
+$$
+\mathbb{E}[\hat{p}_h(x)] = \frac{1}{h}\,\mathbb{E}\!\left[ K\!\left(\frac{x - X}{h}\right)\right] = \frac{1}{h}\int K\!\left(\frac{x - u}{h}\right) p(u)\,du.
+$$
+
+Substituting $u = x - h t$ (so $du = -h\,dt$) turns this into a convolution against the kernel, $\mathbb{E}[\hat p_h(x)] = \int K(t)\, p(x - h t)\, dt$. Taylor-expanding $p(x - ht) = p(x) - h t\, p'(x) + \tfrac12 h^2 t^2 p''(x) + o(h^2)$ and integrating term by term, the constant term gives $p(x)$ (since $\int K = 1$), the linear term vanishes (since $\int t K = 0$), and the quadratic term gives $\tfrac12 h^2 \mu_2(K) p''(x)$. Hence the bias of $\hat{p}_h(x)$ is approximately
 
 $$
 \mathbb{E}[\hat{p}_h(x)] - p(x) \;\approx\; \tfrac{1}{2} h^2 \mu_2(K)\, p''(x), \qquad \mu_2(K) = \int u^2 K(u)\, du,
 $$
 
-so the bias grows with $h^2$ and is worst where the true density is sharply curved (large $|p''|$): peaks get flattened and valleys filled in. The variance moves the opposite way,
+so the bias grows with $h^2$ and is worst where the true density is sharply curved (large $|p''|$): peaks get flattened and valleys filled in. For the variance, independence gives $\operatorname{Var}(\hat p_h(x)) = \tfrac{1}{n}\operatorname{Var}\bigl(\tfrac{1}{h} K(\tfrac{x-X}{h})\bigr)$, and since the variance is at most the second moment,
+
+$$
+\operatorname{Var}\bigl(\hat{p}_h(x)\bigr) = \frac{1}{n}\left[ \frac{1}{h^2}\mathbb{E}\,K\!\left(\tfrac{x-X}{h}\right)^2 - \frac{1}{n}\bigl(\mathbb{E}[\hat p_h(x)]\bigr)^2 \right].
+$$
+
+The same substitution $u = x - ht$ gives $\tfrac{1}{h^2}\mathbb{E}\,K^2 = \tfrac{1}{h}\int K(t)^2 p(x - ht)\,dt = \tfrac{1}{h}\bigl(p(x) R(K) + o(1)\bigr)$, while the second term is $O(1/n)$ and negligible relative to the first when $nh \to \infty$. This yields
 
 $$
 \operatorname{Var}\bigl(\hat{p}_h(x)\bigr) \;\approx\; \frac{p(x)\, R(K)}{n h}, \qquad R(K) = \int K(u)^2\, du,
 $$
 
-shrinking as $h$ grows because a wider kernel averages over more points. Squaring the bias, adding the variance, and integrating gives the asymptotic MISE,
+shrinking as $h$ grows because a wider kernel averages over more points. The two requirements $h \to 0$ (for bias) and $nh \to \infty$ (for variance) together are exactly the conditions for pointwise consistency: $\hat p_h(x) \to p(x)$ in mean square as $n \to \infty$. Squaring the bias, adding the variance, and integrating gives the asymptotic MISE,
 
 $$
 \mathrm{AMISE}(h) \;=\; \underbrace{\frac{R(K)}{n h}}_{\text{variance}} \;+\; \underbrace{\frac{1}{4} h^4 \mu_2(K)^2 \int p''(x)^2\, dx}_{\text{squared bias}}.
@@ -101,6 +142,26 @@ $$
 
 so the best bandwidth shrinks slowly with sample size and the resulting error decays like $n^{-4/5}$ in MISE (equivalently $n^{-2/5}$ in root terms). The catch is that $h_{\text{opt}}$ depends on $\int p''^2$, a feature of the unknown density itself, which is why bandwidth selection is a real problem rather than a formula.
 
+Substituting $h_{\text{opt}}$ back into the AMISE shows the minimized error factorizes as a constant depending only on the kernel times a constant depending only on the density:
+
+$$
+\mathrm{AMISE}(h_{\text{opt}}) \;=\; \frac{5}{4}\,\underbrace{\Bigl( R(K)^4\, \mu_2(K)^2 \Bigr)^{1/5}}_{\text{kernel factor }C(K)} \, \bigl( \lVert p''\rVert^2 \bigr)^{1/5} n^{-4/5}.
+$$
+
+The kernel enters only through $C(K) = \bigl(R(K)^4 \mu_2(K)^2\bigr)^{1/5}$, so the optimal kernel is the one minimizing $C(K)$. This is a calculus-of-variations problem: minimize $R(K)$ subject to fixed $\mu_2(K)$ and $\int K = 1$, since both $C(K)$ and the problem are invariant to rescaling $K(u) \mapsto a K(au)$. The solution is the *Epanechnikov kernel* $K(u) = \tfrac34(1 - u^2)$ on $[-1,1]$, which can be verified by a Lagrange argument (the minimizer of $\int K^2$ at fixed zeroth and second moments is a downward parabola truncated at zero). The practical punchline is the *efficiency* of competing kernels. Because at each kernel's own optimal bandwidth the AMISE scales as $C(K) n^{-4/5}$, matching the AMISE of two kernels at sample sizes $n_1, n_2$ requires $C(K_1) n_1^{-4/5} = C(K_2) n_2^{-4/5}$, so the equivalent-sample-size ratio is $(C(K_{\text{Epan}})/C(K))^{5/4}$. The standard efficiency of the Gaussian kernel is therefore $\bigl(C(K_{\text{Epan}})/C(K_{\text{Gauss}})\bigr)^{5/4} \approx 0.951$: using a Gaussian instead of the optimal kernel is like discarding about 5 percent of the sample. This is why kernel choice is genuinely secondary: the loss from a sub-optimal kernel is bounded and small, whereas a sub-optimal bandwidth has no such guarantee.
+
+We can confirm the 0.951 efficiency directly from the kernel constants $C(K) = (R(K)^4 \mu_2(K)^2)^{1/5}$, using only base R. For the Gaussian, $R = 1/(2\sqrt\pi)$ and $\mu_2 = 1$; for the Epanechnikov, $R = 3/5$ and $\mu_2 = 1/5$.
+
+```{r density-estimation-kernel-eff}
+C_K <- function(R, mu2) (R^4 * mu2^2)^(1 / 5)
+C_gauss <- C_K(R = 1 / (2 * sqrt(pi)), mu2 = 1)
+C_epan <- C_K(R = 3 / 5, mu2 = 1 / 5)
+# Efficiency as an equivalent-sample-size ratio (the 5/4 power)
+c(efficiency = (C_epan / C_gauss)^(5 / 4))
+```
+
+The result is just under 0.951, matching the classical value: the Gaussian kernel achieves about 95 percent of the efficiency of the optimal Epanechnikov kernel.
+
 
 ::: {.callout-warning}
 The single most consequential decision in KDE is the bandwidth, not the kernel. A Gaussian and an Epanechnikov kernel at sensible bandwidths give nearly identical estimates; the same kernel at half versus double the bandwidth gives two completely different pictures. Spend your attention on $h$.
@@ -110,6 +171,20 @@ The single most consequential decision in KDE is the bandwidth, not the kernel. 
 ### Selecting the bandwidth in practice {#density-estimation-bandwidth}
 
 Because $h_{\text{opt}}$ depends on the unknown density, practical rules estimate it. Three are worth knowing. *Silverman's rule of thumb* plugs a Gaussian reference into the formula above, giving $h = 0.9\, A\, n^{-1/5}$ with $A = \min(\hat{\sigma},\ \mathrm{IQR}/1.34)$; it is fast, the default in many tools, and tends to oversmooth multimodal data because it assumes a single Gaussian. *Cross-validation* picks the $h$ that maximizes the held-out log-likelihood, making no shape assumption but costing more computation. *Plug-in* methods (the Sheather-Jones selector) estimate $\int p''^2$ directly and are generally the most reliable default. In R these are available as `bw.nrd0` (Silverman), `bw.ucv` (cross-validation), and `bw.SJ` (Sheather-Jones).
+
+The cross-validation objective deserves a precise statement, because it is data-driven yet free of any reference distribution. Expanding the integrated squared error,
+
+$$
+\int \bigl(\hat p_h - p\bigr)^2 = \int \hat p_h^2 \;-\; 2\int \hat p_h\, p \;+\; \int p^2,
+$$
+
+the last term does not depend on $h$ and can be dropped. The middle term is $\mathbb{E}_X[\hat p_h(X)]$, which is estimated without bias by the *leave-one-out* average $\tfrac{1}{n}\sum_i \hat p_{h}^{(-i)}(x_i)$, where $\hat p_h^{(-i)}$ omits $x_i$ so that the point being scored is not used to build its own estimate. This gives the *unbiased (least-squares) cross-validation* criterion
+
+$$
+\mathrm{UCV}(h) \;=\; \int \hat p_h(x)^2\,dx \;-\; \frac{2}{n}\sum_{i=1}^n \hat p_h^{(-i)}(x_i),
+$$ {#eq-density-estimation-ucv}
+
+whose minimizer (computed by `bw.ucv`) targets the same $h_{\text{opt}}$ above as $n \to \infty$. Its weakness is high variance: the UCV curve is often nearly flat with multiple shallow local minima, so it can select badly on a single sample. The Sheather-Jones plug-in is preferred precisely because it has a faster relative convergence rate to $h_{\text{opt}}$ ($n^{-5/14}$ versus the much slower $n^{-1/10}$ of UCV) and a far smoother objective.
 
 ## Gaussian mixture models and the EM algorithm {#density-estimation-gmm}
 
@@ -143,6 +218,42 @@ $$
 
 Iterating E and M is guaranteed to never decrease the log-likelihood, because each EM step maximizes a lower bound (the *expected complete-data log-likelihood*) that touches the true log-likelihood at the current parameters. It converges to a local maximum, not necessarily the global one, so multiple random restarts and a sensible initialization (commonly from k-means, see the cluster analysis chapter, @sec-cluster) matter in practice. The number of components $K$ is chosen by an information criterion such as the BIC, which balances fit against the parameter count.
 
+### Deriving EM from the evidence lower bound {#density-estimation-em-derivation}
+
+The E-step and M-step formulas above are not guesses; they fall out of a single variational identity, and that identity is also what proves the monotone ascent. For any density $q_i(z)$ over the latent label of point $i$, multiply and divide inside the log and apply Jensen's inequality to the concave $\log$:
+
+$$
+\log p(x_i \mid \theta) = \log \sum_{z} q_i(z)\,\frac{p(x_i, z \mid \theta)}{q_i(z)} \;\ge\; \sum_{z} q_i(z) \log \frac{p(x_i, z \mid \theta)}{q_i(z)} \;=:\; \mathcal{L}_i(q_i, \theta).
+$$
+
+Summing over $i$ gives a lower bound $\mathcal{L}(q, \theta) \le \ell(\theta)$ on the log-likelihood, the *evidence lower bound* (ELBO). The gap is exactly a Kullback-Leibler divergence: a short rearrangement gives
+
+$$
+\log p(x_i \mid \theta) - \mathcal{L}_i(q_i, \theta) \;=\; \mathrm{KL}\!\bigl(q_i(z)\,\big\Vert\, p(z \mid x_i, \theta)\bigr) \;\ge\; 0.
+$$ {#eq-density-estimation-elbo-gap}
+
+EM is coordinate ascent on $\mathcal{L}(q, \theta)$. The **E-step** maximizes over $q$ with $\theta$ fixed: since the KL gap @eq-density-estimation-elbo-gap is zero exactly when $q_i(z) = p(z \mid x_i, \theta)$, the optimal $q$ is the posterior, which for a GMM is precisely the responsibility $q_i(k) = \gamma_{ik}$. After the E-step the bound is *tight*, $\mathcal{L}(q, \theta) = \ell(\theta)$. The **M-step** maximizes over $\theta$ with $q = \gamma$ fixed; dropping the $\theta$-free entropy term $-\sum_i \sum_z q_i \log q_i$, this is the expected complete-data log-likelihood
+
+$$
+Q(\theta) \;=\; \sum_{i=1}^n \sum_{k=1}^K \gamma_{ik}\Bigl[ \log \pi_k + \log \mathcal{N}(x_i \mid \mu_k, \Sigma_k)\Bigr].
+$$
+
+Now derive the updates by setting derivatives to zero. For $\mu_k$, using $\partial_{\mu_k}\log\mathcal{N} = \Sigma_k^{-1}(x_i - \mu_k)$,
+
+$$
+\partial_{\mu_k} Q = \sum_i \gamma_{ik}\,\Sigma_k^{-1}(x_i - \mu_k) = 0 \;\Longrightarrow\; \mu_k = \frac{\sum_i \gamma_{ik} x_i}{\sum_i \gamma_{ik}} = \frac{1}{N_k}\sum_i \gamma_{ik} x_i.
+$$
+
+For $\Sigma_k$, differentiating $\log\mathcal{N} = -\tfrac12\log|\Sigma_k| - \tfrac12 (x_i-\mu_k)^\top\Sigma_k^{-1}(x_i-\mu_k)$ with respect to $\Sigma_k$ (using $\partial_\Sigma \log|\Sigma| = \Sigma^{-1}$ and $\partial_\Sigma\, a^\top\Sigma^{-1}a = -\Sigma^{-1} a a^\top \Sigma^{-1}$) and setting to zero gives the responsibility-weighted covariance $\Sigma_k = \tfrac{1}{N_k}\sum_i \gamma_{ik}(x_i-\mu_k)(x_i-\mu_k)^\top$. For $\pi_k$, maximize $\sum_k N_k \log\pi_k$ under $\sum_k \pi_k = 1$ with a Lagrange multiplier $\lambda$: $\partial_{\pi_k}\bigl(\sum_k N_k\log\pi_k + \lambda(1-\sum_k\pi_k)\bigr) = N_k/\pi_k - \lambda = 0$, so $\pi_k = N_k/\lambda$, and summing the constraint forces $\lambda = \sum_k N_k = n$, giving $\pi_k = N_k/n$. These are exactly the M-step formulas above.
+
+The monotone ascent is now immediate. Let $\theta^{(t)}$ be the current parameters. The E-step makes the bound tight, $\mathcal{L}(\gamma^{(t)}, \theta^{(t)}) = \ell(\theta^{(t)})$; the M-step can only raise the bound, $\mathcal{L}(\gamma^{(t)}, \theta^{(t+1)}) \ge \mathcal{L}(\gamma^{(t)}, \theta^{(t)})$; and the bound always lies below the likelihood, $\ell(\theta^{(t+1)}) \ge \mathcal{L}(\gamma^{(t)}, \theta^{(t+1)})$. Chaining the three,
+
+$$
+\ell(\theta^{(t+1)}) \;\ge\; \mathcal{L}(\gamma^{(t)}, \theta^{(t+1)}) \;\ge\; \mathcal{L}(\gamma^{(t)}, \theta^{(t)}) \;=\; \ell(\theta^{(t)}),
+$$
+
+so the observed-data log-likelihood never decreases. Since $\ell$ is bounded above on any region where covariances stay non-degenerate, the sequence $\ell(\theta^{(t)})$ converges, and the iterates converge to a stationary point of $\ell$. Convergence is *linear*, with rate governed by the largest eigenvalue of the map's Jacobian, which equals the fraction of information about $\theta$ that is missing because the labels are latent; well-separated components carry little missing information and converge fast, heavily overlapping components converge slowly.
+
 
 ::: {.callout-tip title="Intuition"}
 EM is soft k-means. Hard k-means assigns each point to its nearest center; EM assigns each point fractionally to every component in proportion to how well that component explains it, then moves each component toward the points it is most responsible for. As the model sharpens, the soft assignments harden.
@@ -155,6 +266,18 @@ A Gaussian component can collapse onto a single point, driving its variance to z
 :::
 
 
+### Choosing K and the cost of a fit {#density-estimation-gmm-bic}
+
+The number of components is a model-selection problem, and the Bayesian information criterion makes it concrete. For a $d$-dimensional GMM with $K$ full-covariance components the free parameter count is
+
+$$
+\nu(K) = \underbrace{(K-1)}_{\text{weights}} + \underbrace{Kd}_{\text{means}} + \underbrace{K\,\tfrac{d(d+1)}{2}}_{\text{covariances}},
+$$
+
+(the $K-1$ comes from the simplex constraint $\sum_k \pi_k = 1$, and $d(d+1)/2$ is the number of free entries in a symmetric covariance). The criterion $\mathrm{BIC}(K) = -2\,\ell(\hat\theta_K) + \nu(K)\log n$ is minimized over a range of $K$; the $\log n$ penalty per parameter makes BIC consistent for the number of components under regularity conditions, whereas AIC (penalty $2$ per parameter) tends to overstate $K$. Restricting the covariance structure (diagonal, spherical, or tied across components, the family used by `mclust`) shrinks $\nu(K)$ and is the standard remedy when $d$ is large relative to $n$.
+
+The per-iteration cost of EM is $O(nKd^2)$ for full covariances (each of the $nK$ responsibilities needs a quadratic form, and each covariance update is a $d \times d$ outer-product sum), plus $O(Kd^3)$ for the matrix inversions and determinants. The singularity warned about below is quantified by @eq-density-estimation-elbo-gap acting on the likelihood directly: if a component's mean sits on a data point and its variance $\to 0$, that point's density contribution $\mathcal{N}(x_i \mid x_i, \sigma^2 I) = (2\pi\sigma^2)^{-d/2} \to \infty$, so $\ell \to +\infty$ along this path. The global maximum of the GMM likelihood is therefore $+\infty$ and useless; EM is saved only because it converges to a finite local maximum, which is exactly why the regularization and restart advice below is not optional.
+
 ## Normalizing flows, conceptually {#density-estimation-flows}
 
 Gaussian mixtures handle moderate dimensions but struggle with the hundreds or thousands of dimensions in images, audio, or embeddings. Normalizing flows are the neural approach that scales. The idea rests on the change-of-variables formula. If $z$ has a simple known density $p_Z$ (a standard Gaussian) and $x = f(z)$ for an invertible, differentiable map $f$, then the density of $x$ is
@@ -163,7 +286,13 @@ $$
 p_X(x) \;=\; p_Z\!\bigl(f^{-1}(x)\bigr) \, \left| \det \frac{\partial f^{-1}}{\partial x} \right|,
 $$
 
-where the Jacobian determinant accounts for how $f$ stretches and compresses volume. A normalizing flow makes $f$ a neural network, composed of many invertible layers, and trains it by maximizing the exact log-likelihood of the data under this formula. Because the likelihood is exact and tractable, a trained flow can do all three jobs at once: evaluate $p_X(x)$ for any point (likelihood and anomaly scoring), and generate new samples by drawing $z \sim p_Z$ and pushing it through $f$.
+where the Jacobian determinant accounts for how $f$ stretches and compresses volume. This formula is the multivariate change of variables for densities, and it is worth seeing why the determinant appears. Conservation of probability requires that the mass in any region match the mass in its preimage, $\int_A p_X(x)\,dx = \int_{f^{-1}(A)} p_Z(z)\,dz$. Substituting $z = f^{-1}(x)$ in the right integral, the differential transforms as $dz = |\det \partial f^{-1}/\partial x|\,dx$ (the absolute Jacobian determinant is the local volume scaling factor of the change of coordinates), so $\int_A p_X(x)\,dx = \int_A p_Z(f^{-1}(x))\,|\det \partial f^{-1}/\partial x|\,dx$ for every region $A$; equating integrands gives the displayed formula. Equivalently, by the inverse-function theorem $\det \partial f^{-1}/\partial x = (\det \partial f/\partial z)^{-1}$, so the log-density can be written either way. A normalizing flow makes $f$ a neural network, composed of many invertible layers, and trains it by maximizing the exact log-likelihood of the data under this formula. Taking logs and using that a composition $f = f_L \circ \cdots \circ f_1$ has a Jacobian determinant equal to the product of the layers' determinants, the per-sample objective is
+
+$$
+\log p_X(x) \;=\; \log p_Z(z_0) \;+\; \sum_{\ell=1}^{L} \log\left| \det \frac{\partial f_\ell^{-1}}{\partial z_\ell} \right|, \qquad z_0 = f^{-1}(x),
+$$
+
+a sum that is cheap to evaluate precisely because each layer is engineered to have a tractable log-determinant. Because the likelihood is exact and tractable, a trained flow can do all three jobs at once: evaluate $p_X(x)$ for any point (likelihood and anomaly scoring), and generate new samples by drawing $z \sim p_Z$ and pushing it through $f$.
 
 The engineering challenge is designing layers that are simultaneously expressive, invertible, and have a cheap Jacobian determinant, since a general $d \times d$ determinant costs $O(d^3)$. Architectures such as RealNVP and Glow use *coupling layers* that transform half the coordinates as a function of the other half, producing a triangular Jacobian whose determinant is just the product of its diagonal. We treat flows only conceptually here; the generative models chapter (@sec-generative-models) places them alongside VAEs, GANs, and diffusion models, which trade exact likelihood for other advantages.
 

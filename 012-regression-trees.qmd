@@ -111,9 +111,39 @@ and seek the value of j and s the minimizes
 
 $$
 \sum_{i: x_i \in R_1 (j,s)} (y_i - \hat{y}_{R_1})^2 + \sum_{i: x_i \in R_2 (j,s)} (y_i - \hat{y}_{R_2})^2
-$$
+$$ {#eq-regression-trees-split-obj}
 
 where $\hat{y}_{R_1} = \hat{c}_1$ is the mean response in $R_1(j,s)$
+
+#### Why the region constant is the mean, and the split objective {#sec-regression-trees.qmd-derive-split}
+
+Before describing the search over splits, it is worth deriving the two facts that the procedure rests on. Both follow from a single observation about squared error.
+
+Fix any region $R$ containing the index set $\{i : x_i \in R\}$ of size $n_R$, and suppose we must predict a single constant $c$ for every point in $R$. The within-region squared-error loss is $L(c) = \sum_{i \in R} (y_i - c)^2$. Differentiating and setting to zero,
+
+$$
+\frac{dL}{dc} = -2 \sum_{i \in R} (y_i - c) = 0 \quad\Longrightarrow\quad \hat c = \frac{1}{n_R} \sum_{i \in R} y_i = \bar y_R ,
+$$
+
+and $L''(c) = 2 n_R > 0$, so the minimizer is unique and is the region mean. This is exactly the claim $\hat c_j = \operatorname{ave}(y_i \mid x_i \in R_j)$, now derived rather than asserted. The minimized loss is the within-region sum of squares $\sum_{i \in R} (y_i - \bar y_R)^2 = n_R \, \widehat{\operatorname{Var}}(y \mid R)$, so minimizing squared error is the same as choosing splits that minimize a weighted sum of within-node response variances.
+
+Because the constant is pinned to the mean, the split search optimizes only over $(j, s)$. Define the parent loss $Q(R) = \sum_{i \in R} (y_i - \bar y_R)^2$. Splitting $R$ at $(j,s)$ into children $R_1(j,s)$ and $R_2(j,s)$ replaces $Q(R)$ by $Q(R_1) + Q(R_2)$, and the impurity reduction is
+
+$$
+\Delta(j,s) = Q(R) - \big[\, Q\big(R_1(j,s)\big) + Q\big(R_2(j,s)\big) \,\big] .
+$$
+
+Since $Q(R)$ does not depend on the split, minimizing $Q(R_1)+Q(R_2)$ in @eq-regression-trees-split-obj below is identical to maximizing $\Delta(j,s)$. The reduction is always nonnegative: $\bar y_R$ is the single best constant for the pooled data, and allowing two constants can only lower the squared error. A useful algebraic identity is
+
+$$
+\Delta(j,s) = \frac{n_{R_1} n_{R_2}}{n_R}\,\big(\bar y_{R_1} - \bar y_{R_2}\big)^2 ,
+$$
+
+so the best split is the one that drives the two child means as far apart as possible, weighted by how evenly it divides the data. This is the regression analogue of a two-sample mean contrast and explains why a feature that cleanly separates high from low responses is favored.
+
+#### Cost of the search {#sec-regression-trees.qmd-split-cost}
+
+For a continuous predictor $X_j$, only the $n_R - 1$ cutpoints lying between consecutive distinct sorted values can change the partition, so the candidate set is finite. A naive evaluation of each candidate from scratch costs $O(n_R)$, giving $O(n_R^2)$ per feature. The standard trick is to sort the node's responses by $x_{ij}$ once and sweep the cutpoint left to right, maintaining the running counts and sums $\big(n_{R_1}, \sum_{R_1} y_i\big)$ incrementally. Each child mean, and therefore $\Delta(j,s)$ via the identity above, then updates in $O(1)$ per cutpoint, so one feature costs $O(n_R \log n_R)$ (dominated by the sort) and a node costs $O(p\, n_R \log n_R)$. Summing over a balanced tree of depth $O(\log n)$, where each level partitions all $n$ points, gives an overall growth cost of roughly $O(p\, n \log^2 n)$. Presorting each feature once at the root reduces the per-node work to a linear scan and is what production implementations do.
 
 Having made that first cut, we treat each resulting piece as a fresh problem and repeat. A few practical points are worth keeping in mind as the tree grows.
 
@@ -162,8 +192,8 @@ The Tree Complexity Penalty ($\alpha T$) compensates for the difference in the n
 More formally, we first grow a very large tree $T_0$. Instead of considering every possible subtree, we consider a sequence of trees indeed a non-negative tuning parameters, $\alpha$ (i.e., for each value of $\alpha$ there is a subtree $T$ such that $T \in T_0$ that minimizes
 
 $$
-\sum_{j=1}^{|T|} \sum_{i:x_i \in R_j} (y_i - \hat{y}_{R_j})^2 + \alpha |T|
-$$
+C_\alpha(T) = \sum_{j=1}^{|T|} \sum_{i:x_i \in R_j} (y_i - \hat{y}_{R_j})^2 + \alpha |T|
+$$ {#eq-regression-trees-cost-complexity}
 
 where $|T|$ is the number of terminal nodes
 
@@ -172,6 +202,31 @@ The parameter $\alpha$ controls a tradoff between the subtree's complexity and h
 
 ::: {.callout-tip title="Intuition"}
 The penalty $\alpha |T|$ plays the same role here that the penalty term plays in lasso regression: it shrinks model complexity. Small $\alpha$ lets the tree stay large and flexible; large $\alpha$ forces it down to a stump. The beauty is that as $\alpha$ slides from 0 upward, the leaves drop off in a single nested sequence, so cross-validation only has to compare a handful of subtrees rather than all of them.
+:::
+
+
+#### The weakest-link algorithm and why the sequence is nested {#sec-regression-trees.qmd-weakest-link}
+
+The claim that the leaves "drop off in a single nested sequence" is not obvious, and it is what makes pruning tractable. A tree with $|T_0|$ leaves has exponentially many subtrees, so brute-force minimization of @eq-regression-trees-cost-complexity over all subtrees at every $\alpha$ would be hopeless. The weakest-link procedure of Breiman et al. proves that the minimizers, taken over all $\alpha \ge 0$, form a finite nested chain $T_0 \supset T_1 \supset \cdots \supset \{\text{root}\}$, each $T_{m+1}$ obtained from $T_m$ by collapsing a single internal node and the subtree below it.
+
+The argument is local. For any internal node $t$, let $T_t$ denote the branch rooted at $t$ (all of $t$'s descendants), let $R(t) = \sum_{i \in t}(y_i - \bar y_t)^2$ be the squared error if $t$ were collapsed to a leaf, and let $R(T_t) = \sum_{\ell \in T_t}\sum_{i \in \ell}(y_i - \bar y_\ell)^2$ be the error of the branch as it stands, with $|T_t|$ leaves. Collapsing the branch removes $|T_t| - 1$ leaves. The penalized cost of keeping the branch versus pruning it crosses exactly when
+
+$$
+R(t) + \alpha \cdot 1 = R(T_t) + \alpha\,|T_t|
+\quad\Longrightarrow\quad
+g(t) = \frac{R(t) - R(T_t)}{|T_t| - 1} .
+$$
+
+The numerator $R(t) - R(T_t) \ge 0$ is the extra training error you pay for pruning, and the denominator is the number of leaves you save, so $g(t)$ is the increase in error per leaf eliminated, the "cost per leaf" of node $t$. The node with the smallest $g(t)$ is the weakest link: it is the cheapest branch to remove, and it is the first to be sacrificed as $\alpha$ rises. The algorithm therefore reads:
+
+1. Start with the full grown tree $T_0$ (the minimizer at $\alpha = 0$, up to ties resolved toward the smallest such tree).
+2. Compute $g(t)$ for every internal node, find $t^\star = \arg\min_t g(t)$, and collapse $T_{t^\star}$ to a leaf. This yields the next tree in the chain and the breakpoint $\alpha = g(t^\star)$.
+3. Recompute $g(t)$ on the smaller tree (only ancestors of $t^\star$ change) and repeat until only the root remains.
+
+This produces a finite increasing sequence of breakpoints $0 = \alpha_0 < \alpha_1 < \cdots < \alpha_M$ and a matching nested sequence of trees $T_0 \supset T_1 \supset \cdots \supset T_M$. The key theorem (Breiman et al., 1984) is that for any $\alpha \in [\alpha_m, \alpha_{m+1})$ the subtree $T_m$ is the unique smallest minimizer of $C_\alpha(T)$ over all subtrees of $T_0$. Cross-validation then needs only to score the $M+1$ trees in this chain rather than search the full subtree lattice, which is precisely why `cv.tree` returns error against `size` over a short list. The same recursion applies verbatim in classification once $R(\cdot)$ is replaced by the node deviance or misclassification cost.
+
+::: {.callout-note}
+The cost-per-leaf $g(t)$ is the discrete analogue of the lasso's "entry $\lambda$" in least-angle regression: both order the model terms by the regularization strength at which they switch off, and both yield a one-dimensional solution path that turns an exponential search into a linear one. The penalty $\alpha|T|$ is itself an $\ell_0$-type complexity penalty (a count of active leaves), so cost-complexity pruning is best-subset selection made feasible by the nesting guarantee, not by relaxation.
 :::
 
 
@@ -253,6 +308,39 @@ The square root of the MSE is 5.9, meaning on average we predict within \$5.9k o
 
 <br>
 
+### Statistical properties and failure modes {#sec-regression-trees.qmd-theory}
+
+A tree is a piecewise-constant (histogram-type) regressor, and its behavior is best understood through the bias-variance decomposition. Inside a leaf $R$ the estimate is the local mean $\bar y_R$, so its conditional variance is $\sigma^2 / n_R$: deeper trees have fewer points per leaf and therefore higher variance, while shallow trees average over wide regions and have low variance but high bias because a smooth $f$ is approximated by a step. Tree depth, controlled in practice through $\alpha$, the minimum node size, or `mindev`, is the knob that trades these off, and cross-validation in @eq-regression-trees-cost-complexity is choosing the point on that curve.
+
+For consistency, suppose $f$ is continuous and trees are grown so that, as $n \to \infty$, every leaf diameter shrinks to zero (bias to zero) while the number of points per leaf grows without bound (variance to zero). Under these two conditions the regression tree is universally consistent, $\mathbb{E}\,[(\hat f_n(x) - f(x))^2] \to 0$. The conditions are exactly the histogram-consistency requirements: a leaf must become both small and well-populated. The catch is the rate. For a $d$-dimensional Lipschitz $f$, an axis-aligned partition estimator attains the minimax rate $n^{-2/(2+d)}$, the same curse of dimensionality that afflicts kernel and nearest-neighbor methods (@sec-kernel). Greedy CART does not always achieve this rate, because its splits are chosen to reduce error on the observed responses rather than to shrink every coordinate uniformly, so a feature that happens to look uninformative early can be starved of splits.
+
+Two structural failure modes follow directly from the axis-aligned, greedy construction.
+
+- **Instability (high variance as a function of the data).** Because a split is chosen by an $\arg\max$ over $(j,s)$, two competing splits with nearly equal $\Delta(j,s)$ can swap under a tiny perturbation of the data, and since every descendant split conditions on the one above it, an early swap cascades into a wholly different tree. This is why a single tree is high-variance even after pruning, and it is the precise weakness that bagging and random forests (@sec-bagging, @sec-random-forest) exploit: averaging many trees fit to resampled data reduces variance without raising bias, because each tree is approximately unbiased but noisy.
+
+- **No additive or oblique structure.** A true model $f(x) = g_1(x_1) + g_2(x_2)$ requires the tree to re-split on $x_2$ inside every $x_1$ region, spending leaves to reconstruct an effect that an additive model captures in two terms; the data is fragmented exponentially in the number of additive components. Likewise, a linear decision boundary such as $x_1 > x_2$ can only be approximated by a staircase of axis-aligned cuts, costing many leaves for a boundary MARS (@sec-mars) or a linear model represents exactly. These are not tuning issues; they are intrinsic to the hypothesis class.
+
+::: {.callout-warning}
+Greedy splitting also creates a selection bias toward features with many candidate cutpoints. A continuous predictor or a categorical one with many levels offers more places to split and so more chances for one split to look good by chance, inflating its apparent importance even when it is noise. Conditional-inference trees (the `ctree` procedure in the `partykit` package) address this by separating the choice of splitting variable, via a permutation test, from the choice of cutpoint, which removes the bias at the cost of more computation.
+:::
+
+The identity $\Delta(j,s) = \tfrac{n_{R_1} n_{R_2}}{n_R}(\bar y_{R_1} - \bar y_{R_2})^2$ from @sec-regression-trees.qmd-derive-split is easy to confirm numerically, which also serves as a check on the impurity bookkeeping any implementation must get right.
+
+```{r}
+set.seed(1)
+y <- rnorm(50); n <- length(y)
+Q <- function(v) sum((v - mean(v))^2)
+left <- 1:20; right <- 21:50
+delta_direct  <- Q(y) - (Q(y[left]) + Q(y[right]))
+delta_formula <- (length(left) * length(right) / n) *
+    (mean(y[left]) - mean(y[right]))^2
+c(direct = delta_direct, formula = delta_formula)
+```
+
+The two numbers agree, confirming that the impurity reduction equals the weighted squared gap between child means.
+
+<br>
+
 ## Classification Trees
 
 Everything above was for a numeric response. Often, though, the response is a label rather than a number: spam or not spam, high sales or low sales, disease or healthy. When we have a qualitative response we can use a classification tree.
@@ -294,6 +382,38 @@ Use the Gini index or cross-entropy to *grow* the tree, because they respond smo
 
 
 As a rule of thumb: use Gini and cross-entropy to build and prune a tree, and use the classification error rate for pruning if prediction accuracy of the pruned tree is the goal.
+
+#### Why a split criterion must be strictly concave {#sec-regression-trees.qmd-impurity-concavity}
+
+The preference for Gini and entropy over the misclassification rate has a precise justification: the impurity reduction from a split is guaranteed nonnegative only when the impurity function is concave, and it is guaranteed strictly positive (so the criterion actually rewards informative splits) only when it is strictly concave. The misclassification rate is concave but only piecewise linear, so it can report zero gain for a split that the other two strictly prefer.
+
+Write impurity as a function of the class-proportion vector $\hat p = (\hat p_1, \dots, \hat p_K)$, and let a split send a fraction $w_1 = n_{R_1}/n_R$ of the node to child $R_1$ with proportions $\hat p^{(1)}$ and $w_2 = n_{R_2}/n_R$ to $R_2$ with $\hat p^{(2)}$. Conservation of counts gives $\hat p = w_1 \hat p^{(1)} + w_2 \hat p^{(2)}$, so the parent proportion is the weighted average of the children's. The impurity gain is
+
+$$
+\Delta = \phi(\hat p) - \big[\, w_1\,\phi(\hat p^{(1)}) + w_2\,\phi(\hat p^{(2)}) \,\big] .
+$$
+
+If $\phi$ is concave, Jensen's inequality gives $\phi(\hat p) = \phi\big(w_1 \hat p^{(1)} + w_2 \hat p^{(2)}\big) \ge w_1\phi(\hat p^{(1)}) + w_2\phi(\hat p^{(2)})$, so $\Delta \ge 0$: any split weakly reduces impurity. The Gini index $\phi(\hat p) = \sum_k \hat p_k(1-\hat p_k) = 1 - \sum_k \hat p_k^2$ and the entropy $\phi(\hat p) = -\sum_k \hat p_k \log \hat p_k$ are both strictly concave on the simplex (their Hessians are negative definite on the affine subspace $\sum_k \hat p_k = 1$), so the inequality is strict whenever $\hat p^{(1)} \neq \hat p^{(2)}$. Every split that separates the classes at all strictly improves the score, which gives the search a smooth gradient to follow.
+
+The misclassification impurity $\phi(\hat p) = 1 - \max_k \hat p_k$ is concave but linear on each region where the same class is the majority. Consider a two-class node with $\hat p = (0.8, 0.2)$ and a split into children with $(0.9, 0.1)$ and $(0.7, 0.3)$ in equal halves: class 1 is the majority in the parent and in both children, so the misclassification rate is $0.2$ before and $\tfrac12(0.1) + \tfrac12(0.3) = 0.2$ after, a gain of zero. Gini, by contrast, drops from $0.32$ to $\tfrac12(0.18) + \tfrac12(0.42) = 0.30$, correctly registering that the split purified the node. This is the concrete reason the misclassification rate makes a poor growing criterion: it is blind to splits that shift probability mass without flipping the majority label. It remains the right yardstick for pruning, because there the object of interest is the count of final misclassifications, not the quality of intermediate splits.
+
+For the binary case the three criteria are easy to compare directly. With $p = \hat p_1$, misclassification is $\min(p, 1-p)$, Gini is $2p(1-p)$, and (scaled) entropy is $-p\log p - (1-p)\log(1-p)$. All three vanish at $p \in \{0,1\}$ and peak at $p = \tfrac12$, but only the latter two are strictly concave, and entropy is the most peaked near the pure endpoints, which is why entropy-grown trees tend to keep splitting to push nodes toward purity.
+
+#### Practical choices and diagnostics {#sec-regression-trees.qmd-howto}
+
+A few decisions recur whenever you fit a tree, and the theory above tells you how to make them.
+
+- **Stopping versus pruning.** Do not rely on a stringent stopping rule (a large minimum node size or a high minimum-gain threshold) to control size. A weak split high in the tree can enable a strong one below it, and a greedy stop never sees it. The robust recipe is to grow deliberately too large, then let cost-complexity pruning and cross-validation in @eq-regression-trees-cost-complexity choose the size. The minimum node size still matters as a floor: a leaf with one or two points has a wildly variable mean, so values like 5 (regression) or 10 (classification) are common defaults.
+
+- **Choosing $\alpha$.** Because $\alpha$ indexes the finite nested chain of @sec-regression-trees.qmd-weakest-link, cross-validation evaluates only that short list. The one-standard-error rule is standard practice: among trees whose cross-validated error is within one standard error of the minimum, pick the smallest. This buys interpretability and stability at no statistically meaningful cost in accuracy, and it counteracts the optimism of selecting the literal minimum of a noisy curve.
+
+- **Categorical predictors.** For a $K$-class response with an unordered categorical predictor of $q$ levels, the $2^{q-1}-1$ possible binary groupings are not all searched in the two-class (or regression) case: ordering the levels by their mean response (regression) or by the proportion of one class (binary classification) and splitting that ordering is provably optimal and reduces the search to $q-1$ candidates (Breiman et al., 1984; Fisher's grouping theorem). For multiclass responses no such shortcut exists, which is the practical reason many-level factors are dangerous.
+
+- **Cost and scale.** Growth costs about $O(p\,n\log^2 n)$ as derived in @sec-regression-trees.qmd-split-cost; pruning and cross-validation add a constant factor. Memory is $O(\text{nodes})$. Trees need no feature scaling, since splits depend only on the order of each feature's values, and they are invariant to any monotone transformation of an individual predictor, a property linear models lack.
+
+::: {.callout-tip title="Reading variable importance"}
+A single tree's split positions are a crude importance signal and inherit the instability of the tree. A more stable summary sums, for each variable, the total impurity reduction $\Delta$ it produces across all nodes where it is used. Even so, this measure is biased toward high-cardinality and continuous features (the selection bias noted above), so treat single-tree importances as suggestive and prefer the permutation or out-of-bag importances available from the ensemble methods in later chapters.
+:::
 
 We illustrate with the `Carseats` data. The response `Sales` is continuous, so we first turn it into a binary label `High` (yes if sales exceed 8, no otherwise) and then predict that label from the other variables.
 

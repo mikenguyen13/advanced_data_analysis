@@ -55,6 +55,22 @@ A model trained on $\mathcal{L}$ produces a class-probability estimate $\hat{p}_
 The whole subject reduces to choosing $a(x)$. The sections below are really a tour of different sensible definitions of "useful," and the tradeoffs between them in cost and behavior.
 :::
 
+### A decision-theoretic frame {#sec-active-learning-decision}
+
+The acquisition functions below look like a grab bag of heuristics, but most are approximations to one optimal object. Fix a loss $L(\theta, x, y)$ we ultimately care about (for example $0/1$ loss on future test points) and let the labeled set after one query be $\mathcal{L} \cup \{(x, y)\}$. The truly optimal greedy query minimizes the expected future loss after retraining,
+
+$$
+a_{\star}(x) = -\,\mathbb{E}_{y \sim p(y \mid x)} \Big[\; \mathbb{E}_{(x', y')}\, L\big(\hat\theta_{\mathcal{L} \cup \{(x,y)\}},\, x', y'\big) \Big],
+$$ {#eq-active-learning-optimal}
+
+where the inner expectation is over the (unknown) future data distribution and $\hat\theta_{\mathcal{L} \cup \{(x,y)\}}$ is the model refit including the new pair. Equation @eq-active-learning-optimal is the *expected error reduction* objective of Roy and McCallum (2001). It is rarely computable: we do not know $p(y \mid x)$ (we substitute $\hat{p}_\theta$), we do not know the test distribution (we substitute the pool), and it requires a full retrain for every candidate crossed with every possible label, an $O(m K)$ refits per round. Every practical strategy that follows is a tractable surrogate for one piece of @eq-active-learning-optimal:
+
+- Uncertainty sampling drops the retraining entirely and scores by the current model's predictive uncertainty at $x$, a proxy for how much the label could move the prediction there.
+- Query-by-committee replaces "expected loss" by disagreement in the version space, the set of models still consistent with $\mathcal{L}$.
+- Expected model change replaces the loss decrease by the parameter movement a label would cause.
+
+Reading the strategies as approximations of @eq-active-learning-optimal explains both why they usually help (they correlate with genuine error reduction) and why they sometimes fail (the correlation breaks when the surrogate and the true objective diverge, as with outliers or miscalibration).
+
 
 ## Pool-based vs stream-based
 
@@ -121,6 +137,22 @@ For binary problems all three rank points identically: each is maximized at $\ha
 
 For a binary logistic model with $\hat{p} = \hat{p}_\theta(y=1 \mid x)$, all three scores peak where $\hat{p} = 0.5$, that is, on the fitted decision boundary $x^\top \hat\beta = 0$. Uncertainty sampling therefore pulls queries toward the current boundary.
 
+#### Why the three scores agree in binary problems {#sec-active-learning-binary}
+
+The claim that least confidence, margin, and entropy induce the same ranking when $K = 2$ deserves a proof, because it is what makes the simple `abs(p - 0.5)` score in the demo legitimate. Write $\hat{p} = \hat{p}_\theta(y=1 \mid x) \in [0,1]$, so the two class probabilities are $\hat{p}$ and $1 - \hat{p}$. Each score is a function of $\hat{p}$ alone:
+
+$$
+a_{\mathrm{LC}} = 1 - \max(\hat{p}, 1-\hat{p}), \qquad
+a_{\mathrm{M}} = -\,\big|\,2\hat{p} - 1\,\big|, \qquad
+a_{\mathrm{H}} = -\hat{p}\log\hat{p} - (1-\hat{p})\log(1-\hat{p}).
+$$
+
+For least confidence, $\max(\hat{p}, 1-\hat{p}) = \tfrac12 + \tfrac12|2\hat{p}-1|$, so $a_{\mathrm{LC}} = \tfrac12 - \tfrac12|2\hat{p}-1| = \tfrac12(1 - |2\hat{p}-1|)$. Thus $a_{\mathrm{LC}}$ and $a_{\mathrm{M}} = -|2\hat{p}-1|$ are both strictly decreasing functions of $|2\hat{p}-1|$, hence monotone transforms of each other, hence identical rankings. For entropy, set $u = |2\hat{p}-1| = |\hat{p}-(1-\hat{p})|$ and note $a_{\mathrm{H}}(\hat{p}) = H_b(\hat{p})$, the binary entropy. Its derivative is $H_b'(\hat{p}) = \log\frac{1-\hat{p}}{\hat{p}}$, which is positive for $\hat{p} < \tfrac12$ and negative for $\hat{p} > \tfrac12$, so $H_b$ is strictly increasing on $[0,\tfrac12]$, strictly decreasing on $[\tfrac12,1]$, and symmetric about $\hat{p} = \tfrac12$. Therefore $H_b$ is a strictly decreasing function of $u = |2\hat{p}-1|$ as well. All three scores are strictly decreasing in the single quantity $|2\hat{p}-1| = 2\,|\hat{p}-\tfrac12|$, so they order any pool identically and all are maximized exactly at $\hat{p} = \tfrac12$. This is the formal content of "query the point closest to the boundary." With $K \ge 3$ the scores depend on more than one coordinate of the simplex and the equivalence breaks, which is why the choice among them starts to matter.
+
+#### Margin sampling as a plug-in Bayes rule {#sec-active-learning-bayes-risk}
+
+Margin sampling has a clean decision-theoretic reading. Under $0/1$ loss the Bayes-optimal prediction at $x$ is $\arg\max_y \hat{p}_\theta(y\mid x)$, and the conditional risk (probability of error) of that prediction is $1 - \max_y \hat{p}_\theta(y\mid x) = a_{\mathrm{LC}}(x)$. So least confidence literally queries the points of highest current conditional Bayes risk. The margin $\hat{p}(y_1\mid x) - \hat{p}(y_2\mid x)$ is the amount by which the top prediction beats its closest rival; a vanishing margin is exactly the case where a small change in $\hat\theta$ could flip the predicted label, which ties margin sampling back to the "label could change the prediction here" reading of @eq-active-learning-optimal.
+
 
 ::: {.callout-tip title="Intuition"}
 Picture the model drawing a line between two classes. The points it is least sure about are the ones sitting right on the line. Labeling those tells the model exactly where the line should go, which is far more informative than labeling a point deep inside a region it already understands.
@@ -145,6 +177,28 @@ $$
 
 The intuition is that high disagreement marks regions of the input space where the data so far does not pin down the model, so a label there is informative.
 
+#### Version-space shrinking and the information-theoretic view {#sec-active-learning-qbc-theory}
+
+The original motivation (Seung, Opper, and Sompolinsky, 1992) is geometric. The *version space* $\mathcal{V} \subseteq \Theta$ is the set of parameters consistent with the current labels (in the separable, noise-free case, those with zero training error). A query at $x$ partitions $\mathcal{V}$ into the members that would predict each class. Labeling $x$ deletes the inconsistent members, so the most informative query is the one that splits $\mathcal{V}$ closest to in half, halving its volume per label and giving exponential shrinkage. A committee sampled from $\mathcal{V}$ estimates this split: maximal vote disagreement approximates the point where the predicted-class regions of $\mathcal{V}$ have equal measure. Under idealized assumptions QBC achieves generalization error decaying as $\varepsilon(n) \sim 1/n$ in the number of queries, versus the $\sim 1/\sqrt{n}$ typical of passive learning, an exponential improvement in label complexity for fixed error.
+
+The soft score $a_{\mathrm{KL}}$ is not an arbitrary alternative to vote entropy; it is the *mutual information* between the label and the model parameters, which makes the Bayesian objective explicit. Treat the committee as $C$ posterior samples $\theta^{(c)}$. Then
+
+$$
+\underbrace{H\!\big(\bar p(\cdot\mid x)\big)}_{\text{total uncertainty}}
+\;-\;
+\underbrace{\frac{1}{C}\sum_{c} H\!\big(\hat p_{\theta^{(c)}}(\cdot\mid x)\big)}_{\text{expected uncertainty given }\theta}
+\;=\; \mathbb{I}\big(y;\theta \mid x, \mathcal{L}\big),
+$$ {#eq-active-learning-bald}
+
+where $H(p) = -\sum_y p(y)\log p(y)$ and $\bar p$ is the consensus. This difference is the BALD score (Bayesian Active Learning by Disagreement, Houlsby et al., 2011). A short algebraic check shows the average-KL score equals exactly this gap:
+
+$$
+\frac{1}{C}\sum_{c}\sum_y \hat p_{\theta^{(c)}}(y\mid x)\log\frac{\hat p_{\theta^{(c)}}(y\mid x)}{\bar p(y\mid x)}
+= -\frac1C\sum_c\sum_y \hat p_{\theta^{(c)}}\log \bar p \;+\; \frac1C\sum_c\sum_y \hat p_{\theta^{(c)}}\log \hat p_{\theta^{(c)}},
+$$
+
+and since $\frac1C\sum_c \hat p_{\theta^{(c)}} = \bar p$, the first term is $-\sum_y \bar p \log \bar p = H(\bar p)$ and the second is $-\frac1C\sum_c H(\hat p_{\theta^{(c)}})$, recovering @eq-active-learning-bald. So $a_{\mathrm{KL}} = \mathbb{I}(y;\theta\mid x)$. The decomposition is interpretable: it is large only when the *consensus* is uncertain (high $H(\bar p)$) while each *member* is individually confident (low average $H$), that is, the models confidently disagree. This is precisely *epistemic* uncertainty (reducible by labeling), as opposed to *aleatoric* uncertainty (inherent class overlap), which inflates plain entropy but not BALD. Pure uncertainty sampling cannot make this distinction and will waste budget on points that are simply noisy.
+
 ### Expected model change
 
 Pick the point whose label, once added, would change the model the most. A common version is expected gradient length: for a model trained by gradient methods with loss $\ell$, score $x$ by the size of the training gradient its label would induce, averaged over the labels the current model thinks are possible:
@@ -155,6 +209,30 @@ a_{\mathrm{EGL}}(x) = \sum_{y=1}^{K} \hat{p}_\theta(y \mid x)
 $$
 
 A large expected gradient means the new example would move the parameters substantially, which is taken as a proxy for learning a lot. This is more expensive (a gradient per candidate per possible label) and is sensitive to feature scaling, since gradient norms inherit the scale of the inputs.
+
+#### Why expected gradient length proxies model change {#sec-active-learning-egl-derivation}
+
+The link to "how much the model moves" is not just a slogan. Suppose we add $(x, y)$ and take one gradient step of size $\eta$ from the current minimizer $\hat\theta$. Because $\hat\theta$ already zeros the gradient on $\mathcal{L}$, the gradient of the augmented objective is just the new point's contribution, so the parameter update is
+
+$$
+\Delta\theta = -\eta\,\nabla_\theta\, \ell\big((x,y);\hat\theta\big),
+\qquad \|\Delta\theta\| = \eta\,\big\|\nabla_\theta\,\ell\big((x,y);\hat\theta\big)\big\|.
+$$
+
+The true label is unknown, so we average over the model's predictive distribution, giving exactly $a_{\mathrm{EGL}}(x) = \sum_y \hat p_\theta(y\mid x)\,\|\nabla_\theta \ell((x,y);\theta)\|$ up to the constant $\eta$. The Euclidean gradient norm is the natural choice only after standardizing; under a different parameterization the relevant quantity is the change in *function space*, which the Fisher-weighted norm $\nabla\ell^\top F^{-1}\nabla\ell$ captures (this is the connection to the variance-reduction / optimal-design strategies below).
+
+To make the gradient concrete, take the binary logistic loss with $\hat p = \sigma(x^\top\theta)$. The per-example gradient is the textbook $\nabla_\theta \ell((x,y);\theta) = (\hat p - y)\,x$, so $\|\nabla_\theta \ell\| = |\hat p - y|\,\|x\|$. Averaging over $y \in \{0,1\}$ with weights $\hat p$ and $1-\hat p$,
+
+$$
+a_{\mathrm{EGL}}(x) = \big[(1-\hat p)\,|\hat p - 0| + \hat p\,|\hat p - 1|\big]\,\|x\|
+= 2\,\hat p (1-\hat p)\,\|x\|.
+$$ {#eq-active-learning-egl-logistic}
+
+Equation @eq-active-learning-egl-logistic is revealing. The first factor $2\hat p(1-\hat p)$ is maximized at $\hat p = \tfrac12$, so EGL reduces to uncertainty sampling *modulated by* $\|x\|$. The $\|x\|$ factor is exactly why the strategy chases outliers and is scale sensitive: a far-flung point with $\|x\|$ large can outscore a genuinely ambiguous point near the boundary. Standardizing the features bounds $\|x\|$ and tames the pathology, which is the practical advice in the warning above.
+
+#### Variance reduction and optimal experimental design {#sec-active-learning-design}
+
+A fourth, classical family chooses queries to shrink the model's predictive variance directly, connecting active learning to optimal experimental design (Cohn, Ghahramani, and Jordan, 1996). For a linear or generalized-linear model the (approximate) parameter covariance is the inverse Fisher information $\Sigma = (\sum_{i \in \mathcal{L}} I(x_i))^{-1}$, where for logistic regression $I(x) = \hat p(x)(1-\hat p(x))\,x x^\top$. Adding a query at $x$ updates the information by a rank-one term, and the Sherman-Morrison formula gives the post-query covariance in closed form. A *D-optimal* query maximizes the determinant drop $\log\det\Sigma_{\text{old}} - \log\det\Sigma_{\text{new}}$, while an *A-optimal* query minimizes $\operatorname{tr}\Sigma_{\text{new}}$, the total parameter variance, and a *V-optimal* (or integrated-variance) query minimizes the average predictive variance over the pool, $\frac{1}{m}\sum_{x'}x'^\top\Sigma_{\text{new}}x'$. These criteria are principled (they target the same statistical object as @eq-active-learning-optimal through the bias-variance decomposition) but cost an $O(p^2)$ to $O(p^3)$ covariance update per candidate, which is why heuristic uncertainty sampling dominates in practice for high-dimensional models.
 
 
 ::: {.callout-warning}
@@ -188,6 +266,28 @@ strat <- data.frame(
 )
 knitr::kable(strat, caption = "Query strategies at a glance.")
 ```
+
+## Theoretical guarantees and limits {#sec-active-learning-theory}
+
+How much can active learning save, and can it ever hurt? The honest answer is "it depends on the problem geometry," and the theory makes the dependence precise.
+
+The clean win is the noise-free threshold on the line. Suppose $\mathcal{X} = [0,1]$ and labels are determined by an unknown threshold $\theta^\star$: $y = \mathbb{1}\{x \ge \theta^\star\}$. Passive learning needs $n = O(1/\varepsilon)$ random labels to locate $\theta^\star$ to accuracy $\varepsilon$, because a uniform sample only places a point in the relevant $\varepsilon$-interval with probability $\varepsilon$. Active learning does *binary search*: each query at the current midpoint of the consistent interval halves it, so after $n$ queries the interval has width $2^{-n}$, giving error $\varepsilon = 2^{-n}$, that is
+
+$$
+n = O\!\big(\log(1/\varepsilon)\big).
+$$ {#eq-active-learning-binarysearch}
+
+The label complexity drops from $1/\varepsilon$ to $\log(1/\varepsilon)$, an exponential saving. This is the cleanest instance of the version-space halving argument from @sec-active-learning-qbc-theory, and the source of the optimism around active learning.
+
+Two facts temper that optimism.
+
+First, the speedup is not universal; it is governed by a problem-dependent constant. For a hypothesis class of VC dimension $d$, the relevant quantity is the *disagreement coefficient* $\vartheta$ (Hanneke, 2007), which measures how fast the region where surviving hypotheses still disagree shrinks as the version space shrinks. Agnostic active learning algorithms achieve label complexity of order $\vartheta\, d\,\log(1/\varepsilon)$ plus a noise term, recovering the exponential gain when $\vartheta$ is small (as for thresholds, where $\vartheta \le 2$) but degrading to the passive $1/\varepsilon$ rate when $\vartheta$ is large (as for some high-dimensional or adversarial geometries). There is no free lunch: for the worst case over a rich class, active learning cannot beat passive by more than constants.
+
+Second, *greedy* uncertainty sampling, the strategy we actually run, carries no such guarantee and can be strictly worse than random. The failure mode is concrete: if the seed model places its boundary in the wrong region, uncertainty sampling queries densely along that wrong boundary, never sampling the region that would reveal the mistake, and the boundary can get stuck. Because each query depends on the model the previous queries produced, the labeled set is not i.i.d. and standard consistency proofs for the downstream estimator do not apply. Sampling bias can make the actively trained classifier inconsistent even in the infinite-budget limit unless the strategy retains some probability of exploring (importance-weighted active learning, Beygelzimer et al., 2009, restores consistency by reweighting queried points by their inverse selection probability).
+
+::: {.callout-warning}
+The exponential label savings of @eq-active-learning-binarysearch are a best case for well-specified, low-noise, low-disagreement-coefficient problems. For agnostic problems with label noise, or for greedy heuristics without exploration, active learning can match or even underperform random sampling. Always keep a random baseline running alongside, exactly as the demo below does.
+:::
 
 ## Runnable demo: uncertainty vs random sampling
 
@@ -354,6 +454,27 @@ A model can be confidently wrong. An overconfident model pushes most predictions
 :::
 
 
+The following check confirms the closed form @eq-active-learning-egl-logistic for expected gradient length under binary logistic loss, that $a_{\mathrm{EGL}}(x) = 2\hat p(1-\hat p)\|x\|$. We compute the gradient-norm expectation by brute force (averaging $\|(\hat p - y)x\|$ over $y$ with the model's own weights) and compare to the formula.
+
+```{r al-egl-check, eval=TRUE}
+set.seed(7)
+beta <- c(0.4, -1.1, 0.7)          # includes intercept
+x    <- c(1, 0.8, -0.5)            # one candidate (first entry is intercept term)
+phat <- as.numeric(1 / (1 + exp(-sum(beta * x))))
+
+# brute-force expected gradient length: E_y || (phat - y) x ||
+egl_brute <- (1 - phat) * sqrt(sum(((phat - 0) * x)^2)) +
+             phat       * sqrt(sum(((phat - 1) * x)^2))
+
+# closed form 2 p (1-p) ||x||
+egl_form  <- 2 * phat * (1 - phat) * sqrt(sum(x^2))
+
+c(brute = egl_brute, formula = egl_form,
+  max_abs_diff = abs(egl_brute - egl_form))
+```
+
+The two agree to machine precision, and the shared factor $2\hat p(1-\hat p)$ shows EGL is uncertainty sampling scaled by $\|x\|$, the scaling that drives its sensitivity to outliers.
+
 Second, query-by-committee needs only a set of differing models. A cheap committee is a handful of bootstrap refits of the same `glm` (the same resampling idea behind bagging, @sec-bagging): resample $\mathcal{L}$ with replacement, fit each, and score pool points by the variance of their predicted probabilities across committee members. High variance flags disagreement and is a drop-in replacement for the `abs(p - 0.5)` score above.
 
 ## Practical guidance
@@ -380,6 +501,15 @@ Just as often, though, the strategy backfires in predictable ways. Watch for the
 The actively chosen labels are deliberately biased toward the decision boundary, so they are excellent training data but a terrible random sample. Never estimate population quantities (class frequencies, base rates) from them, and always evaluate on a separate, randomly drawn test set.
 :::
 
+
+### Batch-mode active learning, made precise {#sec-active-learning-batch}
+
+The redundancy failure above has a formal cause. Top-$k$ selection treats the batch score as additive, $\sum_{x \in S} a(x)$, which is maximized by the $k$ individually highest-scoring points, with no penalty for picking near-duplicates. Because uncertainty is locally smooth, the top-$k$ set clusters on one stretch of boundary and the $k$ labels carry little more information than one. Real batch methods replace the additive score by a *submodular* set objective $F(S)$ that exhibits diminishing returns, $F(S \cup \{x\}) - F(S) \ge F(T \cup \{x\}) - F(T)$ for $S \subseteq T$, so a point already represented in $S$ contributes little. Two concrete choices:
+
+- A facility-location or core-set objective $F(S) = -\sum_{x' \in \mathcal{U}} \min_{x \in S}\,\mathrm{dist}(x', x)$ rewards a batch that *covers* the pool (Sener and Savarese, 2018). Greedy maximization of a monotone submodular $F$ is guaranteed within a factor $1 - 1/e \approx 0.63$ of the optimum, which is why greedy batch selection is both cheap and near-optimal.
+- A determinantal point process scores a batch by $\det(K_S)$, the Gram determinant of a kernel $K$ restricted to $S$; this is the squared volume spanned by the chosen points, so it is large only when they are both high-quality (large diagonal, encoding $a(x)$) and mutually dissimilar (small off-diagonal correlations). It trades off informativeness and diversity in a single determinant.
+
+A pragmatic middle ground, used in BADGE (Ash et al., 2020), embeds each candidate by its loss gradient $g_x = \nabla_\theta \ell((x, \hat y); \hat\theta)$ at its predicted label (the EGL vector of @sec-active-learning-egl-derivation), then runs $k$-means++ seeding on $\{g_x\}$. The gradient magnitude encodes uncertainty and the angular spread encodes diversity, so one geometric step buys both at once.
 
 Putting the cautions together, here is a sensible default recipe: seed with a small random (or clustered) batch, use margin or entropy sampling with calibrated probabilities, query in modest batches with a light diversity penalty, and always evaluate on a fixed random held-out set rather than on the actively chosen data.
 

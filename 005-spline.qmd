@@ -47,6 +47,27 @@ $$
 
 if the basis functions are orthogonal, then we have a special case $\hat{\beta} = \mathbf{B}^T \mathbf{y}$
 
+### Why the fit is a linear smoother {#sec-spline-linear-smoother}
+
+It is worth making the structure of the fitted values explicit, because it recurs for every method in this chapter. Plugging $\hat\beta$ back into $\hat{\mathbf{y}} = \mathbf{B}\hat\beta$ gives
+
+$$
+\hat{\mathbf{y}} = \mathbf{B}(\mathbf{B}^T\mathbf{B})^{-1}\mathbf{B}^T \mathbf{y} = \mathbf{H}\,\mathbf{y},
+\qquad \mathbf{H} = \mathbf{B}(\mathbf{B}^T\mathbf{B})^{-1}\mathbf{B}^T,
+$$ {#eq-spline-hatmatrix}
+
+so the fit is a fixed linear map $\mathbf{H}$ applied to the responses. For an unpenalized regression spline $\mathbf{H}$ is the orthogonal projection onto the column space of $\mathbf{B}$, hence idempotent ($\mathbf{H}^2 = \mathbf{H}$) and symmetric, with $\operatorname{tr}(\mathbf{H}) = K+1$ equal to the number of basis columns. The trace counting the model dimension is the seed of the effective-degrees-of-freedom idea that returns for smoothing splines, where $\mathbf{H}$ is no longer a projection but the trace still measures complexity.
+
+Under the standard regression assumptions $E(\mathbf{y}) = \mathbf{f}$ (the vector of true regression values $f(x_i)$) and $\operatorname{Var}(\mathbf{y}) = \sigma^2 \mathbf{I}$, the pointwise variance and bias of the fit follow immediately from linearity. With $\mathbf{h}(x)^T = b(x)^T(\mathbf{B}^T\mathbf{B})^{-1}\mathbf{B}^T$ the row of the smoother that produces $\hat f(x)$,
+
+$$
+\operatorname{Var}\!\big(\hat f(x)\big) = \sigma^2\,\lVert \mathbf{h}(x)\rVert_2^2,
+\qquad
+\operatorname{Bias}\!\big(\hat f(x)\big) = \mathbf{h}(x)^T \mathbf{f} - f(x).
+$$ {#eq-spline-biasvar}
+
+For a fixed basis the variance is exactly linear in $\sigma^2$ and grows with the number of columns, while the bias is whatever the projection of the true function onto the span of the basis leaves behind. Adding knots shrinks the bias (the span gets richer) and inflates the variance (more columns, larger $\lVert\mathbf{h}(x)\rVert$), which is the bias-variance tradeoff in its most transparent form. This is the formal content behind the informal statement, made later, that more knots mean more flexibility.
+
 Many models you already know are just particular choices of basis functions. The following list shows how familiar ideas all fit under this one umbrella:
 
 -   Original linear model: $b_k(X) = X_k, k = 1, \dots, p$
@@ -130,7 +151,19 @@ Each constraint is a deal: you give up a degree of freedom in exchange for a smo
 :::
 
 
-After all the constraints, a cubic spline with $K$ knots has $K +4$ df. We can rewrite the cubic spline into the general basis notation, which is exactly the truncated power basis specialized to cubics:
+After all the constraints, a cubic spline with $K$ knots has $K +4$ df.
+
+::: {.callout-note title="Deriving the degree-of-freedom count"}
+The arithmetic behind "$K+4$" is worth doing once. With $K$ interior knots the predictor range is split into $K+1$ intervals, and a free cubic on each interval has $4$ coefficients, for $4(K+1)$ parameters in total. At each of the $K$ knots we impose continuity of the function and of its first and second derivatives, that is $3$ constraints per knot, or $3K$ constraints. The dimension of the resulting function space is
+
+$$
+4(K+1) - 3K = 4K + 4 - 3K = K + 4 .
+$$ {#eq-spline-dfcount}
+
+The same logic gives $(k+1)(K+1) - kK = K + k + 1$ for a spline of degree $k$, which matches the truncated-power count $m + k + 1$ used below (with $m = K$ knots). Each derivative-continuity constraint removes exactly one degree of freedom, the precise meaning of the earlier "each constraint is a deal."
+:::
+
+We can rewrite the cubic spline into the general basis notation, which is exactly the truncated power basis specialized to cubics:
 
 $$
 b_1(X) = X; b_2(X) = X^2; b_3(X) = X^2; b_4(X) = h(X,\xi_1);\\
@@ -229,6 +262,26 @@ A natural spline of order k, with knots at $t_1 <...< t_m$, is a piecewise polyn
 
 The middle condition is the heart of it: for a cubic ($k = 3$), the boundary degree is $(3-1)/2 = 1$, so the curve becomes a straight line beyond the extreme knots. This trades a little flexibility for much narrower confidence bands at the edges.
 
+### Boundary constraints and the degrees-of-freedom saving {#sec-natural-spline-df}
+
+For a cubic the linearity beyond the extreme knots is equivalent to four derivative constraints, two at each boundary knot:
+
+$$
+f''(t_1) = 0, \quad f'''(t_1) = 0, \qquad f''(t_m) = 0, \quad f'''(t_m) = 0 .
+$$ {#eq-spline-natural-bc}
+
+Beyond $t_1$ and $t_m$ a cubic that is to continue as a straight line must have vanishing second and third derivatives there, and continuity up to the second derivative then forces those same conditions on the interior cubic at the boundary knots. A cubic regression spline with $m$ knots has $m+4$ degrees of freedom; imposing the four conditions in @eq-spline-natural-bc removes four, leaving
+
+$$
+(m + 4) - 4 = m,
+$$ {#eq-spline-natural-dfcount}
+
+so a natural cubic spline has exactly $m$ degrees of freedom, one per knot. This is why `ns(age, df = 4)` corresponds to four knots (here counting the two boundary knots), whereas `bs(age, df = 6)` with a cubic needs three interior knots to reach six basis columns: the natural spline spends its budget more frugally, which is precisely the variance reduction at the edges paid for in flexibility.
+
+::: {.callout-note title="Why the variance drops at the boundary"}
+Recall from @eq-spline-biasvar that $\operatorname{Var}(\hat f(x)) = \sigma^2\lVert\mathbf{h}(x)\rVert_2^2$. Near the edges of the data an unconstrained cubic spline has few observations to anchor its highest-order behavior, so the weight vector $\mathbf{h}(x)$ has large norm and the variance balloons. Forcing linearity past the extreme knots collapses the local model from a cubic (four local parameters) to a line (two), shrinking $\lVert\mathbf{h}(x)\rVert$ and hence the boundary variance. The price is bias if the truth is genuinely curved in the tails, but data are usually too sparse there to detect such curvature reliably.
+:::
+
 
 ::: {.callout-note}
 Natural splines are only defined for odd orders k, because the boundary degree $(k-1)/2$ must be an integer. Cubic ($k=3$) is the standard choice.
@@ -274,6 +327,67 @@ The single tuning knob $\lambda$ slides the fit between the two extremes:
 Although we nominally place a knot at every data point, the penalty does the real work. The remarkable fact is that the function minimizing the penalized objective is exactly a natural cubic spline with knots at the unique observed values of $x$.
 :::
 
+
+### Why the minimizer is a natural cubic spline {#sec-smoothing-spline-derivation}
+
+The penalized objective is stated over an infinite-dimensional function space (all functions with square-integrable second derivative, the Sobolev space $W^2_2$), yet its minimizer is a finite-dimensional object. The standard argument runs as follows. Suppose $\tilde g$ is any competing function passing through the fitted points, that is $\tilde g(x_i) = g(x_i)$ for all $i$, where $g$ is the natural cubic spline interpolating those same values. Both functions then have identical data-fit terms, so they can only differ in the penalty. Writing $h = \tilde g - g$, integration by parts on each interknot interval together with the natural boundary conditions $g''(t_1) = g''(t_m) = 0$ from @eq-spline-natural-bc gives
+
+$$
+\int g''(x)\, h''(x)\, dx
+= \big[ g''(x) h'(x)\big]_{t_1}^{t_m} - \int g'''(x)\, h'(x)\, dx
+= - \int g'''(x)\, h'(x)\, dx .
+$$
+
+Because $g$ is a natural cubic spline, $g'''$ is piecewise constant and vanishes outside $[t_1, t_m]$, so a further integration by parts on each interval (using $h(t_i) = 0$) makes this last integral vanish. Hence $\int g'' h'' \,dx = 0$, and
+
+$$
+\int \tilde g''(x)^2\, dx
+= \int g''(x)^2 \, dx + 2\!\int g''(x) h''(x)\,dx + \int h''(x)^2\, dx
+= \int g''(x)^2\,dx + \int h''(x)^2\,dx
+\;\ge\; \int g''(x)^2\, dx ,
+$$ {#eq-spline-ncs-optimality}
+
+with equality only if $h'' \equiv 0$. So among all functions interpolating a given set of fitted values, the natural cubic spline has the smallest roughness penalty. Since the data-fit term depends only on the values at the $x_i$, the global minimizer of the penalized criterion must itself be a natural cubic spline with knots at the unique $x_i$. This is the rigorous content of the "Key idea" above, and it is what reduces the infinite-dimensional problem to a finite regression.
+
+### The penalized least-squares solution {#sec-reinsch}
+
+Once we know the answer lives in the natural-spline space, expand $g(x) = \sum_{j=1}^{n} \beta_j N_j(x)$ in a natural cubic spline basis $\{N_j\}$ with $\{\mathbf N\}_{ij} = N_j(x_i)$ and penalty matrix $\{\boldsymbol\Omega_N\}_{jk} = \int N_j''(t) N_k''(t)\,dt$. The criterion becomes a finite generalized-ridge problem,
+
+$$
+\operatorname*{arg\,min}_{\beta}\; \lVert \mathbf y - \mathbf N \beta\rVert_2^2 + \lambda\, \beta^T \boldsymbol\Omega_N \beta .
+$$ {#eq-spline-penalized-objective}
+
+Setting the gradient to zero,
+
+$$
+-2\mathbf N^T(\mathbf y - \mathbf N\beta) + 2\lambda\,\boldsymbol\Omega_N \beta = 0
+\;\Longrightarrow\;
+(\mathbf N^T\mathbf N + \lambda\,\boldsymbol\Omega_N)\,\hat\beta = \mathbf N^T\mathbf y ,
+$$
+
+so $\hat\beta = (\mathbf N^T\mathbf N + \lambda\,\boldsymbol\Omega_N)^{-1}\mathbf N^T\mathbf y$ and the fitted values are $\hat{\mathbf y}_\lambda = \mathbf N\hat\beta = \mathbf S_\lambda \mathbf y$ with
+
+$$
+\mathbf S_\lambda = \mathbf N(\mathbf N^T\mathbf N + \lambda\,\boldsymbol\Omega_N)^{-1}\mathbf N^T ,
+$$ {#eq-spline-smoother-derived}
+
+which is exactly the smoother matrix quoted later from @hastie2001a. The penalty is a generalized ridge: it shrinks not the raw coefficients but the directions that produce roughness, leaving the linear and constant components (for which $N_j'' = 0$, hence in the null space of $\boldsymbol\Omega_N$) completely unpenalized. This is why $\lambda\to\infty$ drives the fit to the ordinary least squares line rather than to zero: only the rough part is annihilated.
+
+### Eigen-analysis and the limits of $\lambda$ {#sec-spline-eigen}
+
+The shrinkage structure becomes transparent in the Demmler-Reinsch basis. The smoother $\mathbf S_\lambda$ is symmetric (it can be written $\mathbf S_\lambda = (\mathbf I + \lambda \mathbf K)^{-1}$ where $\mathbf K = \mathbf N^{-T}\boldsymbol\Omega_N \mathbf N^{-1}$ is the penalty in the value parameterization), so it admits a real eigendecomposition $\mathbf S_\lambda = \sum_{k=1}^{n} \rho_k(\lambda)\, \mathbf u_k \mathbf u_k^T$ with eigenvectors $\mathbf u_k$ independent of $\lambda$ and eigenvalues
+
+$$
+\rho_k(\lambda) = \frac{1}{1 + \lambda\, d_k}, \qquad d_k \ge 0 ,
+$$ {#eq-spline-eigenvalues}
+
+where $d_k$ are the eigenvalues of $\mathbf K$. Two of the $d_k$ are zero (the constant and linear eigenvectors), so those components are never shrunk, $\rho_k = 1$. The remaining eigenvectors are ordered by increasing roughness, and the corresponding $\rho_k$ decay toward zero: a smoothing spline is a soft, frequency-graded shrinker, damping wiggly components more than smooth ones, in contrast to a regression spline whose hat matrix has eigenvalues that are exactly $0$ or $1$. The effective degrees of freedom are the sum of these eigenvalues,
+
+$$
+df_\lambda = \operatorname{tr}(\mathbf S_\lambda) = \sum_{k=1}^{n} \frac{1}{1 + \lambda\, d_k} ,
+$$ {#eq-spline-df-eigen}
+
+a smooth, strictly decreasing function of $\lambda$. The endpoints quoted earlier now drop out by inspection: as $\lambda\to 0$ every $\rho_k\to 1$ and $df_\lambda \to n$ (interpolation), while as $\lambda\to\infty$ all but the two unpenalized eigenvalues vanish and $df_\lambda \to 2$ (the OLS line). Equation @eq-spline-df-eigen is also the practical device for converting a target $df$ into a $\lambda$, which is what `smooth.spline(..., df = 16)` solves numerically.
 
 The properties below summarize why this works and how to think about model complexity here:
 
@@ -321,6 +435,49 @@ RSS_{CV}(\lambda)&= \sum_{i=1}^n(y_i - \hat{y}_\lambda^{(-i)}(x_i))^2 \\
 $$
 
 where we only have to fit the model once for each $\lambda$. This is why the diagonal of $\mathbf{S}_\lambda$ is worth computing: it gives both the effective degrees of freedom and the leave-one-out error in one shot.
+
+A robust and slightly cheaper alternative replaces each diagonal element by their average, giving generalized cross-validation (GCV),
+
+$$
+GCV(\lambda) = \frac{1}{n}\sum_{i=1}^n
+\left[\frac{y_i - \hat y_\lambda(x_i)}{1 - \operatorname{tr}(\mathbf S_\lambda)/n}\right]^2
+= \frac{n\,\lVert \mathbf y - \mathbf S_\lambda \mathbf y\rVert_2^2}{(n - df_\lambda)^2} ,
+$$ {#eq-spline-gcv}
+
+which depends on $\mathbf S_\lambda$ only through the trace $df_\lambda$ and is invariant to orthogonal rotations of the response, making it more stable than LOOCV when some $\{\mathbf S_\lambda\}_{ii}$ approach one.
+
+### Asymptotic properties and the equivalent kernel {#sec-spline-asymptotics}
+
+Smoothing splines are not merely convenient; they are rate-optimal nonparametric estimators. If the true regression function $f$ has $m$ square-integrable derivatives and the penalty is on the $m$-th derivative (the case $m=2$ is the cubic smoothing spline), then with $\lambda \asymp n^{-2m/(2m+1)}$ the integrated mean squared error attains
+
+$$
+\int E\big(\hat f(x) - f(x)\big)^2\, dx = O\!\left(n^{-2m/(2m+1)}\right) ,
+$$ {#eq-spline-rate}
+
+which is the minimax-optimal rate over the corresponding smoothness class. For cubic smoothing splines ($m=2$) this is $O(n^{-4/5})$, the same rate achieved by local linear regression and by kernel smoothing with an optimal bandwidth, which is the precise sense in which these methods are "different routes to the same destination." The optimal $\lambda$ balances a squared bias of order $\lambda^{2}$ against a variance of order $(n\lambda^{1/4})^{-1}$ in the interior, and the rate follows from minimizing their sum.
+
+This equivalence is more than a shared rate. @hastie2001a (the Green-Silverman result) show that for large $n$ the smoothing-spline weight function behaves like a kernel: away from the boundary the rows of $\mathbf S_\lambda$ are approximately
+
+$$
+\hat f(x) \approx \frac{1}{n}\sum_{i=1}^n \frac{1}{p(x)\,h(x)}\,
+K_{\mathrm{eq}}\!\left(\frac{x_i - x}{h(x)}\right) y_i ,
+\qquad
+K_{\mathrm{eq}}(u) = \tfrac12 \exp\!\big(-|u|/\sqrt 2\big)\sin\!\big(|u|/\sqrt 2 + \pi/4\big) ,
+$$ {#eq-spline-equivkernel}
+
+where $p(x)$ is the design density and the local bandwidth scales as $h(x) \propto \big(\lambda / (n\,p(x))\big)^{1/4}$. Two facts make this revealing. First, the equivalent kernel adapts its bandwidth to the local data density automatically, putting more smoothing where data are sparse, which is exactly the behavior we engineered by hand with quantile knot placement. Second, the "Silverman kernel" $K_{\mathrm{eq}}$ is fixed and has the same form regardless of $\lambda$, so a smoothing spline is, asymptotically, a kernel smoother in disguise, formalizing @tbl-spline-tuning-comparison.
+
+### Practical guidance: choosing complexity and reading diagnostics {#sec-spline-howto}
+
+The hyperparameters and how to set them are method-specific, but the logic is shared.
+
+- Number and placement of knots (regression and natural splines). Prefer to specify a target $df$ and let the software place knots at quantiles of $x$, as in `bs(age, df = 6)` and `ns(age, df = 4)`. Quantile placement (rather than equispaced) is the safe default because it allocates flexibility in proportion to data density; equispaced knots can leave a sparse region underconstrained and oversmooth a dense one. The fit is fairly insensitive to exact knot positions once there are enough of them, and quite sensitive to the count, so spend tuning effort on $df$ via cross-validation, not on hand-tuning locations.
+
+- Smoothing parameter (smoothing splines). Tune $\lambda$ through $df_\lambda$ using GCV (@eq-spline-gcv) or LOOCV (@eq-spline-gcv is computed in one pass via the trace). Reporting $df_\lambda$ rather than $\lambda$ itself is recommended because it is interpretable and scale-free: a fit with $df_\lambda = 6.8$ is comparable across datasets, whereas the raw $\lambda$ is not. GCV occasionally undersmooths; if the curve looks visibly noisy, cap $df_\lambda$ or switch to REML-based selection.
+
+- Computational cost. The matrices $\mathbf N^T\mathbf N$ and $\boldsymbol\Omega_N$ for a cubic smoothing spline are banded (each $N_j$ has local support), so the linear system in @eq-spline-smoother-derived solves in $O(n)$ time by the Reinsch algorithm, not the $O(n^3)$ a dense solve would cost. Regression splines with $K$ fixed knots cost $O(nK^2)$ to fit, independent of how finely the curve is later evaluated.
+
+- Diagnostics and failure modes. Plot the fit with its pointwise band (@eq-spline-biasvar); fanning bands at the edges signal the boundary variance that natural splines are meant to cure. Watch for oscillation between knots (too many knots or too small $\lambda$) and for systematic lack of fit in a curved region (too few knots or too large $\lambda$). Splines extrapolate poorly: outside the data range a regression spline continues as an unconstrained cubic and a natural spline as a line, neither of which is trustworthy, so confine predictions to the observed support of $x$.
 
 ## Multidimensional Splines
 
@@ -515,6 +672,27 @@ legend(
 ```
 
 Cross-validation chooses about 6.8 effective degrees of freedom, noticeably less flexible than the 16-df curve. The 16-df fit chases more local wiggles, while the cross-validated fit is smoother and likely to generalize better, a concrete illustration of $\lambda$ trading flexibility for smoothness.
+
+The following short check confirms the eigenvalue identity @eq-spline-df-eigen numerically: it builds the smoother matrix $\mathbf S_\lambda$ for a smoothing spline column by column (each column is the fit to a unit response vector), then verifies that its trace equals the effective degrees of freedom reported by `smooth.spline`, and that its eigenvalues lie in $[0,1]$ with exactly two equal to one.
+
+```{r}
+set.seed(1)
+x <- sort(runif(60))
+y <- sin(2 * pi * x) + rnorm(60, sd = 0.3)
+
+target_df <- 8
+S <- sapply(seq_along(y), function(i) {
+  e <- numeric(length(y)); e[i] <- 1
+  predict(smooth.spline(x, e, df = target_df), x)$y
+})
+
+c(trace_S = sum(diag(S)), reported_df = target_df)
+ev <- sort(eigen(S, only.values = TRUE)$values, decreasing = TRUE)
+round(range(ev), 4)        # eigenvalues confined to [0, 1]
+round(ev[1:3], 4)          # leading eigenvalues: two unpenalized (= 1), then < 1
+```
+
+The trace matches the requested degrees of freedom, and the two leading eigenvalues sit at one (the unpenalized constant and linear directions), exactly as @eq-spline-eigenvalues predicts.
 
 ### plot (Example 2)
 

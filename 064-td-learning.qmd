@@ -42,6 +42,40 @@ When the dynamics are unknown, action-values $q(s,a)$ are worth more than state-
 :::
 
 
+### The Bellman operator and its fixed point {#td-bellman-operator}
+
+All the convergence results in this chapter rest on a single structural fact: the value function is the unique fixed point of a contraction mapping. Making this precise pays off later, because every algorithm here is a sampled, stochastic version of applying that mapping.
+
+Conditioning the return identity $G_t = R_{t+1} + \gamma G_{t+1}$ on $S_t = s$ and taking expectations under $\pi$ gives the Bellman expectation equation
+
+$$
+v_\pi(s) \;=\; \sum_{a} \pi(a \mid s) \sum_{s', r} p(s', r \mid s, a)\,\bigl[\, r + \gamma\, v_\pi(s') \,\bigr],
+$$ {#eq-td-learning-bellman-exp}
+
+where $p(s', r \mid s, a)$ is the (unknown) joint transition-reward kernel. Collect the values into a vector $v \in \mathbb{R}^{|\mathcal{S}|}$ and define the *Bellman expectation operator* $T^\pi : \mathbb{R}^{|\mathcal{S}|} \to \mathbb{R}^{|\mathcal{S}|}$ componentwise by
+
+$$
+(T^\pi v)(s) \;=\; \mathbb{E}_\pi\!\bigl[\, R_{t+1} + \gamma\, v(S_{t+1}) \mid S_t = s \,\bigr] \;=\; r_\pi(s) + \gamma \sum_{s'} P_\pi(s, s')\, v(s'),
+$$ {#eq-td-learning-bellman-op}
+
+with $r_\pi(s) = \mathbb{E}_\pi[R_{t+1} \mid S_t = s]$ the expected one-step reward and $P_\pi$ the state-to-state transition matrix induced by $\pi$. Equation @eq-td-learning-bellman-exp says exactly that $v_\pi$ satisfies $T^\pi v_\pi = v_\pi$, i.e. $v_\pi$ is a fixed point of $T^\pi$.
+
+This fixed point is unique and globally attracting because $T^\pi$ is a $\gamma$-contraction in the sup-norm. For any two value vectors $u, w$,
+
+$$
+\|T^\pi u - T^\pi w\|_\infty
+= \gamma \,\bigl\| P_\pi (u - w) \bigr\|_\infty
+\le \gamma \,\|P_\pi\|_\infty \,\|u - w\|_\infty
+= \gamma \,\|u - w\|_\infty,
+$$ {#eq-td-learning-contraction}
+
+where the last equality uses $\|P_\pi\|_\infty = 1$ because each row of $P_\pi$ is a probability distribution and therefore sums to one with nonnegative entries. For $\gamma < 1$ this is a strict contraction, so by the Banach fixed-point theorem $T^\pi$ has a unique fixed point and the iteration $v_{k+1} = T^\pi v_k$ converges geometrically, $\|v_k - v_\pi\|_\infty \le \gamma^k \|v_0 - v_\pi\|_\infty$, from any start $v_0$. The action-value analogue $q_\pi = T^\pi q_\pi$ and the optimal-value operator $(T^* v)(s) = \max_a \mathbb{E}[R_{t+1} + \gamma v(S_{t+1}) \mid s, a]$ are contractions by the same argument (the $\max$ is nonexpansive), giving the optimal value functions $v_*, q_*$ as their fixed points. TD(0) replaces the expectation in $T^\pi$ with a single sample, and Q-learning replaces the expectation in $T^*$ with a single sample; that is the entire conceptual content of both algorithms.
+
+::: {.callout-note}
+The contraction is in the *weighted* or sup norm, not in Euclidean norm. This distinction is harmless in the tabular case but becomes the crux of stability once linear function approximation enters: $T^\pi$ is a contraction in the $\mu_\pi$-weighted norm (with $\mu_\pi$ the stationary distribution) for on-policy sampling, which is why on-policy TD with linear features converges while off-policy TD need not.
+:::
+
+
 ## Monte Carlo: learn from complete returns {#td-monte-carlo}
 
 The most direct way to estimate $v_\pi(s)$ is to take its definition literally. Run the policy, record the return that actually followed each visit to $s$, and average those returns. By the law of large numbers the average converges to the expectation. This is the Monte Carlo (MC) idea, and it requires only the ability to sample episodes, not any knowledge of transition probabilities.
@@ -83,6 +117,52 @@ Replacing the full return $G_t$ with the bootstrapped target $R_{t+1} + \gamma V
 
 ::: {.callout-note}
 The Robbins-Monro conditions on the step size, $\sum_t \alpha_t = \infty$ and $\sum_t \alpha_t^2 < \infty$, guarantee convergence for the prediction problem. A constant $\alpha$ violates the second condition and so does not fully converge; instead it tracks a moving target, which is exactly what you want in a nonstationary environment.
+:::
+
+
+### TD(0) as stochastic approximation {#td-stochastic-approximation}
+
+The TD(0) update is not an ad hoc heuristic; it is the Robbins-Monro stochastic-approximation scheme applied to the Bellman fixed-point equation, and recognizing this both explains why it converges and tells us what it converges to.
+
+Stochastic approximation solves a root-finding problem $\bar g(v) = 0$ when we cannot evaluate $\bar g$ directly but can draw noisy samples $g_t$ with $\mathbb{E}[g_t \mid v] = \bar g(v)$. The iteration $v \leftarrow v + \alpha_t\, g_t$ converges to a root under the Robbins-Monro step-size conditions. Take the root-finding target to be the Bellman residual at state $s$,
+
+$$
+\bar g(V)(s) \;=\; (T^\pi V)(s) - V(s) \;=\; \mathbb{E}_\pi\!\bigl[\, R_{t+1} + \gamma V(S_{t+1}) - V(S_t) \mid S_t = s \,\bigr],
+$$ {#eq-td-learning-td-mean}
+
+whose unique root is $V = v_\pi$ by @eq-td-learning-bellman-op. The TD error $\delta_t = R_{t+1} + \gamma V(S_{t+1}) - V(S_t)$ is exactly an unbiased one-sample estimate of this residual, because conditioning on $S_t = s$ and the current $V$,
+
+$$
+\mathbb{E}_\pi[\delta_t \mid S_t = s] \;=\; (T^\pi V)(s) - V(s) \;=\; \bar g(V)(s).
+$$ {#eq-td-learning-td-unbiased}
+
+So $V(S_t) \leftarrow V(S_t) + \alpha\, \delta_t$ is precisely Robbins-Monro on @eq-td-learning-td-mean. Under the standard step-size conditions, with every state visited infinitely often and bounded rewards, the iterates converge with probability one to the fixed point $v_\pi$ (Sutton 1988; Jaakkola, Jordan, and Singh 1994; Tsitsiklis 1994). The bias seen in finite samples comes entirely from the fact that the noisy target $R_{t+1} + \gamma V(S_{t+1})$ uses the current $V$ rather than the true $v_\pi$: $\mathbb{E}[\delta_t]$ is unbiased *for the residual at the current $V$*, not for the residual at $v_\pi$, which is what bootstrapping costs.
+
+::: {.callout-note}
+The same lens identifies Q-learning as Robbins-Monro on the *optimal* Bellman residual $\bar g(Q)(s,a) = (T^* Q)(s,a) - Q(s,a)$, whose root is $q_*$. Because $T^*$ involves a $\max$ and not the behavior policy, the sampled residual remains unbiased for $T^* Q - Q$ regardless of how actions are chosen, which is the formal reason Q-learning is off-policy. SARSA instead samples $T^\pi Q - Q$ for the *current* $\pi$, so it tracks a moving target as $\pi$ improves.
+:::
+
+
+### What TD and Monte Carlo converge to: the batch fixed points {#td-batch-fixed-point}
+
+TD and MC both converge to $v_\pi$ asymptotically, but with finite data they answer two genuinely different questions, and the difference is sharpest in the *batch* setting. Suppose we have a fixed set of episodes and replay it repeatedly, applying each update with a tiny step size until the estimates stop moving (the batch limit). What does each method settle on?
+
+Batch Monte Carlo minimizes the in-sample mean squared error to the observed returns. For each state it returns the average of the returns that actually followed visits to that state:
+
+$$
+V_{\mathrm{MC}}(s) \;=\; \arg\min_{V} \sum_{\text{visits to } s} \bigl(\, G - V(s) \,\bigr)^2 \;=\; \frac{1}{N(s)} \sum_{\text{visits to } s} G.
+$$ {#eq-td-learning-batch-mc}
+
+Batch TD(0) instead converges to the *certainty-equivalence* estimate: it builds the maximum-likelihood MDP from the data (empirical transition frequencies $\hat p$ and empirical mean rewards $\hat r$) and reports the exact value function of that estimated model,
+
+$$
+V_{\mathrm{TD}}(s) \;=\; \hat r(s) + \gamma \sum_{s'} \hat P(s, s')\, V_{\mathrm{TD}}(s'),
+$$ {#eq-td-learning-batch-td}
+
+the solution of the empirical Bellman equation. This is why batch TD can be *more accurate* than batch MC on a Markov problem with limited data: MC ignores the Markov structure and treats each state's returns in isolation, whereas TD exploits the structure by stitching together transitions, effectively pooling information across episodes. The classic illustration is Sutton and Barto's "A/B" example (2018, Example 6.4): given episodes in which state B is sometimes followed by reward and A is always followed by B, MC assigns $V(A)$ the single observed return through A, while TD assigns $V(A) = \gamma V(B)$, propagating B's better-estimated value backward. On a truly Markov problem the certainty-equivalence estimate @eq-td-learning-batch-td is the statistically efficient one; when the Markov assumption fails, MC's model-free average @eq-td-learning-batch-mc can be safer, which is the principled reason to prefer MC in non-Markov state representations.
+
+::: {.callout-tip title="Intuition"}
+MC asks "what return did I actually see from here?" TD asks "what return does my best model of the world predict from here?" When the world really is Markov, the model-based answer wins because it borrows strength across all transitions; when your states secretly hide relevant history, the model is wrong and the raw average is the honest choice.
 :::
 
 
@@ -131,6 +211,50 @@ SARSA and Q-learning differ by one symbol in the target. SARSA uses $Q(S_{t+1}, 
 
 
 This difference is not cosmetic. SARSA's target accounts for the fact that the agent will sometimes explore and land somewhere bad, so it learns a policy that is cautious in the presence of its own randomness. Q-learning assumes greedy behavior in the target and so learns the optimal policy's values, even though its random exploration occasionally pushes it into trouble. The cliff-walking demo below makes the consequence vivid: SARSA prefers a safe detour, Q-learning hugs the cliff edge.
+
+
+### Expected SARSA: removing the action-sampling variance {#td-expected-sarsa}
+
+SARSA's target uses a single sampled next action $A_{t+1}$, which injects variance from the policy's randomness on top of the environment's. Expected SARSA removes that source by replacing the sampled action with its expectation under the policy, computing the target in closed form,
+
+$$
+Q(S_t, A_t) \;\leftarrow\; Q(S_t, A_t) + \alpha \,\Bigl[\, R_{t+1} + \gamma \sum_{a} \pi(a \mid S_{t+1})\, Q(S_{t+1}, a) - Q(S_t, A_t) \,\Bigr].
+$$ {#eq-td-learning-expected-sarsa}
+
+The target is now the exact conditional expectation $\mathbb{E}_{A_{t+1} \sim \pi}[Q(S_{t+1}, A_{t+1}) \mid S_{t+1}]$, so by the law of total variance Expected SARSA has the same expected update as SARSA but strictly lower variance whenever $Q(S_{t+1}, \cdot)$ is not constant in the action. This lets it use a larger step size and often dominates ordinary SARSA empirically. It also unifies the chapter's algorithms: under a greedy target policy, $\pi(a \mid s) = \mathbb{1}\{a = \arg\max_{a'} Q(s, a')\}$, the sum in @eq-td-learning-expected-sarsa collapses to $\max_a Q(S_{t+1}, a)$ and Expected SARSA *is* Q-learning. Under the agent's own $\varepsilon$-greedy policy it is the variance-reduced version of SARSA. Expected SARSA can be run on-policy or, by choosing a target policy different from the behavior policy, off-policy, making it a strict generalization of both endpoints.
+
+
+### Convergence, bias, variance, and complexity {#td-control-theory}
+
+The tabular control algorithms inherit the stochastic-approximation guarantees of the prediction case, with one extra requirement for the optimality argument. Q-learning converges with probability one to $q_*$ provided every state-action pair is visited infinitely often and the step sizes satisfy the Robbins-Monro conditions (Watkins and Dayan 1992; Tsitsiklis 1994); notably the behavior policy may be anything that keeps exploring, since the $\max$ target does not depend on it. SARSA converges to $q_*$ only if the policy is additionally *greedy in the limit with infinite exploration* (GLIE), for example by annealing $\varepsilon_t \to 0$ slowly enough; otherwise it converges to the action-values of the limiting $\varepsilon$-greedy policy, which is precisely why it learns the safe path while exploration persists.
+
+The error of these estimators decomposes along the usual axes. The variance of a single update scales with $\alpha$ and with the conditional variance of the target; under a decaying step size $\alpha_t \asymp 1/t$ the mean squared error of stochastic approximation decays at the optimal $O(1/t)$ rate, while a well-tuned constant $\alpha$ reaches an $O(\alpha)$ error floor much faster, which is the bias-variance trade governing step-size choice in practice. The bias is the bootstrapping bias: the target leans on the current, still-wrong $Q$, so $\mathbb{E}[\delta_t]$ measures the residual at the current estimate rather than at $q_*$. Across the $n$-step spectrum, larger $n$ (toward Monte Carlo) reduces bias but raises variance, while smaller $n$ (toward TD(0)) does the reverse; TD($\lambda$) interpolates with a single knob. Per update the cost is $O(1)$ for tabular SARSA and Q-learning and $O(|\mathcal{A}|)$ for Expected SARSA, with memory $O(|\mathcal{S}|\,|\mathcal{A}|)$ for the table, so the methods are cheap and the binding constraint is sample complexity, the number of transitions needed, not computation per step.
+
+#### Maximization bias, quantified {#td-max-bias}
+
+Q-learning's $\max$ target overestimates because the maximum of unbiased noisy estimates is biased upward. Suppose the true action-values at a state are all equal, $q(s,a) = \mu$ for every $a$, but we hold independent unbiased estimates $\hat Q(s,a)$ with variance $\sigma^2$. The Q-learning target uses $\max_a \hat Q(s,a)$, and by Jensen's inequality applied to the convex $\max$,
+
+$$
+\mathbb{E}\Bigl[\, \max_a \hat Q(s,a) \,\Bigr] \;\ge\; \max_a \mathbb{E}\bigl[\hat Q(s,a)\bigr] \;=\; \mu,
+$$ {#eq-td-learning-max-bias}
+
+with a strictly positive gap that grows with $\sigma^2$ and with the number of actions $|\mathcal{A}|$ (for $|\mathcal{A}|$ independent Gaussians the gap scales roughly like $\sigma \sqrt{2 \log |\mathcal{A}|}$). This positive bias propagates backward through bootstrapping and can substantially inflate value estimates in noisy or stochastic environments. Double Q-learning removes it by decoupling selection from evaluation: it keeps two tables $Q^A, Q^B$, uses one to pick the maximizing action and the *other* to score it, $Q^B(s', \arg\max_a Q^A(s', a))$, so the evaluated value is unbiased for the selected action. The argument runs both ways, eliminating the systematic overestimate at the cost of doubled memory and a slight underestimate in some settings.
+
+The following short simulation confirms @eq-td-learning-max-bias and the double-estimator fix. With true value $\mu = 0$ for every action, the single-max estimator is biased upward while the decoupled estimator is essentially unbiased.
+
+```{r td-learning-maxbias}
+set.seed(1301)
+mu <- 0; sigma <- 1; n_actions_sim <- 10L; n_rep <- 50000L
+single <- numeric(n_rep); double_est <- numeric(n_rep)
+for (i in seq_len(n_rep)) {
+  qa <- rnorm(n_actions_sim, mu, sigma)   # estimator A
+  qb <- rnorm(n_actions_sim, mu, sigma)   # estimator B (independent)
+  single[i]     <- max(qa)                # single-max: biased up
+  double_est[i] <- qb[which.max(qa)]      # select with A, evaluate with B
+}
+c(single_max_bias = mean(single), double_est_bias = mean(double_est),
+  predicted_gap   = sigma * sqrt(2 * log(n_actions_sim)))
+```
 
 ## A runnable demo: cliff walking {#td-demo}
 

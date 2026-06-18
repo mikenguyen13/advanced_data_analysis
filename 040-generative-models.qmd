@@ -160,6 +160,30 @@ $$
 - D_{\mathrm{KL}}\!\big(q_\phi(z \mid x)\,\|\,p(z)\big) =: \mathcal{L}(\theta, \phi; x).
 $$
 
+It is worth deriving the same bound a second way, by an exact identity rather
+than an inequality, because the algebra reveals precisely what is lost. For any
+$q_\phi(z \mid x)$ with the same support as the posterior, multiply and divide
+inside the log and split the expectation:
+
+$$
+\begin{aligned}
+\log p_\theta(x)
+&= \mathbb{E}_{q_\phi(z \mid x)}\big[\log p_\theta(x)\big] \\
+&= \mathbb{E}_{q_\phi}\!\left[\log \frac{p_\theta(x, z)}{p_\theta(z \mid x)}\right] \\
+&= \mathbb{E}_{q_\phi}\!\left[\log \frac{p_\theta(x, z)}{q_\phi(z \mid x)}\right]
+ + \mathbb{E}_{q_\phi}\!\left[\log \frac{q_\phi(z \mid x)}{p_\theta(z \mid x)}\right] \\
+&= \mathcal{L}(\theta, \phi; x) + D_{\mathrm{KL}}\!\big(q_\phi(z \mid x)\,\|\,p_\theta(z \mid x)\big),
+\end{aligned}
+$$ {#eq-generative-models-elbo-decomp}
+
+where the first line uses that $\log p_\theta(x)$ does not depend on $z$, the
+second uses $p_\theta(x) = p_\theta(x, z) / p_\theta(z \mid x)$, and the last line
+recognizes $\mathbb{E}_{q_\phi}[\log p_\theta(x, z) - \log q_\phi] = \mathcal{L}$
+once $p_\theta(x, z) = p_\theta(x \mid z)\, p(z)$ is expanded. Equation
+@eq-generative-models-elbo-decomp is exact: the log evidence equals the ELBO
+plus a non negative KL term, so the ELBO is a lower bound, and the inequality is
+tight exactly when $q_\phi$ equals the true posterior.
+
 The gap between $\log p_\theta(x)$ and the ELBO is exactly
 $D_{\mathrm{KL}}(q_\phi(z \mid x)\,\|\,p_\theta(z \mid x))$, which is non
 negative,^[The Kullback Leibler divergence $D_{\mathrm{KL}}(q \| p)$ measures how
@@ -193,7 +217,84 @@ form, so there is nothing to estimate by sampling. For a $d$ dimensional diagona
 $$
 D_{\mathrm{KL}}\!\big(\mathcal{N}(\mu, \sigma^2 I)\,\|\,\mathcal{N}(0, I)\big)
 = \tfrac{1}{2} \sum_{j=1}^{d} \big(\mu_j^2 + \sigma_j^2 - \log \sigma_j^2 - 1\big).
+$$ {#eq-generative-models-gauss-kl}
+
+The closed form is worth deriving once, because it explains why each term has the
+sign it does. The KL divergence between two univariate Gaussians
+$\mathcal{N}(\mu_1, \sigma_1^2)$ and $\mathcal{N}(\mu_2, \sigma_2^2)$ is
+
 $$
+D_{\mathrm{KL}}
+= \mathbb{E}_{q}\!\left[\log \frac{q(z)}{p(z)}\right]
+= \mathbb{E}_q\!\left[\log\frac{\sigma_2}{\sigma_1}
+ - \frac{(z - \mu_1)^2}{2\sigma_1^2}
+ + \frac{(z - \mu_2)^2}{2\sigma_2^2}\right].
+$$
+
+Under $q$ we have $\mathbb{E}_q[(z - \mu_1)^2] = \sigma_1^2$ and
+$\mathbb{E}_q[(z - \mu_2)^2] = \sigma_1^2 + (\mu_1 - \mu_2)^2$, so the expectation
+collapses to
+
+$$
+D_{\mathrm{KL}} = \log\frac{\sigma_2}{\sigma_1}
+ + \frac{\sigma_1^2 + (\mu_1 - \mu_2)^2}{2\sigma_2^2} - \frac12 .
+$$
+
+Setting the prior to the standard normal, $\mu_2 = 0$ and $\sigma_2 = 1$, and
+summing over the $d$ independent coordinates of the diagonal posterior gives
+@eq-generative-models-gauss-kl. The quadratic terms $\mu_j^2$ and $\sigma_j^2$
+penalize codes that drift from the origin or spread too wide, while the
+$-\log \sigma_j^2$ term forbids the variance from collapsing to zero, which would
+make the posterior a point mass and the latent space unusable for sampling.
+
+::: {.callout-warning title="Posterior collapse"}
+A characteristic VAE failure is posterior collapse, where for some latent
+coordinates the encoder ignores the input and returns
+$q_\phi(z_j \mid x) \approx p(z_j) = \mathcal{N}(0, 1)$, driving the KL term in
+@eq-generative-models-gauss-kl to zero. The decoder then learns to reconstruct
+without using those coordinates, so they carry no information. This happens most
+often when the decoder is powerful enough to model $x$ on its own (for example an
+autoregressive decoder) and early in training when the reconstruction term is
+weak. Standard remedies are KL annealing (warm up the KL weight from zero), free
+bits (clamp each coordinate's KL at a small floor $\lambda$ so the optimizer stops
+shrinking it once it is informative enough), or the $\beta$-VAE weighting below.
+:::
+
+### Amortized inference and the $\beta$-VAE
+
+The encoder $q_\phi(z \mid x)$ deserves a second look. Classical variational
+inference fits a separate set of variational parameters $(\mu_i, \sigma_i)$ for
+every data point $x_i$, solving an optimization per example. The VAE instead
+trains a single network that maps any $x$ to its $(\mu_\phi(x), \sigma_\phi(x))$,
+sharing parameters across the whole dataset. This is amortized inference: the cost
+of inference is amortized over the dataset by paying once to train the encoder,
+after which a new point's approximate posterior is a single forward pass. The
+price is the amortization gap, the extra slack between the ELBO achieved by the
+shared encoder and the best ELBO a per example optimizer could reach. Together
+with the approximation gap from $q_\phi$ being Gaussian rather than the true
+posterior, this is why the ELBO can sit well below $\log p_\theta(x)$.
+
+The full training objective is the ELBO averaged over the data, and the gradient
+with respect to $\theta$ and $\phi$ is estimated by drawing a minibatch and one
+reparameterized $\epsilon$ per example. A widely used generalization scales the KL
+term by a constant $\beta$,
+
+$$
+\mathcal{L}_\beta(\theta, \phi; x)
+= \mathbb{E}_{q_\phi(z \mid x)}\big[\log p_\theta(x \mid z)\big]
+- \beta\, D_{\mathrm{KL}}\!\big(q_\phi(z \mid x)\,\|\,p(z)\big).
+$$ {#eq-generative-models-beta-vae}
+
+With $\beta = 1$ this is the exact ELBO. Setting $\beta > 1$ presses the
+aggregated posterior harder toward the factorized prior, which tends to produce
+more disentangled latent coordinates at the cost of reconstruction fidelity, while
+$\beta < 1$ favors sharper reconstructions and risks the scattered, gap riddled
+latent space the KL term is meant to prevent. The reconstruction term has its own
+implicit weight: with a Gaussian decoder of fixed variance $\sigma_x^2$, the
+negative log likelihood is $\|x - \hat x\|^2 / (2\sigma_x^2)$ up to a constant, so
+$\sigma_x^2$ acts as an inverse weight on reconstruction relative to the KL term.
+This is why a plain mean squared error decoder with no explicit variance
+implicitly fixes a particular trade-off.
 
 ### The reparameterization trick
 
@@ -211,6 +312,36 @@ where $\odot$ is elementwise multiplication. Now the randomness lives in
 $\epsilon$, which does not depend on $\phi$, and the path from $\phi$ to $z$ is
 differentiable. The Monte Carlo estimate of the ELBO using one or a few draws of
 $\epsilon$ then has a well defined gradient.
+
+To see precisely why this matters, compare two ways of differentiating an
+expectation $\mathbb{E}_{q_\phi(z)}[f(z)]$ whose distribution depends on $\phi$.
+The score function or REINFORCE estimator uses the identity
+$\nabla_\phi q_\phi = q_\phi\, \nabla_\phi \log q_\phi$ to write
+
+$$
+\nabla_\phi \mathbb{E}_{q_\phi}[f(z)]
+= \mathbb{E}_{q_\phi}\!\big[f(z)\, \nabla_\phi \log q_\phi(z)\big],
+$$
+
+which is unbiased and needs only $\log q_\phi$, not a differentiable $f$, but is
+notoriously high variance because $f(z)$ multiplies the score with no
+cancellation. The reparameterization estimator instead pushes the parameter
+inside a deterministic map $z = g_\phi(\epsilon)$ with $\epsilon \sim p(\epsilon)$
+fixed, giving
+
+$$
+\nabla_\phi \mathbb{E}_{q_\phi}[f(z)]
+= \mathbb{E}_{p(\epsilon)}\!\big[\nabla_\phi f(g_\phi(\epsilon))\big]
+= \mathbb{E}_{p(\epsilon)}\!\big[f'(z)\, \nabla_\phi g_\phi(\epsilon)\big].
+$$
+
+The Jacobian $\nabla_\phi g_\phi$ couples the gradient of $f$ directly to the
+parameter, so the estimator exploits the smoothness of the decoder and typically
+has far lower variance, often by orders of magnitude. The cost is that it requires
+$f$ (here the integrand of the ELBO) to be differentiable in $z$, which holds for
+continuous data and a Gaussian $q_\phi$ but fails for discrete $z$, where one
+falls back on the score function estimator or a continuous relaxation such as the
+Gumbel-Softmax.
 
 
 ::: {.callout-important title="Key idea"}
@@ -316,7 +447,27 @@ Substitute $D^*$ back into the value function. After collecting terms it becomes
 
 $$
 V(G, D^*) = -\log 4 + 2\, D_{\mathrm{JS}}\!\big(p_{\mathrm{data}} \,\|\, p_g\big),
+$$ {#eq-generative-models-gan-js}
+
+The collecting of terms is short enough to show. Write $m = \tfrac12(p_{\mathrm{data}} + p_g)$ for the mixture. Substituting $D^* = p_{\mathrm{data}} / (2m)$ and
+$1 - D^* = p_g / (2m)$ gives
+
 $$
+\begin{aligned}
+V(G, D^*)
+&= \mathbb{E}_{p_{\mathrm{data}}}\!\left[\log \frac{p_{\mathrm{data}}}{2m}\right]
+ + \mathbb{E}_{p_g}\!\left[\log \frac{p_g}{2m}\right] \\
+&= \mathbb{E}_{p_{\mathrm{data}}}\!\left[\log \frac{p_{\mathrm{data}}}{m}\right]
+ + \mathbb{E}_{p_g}\!\left[\log \frac{p_g}{m}\right] - 2\log 2 \\
+&= D_{\mathrm{KL}}(p_{\mathrm{data}} \,\|\, m) + D_{\mathrm{KL}}(p_g \,\|\, m) - 2\log 2 \\
+&= 2\, D_{\mathrm{JS}}(p_{\mathrm{data}} \,\|\, p_g) - \log 4,
+\end{aligned}
+$$
+
+using $D_{\mathrm{JS}}(p \| q) = \tfrac12 D_{\mathrm{KL}}(p \| m) + \tfrac12 D_{\mathrm{KL}}(q \| m)$ in the last line. This is
+@eq-generative-models-gan-js. Because $D_{\mathrm{JS}} \ge 0$ with equality
+iff $p_g = p_{\mathrm{data}}$, the outer minimization over $G$ drives $p_g$ to the
+data distribution and the value to its floor $-\log 4$.
 
 where $D_{\mathrm{JS}}$ is the Jensen Shannon divergence, a symmetric measure of
 how far two distributions are apart.^[The Jensen Shannon divergence is a smoothed,
@@ -357,6 +508,47 @@ losing badly. A common fix is to have the generator maximize $\log D(G(z))$
 instead, which gives stronger gradients early in training. Balancing the two
 networks, tuning learning rates, and choosing alternative losses such as the
 Wasserstein objective are all standard parts of getting a GAN to converge.
+
+The saturation is easy to make precise. Let $u = D(G(z))$ be the discriminator's
+probability that a fake is real, small early in training when fakes are obvious.
+The original generator loss $\log(1 - u)$ has derivative $-1/(1 - u)$, which is
+near $-1$ when $u \approx 0$: a tiny, nearly constant gradient exactly when the
+generator most needs a push. The non saturating surrogate maximizes $\log u$,
+whose derivative $1/u$ blows up as $u \to 0$, supplying a large gradient when the
+fakes are poor. Both losses share the same fixed point but have opposite gradient
+behavior in the regime that matters early on, which is why the non saturating form
+is the practical default.
+
+### Why JS divergence is a brittle objective
+
+The JS divergence result @eq-generative-models-gan-js is elegant but also
+diagnoses the deeper instability. When $p_{\mathrm{data}}$ and $p_g$ live on
+low dimensional manifolds in a high dimensional space, as natural images do, their
+supports are almost surely disjoint or overlap on a set of measure zero early in
+training. On disjoint supports a perfect discriminator exists, $D_{\mathrm{JS}}$
+is pinned at its maximum $\log 2$ regardless of how far apart the two
+distributions are, and its gradient with respect to the generator is zero almost
+everywhere. The generator receives no signal about which direction would move
+$p_g$ toward $p_{\mathrm{data}}$. This is the manifold view of why a too strong
+discriminator kills learning.
+
+The Wasserstein GAN replaces JS with the earth mover (Wasserstein-1) distance,
+which by Kantorovich-Rubinstein duality equals
+
+$$
+W(p_{\mathrm{data}}, p_g)
+= \sup_{\|f\|_L \le 1} \;
+\mathbb{E}_{p_{\mathrm{data}}}[f(x)] - \mathbb{E}_{p_g}[f(x)],
+$$ {#eq-generative-models-wgan}
+
+where the supremum is over all 1-Lipschitz functions $f$. Unlike JS, $W$ varies
+smoothly with the distance between $p_g$ and $p_{\mathrm{data}}$ even when their
+supports do not overlap, so it provides a usable gradient everywhere. In practice
+$f$ (now called a critic, with no sigmoid and a real valued output) is constrained
+to be Lipschitz by weight clipping or, more reliably, a gradient penalty that
+pushes $\|\nabla_x f\|$ toward one. The critic loss in
+@eq-generative-models-wgan also tracks sample quality, which the original GAN
+loss does not, so it partially answers the warning below.
 
 
 ::: {.callout-warning}
@@ -452,6 +644,29 @@ $$
 As $t$ grows, $\bar{\alpha}_t \to 0$, so the signal $\sqrt{\bar{\alpha}_t}\, x_0$
 fades and the noise term takes over.
 
+The closed form follows from composing two Gaussian steps. Write
+$x_t = \sqrt{\alpha_t}\, x_{t-1} + \sqrt{1 - \alpha_t}\, \epsilon_{t-1}$ with
+independent $\epsilon_{t-1} \sim \mathcal{N}(0, I)$. Substitute the same identity
+for $x_{t-1}$:
+
+$$
+x_t = \sqrt{\alpha_t \alpha_{t-1}}\, x_{t-2}
+ + \sqrt{\alpha_t (1 - \alpha_{t-1})}\, \epsilon_{t-2}
+ + \sqrt{1 - \alpha_t}\, \epsilon_{t-1}.
+$$
+
+The last two terms are independent zero mean Gaussians, so they sum to a single
+Gaussian whose variance is the sum of variances,
+$\alpha_t(1 - \alpha_{t-1}) + (1 - \alpha_t) = 1 - \alpha_t \alpha_{t-1}$. Hence
+$x_t = \sqrt{\alpha_t \alpha_{t-1}}\, x_{t-2} + \sqrt{1 - \alpha_t \alpha_{t-1}}\, \bar\epsilon$
+with $\bar\epsilon \sim \mathcal{N}(0, I)$. Iterating this merging of Gaussians all
+the way down to $x_0$ replaces the product of step coefficients with
+$\bar\alpha_t = \prod_{s=1}^t \alpha_s$ and leaves total variance
+$1 - \bar\alpha_t$, which is exactly the stated closed form. The choice of scaling
+by $\sqrt{1 - \beta_t}$ rather than any other constant is what makes the noised
+variance telescope to $1 - \bar\alpha_t$ and keeps $\mathrm{Var}(x_t)$ bounded by
+one when the data are standardized.
+
 
 ::: {.callout-tip}
 This closed form is also what makes the runnable demonstration cheap.
@@ -481,12 +696,117 @@ training objective collapses to a plain regression on the noise,
 
 $$
 \mathcal{L}_{\mathrm{simple}}(\theta) = \mathbb{E}_{x_0, \epsilon, t}\Big[\big\| \epsilon - \epsilon_\theta\big(\sqrt{\bar{\alpha}_t}\, x_0 + \sqrt{1 - \bar{\alpha}_t}\, \epsilon,\; t\big)\big\|^2\Big].
+$$ {#eq-generative-models-simple-loss}
+
+### From the variational bound to the simple loss
+
+The simple objective is not an ad hoc choice, it is a reweighted version of a
+genuine ELBO. The variational bound on the negative log likelihood factors over
+the chain into three groups of terms,
+
 $$
+-\log p_\theta(x_0) \le \mathbb{E}_q\Big[
+\underbrace{D_{\mathrm{KL}}(q(x_T \mid x_0) \,\|\, p(x_T))}_{L_T}
++ \sum_{t > 1} \underbrace{D_{\mathrm{KL}}(q(x_{t-1} \mid x_t, x_0) \,\|\, p_\theta(x_{t-1} \mid x_t))}_{L_{t-1}}
+\underbrace{- \log p_\theta(x_0 \mid x_1)}_{L_0}
+\Big],
+$$ {#eq-generative-models-diff-elbo}
+
+obtained by the same multiply-and-divide trick used for the VAE, now applied to
+the joint over the whole trajectory $x_{1:T}$. The term $L_T$ has no learnable
+parameters (the forward process is fixed and $x_T$ is essentially the prior
+$\mathcal{N}(0, I)$), so it is a constant. Each $L_{t-1}$ compares the learned
+reverse step against the forward posterior $q(x_{t-1} \mid x_t, x_0)$, which,
+crucially, is Gaussian in closed form. By Bayes rule applied to the Gaussian
+forward steps,
+
+$$
+q(x_{t-1} \mid x_t, x_0) = \mathcal{N}\!\big(\tilde\mu_t(x_t, x_0),\; \tilde\beta_t I\big),
+\qquad
+\tilde\beta_t = \frac{1 - \bar\alpha_{t-1}}{1 - \bar\alpha_t}\,\beta_t,
+$$
+
+with posterior mean
+
+$$
+\tilde\mu_t(x_t, x_0)
+= \frac{\sqrt{\bar\alpha_{t-1}}\,\beta_t}{1 - \bar\alpha_t}\, x_0
+ + \frac{\sqrt{\alpha_t}\,(1 - \bar\alpha_{t-1})}{1 - \bar\alpha_t}\, x_t .
+$$
+
+Because both distributions in $L_{t-1}$ are Gaussian with the same (fixed)
+covariance, the KL reduces to a scaled squared distance between their means,
+$L_{t-1} = \tfrac{1}{2\tilde\beta_t}\|\tilde\mu_t - \mu_\theta(x_t, t)\|^2 + \text{const}$.
+Now substitute the closed form $x_0 = (x_t - \sqrt{1 - \bar\alpha_t}\,\epsilon)/\sqrt{\bar\alpha_t}$
+into $\tilde\mu_t$ and parameterize the network's mean in the matching form
+
+$$
+\mu_\theta(x_t, t)
+= \frac{1}{\sqrt{\alpha_t}}\Big(x_t - \frac{\beta_t}{\sqrt{1 - \bar\alpha_t}}\, \epsilon_\theta(x_t, t)\Big).
+$$ {#eq-generative-models-mu-eps}
+
+The two means then differ only through $\epsilon - \epsilon_\theta$, and the
+squared difference becomes
+
+$$
+L_{t-1} = \frac{\beta_t^2}{2\tilde\beta_t\,\alpha_t (1 - \bar\alpha_t)}
+\big\|\epsilon - \epsilon_\theta(x_t, t)\big\|^2 + \text{const}.
+$$ {#eq-generative-models-Lt-weighted}
+
+This is the per timestep noise prediction loss, weighted by a $t$ dependent
+factor. Ho et al. (2020) found that simply dropping that factor (setting it to
+one) and averaging over $t$ uniformly, which yields exactly
+@eq-generative-models-simple-loss, trains better and is the form used in
+practice. The reweighting downweights the very small $t$ terms, which correspond
+to imperceptible high frequency detail, and lets the network spend capacity on the
+harder, more visually important denoising at larger $t$.
 
 In words, the network is shown a noised point and the timestep it came from, and
 its only job is to guess the noise that was mixed in. Sampling then alternates a
 denoising step using $\epsilon_\theta$ with a small injection of fresh noise,
 from $t = T$ down to $t = 1$.
+
+The sampling step is the reverse parameterization @eq-generative-models-mu-eps
+made concrete. Starting from $x_T \sim \mathcal{N}(0, I)$, each step computes
+
+$$
+x_{t-1} = \frac{1}{\sqrt{\alpha_t}}\Big(x_t - \frac{\beta_t}{\sqrt{1 - \bar\alpha_t}}\, \epsilon_\theta(x_t, t)\Big)
+ + \sigma_t\, z, \qquad z \sim \mathcal{N}(0, I),
+$$ {#eq-generative-models-sampler}
+
+with $z = 0$ on the final step. The injected variance is typically
+$\sigma_t^2 = \tilde\beta_t$ or the simpler $\sigma_t^2 = \beta_t$; both are
+consistent with the bound and give similar samples. The fresh noise $\sigma_t z$
+is essential: without it the chain would collapse to the conditional mean at every
+step and produce oversmoothed, low diversity samples, the diffusion analogue of
+the blurry VAE failure.
+
+### Connection to score matching
+
+The noise prediction network is, up to scaling, an estimate of the score of the
+noised data, the gradient of the log density. From the closed form
+$x_t = \sqrt{\bar\alpha_t}\,x_0 + \sqrt{1 - \bar\alpha_t}\,\epsilon$, the score of
+the marginal satisfies
+$\nabla_{x_t} \log q(x_t \mid x_0) = -\epsilon / \sqrt{1 - \bar\alpha_t}$, so a
+network trained to predict $\epsilon$ is equivalently learning
+$\epsilon_\theta(x_t, t) \approx -\sqrt{1 - \bar\alpha_t}\, \nabla_{x_t} \log q(x_t)$.
+This is the bridge to the score based view of Song and Ermon, in which sampling is
+Langevin dynamics that follows the learned score uphill in density, and to the
+continuous time formulation where the forward chain is a stochastic differential
+equation and sampling solves its reverse SDE (or a deterministic probability flow
+ODE). The ODE view is the basis of fast deterministic samplers such as DDIM, which
+reduce the hundreds of sequential steps of @eq-generative-models-sampler to a
+few dozen by taking larger, non Markovian strides.
+
+::: {.callout-note title="Why sampling is the bottleneck"}
+Training cost is one network evaluation per example per step, comparable to other
+deep models. The expense is at generation: producing a single sample requires $T$
+sequential forward passes through $\epsilon_\theta$ (often $T = 1000$), each
+depending on the previous, with no parallelism across steps. This is the
+fundamental reason diffusion sampling is orders of magnitude slower than a VAE or
+GAN, which need one pass, and why distillation and ODE solvers that cut the step
+count are an active area.
+:::
 
 
 ::: {.callout-important title="Key idea"}
@@ -642,6 +962,48 @@ knitr::kable(
 The KL divergence to a standard normal falls steeply over the first several
 steps and approaches zero, confirming that the marginal becomes standard
 Gaussian as the chain runs.
+
+### Verifying the forward posterior mean
+
+The derivation of the simple loss hinged on the forward posterior
+$q(x_{t-1} \mid x_t, x_0)$ being Gaussian with mean $\tilde\mu_t(x_t, x_0)$. We can
+confirm that mean numerically without any network. Fix $x_0$ and a step $t$,
+generate many pairs $(x_{t-1}, x_t)$ from the forward chain, then estimate
+$\mathbb{E}[x_{t-1} \mid x_t \approx x_t^\star, x_0]$ by averaging the $x_{t-1}$
+whose $x_t$ landed near a target value, and compare against the closed form.
+
+```{r gm-posterior-mean}
+t <- 20
+x0_scalar <- 2.0
+at <- alpha[t]
+abar_t <- alpha_bar[t]
+abar_tm1 <- alpha_bar[t - 1]
+bt <- beta[t]
+
+# Closed-form forward posterior mean tilde_mu_t at a chosen x_t = xt_star
+xt_star <- 1.0
+mu_closed <- (sqrt(abar_tm1) * bt) / (1 - abar_t) * x0_scalar +
+    (sqrt(at) * (1 - abar_tm1)) / (1 - abar_t) * xt_star
+
+# Monte Carlo: simulate the two-step forward chain from x0, bin on x_t
+N <- 4e6
+xtm1 <- sqrt(abar_tm1) * x0_scalar + sqrt(1 - abar_tm1) * rnorm(N)
+xt <- sqrt(at) * xtm1 + sqrt(bt) * rnorm(N)
+near <- abs(xt - xt_star) < 0.02
+mu_mc <- mean(xtm1[near])
+
+knitr::kable(
+    data.frame(
+        quantity = c("closed-form tilde_mu_t", "Monte Carlo estimate"),
+        value = round(c(mu_closed, mu_mc), 4)
+    ),
+    col.names = c("Quantity", "Value"),
+    caption = "Closed-form forward posterior mean matches the simulated conditional mean."
+)
+```
+
+The two values agree to within Monte Carlo error, confirming the Gaussian
+posterior mean that the variational bound relies on.
 
 ### Optimal GAN discriminator as a density ratio
 

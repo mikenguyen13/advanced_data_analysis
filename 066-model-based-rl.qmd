@@ -55,6 +55,77 @@ $$
 
 where $\mathcal{T}$ denotes the operator. By the Banach fixed-point theorem the iteration converges to the unique fixed point $Q^*$ at a geometric rate $\gamma^k$. This is *pure planning*: no interaction with the environment, only computation against a known model.
 
+#### Why the Bellman operator is a contraction {#sec-model-based-rl-contraction}
+
+The contraction property is the load-bearing fact behind every value-based method in this chapter, so it is worth deriving rather than asserting. Fix two action-value functions $Q$ and $Q'$ and a state-action pair $(s,a)$. Subtracting the two images under $\mathcal{T}$ and using that $R(s,a)$ cancels,
+
+$$
+(\mathcal{T} Q)(s,a) - (\mathcal{T} Q')(s,a) = \gamma \sum_{s'} P(s' \mid s, a) \Big[ \max_{a'} Q(s', a') - \max_{a'} Q'(s', a') \Big].
+$$
+
+The key inequality is that the max operator is nonexpansive: for any two vectors $u, v$,
+
+$$
+\big| \max_i u_i - \max_i v_i \big| \le \max_i \big| u_i - v_i \big|.
+$$
+
+To see this, let $i^\star = \arg\max_i u_i$. Then $\max_i u_i - \max_i v_i \le u_{i^\star} - v_{i^\star} \le \max_i |u_i - v_i|$, and the symmetric argument with $u$ and $v$ swapped gives the absolute value. Applying this with $u_{a'} = Q(s',a')$ and $v_{a'} = Q'(s',a')$,
+
+$$
+\Big| \max_{a'} Q(s',a') - \max_{a'} Q'(s',a') \Big| \le \max_{a'} \big| Q(s',a') - Q'(s',a') \big| \le \lVert Q - Q' \rVert_\infty.
+$$
+
+Substituting back, taking absolute values, and using that $\sum_{s'} P(s' \mid s,a) = 1$ with $P \ge 0$,
+
+$$
+\big| (\mathcal{T} Q)(s,a) - (\mathcal{T} Q')(s,a) \big| \le \gamma \sum_{s'} P(s' \mid s,a) \, \lVert Q - Q' \rVert_\infty = \gamma \, \lVert Q - Q' \rVert_\infty.
+$$
+
+Since this holds for every $(s,a)$, taking the supremum on the left gives $\lVert \mathcal{T} Q - \mathcal{T} Q' \rVert_\infty \le \gamma \lVert Q - Q' \rVert_\infty$, which is the contraction claim. The discount $\gamma < 1$ is exactly what makes the map a strict contraction; with $\gamma = 1$ the operator is merely nonexpansive and convergence can fail.
+
+The contraction immediately yields an *a posteriori* error bound that is the standard stopping rule for value iteration. Writing $Q^* = \mathcal{T} Q^*$ and applying the triangle inequality across the geometric series of future iterates,
+
+$$
+\lVert Q_k - Q^* \rVert_\infty \le \frac{\gamma}{1-\gamma} \, \lVert Q_k - Q_{k-1} \rVert_\infty .
+$$
+
+So one can iterate until the change between successive sweeps falls below $(1-\gamma)\varepsilon/\gamma$ and certify $\lVert Q_k - Q^*\rVert_\infty \le \varepsilon$. To reach accuracy $\varepsilon$ from an initialization with $\lVert Q_0 - Q^*\rVert_\infty \le R_{\max}/(1-\gamma)$ requires $k = O\!\big(\tfrac{1}{1-\gamma}\log\tfrac{R_{\max}}{(1-\gamma)\varepsilon}\big)$ iterations, each costing $O(|\mathcal{S}|^2|\mathcal{A}|)$ arithmetic operations for the full-distribution sweep. The factor $1/(1-\gamma)$, the *effective horizon*, recurs throughout this chapter: it is how many steps of lookahead actually matter under discounting.
+
+The following short simulation confirms the contraction numerically: on a random MDP, the distance $\lVert Q_k - Q^*\rVert_\infty$ should shrink by a factor of at most $\gamma$ every iteration, so the ratio of successive errors stays at or below $\gamma$.
+
+```{r model-based-rl-contraction-check}
+set.seed(1)
+nS <- 8L; nA <- 3L; gamma <- 0.9
+# random transition kernel P[s, a, s'] and reward R[s, a]
+P <- array(runif(nS * nA * nS), dim = c(nS, nA, nS))
+P <- P / array(apply(P, c(1, 2), sum), dim = c(nS, nA, nS))  # normalize rows
+R <- matrix(runif(nS * nA), nS, nA)
+
+bellman <- function(Q) {
+  Vnext <- apply(Q, 1, max)              # max_a' Q(s', a'), length nS
+  out <- R
+  for (s in 1:nS) for (a in 1:nA)
+    out[s, a] <- R[s, a] + gamma * sum(P[s, a, ] * Vnext)
+  out
+}
+
+# iterate to the fixed point Q*, then measure successive error ratios
+Q <- matrix(0, nS, nA)
+for (i in 1:500) Q <- bellman(Q)
+Qstar <- Q
+
+Q <- matrix(0, nS, nA); errs <- numeric(30)
+for (k in 1:30) { Q <- bellman(Q); errs[k] <- max(abs(Q - Qstar)) }
+ratios <- errs[-1] / errs[-length(errs)]
+c(max_ratio = round(max(ratios[errs[-length(errs)] > 1e-12]), 4), gamma = gamma)
+```
+
+Every successive-error ratio is at or below $\gamma = 0.9$, confirming the geometric contraction rate predicted by the theory.
+
+::: {.callout-note title="Policy iteration as the alternative"}
+Value iteration is one of two classical exact planners. *Policy iteration* alternates policy evaluation (solve the linear system $V^\pi = R^\pi + \gamma P^\pi V^\pi$, i.e. $V^\pi = (I - \gamma P^\pi)^{-1} R^\pi$) with greedy policy improvement. It converges in finitely many iterations because there are only $|\mathcal{A}|^{|\mathcal{S}|}$ deterministic policies and each step strictly improves until optimal, but each evaluation costs $O(|\mathcal{S}|^3)$. Value iteration trades exact evaluation for cheap approximate sweeps. Both are dynamic programming against a known model and both underlie the sample-based methods that follow.
+:::
+
 
 ::: {.callout-note}
 Value iteration needs the full distribution model and sweeps the entire state space on every step, so it is practical only when $\mathcal{S}$ and $\mathcal{A}$ are small enough to enumerate. The methods in the rest of this chapter exist precisely to plan without enumerating everything: Dyna plans only at states the agent actually visits, and MCTS plans only along promising trajectories.
@@ -70,6 +141,26 @@ $$
 $$
 
 where the reward estimate averages the rewards observed for that state-action pair. In a deterministic environment the model collapses to a lookup table: each $(s, a)$ maps to the single observed $(s', r)$. This is the model Dyna-Q uses in the demo below, and it is the simplest possible learned model: store the last observed outcome for every state-action pair you have tried.
+
+#### Why the tally is the maximum-likelihood estimate {#sec-model-based-rl-mle}
+
+The counting rule is not an ad hoc heuristic; it is the exact maximum-likelihood estimator for a categorical transition distribution. Fix $(s,a)$ and treat the next states as i.i.d. draws from a categorical distribution with parameters $\theta_{s'} = P(s'\mid s,a)$ satisfying $\sum_{s'}\theta_{s'}=1$. Over $N(s,a)$ observed transitions with per-target counts $N(s,a,s')$, the log-likelihood is
+
+$$
+\ell(\theta) = \sum_{s'} N(s,a,s') \log \theta_{s'} .
+$$
+
+Maximizing under the simplex constraint with a Lagrange multiplier $\lambda$ for $\sum_{s'}\theta_{s'}=1$, set $\partial_{\theta_{s'}}\big[\ell(\theta) - \lambda(\sum_{s'}\theta_{s'}-1)\big] = 0$:
+
+$$
+\frac{N(s,a,s')}{\theta_{s'}} - \lambda = 0 \;\;\Longrightarrow\;\; \theta_{s'} = \frac{N(s,a,s')}{\lambda}.
+$$
+
+Summing over $s'$ and using the constraint forces $\lambda = \sum_{s'} N(s,a,s') = N(s,a)$, which recovers $\hat P(s'\mid s,a) = N(s,a,s')/N(s,a)$. The reward estimate $\hat R(s,a)$ is likewise the maximum-likelihood (and unbiased) mean under a fixed-variance noise model. By the law of large numbers each estimate is consistent, $\hat P \to P$ and $\hat R \to R$ almost surely as $N(s,a)\to\infty$, provided every pair is visited infinitely often, the same exploration condition that value-based learning requires.
+
+::: {.callout-note title="Dirichlet smoothing and model uncertainty"}
+The raw tally is brittle when $N(s,a)$ is small: a single observed transition yields a degenerate model that places all mass on one successor. A Bayesian treatment places a $\mathrm{Dirichlet}(\alpha_1,\dots,\alpha_{|\mathcal S|})$ prior on $\theta$, whose posterior after counts $N(s,a,\cdot)$ is again Dirichlet with parameters $\alpha_{s'} + N(s,a,s')$, giving the posterior-mean estimate $\hat P(s'\mid s,a) = (N(s,a,s') + \alpha_{s'}) / (N(s,a) + \sum_{s''}\alpha_{s''})$. Beyond regularizing sparse counts, the posterior *spread* quantifies model uncertainty, which is exactly what posterior-sampling planners (PSRL) and ensemble methods exploit to avoid trusting the model where data is thin.
+:::
 
 In continuous or high-dimensional problems the model becomes a learned regressor (a neural network predicting the next state and reward, a Gaussian process, an ensemble). The estimation is harder and the bias risk is larger, but the structure is the same: fit $\hat{P}$ and $\hat{R}$ to data, then plan against them.
 
@@ -101,6 +192,28 @@ Dyna-Q plans against whatever its model currently says. In a stationary determin
 
 The parameter $n$ (planning steps per real step) is the key dial. With $n = 0$, Dyna-Q is exactly Q-learning. As $n$ grows, each real interaction is amortized over more value updates, so fewer real steps are needed, at the cost of more computation per step. The demo below makes this tradeoff concrete.
 
+### Why Dyna-Q converges, and why the planning updates are sound
+
+It is worth being precise about what the planning steps actually compute. A Dyna-Q planning update applied to the recorded transition $(\tilde s, \tilde a) \mapsto (\tilde r, \tilde s')$ is a stochastic-approximation step toward the Bellman optimality target *under the learned model*:
+
+$$
+Q(\tilde s, \tilde a) \leftarrow Q(\tilde s, \tilde a) + \alpha \Big[ \tilde r + \gamma \max_{a'} Q(\tilde s', a') - Q(\tilde s, \tilde a) \Big].
+$$
+
+In the tabular case the sampled targets are unbiased estimates of $(\hat{\mathcal T} Q)(\tilde s, \tilde a) = \hat R(\tilde s, \tilde a) + \gamma \sum_{s'} \hat P(s' \mid \tilde s, \tilde a)\max_{a'} Q(s', a')$, the Bellman optimality operator built from the *estimated* model. Because $\hat{\mathcal T}$ is itself a $\gamma$-contraction (the proof in @sec-model-based-rl-contraction never used that $P$ was the true kernel, only that it is a valid probability distribution), the planning iterations alone drive $Q$ toward the fixed point $\hat Q^*$ of the learned MDP. This is the formal content of the claim that planning and learning produce "the same kind of update": planning is asynchronous value iteration against $\hat{\mathcal T}$, sampled at the visited pairs.
+
+Dyna-Q's overall convergence then rests on two ingredients running concurrently. First, the model estimates are consistent, $\hat{\mathcal T} \to \mathcal T$ as visitation grows (@sec-model-based-rl-mle), so the moving target $\hat Q^*$ converges to the true $Q^*$. Second, the asynchronous Q-updates (real plus simulated) converge to the fixed point of the current operator under the usual Robbins-Monro step-size conditions $\sum_t \alpha_t = \infty$, $\sum_t \alpha_t^2 < \infty$, with every pair updated infinitely often. In a deterministic, stationary environment the first ingredient is exact after a single visit to each pair, which is why the gridworld demo pays literally zero model-bias cost: $\hat{\mathcal T} = \mathcal T$ as soon as a pair has been seen once.
+
+### Prioritized sweeping: spending planning updates where they matter
+
+Uniform replay, sampling $(\tilde s, \tilde a)$ at random as plain Dyna-Q does, wastes planning steps on pairs whose values have not changed. *Prioritized sweeping* (Moore and Atkeson 1993; Peng and Williams 1993) instead orders planning updates by how much they are expected to change a value. After a real transition, the magnitude of the TD error
+
+$$
+p \leftarrow \big| r + \gamma \max_{a'} Q(s', a') - Q(s, a) \big|
+$$
+
+is the priority of $(s,a)$; pairs with $p$ above a threshold $\theta$ are pushed onto a priority queue. Each planning step pops the highest-priority pair, applies the TD update, and then, crucially, looks up all *predecessors* $(\bar s, \bar a)$ known to lead into the updated state and enqueues them with their own predicted TD errors. Value information thus propagates backward along the model's reverse dynamics, focused on the frontier where it is actually moving. On structured problems this can reduce the number of planning backups needed to converge by one to two orders of magnitude relative to uniform Dyna-Q, at the cost of maintaining the queue and a predecessor index.
+
 ## Monte Carlo Tree Search
 
 Dyna-Q plans by replaying scattered single transitions. Monte Carlo Tree Search plans differently: it grows a search tree forward from the current state, concentrating its effort on the most promising lines of play. MCTS is the planning engine behind strong game-playing systems (Coulom 2006; Kocsis and Szepesvari 2006; Silver et al. 2016), and it shines when the agent has a sample model (it can simulate forward) but the state space is far too large to enumerate.
@@ -114,6 +227,24 @@ a^* = \arg\max_{a} \left[ \bar{Q}(s, a) + c \sqrt{\frac{\ln N(s)}{N(s, a)}} \rig
 $$
 
 where $\bar{Q}(s, a)$ is the average return observed for taking $a$ in $s$, $N(s)$ is the number of times state $s$ has been visited, $N(s, a)$ is the number of times action $a$ was taken from $s$, and $c > 0$ is an exploration constant. The first term exploits actions that have looked good; the second term, the exploration bonus, favors actions tried few times relative to their parent. UCT is a direct application of the UCB1 bandit rule (Auer, Cesa-Bianchi, and Fischer 2002) to each node, treating action choice at a node as a multi-armed bandit problem (@sec-multi-armed-bandits).
+
+#### Where the bonus comes from, and what it guarantees {#sec-model-based-rl-uct}
+
+The exact shape of the bonus is dictated by a concentration inequality, not chosen by taste. Suppose the returns from an action are bounded in $[0,1]$ with unknown mean $\mu(s,a)$. Hoeffding's inequality bounds the deviation of the empirical mean $\bar Q$ from $\mu$ after $m = N(s,a)$ samples:
+
+$$
+\Pr\!\big( \mu(s,a) > \bar Q(s,a) + u \big) \le \exp\!\big(-2 m u^2\big).
+$$
+
+Setting the right-hand side to $N(s)^{-2c'}$ and solving for $u$ gives a confidence radius $u = \sqrt{c' \ln N(s) / N(s,a)}$, which is the UCT bonus with $c = \sqrt{c'}$. The term is therefore a high-probability upper confidence bound on the true action value: choosing the arm with the largest upper bound implements *optimism in the face of uncertainty*, the same principle behind UCB1. As $N(s,a)$ grows the radius shrinks at rate $m^{-1/2}$, so the bound tightens and selection concentrates on the genuinely best action.
+
+For a stationary bandit at a single node, UCB1 attains expected cumulative regret
+
+$$
+\mathbb{E}[\text{Regret}_T] \le \sum_{a:\Delta_a>0} \frac{8 \ln T}{\Delta_a} + O(1), \qquad \Delta_a = \mu^\star - \mu(a),
+$$
+
+which is logarithmic in the number of pulls $T$ and matches the Lai-Robbins lower bound up to constants. Kocsis and Szepesvari (2006) extended this to the tree setting, where the rewards at a node are *not* stationary (they drift as the subtree below is refined), and proved two things that justify MCTS: the failure probability at the root decays polynomially in the number of simulations, so UCT is consistent, and the value estimate at the root converges to the minimax/optimal value as the budget grows. The price of nonstationarity is that the convergence is only polynomial rather than the clean logarithmic-regret guarantee of the i.i.d. case, and the constants can be poor on adversarial trees, which is why strong systems replace random rollouts with learned value estimates.
 
 
 ::: {.callout-tip title="Intuition"}
@@ -132,6 +263,14 @@ N(s, a) \leftarrow N(s, a) + 1, \qquad \bar{Q}(s, a) \leftarrow \bar{Q}(s, a) + 
 $$
 
 where $G$ is the return of the simulated trajectory passing through $(s, a)$. After the budget is exhausted, the agent commits to the most-visited (or highest-value) action at the root, executes it in the real environment, and rebuilds the tree from the new state.
+
+The second formula is just the incremental form of a running mean, and deriving it once removes any mystery. After $N$ returns $G_1,\dots,G_N$ the average is $\bar Q_N = \frac1N\sum_{i=1}^N G_i$. Separating the newest term,
+
+$$
+\bar Q_N = \frac1N\Big( (N-1)\bar Q_{N-1} + G_N \Big) = \bar Q_{N-1} + \frac{1}{N}\big( G_N - \bar Q_{N-1} \big),
+$$
+
+which is exactly the backup with step size $1/N(s,a)$. This is the constant-memory way to keep an exact sample mean, and it makes clear that MCTS backup is ordinary Monte Carlo estimation of the action value, with the tree policy deciding which actions get more samples. Choosing the most-*visited* root action rather than the highest-mean one is the standard robustness choice: visit counts are far less noisy than means, and under UCT a high visit count already certifies a high mean.
 
 
 ::: {.callout-important title="Key idea"}
@@ -152,6 +291,32 @@ $$
 $$
 
 where $\epsilon_P$ bounds the per-step transition-model error (a distance between $\hat{P}(\cdot \mid s, a)$ and $P(\cdot \mid s, a)$) and $R_{\max}$ bounds the reward. Two lessons follow. Small per-step model errors compound, and they compound worse as $\gamma \to 1$ because the $(1 - \gamma)^{-2}$ factor blows up. Planning many steps deep against an imperfect model amplifies its flaws.
+
+#### Deriving the simulation lemma {#sec-model-based-rl-simlemma}
+
+The bound is not magic; it falls out of one telescoping step. Assume the rewards match (the reward-error case adds a parallel term) and write $V \equiv V^\pi_P$, $\hat V \equiv V^\pi_{\hat P}$ for the value of the same policy $\pi$ under the two models. Each satisfies its own Bellman evaluation equation, $V = R^\pi + \gamma P^\pi V$ and $\hat V = R^\pi + \gamma \hat P^\pi \hat V$, where $P^\pi$ is the policy-induced transition matrix. Subtracting,
+
+$$
+V - \hat V = \gamma\big( P^\pi V - \hat P^\pi \hat V \big) = \gamma\, P^\pi (V - \hat V) + \gamma\, (P^\pi - \hat P^\pi)\hat V,
+$$
+
+where the second line adds and subtracts $\gamma P^\pi \hat V$. Solving the fixed-point relation for the error,
+
+$$
+V - \hat V = \gamma\,(I - \gamma P^\pi)^{-1}(P^\pi - \hat P^\pi)\,\hat V.
+$$
+
+Now take supremum norms. The resolvent satisfies $\lVert (I-\gamma P^\pi)^{-1}\rVert_\infty \le 1/(1-\gamma)$ since $P^\pi$ is a stochastic matrix (its rows sum to one, so $\lVert P^\pi\rVert_\infty=1$ and the Neumann series $\sum_k (\gamma P^\pi)^k$ is bounded by $\sum_k \gamma^k$). The model-difference term is bounded by the per-state transition error times $\lVert \hat V\rVert_\infty \le R_{\max}/(1-\gamma)$. Writing $\epsilon_P = \max_{s,a}\lVert P(\cdot\mid s,a) - \hat P(\cdot\mid s,a)\rVert_1$ and using $\lVert (P^\pi-\hat P^\pi)\hat V\rVert_\infty \le \epsilon_P \lVert \hat V\rVert_\infty$,
+
+$$
+\lVert V - \hat V\rVert_\infty \le \frac{\gamma}{1-\gamma}\cdot \epsilon_P \cdot \frac{R_{\max}}{1-\gamma} = \frac{\gamma R_{\max}}{(1-\gamma)^2}\,\epsilon_P,
+$$
+
+which is the displayed bound. The two factors of $1/(1-\gamma)$ now have a clear origin: one comes from the resolvent (errors made early reverberate through the whole trajectory), and one from the magnitude of the value being perturbed (the horizon over which reward accumulates). This is the precise statement of why long-horizon planning against an approximate model is dangerous.
+
+::: {.callout-note title="Value-equivalence: you do not need a globally accurate model"}
+The simulation lemma bounds error by the *transition* error $\epsilon_P$, but a model only needs to be accurate for the *values and policies the agent will compute*, not pixel-perfect everywhere. This is the value-equivalence principle (Grimm et al. 2020) behind methods such as MuZero: rather than minimizing one-step prediction error, train the model so that applying the Bellman operator under $\hat P$ matches applying it under $P$ for the relevant value functions. A model that is wrong about irrelevant details but right about value backups is exactly as good for planning, and is often far easier to learn.
+:::
 
 
 ::: {.callout-warning}
@@ -388,5 +553,8 @@ To summarize in one line: model-based RL learns or assumes a model of transition
 - Coulom (2006), Efficient selectivity and backup operators in Monte-Carlo tree search. An early formulation of MCTS.
 - Auer, Cesa-Bianchi, and Fischer (2002), Finite-time analysis of the multiarmed bandit problem. The UCB1 rule underlying UCT.
 - Kearns and Singh (2002), Near-optimal reinforcement learning in polynomial time. The simulation-lemma analysis of model error.
+- Moore and Atkeson (1993), Prioritized sweeping: reinforcement learning with less data and less time. The prioritized-sweeping variant of model-based planning.
+- Strens (2000), A Bayesian framework for reinforcement learning. Posterior sampling (PSRL) using the Dirichlet posterior over transition models.
+- Grimm, Barreto, Singh, and Silver (2020), The value equivalence principle for model-based reinforcement learning. Why a model need only be accurate for the value functions the agent computes.
 - Silver et al. (2016), Mastering the game of Go with deep neural networks and tree search. MCTS combined with learned policy and value networks.
 - Silver et al. (2017), Mastering the game of Go without human knowledge. AlphaGo Zero, learning the model-guided search from self-play alone.

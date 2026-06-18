@@ -39,6 +39,35 @@ Picture the data as an elongated cloud of points. The first principal component 
 :::
 
 
+### The variance-maximization problem and its solution {#sec-dimension-reduction-varmax}
+
+Before turning to the reconstruction view, it is worth deriving the loadings directly from the variance-maximization statement, because that derivation makes precise what "the direction of greatest spread" means and shows where the eigenvectors come from.
+
+Collect the centered observations as the rows of $\mathbf{X}$ ($n \times p$, columns having sample mean zero) and write the sample covariance matrix as $\mathbf{S} = \tfrac{1}{n}\mathbf{X}^T\mathbf{X}$, a $p \times p$ symmetric positive semidefinite matrix. A candidate component is $\mathbf{X}\phi$ for a unit loading vector $\phi \in \mathbb{R}^p$, and its sample variance is
+
+$$
+\operatorname{Var}(\mathbf{X}\phi) = \frac{1}{n}\phi^T \mathbf{X}^T \mathbf{X}\,\phi = \phi^T \mathbf{S}\,\phi .
+$$
+
+The first principal direction solves
+
+$$
+\max_{\phi}\ \phi^T \mathbf{S}\,\phi \quad \text{subject to}\quad \phi^T\phi = 1 .
+$$ {#eq-dimension-reduction-pca-varmax}
+
+Introduce a Lagrange multiplier $\lambda$ for the unit-norm constraint and form $\mathcal{L}(\phi,\lambda) = \phi^T\mathbf{S}\phi - \lambda(\phi^T\phi - 1)$. Setting the gradient to zero,
+
+$$
+\frac{\partial \mathcal{L}}{\partial \phi} = 2\mathbf{S}\phi - 2\lambda\phi = 0 \;\Longrightarrow\; \mathbf{S}\phi = \lambda\phi .
+$$ {#eq-dimension-reduction-pca-eigen}
+
+So any stationary point of @eq-dimension-reduction-pca-varmax is an eigenvector of $\mathbf{S}$, and at such a point the objective equals $\phi^T\mathbf{S}\phi = \lambda\,\phi^T\phi = \lambda$. The maximum variance is therefore the largest eigenvalue $\lambda_1$, attained by its eigenvector $\phi_1 = \mathbf{v}_1$. The second component maximizes $\phi^T\mathbf{S}\phi$ subject to $\phi^T\phi = 1$ and $\phi^T\mathbf{v}_1 = 0$; the same Lagrangian argument, now with two multipliers, forces $\phi$ to be an eigenvector orthogonal to $\mathbf{v}_1$, and the best choice is $\mathbf{v}_2$ with variance $\lambda_2$. Inductively, the $k$-th loading vector is the $k$-th eigenvector of $\mathbf{S}$, and the $k$-th component has variance $\lambda_k$. This is the Courant-Fischer (Rayleigh quotient) characterization of eigenvalues, and it explains why the singular values, which satisfy $d_k^2 = n\lambda_k$ for the centered $\mathbf{X} = \mathbf{UDV}^T$, rank the directions exactly by variance.
+
+::: {.callout-note title="Two views, one answer"}
+The reconstruction problem in @eq-dimension-reduction-pca-reconstruction (minimize squared error of a rank-$q$ fit) and the variance-maximization problem in @eq-dimension-reduction-pca-varmax (find directions of greatest spread) have the *same* solution, the leading eigenvectors of $\mathbf{S}$. The reason is the identity, for a unit direction $\phi$, that the total scatter splits as projected variance plus residual variance, $\tfrac1n\sum_i\|x_i-\bar x\|^2 = \phi^T\mathbf{S}\phi + \tfrac1n\sum_i\|(x_i-\bar x) - \phi\phi^T(x_i-\bar x)\|^2$. Maximizing the first term is the same as minimizing the second.
+:::
+
+
 ### A more formal view
 
 Having built intuition, we can state the problem precisely. The principal components of a set of features in $R^p$ give a sequence of linear approximations of rank $q \le p$. The number $q$ is the dimension we are reducing *to*, and the whole point is that a small $q$ can describe the data well.
@@ -51,7 +80,7 @@ We choose these pieces to minimize the reconstruction error, the total squared d
 
 $$
 \underset{\mu, \{z_i \}, \mathbf{V}_q}{\operatorname{min}} \sum_{i = 1}^n ||x_i - \mu - \mathbf{V}_qz_i ||^2
-$$
+$$ {#eq-dimension-reduction-pca-reconstruction}
 
 This optimization looks intimidating because three things are unknown at once, but two of them have closed-form answers once the third is fixed. It can be shown that, given $\mathbf{V}_q$, we get
 
@@ -61,6 +90,16 @@ $$
 $$
 
 In words: the best center is just the sample mean, and the best low-dimensional coordinates for an observation are obtained by centering it and then projecting it onto the chosen directions. The real work, then, is finding $\mathbf{V}_q$; once we have it, everything else follows immediately.
+
+To see why those two pieces take that form, differentiate the objective in @eq-dimension-reduction-pca-reconstruction. Holding $\mathbf{V}_q$ and the $z_i$ fixed, the gradient with respect to $\mu$ is $-2\sum_i (x_i - \mu - \mathbf{V}_q z_i)$; setting it to zero gives $\hat\mu = \bar x - \mathbf{V}_q \bar z$, and because the objective is invariant to shifting all $z_i$ by a constant, we may impose $\bar z = 0$, leaving $\hat\mu = \bar x$. Substituting this and writing $\tilde x_i = x_i - \bar x$, each $z_i$ appears in a separate term $\|\tilde x_i - \mathbf{V}_q z_i\|^2$. Its gradient is $-2\mathbf{V}_q^T(\tilde x_i - \mathbf{V}_q z_i)$, and since $\mathbf{V}_q^T\mathbf{V}_q = \mathbf{I}_q$ (orthonormal columns), setting it to zero gives $\hat z_i = \mathbf{V}_q^T \tilde x_i$, the orthogonal projection onto the column space of $\mathbf{V}_q$.
+
+Plugging $\hat\mu$ and $\hat z_i$ back in collapses the objective to a function of $\mathbf{V}_q$ alone,
+
+$$
+\sum_{i=1}^n \big\| \tilde x_i - \mathbf{V}_q \mathbf{V}_q^T \tilde x_i \big\|^2 = \operatorname{trace}\!\big[ \tilde{\mathbf{X}}^T \tilde{\mathbf{X}} (\mathbf{I}_p - \mathbf{V}_q\mathbf{V}_q^T) \big],
+$$ {#eq-dimension-reduction-pca-projresidual}
+
+where $\mathbf{P} = \mathbf{V}_q\mathbf{V}_q^T$ is the rank-$q$ orthogonal projector onto the chosen subspace. Minimizing @eq-dimension-reduction-pca-projresidual is the same as maximizing $\operatorname{trace}(\mathbf{V}_q^T\tilde{\mathbf{X}}^T\tilde{\mathbf{X}}\,\mathbf{V}_q)$ over orthonormal $\mathbf{V}_q$, which by the Ky Fan theorem is solved by taking the top $q$ eigenvectors of $\tilde{\mathbf{X}}^T\tilde{\mathbf{X}}$, exactly the leading right singular vectors. This is the precise sense in which the reconstruction and variance views coincide.
 
 #### Finding the directions with the SVD
 
@@ -91,6 +130,47 @@ Second, a practical question: how many components should we keep? A useful diagn
 The scrambling comparison is more honest than the familiar "look for an elbow in the scree plot" rule, because it gives you a concrete null expectation for how much variance a meaningless direction should explain.
 :::
 
+
+#### Optimality, variance accounted for, and complexity
+
+The Eckart-Young-Mirsky theorem makes the optimality of PCA exact: among all rank-$q$ matrices $\mathbf{B}$, the truncated SVD $\mathbf{X}_q = \mathbf{U}_q\mathbf{D}_q\mathbf{V}_q^T$ minimizes both the Frobenius error $\|\mathbf{X} - \mathbf{B}\|_F$ and the spectral-norm error $\|\mathbf{X}-\mathbf{B}\|_2$, with optimal values
+
+$$
+\|\mathbf{X} - \mathbf{X}_q\|_F^2 = \sum_{k=q+1}^{p} d_k^2, \qquad \|\mathbf{X}-\mathbf{X}_q\|_2 = d_{q+1}.
+$$
+
+Dividing the leading sum by the total, the *fraction of variance explained* by the first $q$ components is $\sum_{k=1}^q d_k^2 \big/ \sum_{k=1}^p d_k^2 = \sum_{k=1}^q \lambda_k \big/ \sum_{k=1}^p \lambda_k$, which is the quantity a cumulative scree plot reports. Choosing $q$ to reach a target such as 90 percent is the most common rule of thumb; the scrambling baseline above and cross-validated reconstruction error (hold out entries of $\mathbf{X}$, reconstruct, measure error) are more principled alternatives.
+
+Computationally, forming $\mathbf{S}$ and taking its eigendecomposition costs $O(np^2 + p^3)$, while a thin SVD of $\mathbf{X}$ costs $O(np\min(n,p))$; when only $q \ll p$ components are needed, randomized or Lanczos/truncated SVD reduces this to roughly $O(npq)$. Forming $\mathbf{S}$ explicitly squares the condition number, so for accuracy prefer the SVD of $\mathbf{X}$ directly over the eigendecomposition of $\mathbf{X}^T\mathbf{X}$.
+
+::: {.callout-warning title="Failure modes"}
+PCA is a second-moment method, so it can mislead when the interesting structure is not captured by variance. It is not scale invariant (recall the standardization footnote); a single high-variance feature or a few gross outliers can hijack the leading components, since squared error rewards fitting large deviations. Variance is also not the same as class separation, so the top components need not be the best features for a downstream classifier (that is the job of methods like LDA). And when $p \gg n$ the leading sample eigenvectors are inconsistent estimates of the population directions unless the signal eigenvalues are large enough, a phenomenon made precise by random-matrix theory (the Baik-Ben Arous-Peche phase transition).
+:::
+
+We can confirm the central claim, that the leading right singular vector both maximizes variance and minimizes reconstruction error, with a tiny simulation.
+
+```{r}
+#| label: pca-verify
+#| eval: true
+set.seed(1)
+n <- 200; p <- 5
+X <- scale(matrix(rnorm(n * p), n, p) %*% matrix(rnorm(p * p), p, p),
+           center = TRUE, scale = FALSE)
+sv <- svd(X)
+v1 <- sv$v[, 1]                       # leading right singular vector
+
+# variance along v1 vs. many random unit directions
+var_v1 <- var(X %*% v1)
+rand_dir <- function() { u <- rnorm(p); u <- u / sqrt(sum(u^2)); var(X %*% u) }
+max_random <- max(replicate(2000, rand_dir()))
+c(variance_along_v1 = var_v1, best_of_random = max_random)
+
+# rank-1 reconstruction error equals sum of squared trailing singular values
+Xq <- sv$u[, 1] %*% t(sv$v[, 1]) * sv$d[1]
+c(reconstruction = sum((X - Xq)^2), trailing_sv2 = sum(sv$d[-1]^2))
+```
+
+The variance along $\mathbf{v}_1$ exceeds that of every random direction, and the rank-1 reconstruction error matches $\sum_{k\ge 2} d_k^2$, as @eq-dimension-reduction-pca-projresidual and the Eckart-Young theorem predict.
 
 The remaining sections all start from this PCA machinery and modify one ingredient at a time.
 
@@ -123,6 +203,20 @@ $$
 
 The first line says the best rotation comes straight from the singular vectors; the second says that once you know how to rotate, the right shift is simply whatever lines the two centers up. We will see this solution reappear inside sparse PCA below.
 
+To derive this, note first that for any fixed $\mathbf{R}$ the optimal $\mu$ centers the residual, $\hat\mu = \bar x_2 - \mathbf{R}^T \bar x_1$ (differentiate the objective in $\mu$ and set to zero, exactly as for PCA's mean), so we may work with the centered matrices $\tilde{\mathbf{X}}_1, \tilde{\mathbf{X}}_2$ and drop the translation. Expanding the squared Frobenius norm and using $\mathbf{R}^T\mathbf{R} = \mathbf{I}$,
+
+$$
+\|\tilde{\mathbf{X}}_2 - \tilde{\mathbf{X}}_1\mathbf{R}\|_F^2 = \|\tilde{\mathbf{X}}_2\|_F^2 + \|\tilde{\mathbf{X}}_1\|_F^2 - 2\operatorname{trace}\!\big(\mathbf{R}^T \tilde{\mathbf{X}}_1^T \tilde{\mathbf{X}}_2\big),
+$$
+
+so minimizing over orthonormal $\mathbf{R}$ is equivalent to maximizing $\operatorname{trace}(\mathbf{R}^T \mathbf{C})$ with $\mathbf{C} = \tilde{\mathbf{X}}_1^T \tilde{\mathbf{X}}_2$. Take the SVD $\mathbf{C} = \mathbf{U}\mathbf{D}\mathbf{V}^T$. Then
+
+$$
+\operatorname{trace}(\mathbf{R}^T\mathbf{U}\mathbf{D}\mathbf{V}^T) = \operatorname{trace}(\mathbf{D}\,\mathbf{V}^T\mathbf{R}^T\mathbf{U}) = \sum_k d_k\, m_{kk}, \quad \mathbf{M} = \mathbf{V}^T\mathbf{R}^T\mathbf{U},
+$$
+
+where $\mathbf{M}$ is orthonormal, so $|m_{kk}| \le 1$. Since every $d_k \ge 0$, the sum is maximized by $m_{kk} = 1$ for all $k$, i.e. $\mathbf{M} = \mathbf{I}$, which gives $\hat{\mathbf{R}} = \mathbf{U}\mathbf{V}^T$. (If a proper rotation, $\det \hat{\mathbf{R}} = +1$, is required so reflections are excluded, the Kabsch correction replaces the last column relation by $\hat{\mathbf{R}} = \mathbf{U}\,\mathrm{diag}(1,\dots,1,\det(\mathbf{U}\mathbf{V}^T))\,\mathbf{V}^T$.) This is the orthogonal Procrustes solution, and the trace-maximization step is the same device that solved PCA above.
+
 ### Kernel Principal Components
 
 PCA finds the best *flat* (linear) low-dimensional approximation. But data often bend: points may lie on a curved surface that no straight axis can follow. We can extend principal components to capture such curvature, leading to principal curves and surfaces (for example @hastie2001a 14.5.2) and, more generally, to kernel principal components (KPCA).
@@ -144,6 +238,18 @@ z_{im} = \sum_{j=1}^N \alpha_{jm} K(x_i, x_j)
 $$
 
 where the coefficients are $\alpha_{jm} = u_{jm}/d_m$. In other words, each observation's score is a kernel-weighted combination of its similarities to all the training points.
+
+#### Why the Gram-matrix eigenvectors suffice
+
+The reason KPCA can work entirely with $\mathbf{K}$ is a duality between the covariance and Gram matrices. In feature space, let the (centered) rows be $\phi(x_i)^T$ stacked into $\mathbf{\Phi}$. PCA there would diagonalize the covariance $\mathbf{C} = \tfrac1n \mathbf{\Phi}^T\mathbf{\Phi}$, whose eigenvectors $\mathbf{w}$ satisfy $\mathbf{C}\mathbf{w} = \lambda\mathbf{w}$. Left-multiplying by $\mathbf{\Phi}$ shows that the Gram matrix $\mathbf{K} = \mathbf{\Phi}\mathbf{\Phi}^T$ shares the nonzero spectrum: if $\mathbf{K}\mathbf{u} = n\lambda\,\mathbf{u}$ then $\mathbf{w} = \mathbf{\Phi}^T\mathbf{u}$ is an eigenvector of $n\mathbf{C}$ with the same eigenvalue. Crucially $\mathbf{w}$ lies in the span of the mapped data, $\mathbf{w} = \sum_j u_j \phi(x_j)$, so it never needs to be formed explicitly. The projection (score) of a point onto $\mathbf{w}$ is then
+
+$$
+\langle \mathbf{w}, \phi(x_i)\rangle = \sum_{j} u_{j}\,\langle \phi(x_j),\phi(x_i)\rangle = \sum_j u_{j} K(x_j, x_i),
+$$
+
+which is exactly $z_{im} = \sum_j \alpha_{jm} K(x_i,x_j)$ once we normalize so that $\|\mathbf{w}\|=1$. The eigenvector $\mathbf{w} = \mathbf{\Phi}^T\mathbf{u}$ has squared norm $\mathbf{u}^T\mathbf{K}\mathbf{u} = n\lambda\,\|\mathbf{u}\|^2 = n\lambda$ when $\mathbf{u}$ is unit-norm, so the scaling $\alpha_{jm} = u_{jm}/d_m$ (with $d_m^2$ the $m$-th eigenvalue of $\mathbf{K}$) is precisely what makes the feature-space loading have unit length. This is why KPCA returns $\mathbf{Z} = \mathbf{U}\mathbf{D}$.
+
+One subtlety: centering must be done in feature space, where $\bar\phi = \tfrac1n\sum_j \phi(x_j)$ is unknown. The double-centering $\tilde{\mathbf{K}} = (\mathbf{I}-\mathbf{M})\mathbf{K}(\mathbf{I}-\mathbf{M})$, with $\mathbf{M} = \tfrac1n\mathbf{1}\mathbf{1}^T$, is not an arbitrary normalization: expanding $\langle \phi(x_i)-\bar\phi,\ \phi(x_j)-\bar\phi\rangle$ produces exactly the four terms of $(\mathbf{I}-\mathbf{M})\mathbf{K}(\mathbf{I}-\mathbf{M})$, so it implements mean-subtraction using inner products alone. For a genuinely new test point one must apply the same centering with the training-set means.
 
 Many kernels are available. One of the most common is the radial (Gaussian) kernel,
 
@@ -202,6 +308,17 @@ $$
 $$
 
 This objective is not arbitrary: it is the log-likelihood of a model in which each $x_{ij}$ is a Poisson random variable with mean (intensity) $(\mathbf{WH})_{ij}$, which is a natural choice for count-like, non-negative data. The columns of $\mathbf{W}$ are usually the quantities of primary interest, since they present the primary non-negative components in the data: the recurring parts (a facial feature, a topic, a spectral signature) out of which each observation is additively built.^[The classic illustration is faces: NMF tends to discover localized parts such as eyes, noses, and mouths, whereas PCA produces global "eigenfaces" that look like ghostly whole-face templates. The non-negativity is what forces a parts-based representation.]
+
+#### The multiplicative update rules
+
+Maximizing the Poisson log-likelihood is equivalent to minimizing the generalized Kullback-Leibler divergence $D(\mathbf{X}\,\|\,\mathbf{W}\mathbf{H}) = \sum_{ij}\big[x_{ij}\log\frac{x_{ij}}{(\mathbf{WH})_{ij}} - x_{ij} + (\mathbf{WH})_{ij}\big]$, which differs from the objective above only by terms not involving $\mathbf{W}$ or $\mathbf{H}$. @lee1999 derive monotone multiplicative updates for it,
+
+$$
+w_{ik} \leftarrow w_{ik}\,\frac{\sum_{j} h_{kj}\, x_{ij}/(\mathbf{WH})_{ij}}{\sum_{j} h_{kj}}, \qquad
+h_{kj} \leftarrow h_{kj}\,\frac{\sum_{i} w_{ik}\, x_{ij}/(\mathbf{WH})_{ij}}{\sum_{i} w_{ik}} .
+$$ {#eq-dimension-reduction-nmf-update}
+
+These arise from a majorize-minimize (EM-like) argument. Using the concavity of the logarithm with auxiliary weights $\rho_{ikj} = w_{ik}h_{kj}/(\mathbf{WH})_{ij}$ (which sum to one over $k$), Jensen's inequality gives a lower bound on the log term that is tight at the current iterate; maximizing that surrogate in closed form yields @eq-dimension-reduction-nmf-update. Two properties follow. First, the updates are purely multiplicative, so starting from strictly positive $\mathbf{W},\mathbf{H}$ they preserve non-negativity automatically, with no projection step. Second, each update cannot increase the divergence, so the algorithm converges monotonically; it converges to a stationary point, not necessarily the global optimum, which is the algorithmic counterpart of the non-uniqueness warned about below. (For the squared-error objective $\|\mathbf{X}-\mathbf{WH}\|_F^2$ the analogous updates replace the ratio kernels by $\mathbf{X}\mathbf{H}^T \!\big/ \mathbf{W}\mathbf{H}\mathbf{H}^T$ and $\mathbf{W}^T\mathbf{X} \!\big/ \mathbf{W}^T\mathbf{W}\mathbf{H}$, elementwise.) The cost per iteration is $O(npr)$, the same order as one alternating step of PCA-style methods.
 
 
 ::: {.callout-warning}

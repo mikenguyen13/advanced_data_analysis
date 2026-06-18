@@ -89,6 +89,31 @@ Think of MH as exploring a hilly landscape in the dark, where height is posterio
 
 MH is simple but can be slow. If the proposal steps are too small the chain explores slowly; if too large most proposals are rejected. In high dimensions a random-walk proposal wanders inefficiently, and the number of steps needed to get an effectively independent sample grows quickly.
 
+#### Why Metropolis-Hastings targets the posterior
+
+The acceptance rule above is not arbitrary: it is the unique choice that makes the posterior the stationary distribution of the chain. The standard sufficient condition is *detailed balance* (reversibility) with respect to the target $\pi$. A transition kernel $P(\theta \to \theta')$ satisfies detailed balance if
+
+$$
+\pi(\theta) \, P(\theta \to \theta') = \pi(\theta') \, P(\theta' \to \theta)
+$$ {#eq-probabilistic-programming-detailed-balance}
+
+for all $\theta, \theta'$. Integrating @eq-probabilistic-programming-detailed-balance over $\theta$ gives $\int \pi(\theta) P(\theta \to \theta')\, d\theta = \pi(\theta') \int P(\theta' \to \theta)\, d\theta = \pi(\theta')$, which is exactly the statement that $\pi$ is invariant: one step started from $\pi$ leaves the distribution unchanged.
+
+For MH the off-diagonal part of the kernel (the probability of actually moving from $\theta$ to $\theta' \ne \theta$) is the proposal density times the acceptance probability, $P(\theta \to \theta') = q(\theta' \mid \theta)\, \alpha(\theta, \theta')$. Substitute the MH acceptance probability $\alpha(\theta,\theta') = \min\!\big(1,\, \tfrac{\pi(\theta') q(\theta \mid \theta')}{\pi(\theta) q(\theta' \mid \theta)}\big)$ and check @eq-probabilistic-programming-detailed-balance. Without loss of generality suppose the ratio $\tfrac{\pi(\theta') q(\theta \mid \theta')}{\pi(\theta) q(\theta' \mid \theta)} \le 1$, so $\alpha(\theta,\theta') = \tfrac{\pi(\theta') q(\theta \mid \theta')}{\pi(\theta) q(\theta' \mid \theta)}$ and the reverse move has $\alpha(\theta',\theta) = 1$. Then
+
+$$
+\pi(\theta)\, q(\theta' \mid \theta)\, \alpha(\theta,\theta')
+= \pi(\theta)\, q(\theta' \mid \theta) \cdot \frac{\pi(\theta')\, q(\theta \mid \theta')}{\pi(\theta)\, q(\theta' \mid \theta)}
+= \pi(\theta')\, q(\theta \mid \theta')
+= \pi(\theta')\, q(\theta \mid \theta')\, \alpha(\theta',\theta),
+$$
+
+which is @eq-probabilistic-programming-detailed-balance. The case where the ratio exceeds one is symmetric. Two points are worth drawing out. First, $\pi$ appears only through the ratio $\pi(\theta')/\pi(\theta)$, so the normalizing constant $p(y)$ cancels exactly, which is the formal version of the "key idea" callout above. Second, detailed balance plus irreducibility (the chain can reach any region of positive posterior mass) and aperiodicity guarantee that the chain converges to $\pi$ from any starting point; this is the ergodic theorem that justifies discarding warmup and averaging the rest.
+
+::: {.callout-note title="Optimal scaling of random-walk MH"}
+For a target made of $d$ independent and identically distributed coordinates and a Gaussian proposal $\mathcal{N}(\theta, \ell^2 \Sigma / d)$, Roberts, Gelman, and Gilks (1997) showed that as $d \to \infty$ the efficiency of random-walk MH is maximized when the proposal scale is tuned so that the acceptance rate approaches $0.234$. This is the theoretical basis for the rule of thumb that random-walk acceptance should land in the rough range $0.2$ to $0.5$ used in the demo. The same analysis shows the number of steps to produce one effectively independent draw grows linearly in $d$, the curse of dimensionality that motivates the gradient-based samplers below.
+:::
+
 ### Hamiltonian Monte Carlo
 
 Hamiltonian Monte Carlo (HMC) reduces random-walk behavior by using gradient information. It augments the parameters $\theta$ with auxiliary momentum variables $r$ of the same dimension, and defines a joint density
@@ -102,6 +127,49 @@ Here $U(\theta)$ is the potential energy (the negative log posterior) and the qu
 
 ::: {.callout-tip title="Intuition"}
 Instead of taking blind random steps, HMC gives the explorer a sense of the local slope and a push of momentum, so it skis along the contours of the landscape. One trajectory can cross to a far corner of the posterior in a single proposal, which is why HMC mixes so much faster than random-walk MH in high dimensions.
+:::
+
+
+#### Why HMC works: Hamiltonian dynamics and the acceptance correction
+
+The joint density in $(\theta, r)$ defines a Hamiltonian, the total energy,
+
+$$
+H(\theta, r) = U(\theta) + K(r), \qquad U(\theta) = -\log\big(p(y \mid \theta)\, p(\theta)\big), \quad K(r) = \tfrac{1}{2} r^\top M^{-1} r,
+$$ {#eq-probabilistic-programming-hamiltonian}
+
+so that the joint target is $p(\theta, r) \propto \exp(-H(\theta, r))$. The momentum is auxiliary: because $H$ separates additively and $r \sim \mathcal{N}(0, M)$ is independent of $\theta$, marginalizing out $r$ returns the posterior, $\int p(\theta, r)\, dr \propto \exp(-U(\theta)) = p(y\mid\theta)p(\theta)$. So if we can sample the joint $(\theta, r)$ and then discard $r$, the $\theta$ draws are exactly posterior draws.
+
+The continuous-time dynamics follow Hamilton's equations,
+
+$$
+\frac{d\theta}{dt} = \frac{\partial H}{\partial r} = M^{-1} r, \qquad
+\frac{dr}{dt} = -\frac{\partial H}{\partial \theta} = -\nabla_\theta U(\theta).
+$$ {#eq-probabilistic-programming-hamilton}
+
+Exact Hamiltonian flow has three properties that make it an ideal proposal mechanism. First it *conserves energy*: $\tfrac{dH}{dt} = \nabla_\theta H \cdot \dot\theta + \nabla_r H \cdot \dot r = \nabla_\theta U \cdot M^{-1} r - M^{-1} r \cdot \nabla_\theta U = 0$, so a trajectory stays on a level set of $H$ where the joint density is constant and the proposal would always be accepted. Second it *preserves volume* in $(\theta, r)$ space (Liouville's theorem), because the flow field has zero divergence: $\sum_i \tfrac{\partial}{\partial \theta_i}\tfrac{\partial H}{\partial r_i} + \sum_i \tfrac{\partial}{\partial r_i}\big(-\tfrac{\partial H}{\partial \theta_i}\big) = 0$. Third it is *time-reversible*. Volume preservation means the proposal carries no Jacobian factor, and reversibility lets us keep detailed balance.
+
+In practice we cannot solve @eq-probabilistic-programming-hamilton exactly, so Stan uses the leapfrog (Stormer-Verlet) integrator, which for step size $\epsilon$ takes a half momentum step, a full position step, and a half momentum step:
+
+$$
+\begin{aligned}
+r_{t+\epsilon/2} &= r_t - \tfrac{\epsilon}{2}\,\nabla_\theta U(\theta_t), \\
+\theta_{t+\epsilon} &= \theta_t + \epsilon\, M^{-1} r_{t+\epsilon/2}, \\
+r_{t+\epsilon} &= r_{t+\epsilon/2} - \tfrac{\epsilon}{2}\,\nabla_\theta U(\theta_{t+\epsilon}).
+\end{aligned}
+$$ {#eq-probabilistic-programming-leapfrog}
+
+Each leapfrog substep is a shear (it updates one block using only the other), so each has unit Jacobian and the whole map is volume preserving exactly, even though it only approximates the true flow. The leapfrog map is also exactly reversible: negating the momentum, applying $L$ steps, and negating again returns the start. What it does *not* do is conserve $H$ exactly; it conserves it to second order, with error $O(\epsilon^2)$ per step that does not accumulate without bound (the integrator is symplectic). The small energy error is precisely what the Metropolis accept step corrects. After $L$ leapfrog steps from $(\theta, r)$ to $(\theta^*, r^*)$, propose with acceptance probability
+
+$$
+\alpha = \min\!\Big(1,\; \exp\!\big(H(\theta, r) - H(\theta^*, r^*)\big)\Big)
+= \min\!\Big(1,\; \exp\!\big(U(\theta) - U(\theta^*) + K(r) - K(r^*)\big)\Big).
+$$ {#eq-probabilistic-programming-hmc-accept}
+
+Because the leapfrog map is volume preserving and reversible, this is an ordinary Metropolis correction on the joint space and it leaves $\exp(-H)$ invariant exactly, so the marginal over $\theta$ is the exact posterior despite the discretization error. One full HMC iteration is therefore: draw fresh momentum $r \sim \mathcal{N}(0, M)$, run $L$ leapfrog steps, and accept or reject by @eq-probabilistic-programming-hmc-accept. Resampling $r$ each iteration is what lets the chain change energy levels and explore the whole posterior rather than a single level set.
+
+::: {.callout-note title="Cost, scaling, and the mass matrix"}
+HMC's advantage is quantitative. Under suitable conditions Neal (2011) and Beskos et al. (2013) show that to keep the acceptance rate fixed as dimension grows, the step size must scale like $\epsilon \propto d^{-1/4}$, so the number of leapfrog steps for one effectively independent draw scales like $d^{1/4}$, versus $d$ for random-walk MH and $d^{1/2}$ for the Metropolis-adjusted Langevin algorithm. The optimal acceptance rate for HMC under this analysis is about $0.65$, which is why Stan's default `adapt_delta` is $0.8$ and not the $0.234$ of random-walk MH. The mass matrix $M$ plays the role of a preconditioner: choosing $M$ close to the inverse posterior covariance makes the target isotropic in the transformed coordinates and dramatically improves mixing. Stan estimates a diagonal (or dense) $M$ from the warmup draws for exactly this reason, which is why correlated parameters are handled "well, mass matrix adapted in warmup" in @tbl-probabilistic-programming-sampler-comparison.
 :::
 
 
@@ -146,6 +214,55 @@ $$
 $$
 
 The posterior mean is a precision-weighted average of the prior mean $\mu_0$ and the data mean $\bar{y}$, where precision is the reciprocal of variance. As $n$ grows, the data term $n/\sigma^2$ dominates and the posterior concentrates near $\bar{y}$. This closed form is the exception; for general models we sample instead, which is the subject of the demo below.
+
+#### Deriving the conjugate Gaussian posterior
+
+The identity above follows from completing the square in the log posterior, the prototype of every conjugate update. Dropping additive constants that do not depend on $\mu$, the unnormalized log posterior is the log likelihood plus the log prior,
+
+$$
+\log p(\mu \mid y) = -\frac{1}{2\sigma^2}\sum_{i=1}^{n}(y_i - \mu)^2 \;-\; \frac{1}{2\tau^2}(\mu - \mu_0)^2 + \text{const}.
+$$
+
+Expand the two quadratics in $\mu$ and collect the $\mu^2$ and $\mu$ terms, discarding anything constant in $\mu$:
+
+$$
+\log p(\mu \mid y) = -\frac{1}{2}\Big(\underbrace{\tfrac{n}{\sigma^2} + \tfrac{1}{\tau^2}}_{A}\Big)\mu^2 + \Big(\underbrace{\tfrac{n\bar y}{\sigma^2} + \tfrac{\mu_0}{\tau^2}}_{B}\Big)\mu + \text{const},
+$$
+
+using $\sum_i y_i = n\bar y$. Any function of the form $-\tfrac{1}{2}A\mu^2 + B\mu + \text{const}$ is, up to a constant, the log density of a Gaussian: completing the square gives $-\tfrac{A}{2}\big(\mu - B/A\big)^2 + \text{const}$, which is $\mathcal{N}(B/A,\, A^{-1})$. Reading off the mean and variance,
+
+$$
+\text{Var}(\mu \mid y) = A^{-1} = \Big(\tfrac{1}{\tau^2} + \tfrac{n}{\sigma^2}\Big)^{-1}, \qquad
+\mathbb{E}(\mu \mid y) = \frac{B}{A} = \text{Var}(\mu\mid y)\Big(\tfrac{\mu_0}{\tau^2} + \tfrac{n\bar y}{\sigma^2}\Big),
+$$
+
+which is exactly the stated result. The structure generalizes: posterior precision is the sum of prior precision and data precision ($A = \tau^{-2} + n\sigma^{-2}$), and the posterior mean is the precision-weighted average of the two information sources. This additivity of precisions is the formal content of the statement that priors and data combine, and it is why a weakly informative prior (small $\tau^{-2}$) is quickly dominated once $n$ is moderate.
+
+The following short check confirms the closed form against a brute-force numerical posterior on a grid, using only base R.
+
+```{r pp-conjugate-check, eval=TRUE}
+set.seed(11)
+sigma2 <- 4; tau2 <- 9; mu0 <- 1            # known data var, prior var, prior mean
+yv <- rnorm(25, mean = 3, sd = sqrt(sigma2)) # data from mu = 3
+n <- length(yv); ybar <- mean(yv)
+
+# Closed-form posterior (the derived formulas)
+post_var  <- 1 / (1/tau2 + n/sigma2)
+post_mean <- post_var * (mu0/tau2 + n*ybar/sigma2)
+
+# Numerical posterior on a fine grid (unnormalized -> normalized)
+grid <- seq(post_mean - 6*sqrt(post_var), post_mean + 6*sqrt(post_var), length = 4000)
+logpost <- sapply(grid, function(m)
+  sum(dnorm(yv, m, sqrt(sigma2), log = TRUE)) + dnorm(m, mu0, sqrt(tau2), log = TRUE))
+w <- exp(logpost - max(logpost)); w <- w / sum(w)
+num_mean <- sum(grid * w)
+num_var  <- sum((grid - num_mean)^2 * w)
+
+round(c(closed_mean = post_mean, grid_mean = num_mean,
+        closed_var = post_var,  grid_var = num_var), 4)
+```
+
+The closed-form mean and variance match the grid-based posterior to several decimals, confirming the completing-the-square derivation.
 
 
 ::: {.callout-note}
@@ -430,6 +547,70 @@ Treat the diagnostics as a gate, not an afterthought. If $\hat{R}$ is high or th
 
 In `brms` and `rstanarm` these appear in `summary()` output (`Rhat`, `Bulk_ESS`, `Tail_ESS`) and through `bayesplot` functions such as `mcmc_trace()`, `mcmc_rank_overlay()`, and `mcmc_nuts_divergence()`. Divergent transitions often signal a posterior with sharp geometry, common in hierarchical models; the usual fixes are raising `adapt_delta` (for example to 0.95 or 0.99), reparameterizing (the non-centered parameterization for group effects), or tightening overly vague priors.
 
+### Monte Carlo error, effective sample size, and $\hat R$
+
+The diagnostics above are not heuristics bolted on after the fact; they estimate the actual error of the posterior summaries. For a function $g(\theta)$ with posterior mean $\mu_g = \mathbb{E}[g(\theta)\mid y]$, the MCMC estimator from $N$ retained draws is $\hat\mu_g = \tfrac{1}{N}\sum_{t=1}^{N} g(\theta^{(t)})$. The ergodic theorem gives $\hat\mu_g \to \mu_g$ almost surely, but the draws are correlated, so the variance of the estimator is not $\sigma_g^2 / N$. Writing $\sigma_g^2 = \text{Var}(g(\theta))$ and $\rho_k$ for the lag-$k$ autocorrelation of the chain, the standard stationary-process variance is
+
+$$
+\text{Var}(\hat\mu_g) = \frac{\sigma_g^2}{N}\Big(1 + 2\sum_{k=1}^{\infty}\rho_k\Big) = \frac{\sigma_g^2}{N_{\text{eff}}}, \qquad
+N_{\text{eff}} = \frac{N}{1 + 2\sum_{k=1}^{\infty}\rho_k}.
+$$ {#eq-probabilistic-programming-ess}
+
+The quantity $N_{\text{eff}}$ is the *effective sample size*: the integrated autocorrelation time $\tau_{\text{int}} = 1 + 2\sum_{k\ge 1}\rho_k$ tells you how many correlated draws are worth one independent draw. Positive autocorrelation ($\rho_k > 0$) inflates $\tau_{\text{int}}$ and shrinks $N_{\text{eff}}$ below $N$; the Monte Carlo standard error of a posterior mean is then $\widehat{\text{se}} = \hat\sigma_g / \sqrt{N_{\text{eff}}}$, which is why an ESS of a few hundred is the floor for a stable summary and more is needed for extreme tail quantiles. HMC and NUTS keep $\rho_k$ small (the long informed moves decorrelate quickly), which is the practical reason they need so many fewer iterations than random-walk MH for the same precision.
+
+The $\hat R$ statistic compares between-chain and within-chain variance to detect non-convergence. With $m$ chains each of length $N$, posterior draws $\theta^{(t)}_j$, chain means $\bar\theta_j$, and grand mean $\bar\theta$, define
+
+$$
+B = \frac{N}{m-1}\sum_{j=1}^{m}(\bar\theta_j - \bar\theta)^2, \qquad
+W = \frac{1}{m}\sum_{j=1}^{m} s_j^2, \qquad s_j^2 = \frac{1}{N-1}\sum_{t=1}^{N}(\theta^{(t)}_j - \bar\theta_j)^2.
+$$
+
+The pooled marginal posterior variance is estimated by a weighted average of within and between variance, $\widehat{\text{Var}}^+ = \tfrac{N-1}{N}W + \tfrac{1}{N}B$, and
+
+$$
+\hat R = \sqrt{\frac{\widehat{\text{Var}}^+}{W}}.
+$$ {#eq-probabilistic-programming-rhat}
+
+If the chains have converged to the same stationary distribution, $B$ and $W$ estimate the same variance, $\widehat{\text{Var}}^+ \approx W$, and $\hat R \to 1$ as $N \to \infty$. Values above $1.01$ mean the between-chain spread still exceeds what the within-chain mixing would predict, so the chains are exploring different regions and have not converged. Running multiple chains from dispersed starts is what makes $B$ informative; a single chain cannot reveal this failure, which is the formal reason the practical guidance recommends at least four chains. Modern implementations (the `posterior` package, used internally by `brms` and `rstanarm`) use a rank-normalized, split-chain version of @eq-probabilistic-programming-rhat that also catches a chain stuck in one mode and differences in scale, but the logic is the same.
+
+## Approximate inference and model comparison
+
+MCMC returns asymptotically exact posterior draws but can be too slow on large data. Two further tools round out the workflow: a faster approximate sampler, and a principled way to compare fitted models.
+
+### Variational inference as an optimization problem
+
+Variational inference (VI), exposed in `brms` and `rstanarm` through `algorithm = "meanfield"` or `"fullrank"`, replaces sampling with optimization. Pick a tractable family of distributions $q_\phi(\theta)$ indexed by parameters $\phi$ (for mean-field, a product of independent Gaussians, $q_\phi(\theta) = \prod_j \mathcal{N}(\theta_j; m_j, s_j^2)$), and find the member closest to the posterior in Kullback-Leibler divergence:
+
+$$
+\phi^\star = \arg\min_\phi \; \mathrm{KL}\big(q_\phi(\theta)\,\big\|\,p(\theta\mid y)\big).
+$$
+
+We cannot evaluate this KL directly because it contains the intractable $\log p(y)$. The standard maneuver is to expand it and isolate that constant:
+
+$$
+\mathrm{KL}\big(q_\phi \,\|\, p(\cdot\mid y)\big)
+= \mathbb{E}_{q_\phi}\!\big[\log q_\phi(\theta) - \log p(\theta, y)\big] + \log p(y)
+= -\,\mathcal{L}(\phi) + \log p(y),
+$$
+
+where
+
+$$
+\mathcal{L}(\phi) = \mathbb{E}_{q_\phi}\!\big[\log p(y \mid \theta) + \log p(\theta) - \log q_\phi(\theta)\big]
+$$ {#eq-probabilistic-programming-elbo}
+
+is the *evidence lower bound* (ELBO). Since $\log p(y)$ does not depend on $\phi$, minimizing the KL is identical to maximizing the ELBO, and because KL is non-negative, @eq-probabilistic-programming-elbo is a lower bound on the log evidence, $\mathcal{L}(\phi) \le \log p(y)$. Stan maximizes $\mathcal{L}$ by stochastic gradient ascent, estimating $\nabla_\phi \mathcal{L}$ with draws from $q_\phi$ (the reparameterization trick writes $\theta = m + s\odot\varepsilon$, $\varepsilon\sim\mathcal{N}(0,I)$, so the gradient passes through the sampling step), which is exactly the automatic differentiation variational inference (ADVI) of Kucukelbir et al. (2017). VI is fast and scales to large data, but it has a systematic failure mode that the chapter's earlier warning names: because KL$(q\|p)$ penalizes placing mass where the posterior is small far more than the reverse, the optimizer prefers a $q$ that sits *inside* the posterior, so VI typically *underestimates* posterior variance and ignores correlations under the mean-field factorization. Use it for exploration or when MCMC is infeasible, then confirm critical uncertainty quantities with NUTS.
+
+### Predictive model comparison: WAIC and LOO
+
+To compare models without overfitting to in-sample fit, the target is the expected log pointwise predictive density on new data, estimated through the posterior. The widely applicable information criterion (WAIC) estimates it from the fitted draws as
+
+$$
+\widehat{\text{elpd}}_{\text{WAIC}} = \sum_{i=1}^{n}\Big(\log \tfrac{1}{S}\textstyle\sum_{s=1}^{S} p(y_i \mid \theta^{(s)})\Big) \;-\; \sum_{i=1}^{n}\text{Var}_s\big[\log p(y_i\mid\theta^{(s)})\big],
+$$ {#eq-probabilistic-programming-waic}
+
+the log pointwise predictive density minus an effective-parameter penalty given by the posterior variance of the pointwise log likelihood. Leave-one-out cross-validation (LOO) targets the same quantity, $\sum_i \log p(y_i \mid y_{-i})$, and the `loo` package computes it without refitting $n$ times by importance sampling: the leave-one-out predictive uses importance weights $w_i^{(s)} \propto 1/p(y_i\mid\theta^{(s)})$ applied to the full-data posterior draws. Raw importance weights have heavy tails, so `loo` fits a generalized Pareto distribution to the largest weights and reports the shape parameter $\hat k$ as a diagnostic; $\hat k < 0.7$ indicates the LOO estimate for that observation is reliable, and large $\hat k$ flags an influential point where you should refit. PSIS-LOO is generally preferred to WAIC because its $\hat k$ diagnostic warns you when the approximation breaks, whereas WAIC fails silently. Both compare models on the difference in elpd along with its standard error; a difference smaller than a couple of standard errors is not decisive.
+
 ## Practical guidance, pitfalls, and when to use it
 
 Having seen the idea, the samplers, a worked example, and the tooling, the remaining question is judgment: when is this approach the right one, and what trips people up. The following lists collect that practical advice. Start with the case for using probabilistic programming:
@@ -468,6 +649,10 @@ To sum up, probabilistic programming lets you write a generative model as code a
 -   Gelman, Carlin, Stern, Dunson, Vehtari, and Rubin (2013), *Bayesian Data Analysis*, third edition, for the foundations of Bayesian modeling and model checking.
 -   McElreath (2020), *Statistical Rethinking*, second edition, for an accessible, code-first introduction that pairs well with `brms`.
 -   Neal (2011), "MCMC using Hamiltonian dynamics", in the *Handbook of Markov Chain Monte Carlo*, for the canonical treatment of HMC.
+-   Roberts, Gelman, and Gilks (1997), "Weak convergence and optimal scaling of random walk Metropolis algorithms", in the *Annals of Applied Probability*, for the $0.234$ optimal acceptance rate.
+-   Beskos, Pillai, Roberts, Sanz-Serna, and Stuart (2013), "Optimal tuning of the hybrid Monte Carlo algorithm", in *Bernoulli*, for the $d^{1/4}$ scaling and the $0.65$ optimal acceptance rate of HMC.
+-   Kucukelbir, Tran, Ranganath, Gelman, and Blei (2017), "Automatic differentiation variational inference", in the *Journal of Machine Learning Research*, for the VI algorithm behind Stan's `meanfield` and `fullrank` modes.
+-   Vehtari, Gelman, and Gabry (2017), "Practical Bayesian model evaluation using leave-one-out cross-validation and WAIC", in *Statistics and Computing*, for PSIS-LOO and the $\hat k$ diagnostic.
 -   Hoffman and Gelman (2014), "The No-U-Turn Sampler", in the *Journal of Machine Learning Research*, for the NUTS algorithm.
 -   Carpenter, Gelman, Hoffman, Lee, Goodrich, Betancourt, Brubaker, Guo, Li, and Riddell (2017), "Stan: A Probabilistic Programming Language", in the *Journal of Statistical Software*, for the Stan system.
 -   Bürkner (2017), "brms: An R Package for Bayesian Multilevel Models Using Stan", in the *Journal of Statistical Software*, for the `brms` formula interface.

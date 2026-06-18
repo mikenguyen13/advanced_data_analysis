@@ -39,6 +39,25 @@ The gap matters statistically. Inductive learning controls the risk of $\hat f$ 
 
 A small but important subtlety: a transductive method can always be turned into an inductive one after the fact. Once $U$ has been labeled, the now fully-labeled set $L \cup U$ can train an ordinary supervised model, or you can attach an out-of-sample extension that maps a new point to a prediction by its similarity to the labeled batch. The reverse is cheap too: any inductive $\hat f$ yields transductive labels by evaluation at $U$. The distinction is therefore about what the method optimizes and what guarantees it carries, not an impassable wall.
 
+### Why the transductive bound can be tighter {#sec-transductive-learning-bound}
+
+The statistical advantage of transduction is concrete, not merely philosophical, and it is worth making precise. Fix the full pool of $n = l + u$ points and their inputs. In the transductive protocol the labeled set $L$ is a random subset of size $l$ drawn *without replacement* from this finite pool, and the test set is the complementary $u$ points. Because the pool is fixed, the relevant complexity is not the capacity of a function class over all of $\mathbb{R}^p$ but the number of distinct labelings the hypothesis class can realize *on these $n$ points*, a quantity bounded by the empirical growth function $\mathcal{N}(\mathcal{H}, n)$.
+
+The driving probabilistic fact is a concentration inequality for sampling without replacement. Let $a_1, \dots, a_n$ be fixed numbers (here, the per-point losses of a fixed labeling) with mean $\bar a = \tfrac1n \sum_i a_i$, and let $\bar a_L = \tfrac1l \sum_{i \in L} a_i$ be the average over a random size-$l$ subset. Hoeffding's inequality for sampling without replacement gives, for $a_i \in [0,1]$,
+
+$$
+\Pr\!\left( \bar a_L - \bar a \ge \epsilon \right) \le \exp\!\left( -\frac{2\, l\, u}{n}\, \epsilon^2 \right),
+$$
+
+which is *sharper* than the with-replacement bound $\exp(-2 l \epsilon^2)$ by the finite-population correction factor $u/n = 1 - l/n$. The gap between the labeled (empirical) error and the unlabeled (test) error of any fixed labeling is therefore controlled by $u/(l n)$ rather than $1/l$. Taking a union bound over the $\mathcal{N}(\mathcal{H}, n)$ distinct labelings yields a bound of the schematic form
+
+$$
+R_u(h) \;\le\; R_l(h) \;+\; O\!\left( \sqrt{ \frac{ (1 - l/n)\,\log \mathcal{N}(\mathcal{H}, n) }{ l } } \right),
+\qquad {#eq-transductive-learning-tbound}
+$$
+
+where $R_l$ and $R_u$ are the error rates on the labeled and unlabeled portions (Vapnik 1998; Vapnik 2006). Two features distinguish @eq-transductive-learning-tbound from a standard inductive bound. First, $\log \mathcal{N}(\mathcal{H}, n)$ is data-dependent: it counts only the labelings achievable on the actual configuration of points, which can be far smaller than a worst-case VC term when the points cluster. Second, the factor $(1 - l/n)$ vanishes as $l \to n$, encoding that there is nothing left to be uncertain about once nearly everything is labeled. This is the formal content of "do not solve a harder problem than the one you have": the inductive bound must hold uniformly over $p(x)$, while @eq-transductive-learning-tbound only governs the $n$ points on the table.
+
 
 ::: {.callout-tip title="Intuition"}
 Picture a connect-the-dots puzzle. Induction is drawing the full underlying curve so you could place a dot anywhere. Transduction is filling in only the numbered dots you were given. If all you need are those dots, drawing the entire curve first is wasted effort, and worse, you might draw the curve badly in regions you were never asked about and let that error leak back into the dots you cared about.
@@ -84,6 +103,35 @@ The new term $C^* \sum_j \xi^*_j$ penalizes unlabeled points that land inside th
 A plain SVM positions a fence using only the flagged animals on each side. A TSVM also sees the unflagged herd milling around and refuses to run the fence straight through the middle of a tight group, because a good boundary should sit in the empty corridor between herds, not split one in two.
 :::
 
+
+### The effective loss and low-density separation {#sec-transductive-learning-tsvm-loss}
+
+The discrete labels can be eliminated to expose what the TSVM really penalizes on the unlabeled points. For a single unlabeled point $x_j$ the inner optimization over its label is
+
+$$
+\min_{y^*_j \in \{-1,+1\}}\; \min_{\xi^*_j \ge 0}\; \xi^*_j \;\;\text{s.t.}\;\; y^*_j (w^\top x_j + b) \ge 1 - \xi^*_j .
+$$
+
+For a fixed sign of $y^*_j$ the optimal slack is the hinge $\xi^*_j = \max(0,\, 1 - y^*_j f(x_j))$ with $f(x) = w^\top x + b$. Minimizing over the two label choices gives the closed form
+
+$$
+\min_{y^*_j} \max\!\big(0,\, 1 - y^*_j f(x_j)\big) \;=\; \max\!\big(0,\, 1 - |f(x_j)|\big) ,
+\qquad {#eq-transductive-learning-hatloss}
+$$
+
+since the better of the two labels is $y^*_j = \operatorname{sign} f(x_j)$. The unlabeled term in the TSVM objective is therefore $C^* \sum_j \max(0, 1 - |f(x_j)|)$. This function, often called the *hat loss* or symmetric hinge, is plotted as a function of the signed output $f(x_j)$ as an inverted "$\wedge$": it is zero when $|f(x_j)| \ge 1$ (the point sits outside the margin, either side) and grows as the point approaches the boundary $f = 0$.
+
+::: {.callout-note}
+@eq-transductive-learning-hatloss makes the cluster assumption operational. The hat loss is large exactly for unlabeled points near the decision boundary, so minimizing it pushes the boundary *away* from where unlabeled points are dense, that is, into a low-density region of $p(x)$. This is the precise sense in which a TSVM implements low-density separation. The non-convexity of the whole problem is now visible too: the hat loss is non-convex in $f(x_j)$ (it decreases then increases), so summing it over unlabeled points creates the many local minima that plague TSVM training.
+:::
+
+Two further structural points. First, without a constraint the optimizer can make the unlabeled term vanish trivially by sending all unlabeled points to one side (giving them all the same label and a large margin), so practical TSVMs impose a *balancing constraint*
+
+$$
+\frac{1}{u} \sum_{j=l+1}^{l+u} \max\!\big(0,\, \operatorname{sign} f(x_j)\big) \;=\; r ,
+$$
+
+forcing the predicted positive fraction on $U$ to match an assumed ratio $r$ (often the labeled-set positive fraction). Second, @eq-transductive-learning-hatloss connects the TSVM to *entropy regularization*: penalizing $\max(0, 1 - |f|)$ discourages confident-margin-violating outputs in the same spirit that an entropy penalty $-\sum_c p_c \log p_c$ on a probabilistic model pushes posteriors toward $0/1$ in low-density regions (Grandvalet and Bengio 2005). Both are surrogates for the same prior: the boundary belongs where data is sparse.
 
 The catch is that the labels $y^*_j$ are discrete unknowns, so the problem is no longer a convex quadratic program; it is a mixed-integer, non-convex optimization, NP-hard in general. Joachims (1999) gives a label-switching heuristic ($\mathrm{SVM}^{light}$): start from the labels an inductive SVM would assign, anneal $C^*$ upward from a small value, and iteratively flip pairs of unlabeled labels whenever doing so lowers the objective. Other approaches relax the integer labels continuously (Chapelle, Sindhwani, and Keerthi, 2008). All of them inherit sensitivity to initialization and to the assumed class balance on $U$.
 
@@ -140,6 +188,66 @@ $$
 
 This is the *harmonic* solution of Zhu, Ghahramani, and Lafferty (2003): the propagated label scores are a harmonic function on the graph, minimizing the energy $\tfrac{1}{2} \sum_{i,j} W_{ij} (F_i - F_j)^2$ subject to matching the labeled values. Smoothness over the graph and fixed seeds together pin down a unique answer.
 
+### Deriving the harmonic solution {#sec-transductive-learning-harmonic}
+
+It is worth deriving the closed form from the energy directly, because the same machinery (the graph Laplacian) recurs throughout graph-based learning. Work with one label column $f \in \mathbb{R}^n$ at a time (the columns of $F$ separate). The smoothness energy is
+
+$$
+E(f) \;=\; \frac{1}{2} \sum_{i,j} W_{ij}\,(f_i - f_j)^2 .
+$$
+
+Expanding the square and using $D_{ii} = \sum_j W_{ij}$,
+
+$$
+E(f) = \frac{1}{2}\sum_{i,j} W_{ij}\,(f_i^2 - 2 f_i f_j + f_j^2)
+= \sum_i D_{ii} f_i^2 - \sum_{i,j} W_{ij} f_i f_j
+= f^\top (D - W)\, f = f^\top L f ,
+$$
+
+where $L = D - W$ is the (unnormalized) *graph Laplacian*. The energy is a quadratic form in the Laplacian, and since $E(f) \ge 0$ for all $f$, $L$ is positive semidefinite. Minimizing $E$ subject to clamping the labeled entries $f_\ell = y_\ell$ is a constrained quadratic problem. Partition $L$ in the labeled/unlabeled blocks,
+
+$$
+L = \begin{pmatrix} L_{\ell\ell} & L_{\ell u} \\ L_{u\ell} & L_{uu} \end{pmatrix},
+\qquad f = \begin{pmatrix} y_\ell \\ f_u \end{pmatrix} .
+$$
+
+Only $f_u$ is free, so we set the gradient of $E$ with respect to $f_u$ to zero. Writing $E = f^\top L f$ and differentiating the block form,
+
+$$
+\frac{\partial E}{\partial f_u} = 2\,\big(L_{u\ell}\, y_\ell + L_{uu}\, f_u\big) = 0
+\quad\Longrightarrow\quad
+f_u = -\,L_{uu}^{-1} L_{u\ell}\, y_\ell .
+\qquad {#eq-transductive-learning-harm}
+$$
+
+The minimizer exists and is unique whenever $L_{uu}$ is invertible, which holds exactly when every connected component of the graph contains at least one labeled point (otherwise an unlabeled component is free to take any constant value at zero energy, and the solution is undetermined). This is the algebraic reason disconnected, seed-free components are a silent failure mode.
+
+To see that @eq-transductive-learning-harm is the same fixed point as propagate-and-clamp, recall $P = D^{-1} W$ so that $I - P_{uu} = D_u^{-1}(D_u - W_{uu}) = D_u^{-1} L_{uu}$ and $P_{u\ell} = D_u^{-1} W_{u\ell} = -D_u^{-1} L_{u\ell}$ (using $L_{u\ell} = -W_{u\ell}$ since the off-diagonal labeled/unlabeled block of $D$ is zero). Hence
+
+$$
+(I - P_{uu})^{-1} P_{u\ell} = (D_u^{-1} L_{uu})^{-1}(-D_u^{-1} L_{u\ell}) = -L_{uu}^{-1} L_{u\ell} ,
+$$
+
+so $(I - P_{uu})^{-1} P_{u\ell} y_\ell = -L_{uu}^{-1} L_{u\ell} y_\ell = f_u$. The iterative algorithm and the energy minimizer coincide.
+
+The name "harmonic" is literal. At the optimum each unlabeled coordinate satisfies the discrete mean-value property: from $L_{uu} f_u + L_{u\ell} y_\ell = 0$, the $i$-th unlabeled equation reads $D_{ii} f_i = \sum_j W_{ij} f_j$, that is,
+
+$$
+f_i = \frac{1}{D_{ii}} \sum_{j} W_{ij}\, f_j = \sum_j P_{ij}\, f_j ,
+$$
+
+so every unlabeled value is the weighted average of its neighbors. This is the discrete analogue of $\nabla^2 f = 0$, and it also gives a probabilistic reading: $f_i$ equals the probability that a random walk started at $i$, with transition matrix $P$, reaches a positively-labeled seed before a negatively-labeled one (the *absorbing* random walk interpretation of Zhu, Ghahramani, and Lafferty 2003).
+
+### Convergence of propagate-and-clamp {#sec-transductive-learning-prop-conv}
+
+The iteration $f_u \leftarrow P_{uu} f_u + P_{u\ell} y_\ell$ converges geometrically. Its iteration matrix is $P_{uu}$, a submatrix of the stochastic matrix $P$ with some row sums strictly less than one (any unlabeled node adjacent to a seed leaks probability mass into the clamped block). For a connected graph with at least one seed, the spectral radius satisfies $\rho(P_{uu}) < 1$, so the affine map is a contraction and
+
+$$
+\lVert f_u^{(t)} - f_u^\star \rVert \le \rho(P_{uu})^{\,t}\, \lVert f_u^{(0)} - f_u^\star \rVert .
+$$
+
+The error contracts by a factor $\rho(P_{uu})$ per sweep, so reaching tolerance $\varepsilon$ takes $O\!\big(\log(1/\varepsilon) / \log(1/\rho(P_{uu}))\big)$ sweeps. The gap $1 - \rho(P_{uu})$ shrinks when seeds are sparse or poorly connected, which is why few, scattered labels both slow convergence and weaken the solution.
+
 
 ::: {.callout-tip title="Intuition"}
 Drop ink (the labeled colors) into a few cups of a tray of connected water cells; thicker tubes (larger $W_{ij}$) between cells let color flow faster. Keep re-inking the source cups every round so they never fade. After things settle, each cell's tint is a weighted blend of the sources reachable through the tubing, and the dominant tint is its predicted label.
@@ -165,6 +273,48 @@ where $Y$ is the initial label matrix (one-hot on labeled rows, zero on unlabele
 $$
 F^* = (1 - \alpha)\,(I - \alpha S)^{-1} Y .
 $$
+
+### Deriving label spreading from a regularized objective {#sec-transductive-learning-spread}
+
+Both the closed form and the convergence proof fall out of a single regularization functional. Zhou et al. (2004) define, for each label column $f$,
+
+$$
+Q(f) = \underbrace{\frac{1}{2} \sum_{i,j} W_{ij} \left( \frac{f_i}{\sqrt{D_{ii}}} - \frac{f_j}{\sqrt{D_{jj}}} \right)^2}_{\text{smoothness}} \;+\; \underbrace{\frac{\mu}{2} \sum_i (f_i - y_i)^2}_{\text{fitting}} ,
+\qquad {#eq-transductive-learning-spreadobj}
+$$
+
+where $y$ is the initial label vector and $\mu > 0$ trades smoothness against fidelity to the given labels. The smoothness term is the quadratic form of the *normalized* Laplacian: expanding it gives $f^\top (I - S) f$ with $S = D^{-1/2} W D^{-1/2}$, because the degree normalization $f_i / \sqrt{D_{ii}}$ converts $D - W$ into $I - S$. So
+
+$$
+Q(f) = f^\top (I - S) f + \frac{\mu}{2}\,\lVert f - y \rVert^2 .
+$$
+
+Setting $\nabla Q(f) = 0$,
+
+$$
+2(I - S) f + \mu (f - y) = 0
+\;\Longrightarrow\;
+f^\star = \big(I - S + \tfrac{\mu}{2} I\big)^{-1} \tfrac{\mu}{2}\, y .
+$$
+
+Define $\alpha = \dfrac{1}{1 + \mu/2}$, equivalently $\mu/2 = (1-\alpha)/\alpha$. Multiplying numerator and denominator by $\alpha$,
+
+$$
+f^\star = \alpha\big(\alpha(I - S) + (1-\alpha) I\big)^{-1} \tfrac{1-\alpha}{\alpha}\, y
+= (1 - \alpha)\,(I - \alpha S)^{-1} y ,
+$$
+
+which is exactly the stated closed form. The parameter $\alpha \in (0,1)$ is thus a reparameterization of the smoothness/fidelity weight $\mu$: $\alpha \to 1$ means $\mu \to 0$ (trust the graph) and $\alpha \to 0$ means $\mu \to \infty$ (trust the labels, recovering hard clamping in the limit).
+
+The contraction claim is now immediate. The iteration $F \leftarrow \alpha S F + (1-\alpha) Y$ has iteration matrix $\alpha S$. The symmetric matrix $S = D^{-1/2} W D^{-1/2}$ is similar to the stochastic matrix $P = D^{-1} W$ (since $S = D^{1/2} P D^{-1/2}$), so they share eigenvalues, all lying in $[-1, 1]$; hence $\rho(S) \le 1$ and $\rho(\alpha S) = \alpha\, \rho(S) \le \alpha < 1$. The map is a contraction with factor at most $\alpha$, so the Neumann series converges,
+
+$$
+F^{(t)} = (\alpha S)^t F^{(0)} + (1-\alpha) \sum_{k=0}^{t-1} (\alpha S)^k Y
+\;\xrightarrow[t\to\infty]{}\;
+(1-\alpha)\sum_{k=0}^{\infty} (\alpha S)^k Y = (1-\alpha)(I - \alpha S)^{-1} Y ,
+$$
+
+independently of the initialization $F^{(0)}$. The series form also exposes the mechanism: the contribution of $Y$ propagated over $k$ hops is geometrically discounted by $\alpha^k$, so label spreading is a soft, distance-decayed diffusion in contrast to label propagation's hard absorbing walk.
 
 
 ::: {.callout-note}
@@ -272,6 +422,18 @@ cat("Converged in", iter, "iterations.",
     round(acc_prop, 3), "\n")
 ```
 
+We can confirm numerically that the iterative propagate-and-clamp result equals the harmonic closed form @eq-transductive-learning-harm derived above, $F_u = -L_{uu}^{-1} L_{u\ell} Y_\ell$ with $L = D - W$.
+
+```{r transductive-learning-verify}
+# Verify: iterative fixed point == harmonic closed form via the Laplacian.
+L_mat <- diag(D) - W                      # unnormalized graph Laplacian
+u_idx <- which(!is_labeled)
+l_idx <- which(is_labeled)
+F_u_closed <- -solve(L_mat[u_idx, u_idx]) %*% L_mat[u_idx, l_idx] %*% Y_seed
+cat("max abs difference (iteration vs harmonic closed form):",
+    format(max(abs(F_mat[u_idx, ] - F_u_closed)), digits = 3), "\n")
+```
+
 
 ::: {.callout-note}
 The bandwidth $\sigma$ is the one knob that matters most here. Too small and the graph fragments into disconnected pieces that the seeds cannot reach (those points keep their initial all-zero rows and get labeled arbitrarily); too large and the two moons fuse into one blob and labels bleed across the gap. We use $\sigma = 0.30$, which connects each crescent internally while keeping the crescents weakly linked.
@@ -361,7 +523,21 @@ The defining limitation is structural, not a tuning issue. A purely transductive
 :::
 
 
-Finally, watch the cost. The harmonic closed form $F_u = (I - P_{uu})^{-1} P_{u\ell} Y_\ell$ inverts a $u \times u$ matrix, which is $O(u^3)$ and infeasible for large $u$. The iterative propagate-and-clamp loop is far cheaper per sweep, especially on a sparse $k$-NN graph where each sweep costs $O(\text{edges})$, and it is what scales to large unlabeled batches.
+Finally, watch the cost. The harmonic closed form $F_u = (I - P_{uu})^{-1} P_{u\ell} Y_\ell$ inverts a $u \times u$ matrix, which is $O(u^3)$ time and $O(u^2)$ memory, infeasible for large $u$. Building the dense graph is itself $O(n^2 p)$ for the pairwise distances. The iterative propagate-and-clamp loop is far cheaper per sweep: on a sparse $k$-NN graph with $m = O(kn)$ edges each sweep is a sparse matvec costing $O(m C)$, and from @sec-transductive-learning-prop-conv the number of sweeps to tolerance $\varepsilon$ is $O(\log(1/\varepsilon) / (1 - \rho(P_{uu})))$, so total cost is roughly $O\!\big(k n C \log(1/\varepsilon) / (1-\rho(P_{uu}))\big)$. This is what scales to large unlabeled batches. For label spreading the same analysis applies with iteration matrix $\alpha S$ and contraction factor $\alpha$, giving a guaranteed $O(\log(1/\varepsilon)/\log(1/\alpha))$ sweeps regardless of graph connectivity.
+
+### Class-mass normalization {#sec-transductive-learning-cmn}
+
+Because the harmonic solution ignores class priors, the raw argmax of $F_u$ can be badly miscalibrated when seeds are unrepresentative of the true class proportions. Class-mass normalization (Zhu, Ghahramani, and Lafferty 2003) corrects this. Let $q_c$ be the target mass for class $c$ (for example the labeled-set frequency, or a known batch proportion), and let the current column mass be $\sum_{i \in U} F_{ic}$. Rescale each column,
+
+$$
+\tilde F_{ic} = F_{ic}\cdot \frac{q_c}{\sum_{j \in U} F_{jc}} ,
+$$
+
+and predict $\hat y_i = \arg\max_c \tilde F_{ic}$. This reweights the soft scores so the predicted class frequencies match $q$, which typically improves accuracy when classes are imbalanced or seeds are skewed, at the cost of requiring an estimate of $q$.
+
+### Bias-variance and the role of the assumptions {#sec-transductive-learning-bv}
+
+Graph-based transduction trades variance for bias in a way controlled by the bandwidth. A small $\sigma$ (or small $k$) yields a near-diagonal graph: predictions depend on very local neighborhoods, so they are low-bias but high-variance, sensitive to individual noisy points and prone to disconnection. A large $\sigma$ over-smooths: labels are averaged over wide regions, lowering variance but introducing bias that bleeds labels across the true boundary. The optimum sits where the graph respects the manifold, connecting within classes while staying sparse across the low-density gap. Crucially, the *bias floor* is set by the manifold and cluster assumptions themselves: if labels do not vary smoothly along $p(x)$, no choice of $\sigma$ removes the bias, and the method cannot beat a supervised baseline. This is why the diagnostic of comparing against a same-seeds supervised model is not optional, it is the direct test of whether the modeling assumption that justifies transduction actually holds on your data.
 
 ## Further Reading
 

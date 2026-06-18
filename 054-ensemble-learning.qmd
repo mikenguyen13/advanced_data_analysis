@@ -49,6 +49,24 @@ This compact formula is the heart of ensemble theory, so it is worth reading slo
 Averaging leaves bias unchanged and drives variance from $v$ down toward $\rho v$. The leftover floor is set by the *correlation between members*, not by how many you have. This is why every successful ensemble method is, at bottom, a scheme for making its members less correlated while keeping each one reasonably accurate.
 :::
 
+The variance formula deserves its derivation, because the algebra is short and it shows exactly where the floor $\rho v$ comes from. Write the average as $\bar f = \frac{1}{M}\sum_m \hat f_m$ and use bilinearity of variance,
+$$
+\operatorname{Var}(\bar f) = \frac{1}{M^2}\operatorname{Var}\Bigl(\sum_{m} \hat f_m\Bigr) = \frac{1}{M^2}\sum_{m}\sum_{m'} \operatorname{Cov}(\hat f_m, \hat f_{m'}).
+$$
+Split the double sum into the $M$ diagonal terms ($m = m'$, each equal to $v$) and the $M(M-1)$ off-diagonal terms (each equal to $\operatorname{Cov}(\hat f_m,\hat f_{m'}) = \rho v$ under the homogeneity assumption):
+$$
+\operatorname{Var}(\bar f) = \frac{1}{M^2}\bigl(M v + M(M-1)\rho v\bigr) = \frac{v}{M} + \frac{M-1}{M}\rho v = \rho v + \frac{1-\rho}{M}\,v.
+$$
+This is exactly the compact formula above. Note one constraint that is easy to forget: a valid correlation matrix forces $\rho \ge -1/(M-1)$, so the variance of an equicorrelated average can never be made negative; the smallest achievable floor as $M \to \infty$ is $\rho v \ge 0$.
+
+::: {.callout-note title="Bias-variance-covariance decomposition"}
+The homogeneity assumption ($v$ and $\rho$ equal across members) is convenient but unrealistic. Ueda and Nakano (1996) give the exact decomposition without it. Define member averages over training sets $\bar f_m = \mathbb{E}[\hat f_m]$, the mean bias $\overline{\text{bias}} = \frac{1}{M}\sum_m(\bar f_m - y)$, the mean variance $\overline{\operatorname{var}} = \frac{1}{M}\sum_m \operatorname{Var}(\hat f_m)$, and the mean off-diagonal covariance $\overline{\operatorname{cov}} = \frac{1}{M(M-1)}\sum_{m\ne m'}\operatorname{Cov}(\hat f_m,\hat f_{m'})$. Then the expected squared error of the average is
+$$
+\mathbb{E}\bigl[(\bar f - y)^2\bigr] = \overline{\text{bias}}^{\,2} + \frac{1}{M}\overline{\operatorname{var}} + \Bigl(1 - \frac{1}{M}\Bigr)\overline{\operatorname{cov}}.
+$$
+The variance contribution splits into a part that decays like $1/M$ and a covariance part that does not. Negative average covariance, members that anticorrelate their errors, can push the ensemble error below the average member variance, which is the strongest possible form of the diversity benefit.
+:::
+
 
 The term $\rho v$ is why you cannot just train the same logistic regression a thousand times and call it an ensemble: those thousand models are nearly identical, $\rho \approx 1$, and you have gained nothing. Bagging lowers $\rho$ by training on different resamples; random forests push $\rho$ lower still by randomizing the features each split may use; using altogether different model families (a tree, a linear model, a nearest-neighbor rule) lowers $\rho$ because the models make structurally different mistakes.
 
@@ -66,6 +84,22 @@ A committee of mediocre-but-better-than-chance jurors who think independently wi
 :::
 
 
+It is worth quantifying *how fast* the majority approaches certainty, because "tends to $1$" hides a sharp exponential rate. The majority is wrong exactly when the number of correct voters $X \sim \text{Binomial}(M,p)$ falls at or below $M/2$, that is when the sample mean $\bar X = X/M$ deviates from $p$ by at least $p - 1/2 > 0$. Hoeffding's inequality applied to the bounded independent indicators gives a clean, distribution-free bound,
+$$
+P(\text{majority wrong}) = P\Bigl(\bar X \le \tfrac{1}{2}\Bigr) \le \exp\Bigl(-2M\bigl(p - \tfrac{1}{2}\bigr)^2\Bigr).
+$$ {#eq-ensemble-learning-condorcet-rate}
+The error decays *exponentially* in the number of voters, with rate governed by the squared edge $(p - 1/2)^2$. A voter who is only slightly better than chance ($p = 0.55$) needs many colleagues; one at $p = 0.7$ needs only a handful. The central limit theorem gives the matching two-sided approximation: $\bar X \approx \mathcal{N}\bigl(p,\, p(1-p)/M\bigr)$, so
+$$
+P(\text{majority correct}) \approx \Phi\!\left(\frac{(p - \tfrac{1}{2})\sqrt{M}}{\sqrt{p(1-p)}}\right),
+$$
+which makes the $\sqrt{M}$ accumulation of the edge explicit. @eq-ensemble-learning-condorcet-rate is the classification analogue of the regression statement that variance falls like $1/M$ under independence.
+
+The independence assumption is doing all the heavy lifting, and it is worth seeing precisely how correlation degrades the result. Model the voters' correct/incorrect indicators $V_m = \mathbb{1}\{\text{voter } m \text{ correct}\}$ as exchangeable Bernoulli($p$) with pairwise correlation $\delta \ge 0$. The fraction correct $\bar V = \frac{1}{M}\sum_m V_m$ still has mean $p$, but its variance no longer vanishes:
+$$
+\operatorname{Var}(\bar V) = \frac{p(1-p)}{M} + \frac{M-1}{M}\,\delta\,p(1-p) \xrightarrow{M \to \infty} \delta\,p(1-p).
+$$
+This is the same equicorrelation algebra as the regression variance formula. The limiting variance $\delta\, p(1-p)$ is strictly positive whenever $\delta > 0$, so $\bar V$ does *not* concentrate at $p$; the majority error converges to a positive constant rather than to zero. Correlated jurors, like correlated regressors, hit a floor. This is the precise sense in which "make the members disagree" is not a slogan but the binding constraint.
+
 The two pillars, the variance formula for regression and the Condorcet theorem for classification, share one assumption that does all the work: independence, or at least low correlation, between members. Real models are never independent, because they learn from the same data and often the same signal. Everything practical about ensembles is a negotiation with that fact.
 
 ### The bias-variance-diversity view
@@ -74,7 +108,15 @@ There is a clean identity that unifies the regression story. For an averaged ens
 $$
 \bigl(\bar f(x) - y\bigr)^2 = \frac{1}{M}\sum_{m} \bigl(\hat f_m(x) - y\bigr)^2 - \frac{1}{M}\sum_{m} \bigl(\hat f_m(x) - \bar f(x)\bigr)^2.
 $$
-This is the ambiguity decomposition of Krogh and Vedelsby (1995). The first term is the average error of the members. The second term, the ambiguity or diversity, measures how much the members disagree with the ensemble. Because it is subtracted, *more disagreement lowers the ensemble error*, provided it does not come at the cost of making the individual members much worse. This is the formal statement of the tension every ensemble navigates: you want members that are individually accurate (small first term) yet collectively diverse (large second term). Pushing on one tends to hurt the other.
+This is the ambiguity decomposition of Krogh and Vedelsby (1995), and it is an exact algebraic identity, true pointwise for any fixed set of member outputs with no probabilistic assumptions. To derive it, expand the average member error by inserting and subtracting $\bar f$ inside the square:
+$$
+\frac{1}{M}\sum_m (\hat f_m - y)^2 = \frac{1}{M}\sum_m \bigl[(\hat f_m - \bar f) + (\bar f - y)\bigr]^2.
+$$
+Expanding the square gives three sums:
+$$
+= \frac{1}{M}\sum_m (\hat f_m - \bar f)^2 + (\bar f - y)^2 + \frac{2}{M}(\bar f - y)\sum_m (\hat f_m - \bar f).
+$$
+The cross term vanishes because $\sum_m (\hat f_m - \bar f) = M\bar f - M\bar f = 0$ by the definition of $\bar f$ as the mean. Rearranging the two surviving terms yields exactly the stated identity. The first term is the average error of the members. The second term, the ambiguity or diversity, measures how much the members disagree with the ensemble. Because it is subtracted, *more disagreement lowers the ensemble error*, provided it does not come at the cost of making the individual members much worse. This is the formal statement of the tension every ensemble navigates: you want members that are individually accurate (small first term) yet collectively diverse (large second term). Pushing on one tends to hurt the other.
 
 
 ::: {.callout-note}
@@ -93,6 +135,16 @@ $$
 \bar f(x) = \sum_{m=1}^{M} w_m\, \hat f_m(x).
 $$
 The weights might come from validation accuracy, or from solving a small constrained least-squares problem on held-out predictions. Be careful: weights fit on the same data the members were trained on will overfit, which is precisely the trap stacking is designed to avoid.
+
+There is a clean closed form for the optimal weights when members are unbiased, which both motivates the practice and reveals when it pays off. Treat the member errors $e_m(x) = \hat f_m(x) - y$ as zero-mean random variables with covariance matrix $\Sigma$, where $\Sigma_{mm'} = \mathbb{E}[e_m e_{m'}]$. The weighted ensemble error is $\sum_m w_m e_m = \mathbf{w}^\top \mathbf{e}$, and since the $e_m$ are zero-mean the expected squared ensemble error is the variance $\mathbf{w}^\top \Sigma \mathbf{w}$. We minimize it subject to $\mathbf{w}^\top \mathbf{1} = 1$ (so the ensemble stays unbiased). Form the Lagrangian
+$$
+\mathcal{L}(\mathbf{w}, \lambda) = \mathbf{w}^\top \Sigma \mathbf{w} - \lambda(\mathbf{w}^\top \mathbf{1} - 1),
+$$
+set $\nabla_{\mathbf w}\mathcal{L} = 2\Sigma \mathbf{w} - \lambda \mathbf{1} = 0$ to get $\mathbf{w} = \tfrac{\lambda}{2}\Sigma^{-1}\mathbf{1}$, and fix $\lambda$ from the constraint $\mathbf{w}^\top\mathbf{1} = 1$. The result is the minimum-variance combination,
+$$
+\mathbf{w}^\star = \frac{\Sigma^{-1}\mathbf{1}}{\mathbf{1}^\top \Sigma^{-1}\mathbf{1}}, \qquad \mathbb{E}\bigl[(\mathbf{w}^{\star\top}\mathbf{e})^2\bigr] = \frac{1}{\mathbf{1}^\top \Sigma^{-1}\mathbf{1}}.
+$$ {#eq-ensemble-learning-opt-weights}
+This is the Markowitz minimum-variance portfolio with error covariances in place of asset returns, and the same intuition transfers: $\Sigma^{-1}$ down-weights members that are both noisy and redundant with others. When errors are uncorrelated, $\Sigma = \operatorname{diag}(\sigma_1^2, \dots, \sigma_M^2)$ and @eq-ensemble-learning-opt-weights reduces to inverse-variance weighting $w_m^\star \propto 1/\sigma_m^2$, the familiar rule that more reliable members get proportionally more say. Two practical warnings follow directly. First, $\Sigma$ must be estimated from held-out predictions, because in-sample errors understate variance and overstate the benefit. Second, when members are highly correlated $\Sigma$ is near-singular and $\Sigma^{-1}$ amplifies estimation noise, producing large, unstable, even negative weights; constraining to $w_m \ge 0$ (nonnegative least squares, as Breiman recommends for stacked regression) regularizes the problem and is why practical stacking almost always imposes that constraint.
 
 Stacking (blending) replaces the fixed combiner with a learned one. A meta-learner is trained on the members' *out-of-fold* predictions to discover the best way to combine them, which can include down-weighting redundant members to zero. Stacking is the most powerful combiner and the most prone to overfitting if the out-of-sample discipline is not maintained. It gets its own treatment in @sec-model-stacking.
 
@@ -229,6 +281,22 @@ knitr::kable(
 
 @tbl-ensemble-learning-accuracy shows the payoff: averaging four accurate, partially decorrelated learners produces a classifier better than the best member and more robust than any single one, since it does not depend on having guessed the right model family in advance.
 
+::: {.callout-note title="Numerical check of the variance formula"}
+A two-line Monte Carlo confirms that the variance of an equicorrelated average really does floor out at $\rho v + (1-\rho)v/M$. We draw $M$ correlated members with unit variance and correlation $\rho$, average them, and compare the empirical variance of the average to the formula.
+
+```{r ensemble-learning-variance-check}
+set.seed(1)
+M <- 8; rho <- 0.4; v <- 1
+Sigma <- matrix(rho, M, M); diag(Sigma) <- 1   # var v = 1, corr rho
+L <- chol(Sigma)                                # so colMeans replicate corr
+draws <- replicate(200000, mean(crossprod(L, rnorm(M))))
+c(empirical = var(draws),
+  formula   = rho * v + (1 - rho) * v / M)
+```
+
+The two numbers agree to the precision of the simulation, confirming that adding members past the point where $(1-\rho)v/M$ is negligible buys nothing: the residual $\rho v = 0.4$ is the irreducible floor set by correlation.
+:::
+
 It helps to see this geometrically. @fig-ensemble-learning-boundaries plots the decision boundary of each member alongside the ensemble's, over a grid of inputs. The members carve the space up in visibly different ways: logistic regression draws a straight line, the tree makes rectangular cuts, k-NN follows a jagged local contour, and the ensemble blends these into a boundary that tracks the true curved structure better than any single member.
 
 ```{r fig-ensemble-learning-boundaries, fig.cap="Decision boundaries on the simulated data. Each of the four base learners (logistic regression, tree, k-NN, naive Bayes) partitions the input space differently; the soft-voting ensemble (bottom right) blends them into a smoother boundary that follows the true structure more faithfully. Points are a sample of the training data, shaded by class.", fig.width=9, fig.height=6}
@@ -285,6 +353,12 @@ Reach for an ensemble when (1) you have several models that are each better than
 
 The strongest practical lever is diversity. You manufacture it by varying the data (bagging, random subspaces), varying the algorithm (mixing model families, as in the demo above), or varying the sequence (boosting). Combining ten tuned gradient-boosted models that were all trained the same way gives far less than combining a boosted model, a random forest, a regularized linear model, and a neural net, because the latter set disagrees more. (See @sec-gradient-boosting for gradient boosting, @sec-random-forest for random forests, and @sec-neural-networks for neural nets.)
 
+For classification there is a quantitative counterpart to the regression variance floor, due to Breiman's analysis of random forests. Define each member's margin as the gap between the vote share for the true class and the largest vote share for any wrong class; the ensemble errs on a point only when this margin goes negative. Breiman bounds the generalization error of a voting ensemble by
+$$
+\text{error} \le \frac{\bar\rho\,(1 - s^2)}{s^2},
+$$ {#eq-ensemble-learning-rf-bound}
+where $s$ is the mean margin (member "strength") and $\bar\rho$ is the mean correlation between member margins. The structure mirrors the regression result exactly: the bound shrinks as strength $s$ rises and as correlation $\bar\rho$ falls, and it is the *ratio* that matters. Adding members that are individually strong but mutually correlated raises $\bar\rho$ and can leave the bound unchanged, the classification echo of the $\rho v$ floor. This is the formal reason random forests randomize features: trees built on random subspaces have lower $\bar\rho$ at a small cost in $s$, and @eq-ensemble-learning-rf-bound rewards that trade.
+
 A few pitfalls recur often enough to call out.
 
 
@@ -316,6 +390,7 @@ A useful closing perspective: the deepest theoretical reason no single algorithm
 - Freund and Schapire (1997), *A Decision-Theoretic Generalization of On-Line Learning and an Application to Boosting*, the AdaBoost paper that turns weak learners into strong ones.
 - Wolpert (1992), *Stacked Generalization*, and Breiman (1996), *Stacked Regressions*, which put learned combination on a firm footing.
 - Krogh and Vedelsby (1995), *Neural Network Ensembles, Cross Validation, and Active Learning*, the source of the ambiguity (bias-variance-diversity) decomposition.
+- Ueda and Nakano (1996), *Generalization Error of Ensemble Estimators*, the exact bias-variance-covariance decomposition for averaged predictors.
 - Hastie, Tibshirani, and Friedman (2009), *The Elements of Statistical Learning*, chapters on model averaging, bagging, and boosting for the unified statistical treatment.
 - Zhou (2012), *Ensemble Methods: Foundations and Algorithms*, a book-length, modern reference covering diversity, combination rules, and advanced methods.
 - Condorcet (1785), *Essai sur l'application de l'analyse a la probabilite des decisions rendues a la pluralite des voix*, the original jury theorem behind majority voting.

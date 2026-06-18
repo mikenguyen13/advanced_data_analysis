@@ -33,6 +33,61 @@ No single tree has to be good on its own. Each tree is deliberately kept small (
 :::
 
 
+### The probabilistic model and likelihood
+
+The algorithmic description above hides a fully specified Bayesian model, which we now write out precisely because every step of the sampler (the random perturbations, the "favoring" of good fits, even the burn-in) is a consequence of it. Following @chipman2010, the original BART paper, we write a single tree as a pair $(T_k, M_k)$, where $T_k$ encodes the tree topology, that is, the internal splitting rules (each a variable index and a split value) and the leaf structure, and $M_k = \{\mu_{k1}, \dots, \mu_{kb_k}\}$ collects the scalar parameters stored in its $b_k$ terminal nodes. Writing $g(x; T_k, M_k)$ for the function that drops $x$ down tree $T_k$ and returns the leaf value, the model is the sum of trees plus Gaussian noise,
+
+$$
+y_i = \sum_{k=1}^K g(x_i; T_k, M_k) + \varepsilon_i, \qquad \varepsilon_i \stackrel{iid}{\sim} N(0, \sigma^2).
+$$ {#eq-BART-model}
+
+The unknowns are the $K$ trees $\{(T_k, M_k)\}_{k=1}^K$ and the error variance $\sigma^2$. The likelihood implied by @eq-BART-model is
+
+$$
+p(y \mid \{T_k, M_k\}, \sigma^2) = \prod_{i=1}^n N\!\left(y_i;\ \textstyle\sum_{k=1}^K g(x_i; T_k, M_k),\ \sigma^2\right).
+$$ {#eq-BART-lik}
+
+::: {.callout-note}
+Before fitting, the continuous response is centered and scaled (the `BART` package rescales $y$ to the interval $[-0.5, 0.5]$). This is not cosmetic: it is what lets the same default prior hyperparameters work across data sets with wildly different units, which is a large part of why BART is "out of the box."
+:::
+
+
+### The prior: regularization made explicit
+
+What stops a sum of $K = 200$ trees from interpolating the data is the prior, not the likelihood. BART places independent priors on the trees and on the variance, and assumes the trees are mutually independent and independent of $\sigma$:
+
+$$
+p\big(\{T_k, M_k\}, \sigma^2\big) = \left[\prod_{k=1}^K p(M_k \mid T_k)\, p(T_k)\right] p(\sigma^2),
+\qquad p(M_k \mid T_k) = \prod_{j=1}^{b_k} p(\mu_{kj} \mid T_k).
+$$ {#eq-BART-prior}
+
+There are three pieces, each doing a specific regularizing job.
+
+**Tree-shape prior $p(T_k)$.** A node at depth $d$ (root is $d = 0$) is made internal, that is, split rather than left as a leaf, with probability
+
+$$
+p_{\text{split}}(d) = \alpha\, (1 + d)^{-\beta}, \qquad \alpha \in (0,1),\ \beta \ge 0.
+$$ {#eq-BART-split}
+
+The factor $(1+d)^{-\beta}$ makes deeper splits exponentially less likely, so the prior concentrates on shallow "stumpy" trees. The `BART` defaults are $\alpha = 0.95$ and $\beta = 2$, under which the prior probability of a tree of depth $0, 1, 2, 3$ being a single node, then splitting once, twice, and so on, puts the overwhelming mass on trees with one or two levels: with $\beta = 2$ the split probabilities are $0.95$ at the root, $0.95/4 \approx 0.24$ at depth 1, $0.95/9 \approx 0.11$ at depth 2. Given that a node splits, the splitting variable is drawn uniformly over available predictors and the split point uniformly over its available values.
+
+**Leaf-value prior $p(\mu_{kj} \mid T_k)$.** Each leaf parameter gets a conjugate Gaussian prior centered at zero,
+
+$$
+\mu_{kj} \mid T_k \sim N(0,\ \sigma_\mu^2).
+$$ {#eq-BART-mu-prior}
+
+Centering at zero is sensible because the response has been centered, and the $K$ trees share the signal additively, so each leaf should contribute only a small piece. The variance $\sigma_\mu^2$ is set so that the prior on the sum, $E[Y \mid x] = \sum_k g(x; T_k, M_k)$, which by independence has variance $K \sigma_\mu^2$, places most of its mass on the observed range of $y$. Concretely, @chipman2010 choose $\sigma_\mu = 0.5/(c\sqrt{K})$ on the rescaled response, where $c$ (default $c = 2$) is the number of prior standard deviations of the centered response that should fit in the half-range $0.5$. The crucial consequence is the $1/\sqrt{K}$ shrinkage: adding more trees automatically shrinks each leaf, so $K$ controls model complexity gently rather than catastrophically.
+
+**Error-variance prior $p(\sigma^2)$.** A conjugate inverse-gamma prior is used, written as a scaled inverse chi-squared,
+
+$$
+\sigma^2 \sim \frac{\nu\,\lambda}{\chi^2_\nu}, \qquad \text{equivalently}\qquad \sigma^2 \sim \text{Inv-Gamma}\!\left(\tfrac{\nu}{2},\ \tfrac{\nu\lambda}{2}\right).
+$$ {#eq-BART-sigma-prior}
+
+The degrees of freedom $\nu$ (default $3$) controls the tail, and $\lambda$ is calibrated from the data so that a chosen prior quantile $q$ (default $0.90$) of $\sigma$ falls at a rough overestimate of the noise level, typically the residual standard deviation $\hat\sigma$ from a least-squares fit of $y$ on $X$. This anchors the variance prior to the data's scale while keeping it weakly informative.
+
+
 ### Starting point
 
 We need a place to begin the chain. In the first iteration, all trees are initialized to have a single root node with $\hat{f}_k^1(x) = (1/nK)\sum_{i=1}^n y_i$, which is the mean of the response values divided by the total number of trees. Splitting the overall mean equally across the $K$ trees means that when we add the trees back up, we recover exactly the mean response:
@@ -70,6 +125,78 @@ Because we *perturb* the existing tree rather than regrowing it from scratch, no
 :::
 
 
+### Deriving the Bayesian backfitting update
+
+The phrase "favoring perturbations that improve the fit" is, made precise, a Gibbs sampler that draws each unknown from its full conditional given everything else, a scheme @chipman2010 call Bayesian backfitting. We now derive each conditional. Condition throughout on $\sigma^2$ and on all trees other than the $k$-th, and let $r = (r_1, \dots, r_n)$ be the partial residual from @eq-BART-model, which is exactly the partial residual already defined above. By construction $r_i = g(x_i; T_k, M_k) + \varepsilon_i$, so the $k$-th tree sees a clean single-tree regression problem with response $r$. The full conditional for $(T_k, M_k)$ depends on the others only through $r$:
+
+$$
+p(T_k, M_k \mid r, \sigma^2) \propto p(r \mid T_k, M_k, \sigma^2)\, p(M_k \mid T_k)\, p(T_k).
+$$ {#eq-BART-fullcond}
+
+BART draws this in two steps: first $T_k \mid r, \sigma^2$ with $M_k$ integrated out, then $M_k \mid T_k, r, \sigma^2$.
+
+**Step 1: integrate out the leaves to get the marginal likelihood.** Because the Gaussian leaf prior @eq-BART-mu-prior is conjugate to the Gaussian likelihood, we can integrate $M_k$ out in closed form, which is what makes the tree move feasible. The tree partitions the $n$ residuals into the leaves; let leaf $j$ contain the index set with $n_j$ residuals, sum $S_j = \sum_{i \in \text{leaf } j} r_i$, and let the leaf parameters be independent across leaves. For a single leaf with $n_j$ observations $r_i \sim N(\mu, \sigma^2)$ and prior $\mu \sim N(0, \sigma_\mu^2)$, completing the square in $\mu$ gives the marginal
+
+$$
+p(\{r_i\}_{i \in j} \mid T_k, \sigma^2) = \int \prod_{i \in j} N(r_i; \mu, \sigma^2)\, N(\mu; 0, \sigma_\mu^2)\, d\mu
+= \frac{(2\pi\sigma^2)^{-n_j/2}}{\sqrt{1 + n_j \sigma_\mu^2/\sigma^2}}\,
+\exp\!\left\{-\frac{1}{2\sigma^2}\sum_{i \in j} r_i^2 + \frac{\sigma_\mu^2\, S_j^2}{2\sigma^2(\sigma^2 + n_j \sigma_\mu^2)}\right\}.
+$$ {#eq-BART-marglik}
+
+The full tree marginal likelihood is the product of @eq-BART-marglik over leaves $j = 1, \dots, b_k$. This scalar is the quantity that "scores" a candidate tree.
+
+**Step 2: the leaf posterior.** Given the tree, the leaves are conditionally independent and each is a standard conjugate normal-normal update. For leaf $j$,
+
+$$
+\mu_{kj} \mid T_k, r, \sigma^2 \sim N\!\left(\frac{S_j/\sigma^2}{\,n_j/\sigma^2 + 1/\sigma_\mu^2\,},\ \ \frac{1}{\,n_j/\sigma^2 + 1/\sigma_\mu^2\,}\right).
+$$ {#eq-BART-mu-post}
+
+The posterior mean is a precision-weighted average of the leaf's residual mean $S_j/n_j$ and the prior mean $0$, so leaves with few observations are shrunk hard toward zero. This is the exact mechanism behind "each tree contributes a small piece."
+
+We can confirm @eq-BART-mu-post numerically with a tiny simulation: draw residuals in one leaf, then check that the analytic posterior mean and variance match a brute-force Monte Carlo evaluation of the unnormalized posterior $\prod_i N(r_i;\mu,\sigma^2)\,N(\mu;0,\sigma_\mu^2)$.
+
+```{r}
+set.seed(1)
+nj <- 8; sigma2 <- 1.5; sigma_mu2 <- 0.4
+r <- rnorm(nj, mean = 1.2, sd = sqrt(sigma2))   # residuals in one leaf
+Sj <- sum(r)
+
+# analytic posterior from eq-BART.qmd-mu-post
+post_var  <- 1 / (nj / sigma2 + 1 / sigma_mu2)
+post_mean <- post_var * (Sj / sigma2)
+
+# brute-force normalization over a fine grid of mu
+mu <- seq(-3, 3, length.out = 20001)
+logpost <- sapply(mu, function(m)
+    sum(dnorm(r, m, sqrt(sigma2), log = TRUE)) +
+        dnorm(m, 0, sqrt(sigma_mu2), log = TRUE))
+w <- exp(logpost - max(logpost)); w <- w / sum(w)
+num_mean <- sum(mu * w)
+num_var  <- sum((mu - num_mean)^2 * w)
+
+c(analytic_mean = post_mean, numeric_mean = num_mean,
+  analytic_var = post_var,  numeric_var = num_var)
+```
+
+The analytic and numerical values agree to several digits, confirming the conjugate update.
+
+**Step 3: the Metropolis-Hastings move on tree structure.** The tree topology $T_k$ has no conjugate form, so it is updated with a Metropolis-Hastings step using @eq-BART-marglik as the marginalized target. A move $T_k \to T_k^\star$ is proposed from a kernel $q(\cdot \mid \cdot)$ that picks among GROW (split a leaf into two), PRUNE (collapse two sibling leaves into one), CHANGE (alter a split rule), and SWAP (exchange rules of a parent and child). The proposal is accepted with probability
+
+$$
+A = \min\left\{1,\ \underbrace{\frac{q(T_k \mid T_k^\star)}{q(T_k^\star \mid T_k)}}_{\text{proposal ratio}}\cdot \underbrace{\frac{p(T_k^\star)}{p(T_k)}}_{\text{tree prior ratio}}\cdot \underbrace{\frac{p(r \mid T_k^\star, \sigma^2)}{p(r \mid T_k, \sigma^2)}}_{\text{marginal likelihood ratio}}\right\}.
+$$ {#eq-BART-mh}
+
+The middle factor is where the depth penalty $p_{\text{split}}(d)$ from @eq-BART-split enters: a GROW move that deepens the tree must overcome the prior's reluctance to split, which is precisely the regularization. Because the likelihood ratio uses the marginalized form, only the leaves touched by the move (the split or pruned node) actually change the score, so each MH evaluation is cheap, $O(n_j)$ in the affected leaves rather than $O(n)$.
+
+**Step 4: update $\sigma^2$.** After all $K$ trees are refreshed, form the full residual $e_i = y_i - \sum_k g(x_i; T_k, M_k)$. Conjugacy of @eq-BART-sigma-prior gives the inverse-gamma full conditional
+
+$$
+\sigma^2 \mid \cdot \ \sim\ \text{Inv-Gamma}\!\left(\frac{\nu + n}{2},\ \frac{\nu\lambda + \sum_{i=1}^n e_i^2}{2}\right),
+$$ {#eq-BART-sigma-post}
+
+which is the trace plotted in the convergence diagnostic later in this chapter. One full sweep over @eq-BART-mh, @eq-BART-mu-post, and @eq-BART-sigma-post is one MCMC iteration $b$.
+
+
 ### Collecting the output
 
 After running the chain, the output of BART is not one model but a whole collection of prediction models, one per iteration:
@@ -81,7 +208,7 @@ $$
 Early iterations are unreliable because the chain has not yet settled down, so we discard the first $L$ iterations as a burn-in period and average over the rest:
 
 $$
-\hat{f}^b(x) = \frac{1}{B - L} \sum_{b = L +1}^B \hat{f}_k^b (x)
+\hat{f}(x) = \frac{1}{B - L} \sum_{b = L +1}^B \hat{f}^b (x)
 $$
 
 The payoff of the Bayesian framing appears here: because each retained iteration is a posterior sample, we are not limited to the average. We can use the spread of the posterior samples to get distributional estimates of the predictions, that is, credible intervals rather than just point predictions.
@@ -126,6 +253,36 @@ In practice these are easy to set. We typically choose large values such as $B =
 ::: {.callout-warning}
 The defaults are robust, but they are not free. With $K = 200$ trees and $B = 1000$ iterations, BART does a lot of computation, and runtime grows with the number of observations and predictors. If a run is slow, the thinning trick shown later in this chapter can help.
 :::
+
+
+### Choosing the hyperparameters
+
+Beyond the three loop counts $(K, B, L)$, the model is governed by the prior hyperparameters derived above. The following table collects them, their `BART` defaults, and the effect of moving each.
+
+| Hyperparameter | Role | Default | Effect of increasing |
+|---|---|---|---|
+| $K$ (`ntree`) | number of trees | 200 | more flexible mean, more shrinkage per leaf via $\sigma_\mu \propto 1/\sqrt K$ |
+| $\alpha$ (`base`) | base split probability, @eq-BART-split | 0.95 | encourages deeper trees |
+| $\beta$ (`power`) | depth penalty, @eq-BART-split | 2 | penalizes depth harder, shallower trees |
+| $c$ (`k`) | leaf-prior tightness, $\sigma_\mu = 0.5/(c\sqrt K)$ | 2 | shrinks leaves harder, smoother fit |
+| $(\nu, q)$ (`sigdf`, `sigquant`) | variance prior @eq-BART-sigma-prior | $(3, 0.90)$ | tighter / more pessimistic noise prior |
+
+The single most useful tuning knob is $c$ (`k` in the package): values in $[1, 3]$ trade flexibility for smoothness, and cross-validating over $\{1, 2, 3\}$ alongside $K \in \{50, 200\}$ recovers most of the achievable gain. Increasing $K$ rarely hurts accuracy (the per-leaf shrinkage compensates), so the practical limit on $K$ is compute, not overfitting. If predictions look too wiggly, raise $c$ or $\beta$; if BART underfits a known sharp nonlinearity, lower them.
+
+::: {.callout-tip title="Diagnostics checklist"}
+Always plot the `sigma` trace (@fig-BART-sigma-trace) and confirm it has stabilized past burn-in. For a second check, run two or more chains from different seeds and confirm their posterior means agree. Effective sample size on $\sigma$ and on a few held-out predictions tells you whether thinning or a longer chain is needed.
+:::
+
+
+### Theoretical properties and connections
+
+**Bias-variance and the role of $K$.** Each tree is a weak learner with small variance but high bias; summing $K$ of them, with leaf variance scaled as $\sigma_\mu^2 \propto 1/K$, keeps the prior variance of the sum $K\sigma_\mu^2$ constant while letting the ensemble represent rich interactions. This is the additive-model analogue of boosting's bias reduction, but achieved by averaging over a posterior rather than a single greedy path.
+
+**Posterior consistency and rates.** BART is not merely a heuristic. @rockova2020 prove that, with a tree prior of the form @eq-BART-split and appropriately chosen $\sigma_\mu$, the BART posterior concentrates around the true regression function at the near-minimax rate $n^{-\alpha/(2\alpha + p)}$ (up to log factors) for $\alpha$-Hölder smooth functions of $p$ inputs, and adapts to unknown smoothness and to low-dimensional structure (sparsity in the active predictors). The shrinkage prior on tree depth is essential to these guarantees: without it the posterior would overfit.
+
+**Connections.** BART is a Bayesian sibling of gradient boosting (@sec-boosting): both fit a sum of trees to evolving residuals, but boosting takes one forward greedy pass with a fixed shrinkage step, whereas BART resamples every tree from its full conditional, producing a posterior. The leaf shrinkage @eq-BART-mu-post is exactly ridge-type regularization applied per leaf, and the marginal likelihood @eq-BART-marglik is the same evidence used in Bayesian linear regression, here applied locally within each leaf. Like random forests (@sec-random-forest), BART averages over many trees, but the averaging is over MCMC draws governed by a likelihood rather than over bootstrap resamples.
+
+**Failure modes.** BART can mix slowly when predictors are highly collinear (many near-equivalent splits) or when $n$ is large and the posterior over tree structures is multimodal; trace plots that drift are the symptom. It assumes additive Gaussian noise in @eq-BART-model, so heavy tails or strong heteroscedasticity violate the model and distort the credible intervals (variants such as heteroscedastic BART and DART address these). Extrapolation beyond the range of the training predictors reverts toward the leaf means and gives untrustworthy intervals, because the trees can only partition observed support.
 
 
 ## Worked example: predicting Boston housing prices {#bart-boston-james}

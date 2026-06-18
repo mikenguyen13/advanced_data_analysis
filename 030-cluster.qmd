@@ -134,6 +134,16 @@ which is constant given the data, independent of the cluster assignment, since i
 
 This decomposition has a tidy consequence. Because $T$ is fixed, pushing $W(C)$ down automatically pulls $B(C)$ up: minimizing $W(C)$ is equivalent to maximizing $B(C)$. We only ever have to optimize one of them.
 
+To see that $T = W(C) + B(C)$ holds for *any* assignment $C$, fix a pair $(i, i')$ and ask which of the two sums it lands in. Every ordered pair appears exactly once in the double sum defining $T$. If $C(i) = C(i')$ the pair contributes to $W(C)$, since the inner sums of $W(C)$ range over pairs in the same cluster; if $C(i) \neq C(i')$ it contributes to $B(C)$. The two cases are mutually exclusive and exhaustive, so summing $W(C)$ and $B(C)$ recovers every pair once, which is exactly $T$. Nothing about this argument used the form of $d$, so the decomposition is purely combinatorial and holds for any dissimilarity.
+
+::: {.callout-note title="Why the count is intractable"}
+The number of distinct ways to partition $n$ objects into exactly $K$ nonempty groups is the Stirling number of the second kind,
+$$
+S(n, K) = \frac{1}{K!} \sum_{j=0}^{K} (-1)^j \binom{K}{j} (K-j)^n .
+$$
+For fixed $K$ this grows like $K^n / K!$, so the search space is exponential in $n$. Even $S(19, 4) \approx 1.1 \times 10^{10}$, which already rules out enumeration. This is why every practical method below is a greedy or iterative *heuristic* that returns a local optimum, and why K-means clustering (minimizing $W(C)$ for squared Euclidean $d$) is in fact NP-hard in general, both when $K$ is part of the input and even for $K = 2$ in general dimension.
+:::
+
 
 ::: {.callout-tip title="Intuition"}
 The total amount of "spread" in your data is a fixed budget. Clustering does not reduce that spread; it only decides how much of it sits *inside* groups versus *between* them. Good clusters keep the within-group share small, which is the same as keeping the between-group share large.
@@ -160,6 +170,68 @@ W(C) &= \frac{1}{2} \sum_{k=1}^K \sum_{C(i)=k} \sum_{C(i')=k} ||x_i - x_{i'}||^2
 $$
 
 where $\bar{x}_k = (\bar{x}_{1k}, \dots, \bar{x}_{pk})$ is the mean vector associated with the $k$-th cluster and $n_k = \sum_{i=1}^n I(C(i)=k)$ is the number of points in cluster $k$. The payoff is the right-hand side: minimizing $W(C)$ amounts to assigning the $n$ observations to the $K$ clusters so that the within-cluster average dissimilarity between each observation and its cluster mean is as small as possible. In other words, the cluster mean (the centroid) is the natural "center" to measure against, and K-means simply alternates between computing centers and reassigning points to the nearest one.
+
+#### Deriving the centroid identity {#sec-cluster.qmd-centroid-identity}
+
+The collapse from a double sum over pairs to a single sum against the mean is the algebraic heart of K-means, so it is worth doing explicitly. The key is the following identity for any cluster $k$ with $n_k$ members:
+
+$$
+\frac{1}{2} \sum_{C(i)=k} \sum_{C(i')=k} \|x_i - x_{i'}\|^2 = n_k \sum_{C(i)=k} \|x_i - \bar{x}_k\|^2 .
+$$ {#eq-cluster-pair-to-mean}
+
+To prove @eq-cluster-pair-to-mean, expand a single squared pairwise distance by inserting and removing the cluster mean $\bar{x}_k$,
+
+$$
+\|x_i - x_{i'}\|^2 = \|(x_i - \bar{x}_k) - (x_{i'} - \bar{x}_k)\|^2
+= \|x_i - \bar{x}_k\|^2 + \|x_{i'} - \bar{x}_k\|^2 - 2 (x_i - \bar{x}_k)^\top (x_{i'} - \bar{x}_k) .
+$$
+
+Now sum over all ordered pairs $i, i'$ in cluster $k$. The first term gives $n_k \sum_{C(i)=k} \|x_i - \bar{x}_k\|^2$ because the index $i'$ is free and runs over $n_k$ values; the second term gives the same quantity by symmetry. The cross term vanishes:
+
+$$
+\sum_{C(i)=k} \sum_{C(i')=k} (x_i - \bar{x}_k)^\top (x_{i'} - \bar{x}_k)
+= \Big( \sum_{C(i)=k} (x_i - \bar{x}_k) \Big)^\top \Big( \sum_{C(i')=k} (x_{i'} - \bar{x}_k) \Big) = 0 ,
+$$
+
+since $\sum_{C(i)=k}(x_i - \bar{x}_k) = \sum_{C(i)=k} x_i - n_k \bar{x}_k = 0$ by the definition of the mean. Collecting terms, $\sum_i \sum_{i'} \|x_i - x_{i'}\|^2 = 2 n_k \sum_i \|x_i - \bar{x}_k\|^2$, which is @eq-cluster-pair-to-mean. Summing over $k$ gives the displayed form of $W(C)$ above.
+
+#### Why the mean is optimal, and Lloyd's algorithm {#sec-cluster.qmd-lloyd}
+
+A second fact justifies *recomputing the mean* at every iteration. For a fixed set of points $S$, the point $m$ minimizing the sum of squared Euclidean distances is the mean:
+
+$$
+\bar{x}_S = \underset{m \in \mathbb{R}^p}{\operatorname{argmin}} \sum_{x \in S} \|x - m\|^2 .
+$$ {#eq-cluster-mean-minimizer}
+
+This follows by differentiating: $\nabla_m \sum_{x \in S} \|x - m\|^2 = -2 \sum_{x \in S}(x - m) = 0$ gives $m = \frac{1}{|S|}\sum_{x \in S} x$, and the objective is strictly convex in $m$ (Hessian $2|S| I \succ 0$), so this stationary point is the unique global minimizer.
+
+Putting @eq-cluster-mean-minimizer together with the obvious fact that, holding the centroids fixed, assigning each point to its nearest centroid minimizes the objective over assignments, exposes K-means as block coordinate descent on the joint objective
+
+$$
+J(C, \{m_k\}) = \sum_{k=1}^K \sum_{C(i)=k} \|x_i - m_k\|^2 .
+$$ {#eq-cluster-kmeans-objective}
+
+Lloyd's algorithm alternates the two exact minimizations: the assignment step minimizes $J$ over $C$ with $\{m_k\}$ fixed, and the update step minimizes $J$ over $\{m_k\}$ with $C$ fixed. Because each step is an exact minimization over one block, $J$ is nonincreasing across iterations:
+
+$$
+J(C^{(t)}, m^{(t)}) \;\ge\; J(C^{(t+1)}, m^{(t)}) \;\ge\; J(C^{(t+1)}, m^{(t+1)}) .
+$$
+
+Since $J \ge 0$ is bounded below and there are only finitely many distinct assignments $C$ (at most $K^n$), the monotone sequence of objective values must stabilize, and the algorithm terminates in a finite number of iterations at a partition that is a local optimum (no single reassignment or recentering lowers $J$). This is exactly the convergence claim made informally above. It is not, however, a global optimum: the result depends on the initialization, which motivates multiple random starts.
+
+::: {.callout-warning title="Local optima and a smarter start"}
+Uniformly random initial assignments can place all seeds in one region and leave genuine clusters merged. The k-means++ seeding rule of Arthur and Vassilvitskii samples the first center uniformly, then samples each subsequent center with probability proportional to its squared distance to the nearest already-chosen center (so far-away points are favored). This spreads seeds out and yields the guarantee $\mathbb{E}[J_{\text{k-means++}}] \le 8(\ln K + 2)\, J_{\text{opt}}$, an $O(\log K)$ approximation in expectation before any Lloyd iterations are even run. In R, `kmeans()` does not implement k-means++ directly, but combining several random starts via `nstart` is the practical substitute, and packages such as `flexclust` offer k-means++ seeding.
+:::
+
+#### Cost, scaling, and failure modes {#sec-cluster.qmd-kmeans-cost}
+
+One Lloyd iteration costs $O(nKp)$: each of $n$ points is compared to $K$ centroids in $p$ dimensions, and the centroid update is a single $O(np)$ pass. With $I$ iterations the total is $O(nKpI)$, which is linear in $n$ and is why K-means scales to large datasets where the $O(n^2)$ proximity matrix of the combinatorial view would be prohibitive. The memory footprint is $O(np + Kp)$, since the full $\mathbf{D}$ is never formed.
+
+Three failure modes follow directly from the assumptions baked into @eq-cluster-kmeans-objective.
+
+-   The squared norm makes each cluster an isotropic Gaussian-like ball in the chosen scale, so K-means implicitly assumes clusters of *similar size, similar spread, and roughly spherical shape*. Elongated, curved, or density-varying clusters (two concentric rings, say) are split incorrectly no matter how many restarts you use.
+-   Squared distance squares the influence of outliers, so a single far point can drag a centroid and corrupt an entire cluster. This is the robustness argument for K-medoids.
+-   Because the objective decreases monotonically in $K$ (more centroids can only reduce $J$, reaching $J = 0$ when $K = n$), $J$ alone cannot choose $K$; you need an external criterion (see @sec-cluster.qmd-choosing-k).
 
 That alternation is the whole algorithm, given in [@hastie2001a Alg 14.1] and [@james2013 Alg 12.1].
 
@@ -209,6 +281,16 @@ $$
 Reach for K-medoids instead of K-means when your dissimilarity is not Euclidean (for example, you only have a precomputed distance matrix), when outliers would distort an arithmetic mean, or when you want each cluster represented by a real, interpretable example rather than an average point. The cost is more computation, since finding the medoid means searching within each cluster.
 :::
 
+The objective being minimized is the total dissimilarity to the assigned medoid,
+
+$$
+J_{\text{med}}(C, \{m_k\}) = \sum_{k=1}^K \sum_{C(i)=k} D(x_i, m_k), \qquad m_k \in \{x_1, \dots, x_n\} ,
+$$ {#eq-cluster-pam-objective}
+
+with the constraint that each center is one of the observations. The same block-descent argument as for K-means applies: step 1 minimizes @eq-cluster-pam-objective over medoids with the assignment fixed, step 2 minimizes over the assignment with medoids fixed, each step is nonincreasing, and the objective is bounded below, so the alternation converges to a local optimum. The exchange between mean and medoid is exactly the difference between minimizing a sum of *squared* Euclidean distances, whose minimizer is the unconstrained mean (@eq-cluster-mean-minimizer), and minimizing a sum of arbitrary dissimilarities over the discrete set of data points.
+
+The robustness gain has a cost in complexity. The alternating scheme above costs $O(n_k^2)$ per cluster for the medoid search in step 1, since every candidate medoid is compared against every other member, giving roughly $O(n^2)$ per iteration once summed over clusters. The classical Partitioning Around Medoids (PAM) algorithm of Kaufman and Rousseeuw instead evaluates every candidate swap of a medoid with a non-medoid, costing $O(K(n-K)^2)$ per iteration, which is more thorough but scales poorly. For large $n$ the CLARA variant runs PAM on random subsamples, and the modern FasterPAM algorithm reduces the per-iteration cost by an order of magnitude. In R these are `cluster::pam`, `cluster::clara`, and the `fastkmedoids` package; all consume a precomputed $\mathbf{D}$, which is what lets them work with any dissimilarity.
+
 
 ### Hierarchical Clustering
 
@@ -249,6 +331,111 @@ There is one decision hidden in step 2a that we have glossed over. We know how t
 : The four most common linkage rules used to define the dissimilarity between two clusters in agglomerative hierarchical clustering, along with the kinds of cluster shapes each tends to produce. {#tbl-cluster-linkage-types}
 
 Different linkage rules can produce genuinely different clusterings from the very same data, so this is not a minor knob.^[An *inversion* happens when a later merge occurs at a lower height than an earlier one, which breaks the monotonicity that makes a dendrogram readable. Complete and average linkage avoid this and are the usual defaults; single linkage tends to produce stringy, chained clusters.] Complete and average linkage tend to yield balanced, compact clusters and are the common defaults, while single linkage can chain observations into long, trailing groups.
+
+#### The Lance-Williams update {#sec-cluster.qmd-lance-williams}
+
+A naive reading of the algorithm suggests recomputing all inter-cluster dissimilarities from scratch after every merge, but this is unnecessary. When clusters $A$ and $B$ are fused into $A \cup B$, the dissimilarity from the new cluster to any other cluster $C$ can be written as a function of the *old* dissimilarities $d(A,C)$, $d(B,C)$, and $d(A,B)$ alone. This is the Lance-Williams recurrence,
+
+$$
+d(A \cup B, C) = \alpha_A\, d(A,C) + \alpha_B\, d(B,C) + \beta\, d(A,B) + \gamma\, |d(A,C) - d(B,C)| ,
+$$ {#eq-cluster-lance-williams}
+
+where the coefficients select the linkage. Writing $n_A, n_B, n_C$ for cluster sizes, the four rules above correspond to
+
+| Linkage  | $\alpha_A$ | $\alpha_B$ | $\beta$ | $\gamma$ |
+|----------|------------|------------|---------|----------|
+| Single   | $1/2$ | $1/2$ | $0$ | $-1/2$ |
+| Complete | $1/2$ | $1/2$ | $0$ | $+1/2$ |
+| Average  | $\frac{n_A}{n_A+n_B}$ | $\frac{n_B}{n_A+n_B}$ | $0$ | $0$ |
+| Centroid | $\frac{n_A}{n_A+n_B}$ | $\frac{n_B}{n_A+n_B}$ | $-\frac{n_A n_B}{(n_A+n_B)^2}$ | $0$ |
+
+: Lance-Williams coefficients for common linkages (Ward's method is also expressible in this form). {#tbl-cluster-lance-williams}
+
+The single and complete cases are immediate: with $\alpha_A = \alpha_B = \tfrac12$ and $\gamma = \mp\tfrac12$, @eq-cluster-lance-williams reduces to $\min\{d(A,C), d(B,C)\}$ and $\max\{d(A,C), d(B,C)\}$ respectively, via the identity $\min(a,b) = \tfrac12(a+b) - \tfrac12|a-b|$ and the matching one for $\max$. The recurrence is what makes agglomerative clustering practical: each of the $n-1$ merges updates a row of the working dissimilarity matrix in $O(n)$ time, giving an $O(n^2)$ time and $O(n^2)$ memory algorithm overall (single linkage can be done in $O(n^2)$ via the minimum spanning tree, and average and complete in $O(n^2 \log n)$ with priority queues). The quadratic memory in $\mathbf{D}$ is the practical ceiling on $n$ for hierarchical methods, in contrast to the linear memory of K-means.
+
+The centroid row also explains the inversions warned about in @tbl-cluster-linkage-types: its $\beta < 0$ term can make a fused cluster *closer* to a third cluster than its parts were, so a later merge height can fall below an earlier one. Single, complete, and average linkage have $\beta \ge 0$ and are provably inversion-free (the merge heights are monotone), which is the formal content of the monotonicity property mentioned earlier.
+
+## Choosing the Number of Clusters {#sec-cluster.qmd-choosing-k}
+
+K-means and K-medoids both require $K$ up front, and the within-cluster objective cannot supply it, since it decreases monotonically toward zero as $K \to n$. Several principled criteria fill the gap.
+
+The simplest is the elbow heuristic: plot $W_K$, the total within-cluster scatter at the optimum for each $K$, against $K$ and look for the value where the marginal decrease flattens. The reasoning is that adding a center inside a true cluster yields little reduction, whereas splitting two genuine clusters yields a large one, so the curve bends at the true number. The elbow is often ambiguous, which motivates sharper tools.
+
+The gap statistic of Tibshirani, Walther, and Hastie formalizes the elbow by comparing $\log W_K$ to its expectation under a null reference distribution with no clustering (typically uniform over the data's bounding box or its principal-component box):
+
+$$
+\text{Gap}(K) = \mathbb{E}^*_n[\log W_K] - \log W_K ,
+$$ {#eq-cluster-gap}
+
+where $\mathbb{E}^*_n$ is estimated by clustering $B$ Monte Carlo reference samples. One chooses the smallest $K$ such that $\text{Gap}(K) \ge \text{Gap}(K+1) - s_{K+1}$, where $s_{K+1}$ is the standard error of the reference $\log W$ values inflated by $\sqrt{1 + 1/B}$. A key virtue is that the gap statistic can return $K = 1$, that is, no clustering structure, which the elbow and silhouette cannot.
+
+The silhouette of Rousseeuw scores each point $i$ individually. Let $a(i)$ be its mean dissimilarity to other points in its own cluster, and $b(i)$ the mean dissimilarity to the points of the nearest *other* cluster. The silhouette width is
+
+$$
+s(i) = \frac{b(i) - a(i)}{\max\{a(i),\, b(i)\}} \in [-1, 1] ,
+$$ {#eq-cluster-silhouette}
+
+which is near $+1$ when $i$ sits comfortably inside its cluster and far from the next, near $0$ on a boundary, and negative when $i$ is probably misassigned. Averaging $s(i)$ over all points gives a single number, and the $K$ maximizing the average silhouette is selected. Because it uses only pairwise dissimilarities, the silhouette applies equally to K-medoids and to any non-Euclidean $\mathbf{D}$. In R, `cluster::silhouette`, `factoextra::fviz_nbclust`, and the 30-index `NbClust` package automate these comparisons.
+
+::: {.callout-warning}
+None of these indices is a hypothesis test with a guaranteed error rate, and they routinely disagree. Treat $K$ selection as exploratory: cross-check at least two criteria, confirm the chosen clusters are stable under resampling, and prefer a $K$ that is also interpretable in the application over one that wins a single index by a hair.
+:::
+
+## Model-Based Clustering and the K-Means Connection {#sec-cluster.qmd-gmm}
+
+The geometric view treats clustering as minimizing a distance objective. The model-based view instead posits a generative probability model and clusters by fitting it, which has the advantage of supplying soft memberships, a principled likelihood for comparing $K$, and the ability to capture clusters that are not spherical. The canonical model is the Gaussian mixture,
+
+$$
+p(x) = \sum_{k=1}^K \pi_k\, \mathcal{N}(x \mid \mu_k, \Sigma_k), \qquad \pi_k \ge 0, \ \sum_k \pi_k = 1 ,
+$$ {#eq-cluster-gmm-density}
+
+where $\pi_k$ is the prior weight of component $k$. Introducing a latent indicator $z_i \in \{1,\dots,K\}$ with $P(z_i = k) = \pi_k$ and $x_i \mid z_i = k \sim \mathcal{N}(\mu_k, \Sigma_k)$ makes the log-likelihood tractable through the EM algorithm.
+
+The **E-step** computes the posterior responsibility of component $k$ for point $i$ via Bayes' rule:
+
+$$
+\gamma_{ik} = P(z_i = k \mid x_i) = \frac{\pi_k\, \mathcal{N}(x_i \mid \mu_k, \Sigma_k)}{\sum_{l=1}^K \pi_l\, \mathcal{N}(x_i \mid \mu_l, \Sigma_l)} .
+$$ {#eq-cluster-estep}
+
+The **M-step** maximizes the expected complete-data log-likelihood, yielding responsibility-weighted moment estimates:
+
+$$
+\pi_k = \frac{1}{n}\sum_{i=1}^n \gamma_{ik}, \qquad
+\mu_k = \frac{\sum_i \gamma_{ik}\, x_i}{\sum_i \gamma_{ik}}, \qquad
+\Sigma_k = \frac{\sum_i \gamma_{ik}\,(x_i - \mu_k)(x_i - \mu_k)^\top}{\sum_i \gamma_{ik}} .
+$$ {#eq-cluster-mstep}
+
+EM increases the observed-data log-likelihood at every iteration and converges to a local maximum, exactly paralleling Lloyd's monotone descent.
+
+K-means is the hard-assignment, equal-isotropic-covariance limit of this procedure. Fix $\Sigma_k = \sigma^2 I$ and $\pi_k = 1/K$ for all $k$, and let $\sigma^2 \to 0$. The Gaussian density is $\mathcal{N}(x_i \mid \mu_k, \sigma^2 I) \propto \exp(-\|x_i - \mu_k\|^2 / 2\sigma^2)$, so the responsibility in @eq-cluster-estep becomes
+
+$$
+\gamma_{ik} = \frac{\exp(-\|x_i - \mu_k\|^2 / 2\sigma^2)}{\sum_l \exp(-\|x_i - \mu_l\|^2 / 2\sigma^2)} .
+$$
+
+As $\sigma^2 \to 0$ this softmax sharpens to an indicator: the term with the smallest $\|x_i - \mu_k\|^2$ dominates, so $\gamma_{ik} \to 1$ for the nearest center and $0$ otherwise. That is precisely the K-means assignment step, and the M-step update for $\mu_k$ in @eq-cluster-mstep collapses to the cluster mean, which is the K-means update step. Thus K-means is "hard EM" for a spherical, equal-weight Gaussian mixture in the zero-variance limit, the formal version of the statement that the mixture model is a soft version of K-means. Relaxing the fixed isotropic $\Sigma_k$ is what lets GMMs model elliptical and differently-sized clusters that defeat K-means; in R this is `mclust`, which additionally selects $K$ and the covariance structure by BIC. The price is more parameters ($O(K p^2)$ for full covariances) and the same sensitivity to initialization and to degenerate likelihood spikes when a component collapses onto a single point.
+
+::: {.callout-note title="Verification: K-means as the hard-EM limit"}
+The simulation below fits a one-dimensional, two-component spherical GMM by EM with the variance pinned at a small value, and checks that the resulting hard assignments and centers match `kmeans`.
+
+```{r}
+#| label: kmeans-em-limit
+#| eval: false
+set.seed(1)
+x <- c(rnorm(200, -3), rnorm(200, 3))          # two well-separated groups
+sig2 <- 1e-3                                     # tiny fixed variance
+mu <- c(-1, 1)                                   # initial centers
+for (it in 1:50) {
+  d  <- outer(x, mu, function(a, b) (a - b)^2)   # squared distances
+  g  <- exp(-d / (2 * sig2))
+  g  <- g / rowSums(g)                           # responsibilities (E-step)
+  mu <- colSums(g * x) / colSums(g)              # weighted means (M-step)
+}
+em_centers <- sort(mu)
+km_centers <- sort(kmeans(x, centers = 2, nstart = 10)$centers[, 1])
+rbind(em = em_centers, kmeans = km_centers)      # should match closely
+```
+:::
 
 ## Summary
 

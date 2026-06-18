@@ -61,6 +61,42 @@ In words, the estimated probability that $x$ belongs to class $c$ is simply the 
 
 This is a plug-in approximation to the Bayes classifier, which assigns $x$ to $\arg\max_c p(y = c \mid x)$.^[The Bayes classifier is the best any method could do if the true conditional probabilities were known exactly. Its error rate, the Bayes error, is the irreducible floor set by the overlap between classes. kNN tries to estimate those conditional probabilities from local frequencies.] As $n \to \infty$ and $k \to \infty$ with $k/n \to 0$, the kNN classifier is consistent, and its error rate converges to the Bayes rate under mild conditions. The classic finite-$k$ result of Cover and Hart (1967) shows that the asymptotic error of the $1$-NN rule is at most twice the Bayes error.
 
+### The Cover-Hart bound, derived
+
+The two-times-Bayes guarantee is worth deriving, because the argument is short and shows exactly where the factor of two comes from. Restrict to two classes, $c \in \{1, 2\}$, and write the conditional probability of class $1$ at a point $x$ as $\eta(x) = p(y = 1 \mid x)$. The Bayes classifier predicts the more probable class, so its conditional error at $x$ is
+
+$$
+r^*(x) = \min\{\eta(x),\, 1 - \eta(x)\},
+$$
+
+and the Bayes risk is $R^* = \mathbb{E}_x[r^*(x)]$.
+
+Consider the $1$-NN rule and a fixed query $x$ with nearest neighbor $x_{(1)}$ carrying label $y_{(1)}$. As $n \to \infty$, the nearest neighbor converges to the query, $x_{(1)} \to x$ almost surely, provided $x$ is in the support of the feature distribution (this is the key regularity condition: a nearest neighbor really does get arbitrarily close once data are dense). Assuming $\eta$ is continuous, $\eta(x_{(1)}) \to \eta(x)$. The $1$-NN rule errs at $x$ when the test label and the neighbor label disagree. Conditional on $x$ and $x_{(1)}$, the test label is class $1$ with probability $\eta(x)$ and the neighbor label is class $1$ with probability $\eta(x_{(1)})$, drawn independently. The conditional error probability is therefore
+
+$$
+r_{\text{1NN}}(x) = \eta(x)\,(1 - \eta(x_{(1)})) + (1 - \eta(x))\,\eta(x_{(1)}).
+$$
+
+Taking the limit $\eta(x_{(1)}) \to \eta(x)$,
+
+$$
+r_{\text{1NN}}(x) \to 2\,\eta(x)\,(1 - \eta(x)).
+$$ {#eq-knn-1nn-asymptotic}
+
+Now bound the right side in terms of the Bayes error $r^*(x) = \min\{\eta, 1-\eta\}$. Writing $\eta = \eta(x)$,
+
+$$
+2\,\eta(1 - \eta) = 2\, r^*(x)\,(1 - r^*(x)) \le 2\, r^*(x),
+$$
+
+since $r^*(x) = \min\{\eta, 1-\eta\}$ gives $\eta(1-\eta) = r^*(x)(1 - r^*(x))$ and $(1 - r^*(x)) \le 1$. Taking expectations over $x$ yields the Cover-Hart bound for the asymptotic $1$-NN risk $R_{\text{1NN}}$,
+
+$$
+R^* \;\le\; R_{\text{1NN}} \;\le\; 2\,R^* (1 - R^*) \;\le\; 2\,R^*.
+$$ {#eq-knn-cover-hart}
+
+The lower bound $R^* \le R_{\text{1NN}}$ is immediate (no rule beats Bayes). The middle expression uses Jensen's inequality: $\mathbb{E}[r^*(1 - r^*)] \le \mathbb{E}[r^*]\,(1 - \mathbb{E}[r^*])$ because $t \mapsto t(1-t)$ is concave. The factor of two in @eq-knn-1nn-asymptotic comes from a single independent draw being used as the prediction: the predictor and the truth each carry the local class noise, and the two noise sources combine. Averaging over $k > 1$ neighbors damps that second noise source, which is why $k$-NN with $k \to \infty$ closes the gap and attains $R^*$ exactly.
+
 
 ::: {.callout-important title="Key idea"}
 Even the crudest version of kNN (a single nearest neighbor) is never more than twice as bad as the theoretical optimum in the large-sample limit. That is a remarkable guarantee for such a simple rule, and it explains why kNN remains a respected baseline.
@@ -106,6 +142,18 @@ $$
 
 A common weight is the inverse distance $w_i = 1 / d(x, x_i)$ (with a small offset to avoid division by zero), or a kernel of the distance such as $w_i = K\!\left( d(x, x_i) / h \right)$. Distance weighting reduces the sensitivity to the exact value of $k$, because far-off neighbors contribute little.
 
+### kNN as a kernel estimator with an adaptive bandwidth
+
+Weighted kNN is exactly the Nadaraya-Watson kernel regression estimator (see @sec-kernel) with a data-adaptive bandwidth. Recall the Nadaraya-Watson estimate $\hat f(x) = \sum_i K_h(x, x_i)\, y_i / \sum_i K_h(x, x_i)$. Set the bandwidth equal to the distance to the $k$th nearest neighbor, $h_k(x) = d(x, x_{(k)})$, and use a kernel supported on the unit ball. Then $K_{h_k(x)}(x, x_i)$ is nonzero only for the $k$ nearest points, and the kernel estimate becomes the weighted kNN formula above. Choosing the box kernel $K(u) = \mathbb{1}(\|u\| \le 1)$ recovers plain (unweighted) kNN, while a smooth kernel such as the tri-cube or Epanechnikov recovers distance-weighted kNN. The defining feature of kNN within this family is that the bandwidth $h_k(x)$ varies with location: it is small where data are dense and large where data are sparse. Fixed-bandwidth kernel smoothing makes the opposite choice. This is why kNN keeps a roughly constant variance across the domain (always $k$ effective points) at the cost of a location-dependent bias, whereas a fixed bandwidth keeps a roughly constant bias at the cost of a location-dependent variance.
+
+### Fixed-radius neighbors and other variants
+
+A close relative replaces the count $k$ with a radius $\rho$: predict from all training points within distance $\rho$ of the query (fixed-radius near neighbors). This swaps the adaptive-bandwidth behavior back for a fixed bandwidth and can return an empty neighborhood in sparse regions, which must be handled (for example by falling back to the single nearest point). Other practical variants include condensed and edited nearest neighbors, which prune the training set to a smaller representative subset to cut query cost and remove mislabeled points, and prototype methods (such as learning vector quantization) that replace the raw training set with a small set of learned centers.
+
+### Failure modes
+
+kNN breaks in a few characteristic ways, each traceable to the assumptions above. Irrelevant features inflate the distance with noise and destroy locality; because every feature contributes to $d$, a handful of useless coordinates can dominate the metric (this is distinct from, but compounded by, the curse of dimensionality). Unscaled features let the largest-range variable dictate the neighborhood, as discussed under standardization. Class imbalance lets a common class win the vote even far from its true region. Heavy local label noise propagates directly into predictions at small $k$, since there is no averaging to suppress it. And on the boundary of the data support the neighborhood becomes one-sided, so the linear term in the Taylor expansion no longer cancels and the bias picks up a first-order (rather than second-order) contribution, the same boundary bias that motivates local-linear regression over local-constant fits in @sec-local.
+
 ## Bias, Variance, and the Choice of k
 
 The parameter $k$ controls the smoothness of the fit and is the main knob in kNN. Understanding how it works is the heart of using the method well, so we take it slowly: first the intuition for small and large $k$, then an exact derivation for regression, and then the special difficulty that high dimensions create.
@@ -141,7 +189,60 @@ $$
 + \underbrace{\frac{\sigma^2}{k}}_{\text{variance}}.
 $$
 
+To see where these two expressions come from, write $\hat f(x) = \frac{1}{k}\sum_{i \in N_k(x)} y_i = \frac{1}{k}\sum_{i \in N_k(x)} \bigl(f(x_i) + \varepsilon_i\bigr)$ with the neighbor indices held fixed. Linearity of expectation and $\mathbb{E}[\varepsilon_i] = 0$ give the mean directly. For the variance, the $f(x_i)$ are constants, so only the noise contributes, and independence of the $\varepsilon_i$ turns the variance of the sum into the sum of variances,
+
+$$
+\operatorname{Var}\!\bigl(\hat f(x)\bigr)
+= \frac{1}{k^2} \sum_{i \in N_k(x)} \operatorname{Var}(\varepsilon_i)
+= \frac{1}{k^2}\, k\, \sigma^2
+= \frac{\sigma^2}{k}.
+$$
+
 The variance term $\sigma^2 / k$ falls as $k$ grows: averaging more points reduces the noise. The squared bias term tends to grow with $k$, because larger neighborhoods reach farther from $x$, where $f(x_i)$ can differ from $f(x)$. The sum of these two terms is the familiar U-shaped curve in $k$, and the best $k$ balances them. In practice $k$ is chosen by cross-validation.^[Cross-validation splits the training data into folds, fits with each candidate $k$ on all-but-one fold, and measures error on the held-out fold, averaging over folds. The $k$ with the lowest average held-out error is selected. This estimates generalization error without touching the test set.] The effective number of parameters of a kNN fit is often described as roughly $n / k$, which makes the role of $k$ as a complexity control explicit.
+
+::: {.callout-note title="Effective degrees of freedom, made precise"}
+The estimate at the training points is linear in the responses, $\hat{\mathbf{f}} = \mathbf{S}\mathbf{y}$, where the smoother matrix $\mathbf{S}$ has entry $S_{ij} = 1/k$ if $j \in N_k(x_i)$ and $0$ otherwise. The standard definition of effective degrees of freedom for a linear smoother is $\operatorname{df} = \operatorname{tr}(\mathbf{S})$. Each diagonal entry $S_{ii}$ equals $1/k$ because a point is always its own nearest neighbor, so
+
+$$
+\operatorname{df} = \operatorname{tr}(\mathbf{S}) = \sum_{i=1}^n \frac{1}{k} = \frac{n}{k}.
+$$
+
+This makes the "$n/k$ effective parameters" statement exact under the usual smoother-trace definition, and it is the same notion of degrees of freedom used for splines and other linear smoothers elsewhere in the book.
+:::
+
+### How fast does the bias grow, and the optimal $k$
+
+The bias depends on how far the neighbors reach and how curved $f$ is. We can make the rate explicit. Suppose the $n$ training inputs are spread with roughly uniform density in $\mathbb{R}^p$, and $f$ is smooth with bounded second derivatives near $x$. The $k$ nearest neighbors fill a ball whose radius $r_k$ must enclose a fraction $k/n$ of the data, so its volume scales like $k/n$ and, since volume in $p$ dimensions grows like $r^p$,
+
+$$
+r_k \asymp \left( \frac{k}{n} \right)^{1/p}.
+$$
+
+A second-order Taylor expansion of $f$ around $x$ gives $f(x_i) - f(x) \approx \nabla f(x)^\top (x_i - x) + \tfrac{1}{2}(x_i - x)^\top H (x_i - x)$. Averaged over a roughly symmetric neighborhood the linear term largely cancels, leaving a bias of order $r_k^2$. Therefore
+
+$$
+\operatorname{bias}^2 \asymp r_k^4 \asymp \left( \frac{k}{n} \right)^{4/p},
+\qquad
+\operatorname{Var} = \frac{\sigma^2}{k}.
+$$
+
+The mean squared error is the sum, $\text{MSE}(k) \asymp (k/n)^{4/p} + \sigma^2/k$. Minimizing over $k$ by differentiating and setting the derivative to zero,
+
+$$
+\frac{4}{p}\,\frac{k^{4/p - 1}}{n^{4/p}} - \frac{\sigma^2}{k^2} = 0
+\quad\Longrightarrow\quad
+k^{\,4/p + 1} \asymp n^{4/p},
+$$
+
+so the optimal neighborhood size and the resulting error rate are
+
+$$
+k^* \asymp n^{\frac{4}{p+4}},
+\qquad
+\text{MSE}(k^*) \asymp n^{-\frac{4}{p+4}}.
+$$ {#eq-knn-optimal-k}
+
+Two lessons follow from @eq-knn-optimal-k. First, the optimal $k$ grows with $n$ (slowly), so cross-validation should be allowed to pick larger $k$ as the sample grows. Second, the convergence rate $n^{-4/(p+4)}$ is the nonparametric rate for twice-differentiable functions, and it slows dramatically as $p$ increases: this is the curse of dimensionality stated as a rate, and it is the same rate achieved by kernel and local-linear smoothers, confirming that kNN is a member of that family rather than something faster.
 
 
 ::: {.callout-tip}
@@ -167,7 +268,29 @@ $$
 \frac{\text{sd of distance}}{\text{mean of distance}} \to 0 \quad \text{as } p \to \infty.
 $$
 
-When the nearest and farthest neighbors of a query are almost the same distance away, the ranking that kNN depends on carries little information. This is why kNN often performs poorly in high dimensions unless the data lie on a low-dimensional structure or the features are reduced first.
+More precisely, let $X$ and $Z$ have independent coordinates with finite variance and let $D_p^2 = \sum_{j=1}^p (X_j - Z_j)^2$. The summands are independent with common mean $\mu = \mathbb{E}[(X_j - Z_j)^2]$ and common variance $\tau^2 = \operatorname{Var}((X_j - Z_j)^2)$, so $\mathbb{E}[D_p^2] = p\mu$ and $\operatorname{Var}(D_p^2) = p\tau^2$. The coefficient of variation of the squared distance is then
+
+$$
+\frac{\operatorname{sd}(D_p^2)}{\mathbb{E}[D_p^2]} = \frac{\sqrt{p}\,\tau}{p\,\mu} = \frac{\tau}{\mu}\,\frac{1}{\sqrt{p}} \;\to\; 0,
+$$ {#eq-knn-concentration}
+
+which is the formal version of the concentration claim and shows the $1/\sqrt{p}$ rate. A consequence (Beyer et al., 1999) is that the ratio of the farthest to the nearest point distance from a query tends to $1$ in probability: $\operatorname{dist}_{\max} / \operatorname{dist}_{\min} \to 1$. When the nearest and farthest neighbors of a query are almost the same distance away, the ranking that kNN depends on carries little information. This is why kNN often performs poorly in high dimensions unless the data lie on a low-dimensional structure or the features are reduced first.
+
+```{r knn-concentration, fig.width=6, fig.height=4, fig.cap="Distance concentration: as the dimension p grows, the coefficient of variation of the pairwise Euclidean distance between independent uniform points shrinks like one over sqrt(p), confirming the concentration result. Nearest and farthest neighbors become indistinguishable."}
+set.seed(11)
+cv_distance <- function(p, n = 2000) {
+  A <- matrix(runif(n * p), ncol = p)
+  B <- matrix(runif(n * p), ncol = p)
+  d <- sqrt(rowSums((A - B)^2))   # Euclidean distance per pair
+  sd(d) / mean(d)
+}
+ps <- c(1, 2, 5, 10, 25, 50, 100, 200, 400)
+cv <- sapply(ps, cv_distance)
+plot(ps, cv, type = "b", log = "x",
+     xlab = "dimension p (log scale)",
+     ylab = "sd(distance) / mean(distance)",
+     main = "Distances concentrate as p grows")
+```
 
 
 ::: {.callout-important title="Key idea"}
@@ -344,6 +467,7 @@ The chapter's advice condenses into a short checklist. Keep these in mind whenev
 ## Further Reading
 
 - Cover, T. and Hart, P. (1967). Nearest neighbor pattern classification. Foundational analysis of the $1$-NN rule and its asymptotic error bound.
+- Beyer, K., Goldstein, J., Ramakrishnan, R., and Shaft, U. (1999). When is "nearest neighbor" meaningful? Formalizes distance concentration and the collapse of the nearest-to-farthest ratio in high dimensions.
 - Fix, E. and Hodges, J. L. (1951). Discriminatory analysis, nonparametric discrimination. The original technical report introducing nonparametric nearest-neighbor classification.
 - Hastie, T., Tibshirani, R., and Friedman, J. (2009). The Elements of Statistical Learning, 2nd edition. See the treatment of kNN, the bias-variance decomposition, and the curse of dimensionality.
 - James, G., Witten, D., Hastie, T., and Tibshirani, R. (2013). An Introduction to Statistical Learning. Accessible introduction to kNN classification and the choice of $k$.

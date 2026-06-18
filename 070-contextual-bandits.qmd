@@ -113,6 +113,207 @@ Regret is "what we missed." We cannot compute it while the game is running, beca
 :::
 
 
+## The statistical model behind the rewards
+
+To do anything rigorous we must say how rewards are generated. The standard contextual bandit model fixes a context distribution and a conditional reward distribution and assumes the two are stationary across rounds.
+
+Let contexts arrive i.i.d. from a fixed distribution $\mathcal{D}_X$ on $X$, and let the reward for taking action $a$ in context $x$ be drawn from a fixed conditional distribution with mean
+
+$$
+\mu(x,a) \;=\; \mathbb{E}\!\left[\, r_t(a) \mid x_t = x \,\right],
+$$ {#eq-contextual-bandits-meanreward}
+
+independently across rounds given $(x_t, a_t)$. The function $\mu$ is the unknown object we want to learn. The optimal policy is the one that, in each context, plays the arm with the largest mean reward,
+
+$$
+\pi^\star(x) \;=\; \operatorname*{arg\,max}_{a \in \{1,\dots,K\}} \, \mu(x,a),
+$$ {#eq-contextual-bandits-optpolicy}
+
+and the per-round gap of an arm is $\Delta(x,a) = \mu(x,\pi^\star(x)) - \mu(x,a) \ge 0$. With this notation the expected regret against the optimal policy is $\mathbb{E}[\mathrm{Regret}] = \sum_{t=1}^T \mathbb{E}[\Delta(x_t, a_t)]$, the cumulative mean gap of the arms we actually pulled. The regret in the formal setting above compares to the best policy in a class $\Pi$; when $\pi^\star \in \Pi$ the two notions coincide, and otherwise they differ by the approximation error $\inf_{\pi \in \Pi} \sum_t \Delta(x_t, \pi(x_t))$, the usual bias of a restricted hypothesis class.
+
+::: {.callout-note}
+Two modeling regimes are studied. In the stochastic regime, rewards follow the fixed law @eq-contextual-bandits-meanreward, and one aims for instance-dependent guarantees that exploit the gaps $\Delta(x,a)$. In the adversarial regime, contexts and reward vectors are chosen by an arbitrary (possibly malicious) opponent, no distribution exists, and one settles for worst-case guarantees against the best policy in $\Pi$. EXP4, discussed below, is the canonical adversarial algorithm; LinUCB and Thompson sampling are stochastic.
+:::
+
+### A linear realizability assumption
+
+Most practical algorithms assume the mean reward is a parametric function of features. The linear (disjoint) model attaches to each context-action pair a feature vector $\phi(x,a) \in \mathbb{R}^d$ and posits an unknown coefficient vector $\theta^\star$ with
+
+$$
+\mu(x,a) \;=\; \phi(x,a)^\top \theta^\star ,
+\qquad
+r_t(a_t) \;=\; \phi(x_t,a_t)^\top \theta^\star + \eta_t ,
+$$ {#eq-contextual-bandits-linmodel}
+
+where $\eta_t$ is conditionally zero-mean, $\sigma$-sub-Gaussian noise. A common special case gives every arm its own parameter $\theta_a^\star$ and sets $\phi(x,a)$ to the raw context $x$ for arm $a$ and zero elsewhere, so $\mu(x,a) = x^\top \theta_a^\star$. Realizability (the truth lies in the assumed class) is what lets the confidence-bound and posterior machinery below produce honest uncertainty estimates; when it fails the algorithms remain runnable but their regret guarantees no longer hold.
+
+
+## Off-policy reward estimation: making bandit feedback usable
+
+The central obstacle, bandit feedback, is also where the key estimator lives. Suppose actions were taken by a known logging policy that selected $a_t$ with probability $p_t = \pi_0(a_t \mid x_t) > 0$. We want to estimate the value $V(\pi) = \mathbb{E}_{x \sim \mathcal{D}_X}[\, \mu(x, \pi(x)) \,]$ of some other target policy $\pi$ from logged tuples $(x_t, a_t, r_t, p_t)$. The trick is importance weighting.
+
+### The inverse propensity score (IPS) estimator
+
+Define the per-round IPS reward
+$$
+\hat r_t(a) \;=\; \frac{r_t \,\mathbf{1}\{a_t = a\}}{p_t}.
+$$ {#eq-contextual-bandits-ips}
+Conditioning on $x_t$ and taking expectation over the logged action $a_t \sim \pi_0(\cdot \mid x_t)$,
+$$
+\mathbb{E}_{a_t \sim \pi_0}\!\left[\hat r_t(a) \mid x_t\right]
+= \sum_{a'} \pi_0(a' \mid x_t)\, \frac{\mathbb{E}[r_t \mid x_t, a']\,\mathbf{1}\{a' = a\}}{\pi_0(a' \mid x_t)}
+= \mu(x_t, a),
+$$
+because every factor of $\pi_0(a \mid x_t)$ cancels and only the $a'=a$ term survives. So $\hat r_t(a)$ is an unbiased estimate of the full-feedback reward vector entry, recovered from a single observed action. The IPS estimate of a target policy's value is then
+$$
+\hat V_{\mathrm{IPS}}(\pi) \;=\; \frac{1}{T}\sum_{t=1}^{T} \frac{r_t \,\mathbf{1}\{\pi(x_t) = a_t\}}{p_t},
+\qquad
+\mathbb{E}\big[\hat V_{\mathrm{IPS}}(\pi)\big] = V(\pi).
+$$ {#eq-contextual-bandits-ipsvalue}
+This is exactly the reweighting the earlier warning callout referred to: it removes the bias that comes from a logging policy that explored some arms more than others.
+
+The price of unbiasedness is variance. Since $r_t \in [0,1]$, the second moment of a single term is
+$$
+\mathbb{E}\!\left[\Big(\tfrac{r_t \mathbf{1}\{\pi(x_t)=a_t\}}{p_t}\Big)^{2}\right]
+\le \mathbb{E}\!\left[\frac{\mathbf{1}\{\pi(x_t)=a_t\}}{p_t^{2}}\right]
+= \mathbb{E}\!\left[\frac{1}{p_t}\,\Big|\,\pi(x_t)=a_t\right]\Pr(\pi(x_t)=a_t),
+$$
+which blows up whenever the target policy puts mass on actions the logger rarely took ($p_t$ small). This is the variance-vs-bias tension of importance sampling: small logging probabilities give large weights and unstable estimates. Two standard fixes are weight clipping (cap $1/p_t$ at a threshold $M$, trading a controlled bias for bounded variance) and self-normalized IPS (divide by $\sum_t \mathbf{1}\{\pi(x_t)=a_t\}/p_t$ instead of $T$, which is consistent and far more stable).
+
+### Doubly robust estimation
+
+We can cut variance further without sacrificing unbiasedness by combining IPS with a regression model $\hat\mu(x,a)$ of the reward. The doubly robust (DR) estimator is
+$$
+\hat V_{\mathrm{DR}}(\pi)
+= \frac{1}{T}\sum_{t=1}^{T}\left[\,\hat\mu(x_t, \pi(x_t)) + \frac{\big(r_t - \hat\mu(x_t, a_t)\big)\,\mathbf{1}\{\pi(x_t)=a_t\}}{p_t}\,\right].
+$$ {#eq-contextual-bandits-dr}
+The first term is the model's plug-in guess; the second is an IPS correction applied to the residual rather than the raw reward. The name "doubly robust" comes from the following fact: the estimator is unbiased if *either* the propensities $p_t$ are correct *or* the reward model $\hat\mu$ is correct. To see the correction's role, take the expectation of the correction term over $a_t \sim \pi_0$, as in the IPS derivation,
+$$
+\mathbb{E}_{a_t \sim \pi_0}\!\left[\frac{(r_t - \hat\mu(x_t,a_t))\mathbf{1}\{\pi(x_t)=a_t\}}{p_t}\,\Big|\,x_t\right]
+= \mu(x_t, \pi(x_t)) - \hat\mu(x_t, \pi(x_t)),
+$$
+which exactly cancels the bias $\hat\mu(x_t,\pi(x_t)) - \mu(x_t,\pi(x_t))$ left by the first term. When $\hat\mu$ is accurate the residual $r_t - \hat\mu$ is small, so the high-variance importance weight multiplies a small number and the estimator's variance shrinks toward that of the plug-in model. DR is the workhorse for offline policy evaluation and for the cost-sensitive reductions used in offline policy learning (see @sec-offline-rl).
+
+
+## Algorithms I: $\varepsilon$-greedy and the explore-then-commit baseline
+
+The simplest contextual strategy fits a reward model $\hat\mu(x,a)$ (any regressor) to the IPS-corrected or directly observed data, then acts greedily with a probability of random exploration:
+$$
+a_t = \begin{cases}
+\text{uniform over } \{1,\dots,K\} & \text{with probability } \varepsilon_t,\\[2pt]
+\operatorname*{arg\,max}_a \hat\mu(x_t,a) & \text{with probability } 1-\varepsilon_t.
+\end{cases}
+$$
+With a constant $\varepsilon$ the policy keeps paying an exploration tax of order $\varepsilon$ per round, giving linear regret $\Theta(\varepsilon T)$ from exploration plus a term that shrinks as the model improves. The standard remedy is a decaying schedule $\varepsilon_t \propto t^{-1/3}$, which balances the two sources of error and yields regret of order $T^{2/3}$ (worse than the $\sqrt{T}$ of the optimism and posterior methods below, but the scheme is trivial to implement and pairs with any supervised learner). The crucial detail is that the uniform exploration guarantees a known, bounded-away-from-zero propensity $p_t \ge \varepsilon_t / K$ on every arm, which is precisely what keeps the IPS weights in @eq-contextual-bandits-ips finite and the off-policy estimates valid.
+
+::: {.callout-warning}
+$\varepsilon$-greedy explores uniformly regardless of context, so it wastes pulls re-confirming arms it is already sure are bad. The optimism and posterior-sampling methods below explore in a targeted way (only where uncertainty is high), which is why they achieve the better $\sqrt{T}$ rate.
+:::
+
+
+## Algorithms II: LinUCB and optimism in the face of uncertainty
+
+LinUCB instantiates the linear model @eq-contextual-bandits-linmodel and the principle "act as if the world were as good as plausibly possible." At round $t$ it maintains a ridge-regression estimate of $\theta^\star$ and an upper confidence bound on each arm's mean reward.
+
+### Derivation of the estimator and the confidence width
+
+Collect the chosen features and rewards through round $t-1$ and form the regularized least-squares (ridge) objective
+$$
+\hat\theta_t = \operatorname*{arg\,min}_{\theta}\ \sum_{s=1}^{t-1}\big(\phi_s^\top\theta - r_s\big)^2 + \lambda \|\theta\|_2^2 ,
+\qquad \phi_s := \phi(x_s, a_s).
+$$
+Setting the gradient $2\sum_s \phi_s(\phi_s^\top\theta - r_s) + 2\lambda\theta$ to zero gives the normal equations and the closed form
+$$
+A_t = \lambda I + \sum_{s=1}^{t-1}\phi_s \phi_s^\top,
+\qquad
+b_t = \sum_{s=1}^{t-1}\phi_s r_s,
+\qquad
+\hat\theta_t = A_t^{-1} b_t .
+$$ {#eq-contextual-bandits-ridge}
+The matrix $A_t$ is the regularized Gram matrix; its inverse is the (scaled) covariance of the estimate. The predicted mean for a candidate arm with features $\phi(x_t,a)$ is $\phi(x_t,a)^\top \hat\theta_t$, and the key quantity is the predictive standard deviation. Under the sub-Gaussian noise model, self-normalized martingale concentration (the Abbasi-Yadkori, Pál and Szepesvári bound) shows that with probability at least $1-\delta$, simultaneously for all $t$,
+$$
+\big|\phi^\top(\hat\theta_t - \theta^\star)\big| \;\le\; \alpha_t \,\sqrt{\phi^\top A_t^{-1}\phi},
+\qquad
+\alpha_t = \sigma\sqrt{d\log\!\frac{1+tL^2/\lambda}{\delta}} + \sqrt{\lambda}\,\|\theta^\star\|_2 ,
+$$ {#eq-contextual-bandits-ucbwidth}
+where $L$ bounds $\|\phi\|_2$. The term $\sqrt{\phi^\top A_t^{-1}\phi}$ is the elliptical width: it is large in feature directions that have been explored little (small eigenvalues of $A_t$) and shrinks as those directions accumulate data. LinUCB then plays the optimistic arm
+$$
+a_t = \operatorname*{arg\,max}_{a}\ \underbrace{\phi(x_t,a)^\top\hat\theta_t}_{\text{exploit}} \;+\; \underbrace{\alpha_t\sqrt{\phi(x_t,a)^\top A_t^{-1}\phi(x_t,a)}}_{\text{explore}} .
+$$ {#eq-contextual-bandits-linucb}
+The two terms make the exploration-exploitation trade-off explicit and automatic: an arm is chosen either because its estimated reward is high or because we are uncertain about it. Each update is a rank-one modification of $A_t$, so $A_{t}^{-1}$ can be maintained incrementally with the Sherman-Morrison formula at cost $O(d^2)$ per round rather than $O(d^3)$ for a fresh inverse.
+
+LinUCB enjoys a regret bound of order $\tilde O(d\sqrt{T})$, where $d$ is the feature dimension. The $\sqrt{T}$ dependence is the hallmark of efficient exploration (per-round regret vanishes as $1/\sqrt{t}$), and the linear-in-$d$ factor is the cost of learning a $d$-dimensional parameter. The proof bounds the sum of squared elliptical widths $\sum_t \phi_t^\top A_t^{-1}\phi_t$ by $O(d\log T)$ via the elliptical potential (matrix determinant) lemma, then converts width into regret through @eq-contextual-bandits-ucbwidth.
+
+::: {.callout-warning title="Failure modes of LinUCB"}
+The guarantee rests on the linear realizability of @eq-contextual-bandits-linmodel. If the true $\mu$ is nonlinear in $\phi$, the confidence sets in @eq-contextual-bandits-ucbwidth no longer cover $\theta^\star$, optimism can systematically under-explore the truly best arm, and regret can become linear. Practical safeguards are richer features (kernels, neural embeddings, as in NeuralUCB), periodic model checking, and a small floor of uniform exploration. The confidence multiplier $\alpha_t$ from theory is usually conservative; it is standard to treat $\alpha$ as a tunable knob.
+:::
+
+
+## Algorithms III: Thompson sampling (posterior sampling)
+
+Thompson sampling explores by randomizing over its own uncertainty: it samples a plausible world from the posterior and acts optimally in that world. With the linear model and a Gaussian prior, the posterior is conjugate and the updates reuse the ridge quantities.
+
+### Derivation of the posterior update
+
+Place a prior $\theta \sim \mathcal{N}(0, \lambda^{-1} I)$ and assume Gaussian noise $\eta_t \sim \mathcal{N}(0, \sigma^2)$. The log posterior after $t-1$ rounds is, up to a constant,
+$$
+\log p(\theta \mid \mathcal{H}_{t-1}) = -\frac{1}{2\sigma^2}\sum_{s=1}^{t-1}\big(r_s - \phi_s^\top\theta\big)^2 - \frac{\lambda}{2}\|\theta\|_2^2 + \text{const},
+$$
+a quadratic in $\theta$, so the posterior is Gaussian $\mathcal{N}(\hat\theta_t,\, \sigma^2 A_t^{-1})$ with the *same* $A_t$ and $\hat\theta_t = A_t^{-1}b_t$ as in @eq-contextual-bandits-ridge (completing the square in the exponent recovers exactly the ridge mean and the Gram-matrix covariance). Each round LinTS draws $\tilde\theta_t \sim \mathcal{N}(\hat\theta_t, v^2 A_t^{-1})$ and plays
+$$
+a_t = \operatorname*{arg\,max}_a\ \phi(x_t,a)^\top \tilde\theta_t ,
+$$ {#eq-contextual-bandits-lints}
+where $v$ is a posterior-inflation factor (the analogue of $\alpha_t$) controlling exploration. The marginal of $\phi^\top\tilde\theta_t$ is $\mathcal{N}\!\big(\phi^\top\hat\theta_t,\ v^2\,\phi^\top A_t^{-1}\phi\big)$, so the random bonus has standard deviation $v\sqrt{\phi^\top A_t^{-1}\phi}$, the same elliptical width that drives LinUCB. The two algorithms thus explore along identical geometry; LinUCB uses a fixed optimistic offset while LinTS uses a random one, and LinTS achieves the same $\tilde O(d\sqrt{T})$ regret order. For Bernoulli rewards with no context the conjugate analogue is a Beta-Bernoulli posterior per arm, the form most often seen in introductions.
+
+::: {.callout-tip}
+Thompson sampling is often preferred in practice. It needs no explicit confidence-width formula, it handles delayed and batched feedback gracefully (sampling from a slightly stale posterior is still valid exploration), and its randomization naturally produces the stochastic propensities $p_t = \Pr(a_t = a \mid x_t)$ that off-policy estimation and logging require. Those propensities can be computed in closed form for two arms and by Monte Carlo otherwise.
+:::
+
+
+## Algorithms IV: policy-class methods and EXP4
+
+The methods above model rewards. An alternative is to compete directly with a fixed policy class $\Pi$, exactly the object in the regret definition @eq-contextual-bandits-meanreward's surrounding text. EXP4 (Exponential weights for Exploration and Exploitation with Experts) treats each policy $\pi \in \Pi$ as an expert giving an action recommendation, maintains weights $w_t(\pi)$, and forms an action distribution by mixing the experts' advice. After observing $r_t$ it builds the IPS reward estimate @eq-contextual-bandits-ips for every action and updates weights multiplicatively,
+$$
+w_{t+1}(\pi) \;\propto\; w_t(\pi)\,\exp\!\big(\gamma\,\hat r_t(\pi(x_t))\big),
+$$ {#eq-contextual-bandits-exp4}
+the same exponential-weights rule used in online learning, now fed importance-weighted rewards because of bandit feedback. EXP4 attains regret $O(\sqrt{TK\log|\Pi|})$ against the best policy in $\Pi$ and, crucially, makes no stochastic assumption: it holds even against adversarial contexts and rewards. The $\log|\Pi|$ dependence means it competes with exponentially large policy classes at only logarithmic cost, but maintaining a weight per policy is intractable for rich $\Pi$. This motivates oracle-based reductions (for example the "Policy Elimination" and ILOVETOCONBANDITS algorithms) that replace explicit enumeration with calls to a cost-sensitive classification solver, achieving the optimal $\tilde O(\sqrt{TK\log|\Pi|})$ regret while only ever solving supervised learning subproblems. This reduction is the theoretical backbone of systems like Vowpal Wabbit.
+
+
+## A numerical check: IPS is unbiased and DR has lower variance
+
+The following self-contained simulation confirms the two central claims of the off-policy section: the IPS estimator @eq-contextual-bandits-ipsvalue is unbiased for a target policy's value, and the doubly robust estimator @eq-contextual-bandits-dr reduces variance when a reasonable reward model is supplied. It uses only base R.
+
+```{r}
+#| label: cb-ips-dr-check
+set.seed(1)
+K <- 3                                   # arms
+n <- 4000                                # logged rounds
+reps <- 400                              # Monte Carlo repetitions
+true_mu <- c(0.2, 0.5, 0.8)             # context-free mean rewards (truth)
+logging <- c(0.6, 0.3, 0.1)            # logging policy (over-samples arm 1)
+target <- 3                             # deterministic target policy: always arm 3
+V_true <- true_mu[target]               # true value of the target policy
+
+mu_hat <- c(0.25, 0.45, 0.85)          # an imperfect but decent reward model
+
+est <- replicate(reps, {
+  a <- sample.int(K, n, replace = TRUE, prob = logging)   # logged actions
+  r <- rbinom(n, 1, true_mu[a])                            # observed rewards
+  p <- logging[a]                                          # propensities
+  match <- as.numeric(a == target)
+  ips <- mean(r * match / p)
+  dr  <- mean(mu_hat[target] + (r - mu_hat[a]) * match / p)
+  c(ips = ips, dr = dr)
+})
+
+c(true_value = V_true,
+  ips_mean = mean(est["ips", ]), dr_mean = mean(est["dr", ]),
+  ips_sd = sd(est["ips", ]),    dr_sd = sd(est["dr", ]))
+```
+
+Both estimators center on the true value $V(\pi) = 0.8$ (unbiasedness), while the doubly robust estimate has the smaller standard deviation, illustrating the variance reduction derived above.
+
+
 ## How this differs from ordinary supervised learning
 
 Contextual bandits resemble supervised learning, but with one decisive twist that shapes everything. In standard supervised learning, each training example comes with the correct label, so you can compute the loss for any prediction. Here you face the same kind of input-to-output mapping, yet two features set the problem apart:

@@ -39,6 +39,16 @@ Q_{n+1} = Q_n + \frac{1}{n+1}\bigl(R_{n+1} - Q_n\bigr).
 $$
 This "old estimate plus a step toward the new observation" form is the same shape as the update rules used throughout reinforcement learning.
 
+To see that this is exact and not an approximation, start from the definition $Q_{n+1} = \frac{1}{n+1}\sum_{i=1}^{n+1} R_i$ and peel off the last term:
+$$
+Q_{n+1} = \frac{1}{n+1}\left( R_{n+1} + \sum_{i=1}^{n} R_i \right) = \frac{1}{n+1}\bigl( R_{n+1} + n Q_n \bigr) = Q_n + \frac{1}{n+1}\bigl( R_{n+1} - Q_n \bigr).
+$$ {#eq-multi-armed-bandits-incremental}
+The general template $Q \leftarrow Q + \alpha_n (R - Q)$ with step size $\alpha_n = 1/(n+1)$ recovers the sample mean. Two facts about the step-size schedule are worth stating, because they govern whether the estimate converges. The Robbins-Monro conditions $\sum_n \alpha_n = \infty$ and $\sum_n \alpha_n^2 < \infty$ guarantee almost-sure convergence of the stochastic average to $q_*(a)$; the harmonic schedule $\alpha_n = 1/n$ satisfies both ($\sum 1/n = \infty$, $\sum 1/n^2 < \infty$). A constant step size $\alpha_n = \beta$ violates the second condition, so it does not converge to a point; instead it produces an exponentially weighted moving average that keeps tracking a changing target, which is exactly why it is preferred in the nonstationary case discussed later. Unrolling the constant-$\beta$ recursion makes the weighting explicit:
+$$
+Q_{n} = (1-\beta)^{n} Q_0 + \sum_{i=1}^{n} \beta (1-\beta)^{\,n-i} R_i,
+$$ {#eq-multi-armed-bandits-ewma}
+so the weight on a reward decays geometrically with its age and the influence of the initial guess $Q_0$ vanishes geometrically.
+
 
 ::: {.callout-note}
 We will run our demos with **Bernoulli arms**, where each reward is $0$ or $1$ and $q_*(a)$ is simply the probability that arm $a$ returns a $1$. This is the model for click-through rates, conversion rates, and any success/failure outcome. The estimate $Q_t(a)$ is then just the observed success rate of arm $a$.
@@ -71,6 +81,23 @@ A good algorithm has regret that grows **sublinearly** in $T$, meaning $\mathcal
 
 Lai and Robbins (1985) proved that no algorithm can beat regret of order $\log T$ for this problem: any reasonable strategy must pull each suboptimal arm at least about $\log T$ times to be statistically sure it is suboptimal. The good algorithms below achieve this logarithmic rate; the naive one does not.
 
+### The Lai-Robbins lower bound, precisely
+
+The informal statement above can be made exact, and the exact form tells you what quantity actually controls the difficulty of the problem. Restrict attention to policies that are *consistent*, meaning the regret is sub-polynomial, $\mathcal{R}(T) = o(T^{\gamma})$ for every $\gamma > 0$, on every problem instance in a given parametric family. (Consistency rules out cheating policies that hard-code one arm and do brilliantly on instances where that arm happens to be best while doing terribly elsewhere.) For any such policy, Lai and Robbins showed that for each suboptimal arm $a$,
+$$
+\liminf_{T \to \infty} \frac{\mathbb{E}[N_T(a)]}{\log T} \ge \frac{1}{D_{\mathrm{KL}}\!\bigl(P_a \,\|\, P_{a^*}\bigr)},
+$$ {#eq-multi-armed-bandits-lai-robbins-counts}
+where $P_a$ is the reward distribution of arm $a$, $P_{a^*}$ is that of the optimal arm, and $D_{\mathrm{KL}}(P\|Q) = \int \log \tfrac{dP}{dQ}\, dP$ is the Kullback-Leibler divergence. Substituting into the gap decomposition $\mathcal{R}(T) = \sum_a \Delta_a\, \mathbb{E}[N_T(a)]$ gives the regret lower bound
+$$
+\liminf_{T\to\infty} \frac{\mathcal{R}(T)}{\log T} \ge \sum_{a : \Delta_a > 0} \frac{\Delta_a}{D_{\mathrm{KL}}\!\bigl(P_a \,\|\, P_{a^*}\bigr)}.
+$$ {#eq-multi-armed-bandits-lai-robbins-regret}
+
+The intuition behind the proof is a change-of-measure (or hypothesis-testing) argument. To be consistent the policy must, on the true instance, almost never pull arm $a$. But consider an alternative instance, identical except that arm $a$'s mean is nudged just above $q_*$ so that $a$ becomes optimal. A consistent policy must pull $a$ often on that alternative. The only way to behave so differently on two instances that differ only in arm $a$'s reward distribution is to have collected enough samples from $a$ to statistically distinguish $P_a$ from the nudged distribution. The number of samples needed to tell two distributions apart with high confidence scales like $\log T$ divided by their KL divergence, by the same information-theoretic accounting that underlies the Neyman-Pearson lemma and Stein's lemma. That is the source of both the $\log T$ and the $1/D_{\mathrm{KL}}$.
+
+::: {.callout-note}
+For Bernoulli arms with means $p$ and $q$ the relevant divergence is $D_{\mathrm{KL}}(p\|q) = p\log\frac{p}{q} + (1-p)\log\frac{1-p}{q}$, and Pinsker's inequality gives $D_{\mathrm{KL}}(p\|q) \ge 2(p-q)^2 = 2\Delta_a^2$. Plugging this into @eq-multi-armed-bandits-lai-robbins-regret turns the sharp KL bound into the looser but more readable gap-based form $\mathcal{R}(T) \gtrsim \sum_a \frac{1}{2\Delta_a}\log T$. The KL form is tight; the gap form is what most upper bounds are stated against, which is why UCB and Thompson sampling match the lower bound up to constants rather than exactly.
+:::
+
 ## Epsilon-greedy
 
 The simplest workable strategy is epsilon-greedy. Fix a small probability $\varepsilon \in (0, 1)$. At each step, with probability $1 - \varepsilon$ pull the arm with the highest current estimate (exploit), and with probability $\varepsilon$ pull an arm chosen uniformly at random (explore):
@@ -82,6 +109,24 @@ A_t = \begin{cases}
 $$
 
 The appeal is that it is trivial to implement and it never stops exploring, so it cannot get permanently stuck on a wrong arm. The drawback follows from the same fact: with a fixed $\varepsilon$, the algorithm wastes a fraction $\varepsilon$ of its pulls on random arms forever, even long after it has identified the best one. That gives regret of order $\varepsilon T$, which is linear. You pay a constant tax per round.
+
+The linear rate is not just a hand-wave; it follows from the per-round regret. On any round, with probability $\varepsilon$ the algorithm explores uniformly, so even granting that it always exploits the truly best arm (the most favorable possible assumption once estimates have converged), its expected instantaneous regret is at least the regret of a uniform random pull scaled by $\varepsilon$:
+$$
+q_* - \mathbb{E}[q_*(A_t)] \;\ge\; \varepsilon \cdot \frac{1}{k}\sum_{a} \Delta_a \;=\; \varepsilon\, \bar\Delta, \qquad \bar\Delta = \frac{1}{k}\sum_a \Delta_a .
+$$
+Summing over $t = 1, \dots, T$ gives $\mathcal{R}(T) \ge \varepsilon\, \bar\Delta\, T$, a regret that grows linearly with the horizon no matter how good the exploitation becomes. The constant tax is exactly $\varepsilon \bar\Delta$ per round.
+
+### Recovering the logarithmic rate with a decaying schedule
+
+The cure is to let $\varepsilon$ shrink at the right speed. The schedule must explore each suboptimal arm enough to identify it (which needs order $\log t$ exploratory pulls per arm) while spending an ever-smaller share of rounds doing so. Auer, Cesa-Bianchi, and Fischer (2002) showed that the schedule
+$$
+\varepsilon_t = \min\!\left\{ 1, \; \frac{c\,k}{d^2\, t} \right\}, \qquad 0 < d \le \min_{a:\Delta_a>0}\Delta_a,
+$$ {#eq-multi-armed-bandits-eps-decay}
+with a suitable constant $c > 0$, achieves instantaneous regret of order $1/t$ and therefore cumulative regret of order $\sum_{t} 1/t = O(\log T)$, matching the Lai-Robbins rate up to constants. The mechanism is a balance of two competing error sources. The expected number of exploratory pulls of any arm up to time $T$ is $\sum_{t \le T} \varepsilon_t / k \approx (c/d^2)\log T$, which contributes $O(\log T)$ regret directly. Against this, the probability that the greedy step picks a wrong arm because its sample mean is inflated decays fast enough (by a Hoeffding bound, since after $\Theta(\log t)$ pulls the estimate concentrates within $d/2$ of the truth with probability $1 - O(1/t)$) that the exploitation error also sums to $O(\log T)$. The two pieces are balanced precisely when $\varepsilon_t \propto 1/t$, which is the schedule above.
+
+::: {.callout-warning}
+The decaying schedule in @eq-multi-armed-bandits-eps-decay needs a lower bound $d$ on the smallest gap to set its constant. Choosing $d$ too large under-explores and risks locking onto a wrong arm; too small over-explores and inflates the constant. This gap-dependence is the price epsilon-greedy pays for its simplicity, and it is exactly the kind of problem-specific tuning that UCB and Thompson sampling avoid by adapting their exploration to the observed data.
+:::
 
 
 ::: {.callout-warning}
@@ -131,6 +176,34 @@ UCB needs no random coin flips. Its exploration is **directed**: the bonus chann
 
 A practical detail: the bonus is infinite when $N_t(a) = 0$, so UCB1 begins by pulling each arm once to initialize. After that the formula takes over.
 
+### Why the $t^{-4}$ schedule, and the role of the union bound
+
+The choice to drive the per-arm failure probability to $t^{-4}$ rather than, say, $t^{-2}$ deserves justification, because it is not arbitrary. Two confidence events must hold simultaneously for UCB to make a sound decision on round $t$: the optimal arm's index must not *under*estimate its value (so the optimal arm is not unfairly passed over), and a suboptimal arm's index must not *over*estimate its value by too much. Each is a one-sided Hoeffding event. But $N_t(a)$ is itself random, so to apply the fixed-sample Hoeffding bound we union over all possible values of the count, $N_t(a) \in \{1, \dots, t\}$, and over both arms involved. A bound of $t^{-4}$ on each event, summed over the at most $2t$ relevant (count, arm) pairs, yields a total failure probability of order $2t \cdot t^{-4} = 2 t^{-3}$ on round $t$, and $\sum_t 2 t^{-3} < \infty$. A weaker per-event bound such as $t^{-2}$ would leave $\sum_t 2t \cdot t^{-2} = \sum_t 2/t$, which diverges, and the accumulated failure mass would itself contribute linear regret. The exponent $4$ is the smallest clean integer that makes the doubly-summed bad-event probability finite, which is why it appears in the width derivation above.
+
+### Regret upper bound for UCB1
+
+We can now show that UCB1 attains the logarithmic rate, and the proof reveals exactly how many times each bad arm gets pulled. Fix a suboptimal arm $a$ with gap $\Delta_a > 0$. The claim is that once $a$ has been pulled
+$$
+N_t(a) \ge \ell_a := \left\lceil \frac{8 \log T}{\Delta_a^2} \right\rceil
+$$
+times, its exploration bonus has shrunk enough that, on the high-probability event where all confidence intervals hold, its upper confidence index falls below that of the optimal arm and it is no longer selected. To see this, suppose UCB picks $a$ over the optimal arm $a^*$ at round $t$. By the selection rule its index is the largest, so in particular
+$$
+Q_t(a) + \sqrt{\frac{2\log t}{N_t(a)}} \;\ge\; Q_t(a^*) + \sqrt{\frac{2\log t}{N_t(a^*)}}.
+$$
+On the good event the right side is at least $q_*$ (the optimal index does not underestimate), and the left side is at most $q_*(a) + 2\sqrt{2\log t / N_t(a)}$ (the empirical mean of $a$ does not exceed its true mean by more than one confidence width). Chaining these,
+$$
+q_* \;\le\; q_*(a) + 2\sqrt{\frac{2\log t}{N_t(a)}} \quad\Longrightarrow\quad \Delta_a \le 2\sqrt{\frac{2\log t}{N_t(a)}} \quad\Longrightarrow\quad N_t(a) \le \frac{8\log t}{\Delta_a^2} \le \frac{8\log T}{\Delta_a^2}.
+$$ {#eq-multi-armed-bandits-ucb-counts}
+So on the good event a suboptimal arm cannot be chosen once its count exceeds $8\log T / \Delta_a^2$. Adding the bounded contribution from the rare bad events (the union-bound tail above, which sums to a constant of order $\sum_t t^{-3}$, contributing a $1 + \pi^2/3$ additive term per arm), the expected number of pulls satisfies
+$$
+\mathbb{E}[N_T(a)] \;\le\; \frac{8\log T}{\Delta_a^2} + 1 + \frac{\pi^2}{3}.
+$$ {#eq-multi-armed-bandits-ucb-en}
+Substituting into the gap decomposition $\mathcal{R}(T) = \sum_a \Delta_a \mathbb{E}[N_T(a)]$ gives the instance-dependent bound
+$$
+\mathcal{R}(T) \;\le\; \sum_{a : \Delta_a > 0} \left( \frac{8\log T}{\Delta_a} + \Bigl(1 + \tfrac{\pi^2}{3}\Bigr)\Delta_a \right) \;=\; O\!\left(\sum_{a:\Delta_a>0}\frac{\log T}{\Delta_a}\right).
+$$ {#eq-multi-armed-bandits-ucb-regret}
+This matches the Lai-Robbins lower bound in its dependence on $T$ and on the gaps, up to the constant $8$ (the gap-based lower bound carried $1/2$). Two consequences are worth noting. First, the $1/\Delta_a$ scaling means an arm that is only slightly worse than the best is the most expensive to rule out, because it both is cheap to mistake for the best (small $\Delta_a$ in the per-pull cost) and requires many pulls to distinguish (large $1/\Delta_a^2$ in the count). Second, maximizing $\Delta_a / \Delta_a^2 = 1/\Delta_a$ over the worst-case gap and balancing against the count gives the *gap-free* (minimax) bound $\mathcal{R}(T) = O(\sqrt{kT\log T})$, obtained by splitting arms into those with $\Delta_a$ above and below $\sqrt{k\log T / T}$. The two faces of the same algorithm, $O(\log T)$ when gaps are fixed and $O(\sqrt{kT\log T})$ in the worst case, are reconciled by noting that the hardest instances are precisely those with vanishing gaps.
+
 ## Thompson sampling
 
 A different and older idea, due to Thompson (1933), is fully Bayesian (see also the probabilistic programming chapter, @sec-probabilistic-programming). Instead of a single point estimate per arm, keep a probability distribution over each arm's unknown value, and at each step pick an arm by drawing a sample from each distribution and playing the arm with the highest draw. Arms we are unsure about have wide distributions, so they sometimes draw a high sample and get explored; arms we have pinned down have narrow distributions and get played only when they really are best. Exploration emerges from the randomness of the posterior, scaled automatically by uncertainty.
@@ -150,7 +223,60 @@ Thompson sampling plays each arm in proportion to the posterior probability that
 :::
 
 
-Thompson sampling also achieves logarithmic regret (Agrawal and Goyal 2012), is trivial to implement for Bernoulli arms, and tends to perform very well empirically, often beating UCB in practice. It extends cleanly to other reward models by swapping in the appropriate conjugate pair (for example, Gaussian rewards with a Gaussian prior).
+### Deriving the Beta-Bernoulli posterior
+
+The update rule above is stated as bookkeeping, but it is the exact Bayesian posterior, and deriving it shows why the Beta family is the natural choice. Let arm $a$ have unknown success probability $\theta$, with prior density $p(\theta) = \text{Beta}(\theta; \alpha, \beta) = \frac{\theta^{\alpha-1}(1-\theta)^{\beta-1}}{B(\alpha,\beta)}$ on $[0,1]$, where $B(\alpha,\beta) = \Gamma(\alpha)\Gamma(\beta)/\Gamma(\alpha+\beta)$ is the Beta function. After observing $s$ successes and $f$ failures from this arm, the Bernoulli likelihood is $p(\text{data}\mid\theta) = \theta^{s}(1-\theta)^{f}$. By Bayes' rule the posterior is proportional to prior times likelihood:
+$$
+p(\theta \mid \text{data}) \;\propto\; \theta^{\alpha-1}(1-\theta)^{\beta-1} \cdot \theta^{s}(1-\theta)^{f} \;=\; \theta^{(\alpha+s)-1}(1-\theta)^{(\beta+f)-1}.
+$$ {#eq-multi-armed-bandits-beta-post}
+The right side is the kernel of a $\text{Beta}(\alpha + s, \beta + f)$ density, and since the posterior must integrate to one the normalizing constant is forced to be $1/B(\alpha+s, \beta+f)$. So the posterior is exactly $\text{Beta}(\alpha+s, \beta+f)$: each success increments the first parameter, each failure the second, which is precisely the one-at-a-time update $\alpha_a \leftarrow \alpha_a + R_t$, $\beta_a \leftarrow \beta_a + (1-R_t)$. This self-replication of the functional form is what "conjugate prior" means, and it is what makes the update $O(1)$ in time and memory. The posterior mean $\frac{\alpha+s}{\alpha+\beta+s+f}$ is a shrinkage estimator: it is the empirical success rate $\frac{s}{s+f}$ pulled toward the prior mean $\frac{\alpha}{\alpha+\beta}$, with the prior acting as $\alpha+\beta$ pseudo-observations, and the posterior variance $\frac{(\alpha+s)(\beta+f)}{(\alpha+\beta+s+f)^2(\alpha+\beta+s+f+1)}$ shrinks like $1/N$ as evidence accumulates, which is what tightens the sampling distribution and tapers exploration.
+
+### Probability matching, made precise
+
+The "probability matching" slogan can be written as an identity. Let $\pi_t(a)$ be the probability that Thompson sampling selects arm $a$ on round $t$, given the history $\mathcal{H}_t$ and hence the current posteriors. Because the arm chosen is $\arg\max_a \theta_a$ with each $\theta_a$ drawn independently from its posterior, the selection probability equals the posterior probability that $a$ is the best arm:
+$$
+\pi_t(a) \;=\; \Pr\!\left( \theta_a = \max_{a'} \theta_{a'} \;\Big|\; \mathcal{H}_t \right) \;=\; \Pr\!\left( a = a^* \mid \mathcal{H}_t \right).
+$$ {#eq-multi-armed-bandits-prob-match}
+This is the formal content of "act in proportion to how likely each arm is to be optimal." It also clarifies the connection to the information-theoretic view of exploration: the more uncertain the posterior over which arm is best, the more spread out $\pi_t$ is, and the more the algorithm explores. UCB instead commits deterministically to the arm with the highest optimistic index; both are forms of "optimism," but Thompson sampling's optimism is sampled rather than computed as a fixed quantile, which is why it requires no exploration constant.
+
+We can confirm @eq-multi-armed-bandits-prob-match directly: the empirical frequency with which Thompson sampling's draw-and-argmax rule selects each arm should equal the posterior probability that the arm is best, estimated by an independent Monte Carlo integration.
+
+```{r multi-armed-bandits-prob-match-check}
+set.seed(11)
+# Three arms with arbitrary Beta posteriors.
+alpha <- c(8, 5, 3)
+beta_ <- c(4, 6, 9)
+
+# (1) Selection frequency under the Thompson rule: draw one theta per arm, take argmax.
+M     <- 200000
+draws <- mapply(function(a, b) rbeta(M, a, b), alpha, beta_)   # M x 3
+pi_hat <- tabulate(max.col(draws, ties.method = "first"), nbins = 3) / M
+
+# (2) Posterior P(arm a is best) by deterministic numerical integration of the
+#     closed form  P(a best) = integral f_a(x) * prod_{j != a} F_j(x) dx.
+prob_best <- function(a) {
+  integrand <- function(x) {
+    dens <- dbeta(x, alpha[a], beta_[a])
+    for (j in setdiff(seq_along(alpha), a)) dens <- dens * pbeta(x, alpha[j], beta_[j])
+    dens
+  }
+  integrate(integrand, 0, 1)$value
+}
+post_exact <- vapply(seq_along(alpha), prob_best, numeric(1))
+
+round(rbind(`selection freq pi(a)` = pi_hat,
+            `posterior P(a best)`  = post_exact), 4)
+```
+
+The simulated selection frequencies match the deterministically integrated posterior probabilities of optimality to Monte Carlo error, confirming @eq-multi-armed-bandits-prob-match.
+
+### Other reward models: the Gaussian conjugate case
+
+Thompson sampling also achieves logarithmic regret (Agrawal and Goyal 2012), is trivial to implement for Bernoulli arms, and tends to perform very well empirically, often beating UCB in practice. It extends cleanly to other reward models by swapping in the appropriate conjugate pair. For Gaussian rewards $R \sim \mathcal{N}(\mu, \sigma^2)$ with known variance $\sigma^2$ and a Gaussian prior $\mu \sim \mathcal{N}(\mu_0, \sigma_0^2)$, the same conjugacy calculation gives a Gaussian posterior. With $n$ observations of sample mean $\bar R$, completing the square in the exponent of prior times likelihood yields
+$$
+\mu \mid \text{data} \;\sim\; \mathcal{N}\!\left( \frac{\tfrac{1}{\sigma_0^2}\mu_0 + \tfrac{n}{\sigma^2}\bar R}{\tfrac{1}{\sigma_0^2} + \tfrac{n}{\sigma^2}}, \;\; \frac{1}{\tfrac{1}{\sigma_0^2} + \tfrac{n}{\sigma^2}} \right),
+$$ {#eq-multi-armed-bandits-gauss-post}
+the familiar precision-weighted average of prior mean and data mean, with posterior precision equal to the sum of prior and data precisions. The action rule is unchanged: draw one $\mu_a$ from each arm's posterior and play the largest. With an uninformative prior ($\sigma_0^2 \to \infty$) the posterior mean is the sample mean $\bar R$ and the posterior standard deviation is $\sigma/\sqrt{n}$, so a posterior draw is the sample mean plus a $\mathcal{N}(0, \sigma^2/n)$ perturbation. This makes the kinship with UCB transparent: UCB adds a deterministic bonus of order $\sigma\sqrt{\log t / n}$, while Thompson sampling adds a random one of typical size $\sigma/\sqrt{n}$. Both inflate uncertain arms; one does it by a fixed high quantile, the other by sampling.
 
 ## A runnable comparison in base R
 

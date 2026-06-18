@@ -88,6 +88,48 @@ Permutation importance asks, "if I scramble this column, how much worse does the
 :::
 
 
+#### Formal definitions
+
+Fix a fitted prediction function $\hat f : \mathcal{X} \to \mathbb{R}$ with feature vector $X = (X_1, \dots, X_p)$ and target $Y$, and let $L(y, \hat y)$ be a loss (for regression, squared error). Write $X_{-j}$ for all features except the $j$th. The generalization error is $e = \mathbb{E}\,[L(Y, \hat f(X))]$.
+
+Permutation importance replaces $X_j$ with an independent copy $\tilde X_j$ drawn from its own marginal $P_{X_j}$, independently of $(X_{-j}, Y)$. The permuted error and the importance are
+
+$$
+e_j^{\text{perm}} = \mathbb{E}_{\tilde X_j}\,\mathbb{E}_{X,Y}\big[ L\big(Y, \hat f(\tilde X_j, X_{-j})\big)\big], \qquad
+\mathrm{PI}_j = e_j^{\text{perm}} - e .
+$$ {#eq-interpretable-machine-learning-perm-importance}
+
+The expectation over $\tilde X_j$ marginalizes the $j$th feature out of $\hat f$ while keeping its marginal intact, which is exactly what shuffling a column estimates. With a held-out sample $\{(x^{(i)}, y^{(i)})\}_{i=1}^{n}$ and a permutation $\pi$ of $\{1, \dots, n\}$, the Monte Carlo estimator is
+
+$$
+\widehat{\mathrm{PI}}_j = \frac{1}{n}\sum_{i=1}^{n} L\big(y^{(i)}, \hat f(x^{(i)}_{j \leftarrow x^{(\pi(i))}_j})\big) \;-\; \frac{1}{n}\sum_{i=1}^{n} L\big(y^{(i)}, \hat f(x^{(i)})\big),
+$$ {#eq-interpretable-machine-learning-perm-estimator}
+
+where $x^{(i)}_{j \leftarrow v}$ denotes $x^{(i)}$ with its $j$th coordinate overwritten by $v$. Averaging @eq-interpretable-machine-learning-perm-estimator over `nsim` independent permutations reduces the variance of the estimate, which is why a single shuffle is too noisy to trust.
+
+#### Why squared-error permutation importance equals explained variance
+
+For squared-error loss there is a clean identity that explains what permutation importance measures. Suppose $\hat f$ is fixed and write $g(X) = \hat f(X)$. Adding and subtracting, $e_j^{\text{perm}} - e$ decomposes the change in expected loss purely in terms of how much $\hat f$ moves when $X_j$ is randomized. In the special case where $\hat f$ is the true regression function and the loss is squared error, one can show
+
+$$
+\mathrm{PI}_j = \mathbb{E}\big[(\hat f(\tilde X_j, X_{-j}) - \hat f(X))^2\big],
+$$ {#eq-interpretable-machine-learning-perm-variance}
+
+because the cross term $\mathbb{E}[(Y - \hat f(X))(\hat f(X) - \hat f(\tilde X_j, X_{-j}))]$ vanishes when the residual $Y - \hat f(X)$ is mean-zero and independent of the perturbation. Thus permutation importance is non-negative for a well-fit model and equals the mean squared sensitivity of the prediction to feature $j$. When features are correlated this identity is only approximate, because $(\tilde X_j, X_{-j})$ then lands off the data manifold and the cross term no longer cancels, which is the formal source of the extrapolation bias warned about below.
+
+::: {.callout-warning}
+When $X_j$ is correlated with $X_{-j}$, the independent draw $\tilde X_j$ creates feature combinations that never occur in the data, so @eq-interpretable-machine-learning-perm-importance evaluates $\hat f$ in regions where it was never trained. Importance can then be split arbitrarily between correlated features or even inflated. A conditional variant draws $\tilde X_j \sim P_{X_j \mid X_{-j}}$ instead of the marginal, which stays on-manifold but estimates a different quantity (the importance of $X_j$ given the others). Grouped permutation, where correlated features are shuffled together, is a practical compromise.
+:::
+
+
+For completeness, the impurity (mean decrease in impurity, MDI) importance has its own formula. For a single tree $T$, let the nodes that split on feature $j$ be $\{t : v(t) = j\}$, where $v(t)$ is the splitting variable at node $t$. Let $p(t) = n_t / n$ be the fraction of samples reaching node $t$ and $\Delta i(t)$ the decrease in node impurity achieved by the split (for regression, the weighted variance reduction). The MDI of feature $j$ in a forest of $M$ trees is
+
+$$
+\mathrm{MDI}_j = \frac{1}{M}\sum_{m=1}^{M} \sum_{t \in T_m :\, v(t)=j} p(t)\,\Delta i(t).
+$$ {#eq-interpretable-machine-learning-mdi}
+
+A theoretical result of Louppe and colleagues (2013) shows that in the population limit, for a fully developed totally randomized tree, $\mathrm{MDI}_j$ equals a sum of mutual information terms $I(X_j; Y \mid \text{conditioning sets})$, so MDI is a genuine information-theoretic measure of relevance. The high-cardinality bias arises in the finite-sample, greedy (non-randomized) case: a feature with many candidate split points has more chances to produce a spuriously large in-sample $\Delta i(t)$, inflating @eq-interpretable-machine-learning-mdi even when the feature is noise. Permutation importance, evaluated on held-out data, does not share this defect.
+
 The `vip` package computes both kinds (Greenwell and Boehmke, 2020). We start with the impurity-based version, which random forest already stored for us; @fig-interpretable-machine-learning-vip-impurity shows the result.
 
 ```{r fig-interpretable-machine-learning-vip-impurity, message=FALSE, warning=FALSE, fig.cap="Impurity-based feature importance from the random forest."}
@@ -139,6 +181,43 @@ A PDP marginalizes over the other features by brute force. It literally asks the
 :::
 
 
+#### Formulation and the marginal-versus-conditional distinction
+
+Partition the features as $X = (X_S, X_C)$, where $S$ is the subset of interest (usually one feature) and $C$ its complement. Friedman's partial dependence function is the expectation of $\hat f$ over the **marginal** distribution of $X_C$:
+
+$$
+\mathrm{PD}_S(x_S) = \mathbb{E}_{X_C}\big[\hat f(x_S, X_C)\big] = \int \hat f(x_S, x_C)\, dP_{X_C}(x_C).
+$$ {#eq-interpretable-machine-learning-pdp-def}
+
+The Monte Carlo plug-in estimator replaces the integral with the empirical average over the training rows, holding $X_S$ fixed at the grid value:
+
+$$
+\widehat{\mathrm{PD}}_S(x_S) = \frac{1}{n}\sum_{i=1}^{n} \hat f\big(x_S, x_C^{(i)}\big).
+$$ {#eq-interpretable-machine-learning-pdp-est}
+
+This is exactly the "overwrite the column, predict, average" recipe. It is crucial that @eq-interpretable-machine-learning-pdp-def integrates against the **marginal** $P_{X_C}$, not the **conditional** $P_{X_C \mid X_S}$. The marginal choice is what makes the PDP a clean causal-style "all else equal" sweep, but it is also why correlated features create off-manifold inputs: pairing every observed $x_C^{(i)}$ with an arbitrary $x_S$ generates combinations $(x_S, x_C^{(i)})$ that may have probability near zero. The conditional alternative $\mathbb{E}[\hat f(X_S, X_C) \mid X_S = x_S]$ stays on-manifold but confounds the effect of $X_S$ with the effects of the features correlated with it, so it no longer isolates $X_S$. This tension is unavoidable, and it is precisely the gap that accumulated local effects (ALE) close.
+
+#### Additive recovery
+
+If the model happens to be additive, $\hat f(x) = \sum_{j} h_j(x_j)$, then for $S = \{j\}$,
+
+$$
+\mathrm{PD}_j(x_j) = h_j(x_j) + \sum_{k \neq j} \mathbb{E}[h_k(X_k)] = h_j(x_j) + \text{const},
+$$
+
+so the PDP recovers each component $h_j$ up to a vertical shift. This is why a PDP of a generalized additive model reproduces its smooth terms exactly, and why a PDP of a linear model is a straight line with the model's slope. The result also tells us what a PDP cannot show: any part of $\hat f$ that lives in interaction terms is averaged away, which is the formal reason ICE plots are needed to detect interactions.
+
+#### ALE in one line
+
+ALE replaces the level of the prediction by its **local derivative**, integrated over the conditional distribution. For a single feature $j$,
+
+$$
+\mathrm{ALE}_j(x) = \int_{x_{\min}}^{x} \mathbb{E}\!\left[\frac{\partial \hat f(X)}{\partial X_j} \,\Big|\, X_j = z\right] dz \;-\; \text{const},
+$$ {#eq-interpretable-machine-learning-ale}
+
+estimated by binning $X_j$, taking the average prediction difference across each bin's edges using only points that fall in the bin, and accumulating. Because it conditions on $X_j$ being in a small window and differences out the rest, ALE never evaluates $\hat f$ on combinations absent from the data, which is what makes it robust under correlation.
+
+
 The `pdp` package implements this directly (Greenwell, 2017), and @fig-interpretable-machine-learning-pdp-single shows the partial dependence of price on living area.
 
 ```{r fig-interpretable-machine-learning-pdp-single, message=FALSE, warning=FALSE, fig.cap="Partial dependence of predicted sale price on above-ground living area."}
@@ -175,6 +254,19 @@ plotPartial(ice_area, alpha = 0.05, plot.pdp = TRUE,
             main = "Centered ICE: living area")
 ```
 
+Formally, the ICE curve for observation $i$ fixes that row's complement features at their observed values $x_C^{(i)}$ and sweeps $x_S$:
+
+$$
+\widehat{\mathrm{ICE}}_S^{(i)}(x_S) = \hat f\big(x_S, x_C^{(i)}\big), \qquad
+\widehat{\mathrm{PD}}_S(x_S) = \frac{1}{n}\sum_{i=1}^{n}\widehat{\mathrm{ICE}}_S^{(i)}(x_S),
+$$ {#eq-interpretable-machine-learning-ice}
+
+so the PDP @eq-interpretable-machine-learning-pdp-est is literally the pointwise average of the ICE curves @eq-interpretable-machine-learning-ice. The centered (c-ICE) version anchors each curve at a reference point $x_S^{\star}$ (typically the minimum of the grid):
+
+$$
+\widehat{\mathrm{cICE}}_S^{(i)}(x_S) = \hat f\big(x_S, x_C^{(i)}\big) - \hat f\big(x_S^{\star}, x_C^{(i)}\big).
+$$ {#eq-interpretable-machine-learning-cice}
+
 We *centered* the curves so they all start at zero on the left, which makes their *shapes* comparable regardless of each house's baseline price. Reading the plot: if the thin lines fan out and cross, different houses respond differently to size, an interaction the PDP alone would have hidden. If they move in near-parallel, the average curve tells the whole story.
 
 
@@ -206,6 +298,19 @@ The recipe is:
 ::: {.callout-tip title="Intuition"}
 LIME does not try to understand the whole model. It only builds a tiny, faithful caricature that is accurate right around the one prediction you care about, and trusts that caricature exactly that far and no further.
 :::
+
+
+#### The LIME objective
+
+LIME makes the recipe precise as a weighted, regularized local regression. Let $x$ be the instance to explain and $\hat f$ the black box. Explanations live in an interpretable representation $z' \in \{0,1\}^{d}$ (for tabular data, binned or standardized features); a map $h_x(z')$ sends an interpretable vector back to the original input space. Let $G$ be a class of interpretable models (sparse linear models), $\pi_x(z)$ a proximity kernel that weights a perturbed point $z$ by closeness to $x$, and $\Omega(g)$ a complexity penalty. LIME solves
+
+$$
+\xi(x) = \underset{g \in G}{\arg\min}\; \mathcal{L}\big(\hat f, g, \pi_x\big) + \Omega(g),
+\qquad
+\mathcal{L} = \sum_{z} \pi_x(z)\,\big(\hat f(z) - g(z')\big)^2 .
+$$ {#eq-interpretable-machine-learning-lime}
+
+The standard choices are an exponential kernel $\pi_x(z) = \exp(-D(x,z)^2 / \sigma^2)$ for distance $D$ and kernel width $\sigma$, a linear surrogate $g(z') = w_g^\top z'$, and $\Omega(g) = \infty \cdot \mathbb{1}[\|w_g\|_0 > K]$ enforcing at most $K$ nonzero coefficients (the `n_features` argument), realized in practice by LASSO or forward selection. The fitted weights $w_g$ are the reported explanation. Equation @eq-interpretable-machine-learning-lime makes explicit why LIME is unstable: the solution depends on the kernel width $\sigma$, the perturbation distribution generating the $z$, and $K$. There is no canonical $\sigma$, and the bias-variance tradeoff it controls is real: too small and the surrogate sees too few distinct points (high variance), too large and the local linearity assumption fails (high bias). This non-uniqueness is exactly the contrast with Shapley values, which are pinned down by axioms.
 
 
 The `lime` package implements this for R (Pedersen and Benesty, 2021). We explain the model's predictions for two specific houses from the test set, and @fig-interpretable-machine-learning-lime shows the result.
@@ -255,6 +360,68 @@ A Shapley explanation has a property the others lack: the feature contributions 
 :::
 
 
+#### The value function and the Shapley formula
+
+Let $N = \{1, \dots, p\}$ be the set of features and $x$ the instance to explain. A coalition $S \subseteq N$ is the set of features whose values are "known"; the rest are integrated out. Define the value function as the conditional expectation of the prediction given the known features:
+
+$$
+v(S) = \mathbb{E}\big[\hat f(X) \mid X_S = x_S\big], \qquad v(\varnothing) = \mathbb{E}[\hat f(X)].
+$$ {#eq-interpretable-machine-learning-shap-value}
+
+The Shapley value of feature $j$ is its average marginal contribution $v(S \cup \{j\}) - v(S)$ over all coalitions $S$ not containing $j$, with the combinatorial weights that count orderings:
+
+$$
+\phi_j = \sum_{S \subseteq N \setminus \{j\}} \frac{|S|!\,(p - |S| - 1)!}{p!}\,\big[v(S \cup \{j\}) - v(S)\big].
+$$ {#eq-interpretable-machine-learning-shap}
+
+The weight $\frac{|S|!\,(p-|S|-1)!}{p!}$ is the probability that, in a uniformly random ordering of the $p$ features, exactly the members of $S$ precede $j$. Equivalently, averaging over all $p!$ orderings $\mathcal{O}$ and letting $\mathrm{Pre}_j(\mathcal{O})$ be the features before $j$,
+
+$$
+\phi_j = \frac{1}{p!}\sum_{\mathcal{O}} \big[v(\mathrm{Pre}_j(\mathcal{O}) \cup \{j\}) - v(\mathrm{Pre}_j(\mathcal{O}))\big].
+$$ {#eq-interpretable-machine-learning-shap-orderings}
+
+#### The four axioms and uniqueness
+
+Shapley's theorem states that @eq-interpretable-machine-learning-shap is the **unique** map from value functions to attributions $(\phi_1, \dots, \phi_p)$ satisfying:
+
+1. **Efficiency.** $\sum_{j=1}^{p} \phi_j = v(N) - v(\varnothing) = \hat f(x) - \mathbb{E}[\hat f(X)]$. This is the exact additivity referenced above.
+2. **Symmetry.** If $v(S \cup \{i\}) = v(S \cup \{j\})$ for every $S$ not containing $i$ or $j$, then $\phi_i = \phi_j$. Features that contribute identically get equal credit.
+3. **Dummy (null player).** If $v(S \cup \{j\}) = v(S)$ for every $S$, then $\phi_j = 0$. A feature that never changes the value gets zero.
+4. **Linearity.** For two games $v$ and $w$, $\phi_j(v + w) = \phi_j(v) + \phi_j(w)$. Attribution of an ensemble is the sum of attributions, which is what licenses TreeSHAP to sum over trees.
+
+Efficiency is the additivity property; together with symmetry, dummy, and linearity it forces @eq-interpretable-machine-learning-shap, which is the precise sense in which the Shapley allocation is "the only fair one."
+
+#### Sketch of the efficiency proof
+
+Efficiency follows directly from the ordering form @eq-interpretable-machine-learning-shap-orderings. Fix any single ordering $\mathcal{O} = (\sigma_1, \dots, \sigma_p)$. The marginal contributions along that ordering telescope:
+
+$$
+\sum_{j=1}^{p}\big[v(\mathrm{Pre}_j(\mathcal{O}) \cup \{j\}) - v(\mathrm{Pre}_j(\mathcal{O}))\big]
+= \sum_{k=1}^{p}\big[v(\{\sigma_1,\dots,\sigma_k\}) - v(\{\sigma_1,\dots,\sigma_{k-1}\})\big]
+= v(N) - v(\varnothing).
+$$
+
+Every intermediate $v(\cdot)$ cancels, leaving only the endpoints. Since this holds for each of the $p!$ orderings, averaging preserves it, and exchanging the order of summation gives $\sum_j \phi_j = v(N) - v(\varnothing)$. The dummy and symmetry axioms are immediate from @eq-interpretable-machine-learning-shap, and linearity holds because $v \mapsto \phi_j(v)$ is a linear functional of $v$.
+
+#### KernelSHAP: estimating @eq-interpretable-machine-learning-shap by weighted regression
+
+The brute-force sum @eq-interpretable-machine-learning-shap has $2^{p}$ terms. SHAP (@lundberg2017unified) shows the Shapley values are the solution of a **weighted linear regression**, the additive feature attribution model $g(z') = \phi_0 + \sum_{j} \phi_j z'_j$ on coalition indicators $z' \in \{0,1\}^p$, fit to the value function $v(\cdot)$ with the **Shapley kernel**
+
+$$
+\pi_{\text{SHAP}}(z') = \frac{p - 1}{\binom{p}{|z'|}\,|z'|\,(p - |z'|)} .
+$$ {#eq-interpretable-machine-learning-shap-kernel}
+
+Minimizing $\sum_{z'} \pi_{\text{SHAP}}(z')\,(v(z') - g(z'))^2$ recovers @eq-interpretable-machine-learning-shap exactly in the limit of all coalitions, and approximately when coalitions are subsampled. This is the precise sense in which "SHAP unifies LIME and Shapley values": KernelSHAP is LIME's objective @eq-interpretable-machine-learning-lime with the specific kernel @eq-interpretable-machine-learning-shap-kernel, no $\ell_1$ penalty, and interpretable inputs equal to coalition membership, which is the unique configuration that makes LIME's coefficients satisfy the Shapley axioms.
+
+#### Marginal versus conditional value function
+
+The value function @eq-interpretable-machine-learning-shap-value uses the conditional expectation, which is correct but requires estimating $P_{X_{\bar S} \mid X_S}$. Most implementations, including KernelSHAP's default and `fastshap`, use the **interventional** (marginal) value function $v(S) = \mathbb{E}_{X_{\bar S}}[\hat f(x_S, X_{\bar S})]$ that draws the unknown features from their marginal, independently of $x_S$. The two agree under feature independence but differ under correlation, with the same on-manifold versus off-manifold tradeoff seen for PDP and permutation importance. The marginal version answers a purely functional "what does the model compute" question; the conditional version answers a data-aware "what do the features tell us" question.
+
+#### TreeSHAP: exact and polynomial for trees
+
+For a tree ensemble, the linearity axiom lets us compute @eq-interpretable-machine-learning-shap per tree and sum. TreeSHAP [@lundberg2018consistent] evaluates the conditional value function by pushing all coalitions through the tree simultaneously, tracking the proportion of each coalition that flows down each branch. This reduces the cost from $O(2^p)$ to $O(T L D^2)$ per explained instance, where $T$ is the number of trees, $L$ the number of leaves per tree, and $D$ the maximum tree depth. The result is the **exact** Shapley value (no Monte Carlo error), which is why for tree models TreeSHAP is both the principled and the fastest choice.
+
+
 SHAP (*SHapley Additive exPlanations*) is the popular framework, due to @lundberg2017unified, that makes Shapley values computable for modern models and ties them to a unifying view of LIME and related methods. The reference implementation is the Python `shap` library at <https://github.com/slundberg/shap>, with accessible introductions at <https://meichenlu.com/2018-11-10-SHAP-explainable-machine-learning/> and <https://bjlkeng.github.io/posts/model-explanability-with-shapley-additive-explanations-shap/>. SHAP is especially efficient for tree ensembles through the TreeSHAP algorithm [@lundberg2018consistent], which exploits tree structure to compute exact Shapley values quickly.
 
 We can compute Shapley-style explanations in R without leaving the `pdp`/`vip` ecosystem, using the fast Monte Carlo approximation in the `fastshap` package when it is available. The following chunk is guarded so the book still builds if that optional package is not installed; the code is the idiomatic way to do it.
@@ -291,7 +458,25 @@ ggplot(shap_df, aes(x = contribution, y = feature, fill = contribution > 0)) +
        x = "Contribution to prediction (dollars)", y = NULL)
 ```
 
-Read the bars exactly as with LIME (right pushes the prediction up, left pushes it down), but with the guarantee that they sum to the difference between this house's prediction and the average prediction. Averaging the *absolute* SHAP values of a feature over many observations also yields a global importance measure, giving a single coherent framework that spans local and global explanation. That unification is the main reason SHAP became the de facto standard.
+We can check the efficiency axiom @eq-interpretable-machine-learning-shap directly: the SHAP contributions should sum to the gap between this house's prediction and the average prediction over the background data. The following confirms the identity numerically (it runs only if `fastshap` is installed).
+
+```{r interpretable-machine-learning-shap-efficiency, eval=requireNamespace("fastshap", quietly=TRUE), message=FALSE, warning=FALSE}
+# Efficiency: sum of SHAP values ~= f(x) - E[f(X)] (the additivity axiom).
+baseline   <- mean(predict(rf, newdata = train))
+prediction <- as.numeric(predict(rf, newdata = x_explain))
+shap_sum   <- sum(as.numeric(shap_vals[1, ]))
+
+c(prediction_gap = prediction - baseline,
+  shap_sum       = shap_sum)
+```
+
+The two numbers match up to Monte Carlo error from the `nsim` sampled coalitions; with exact TreeSHAP they would agree to machine precision. Read the bars exactly as with LIME (right pushes the prediction up, left pushes it down), but with the guarantee that they sum to the difference between this house's prediction and the average prediction. Averaging the *absolute* SHAP values of a feature over many observations also yields a global importance measure,
+
+$$
+I_j = \frac{1}{n}\sum_{i=1}^{n} \big|\phi_j^{(i)}\big|,
+$$ {#eq-interpretable-machine-learning-shap-global}
+
+giving a single coherent framework that spans local and global explanation. That unification is the main reason SHAP became the de facto standard.
 
 
 ::: {.callout-tip title="When to use this"}
@@ -328,6 +513,20 @@ The same interpretability mindset shows up in applied problems that may not look
 The first is *video classification*, where a model labels the content of a video clip. Interpreting such a model means understanding which frames and which temporal patterns drove the label, a harder version of the tabular question. Useful entry points include the overview at <https://towardsdatascience.com/introduction-to-video-classification-6c6acbc57356>, a worked TensorFlow pipeline at <https://hackernoon.com/continuous-video-classification-with-tensorflow-inception-and-recurrent-nets-250ba9ff6b85>, a managed service at <https://cloud.google.com/video-intelligence>, research at <https://arxiv.org/pdf/1609.06782.pdf> and <https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0228579>, and applied discussions at <https://www.tubefilter.com/2019/02/12/taxonomy-youtube-videos-develop-original-content-that-works/> and <https://medium.com/swlh/converting-news-into-video-stories-5d8d4fc5a32b>.
 
 The second is *image memorability* prediction: estimating how likely a person is to remember a given image, a property that turns out to be surprisingly consistent across viewers and learnable by models. The AMNet attention-based model is a representative approach (Fajtl et al., 2018); understanding *which* image regions make something memorable is itself an interpretability problem. Pointers include the AMNet paper at <https://openaccess.thecvf.com/content_cvpr_2018/papers/Fajtl_AMNet_Memorability_Estimation_CVPR_2018_paper.pdf> and <https://www.researchgate.net/publication/324387176_AMNet_Memorability_Estimation_with_Attention>, related deep-learning work at <https://www.researchgate.net/publication/308812354_Deep_Learning_for_Image_Memorability_Prediction_the_Emotional_Bias> and <https://arxiv.org/pdf/2005.02969.pdf>, broader surveys at <https://www.researchgate.net/publication/335603628_Image_Memorability_Using_Diverse_Visual_Features_and_Soft_Attention>, <https://arxiv.org/abs/1804.03115>, <http://ceur-ws.org/Vol-2283/MediaEval_18_paper_24.pdf>, <https://jov.arvojournals.org/article.aspx?articleid=2771173>, <https://ieeexplore.ieee.org/document/8578764>, and <https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=7382237&tag=1>, code at <https://github.com/dazcona/memorability> and <https://github.com/adikhosla/feature-extraction>, the original MIT region-memorability project at <http://people.csail.mit.edu/khosla/projects/regionmem/>, and a cognitive-science angle (the elaboration likelihood model) at <https://expertprogrammanagement.com/2019/12/elaboration-likelihood-model/> and the work at <https://people.umass.edu/~yangzhou/>.
+
+## Computational cost and choosing settings
+
+The methods differ sharply in cost, and the costs drive the practical choices. Let $n$ be the number of observations used, $p$ the number of features, $G$ the grid size for effect plots, and $C(\hat f)$ the cost of one prediction.
+
+* **Permutation importance** costs $O(p \cdot \texttt{nsim} \cdot n \cdot C(\hat f))$, one full re-scoring per feature per repetition. The only real knob is `nsim`; raise it until the importance ranking stabilizes across runs, and always evaluate on held-out data so the numbers reflect generalization rather than fit (training-set permutation importance can credit a feature the model merely overfit).
+* **PDP and ICE** cost $O(G \cdot n \cdot C(\hat f))$ for one feature ($O(G^2 \cdot n \cdot C(\hat f))$ for a two-way surface). A grid of 20 to 50 points usually suffices; quantile-based grids avoid wasting points in sparse tails. Subsample rows for ICE to keep the plot readable. Switch to ALE @eq-interpretable-machine-learning-ale whenever pairwise feature correlation is high, say $|\rho| > 0.5$.
+* **LIME** costs $O(\texttt{n\_permutations} \cdot C(\hat f))$ per explained instance plus a cheap surrogate fit. Tune the kernel width $\sigma$ and the feature budget $K$ (`n_features`), and verify stability by re-running with different seeds; if the top features or their signs flip, distrust the explanation.
+* **KernelSHAP** costs $O(\texttt{nsamples} \cdot C(\hat f))$ per instance and, like LIME, is approximate; **TreeSHAP** costs $O(T L D^2)$ per instance, is exact, and should be preferred whenever the model is a tree ensemble. For global SHAP importance @eq-interpretable-machine-learning-shap-global, explain a representative sample rather than the whole dataset if $n$ is large.
+
+::: {.callout-tip title="Diagnostics"}
+Three quick checks catch most problems. First, compare two importance methods (permutation versus impurity, or SHAP versus permutation); agreement builds confidence and disagreement flags the cardinality or correlation pathologies. Second, overlay ICE on every PDP; fanning curves mean the PDP is hiding an interaction. Third, for any local explanation, verify the additivity gap (SHAP) or re-run with new seeds (LIME) before quoting it.
+:::
+
 
 ## Takeaways
 

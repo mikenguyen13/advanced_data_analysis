@@ -25,9 +25,49 @@ To see why correlation is the villain, recall a basic fact about averaging: the 
 
 $$
 \rho \sigma^2 + \sigma^2 \frac{1 - \rho}{B}
-$$
+$$ {#eq-random-forest-avgvar}
 
 Look at what happens as the forest grows. The second term, $\sigma^2 (1 - \rho)/B$, shrinks to zero as $B \to \infty$, but the first term, $\rho \sigma^2$, does not depend on $B$ at all. No matter how many trees you add, the variance cannot fall below this floor of $\rho \sigma^2$.
+
+
+### Deriving the variance of the average
+
+It is worth deriving @eq-random-forest-avgvar carefully, because the entire rationale for random forests rests on it. Let $T_1, \dots, T_B$ be the predictions of the individual trees at a fixed input $x$, treated as random variables over the draw of the bootstrap samples and the split randomness $\Theta_b$. Assume they are identically distributed (not independent) with common variance $\operatorname{Var}(T_b) = \sigma^2$ and common pairwise correlation $\operatorname{Corr}(T_b, T_{b'}) = \rho$ for $b \ne b'$, so that $\operatorname{Cov}(T_b, T_{b'}) = \rho \sigma^2$. The forest prediction is $\bar T = \frac{1}{B}\sum_{b=1}^B T_b$. Expanding the variance of a sum into its $B$ diagonal (variance) terms and $B(B-1)$ off-diagonal (covariance) terms,
+
+$$
+\operatorname{Var}(\bar T)
+= \frac{1}{B^2}\operatorname{Var}\!\Big(\sum_{b=1}^B T_b\Big)
+= \frac{1}{B^2}\Big[\sum_{b=1}^B \operatorname{Var}(T_b) + \sum_{b \ne b'} \operatorname{Cov}(T_b, T_{b'})\Big]
+= \frac{1}{B^2}\big[B\sigma^2 + B(B-1)\rho\sigma^2\big].
+$$
+
+Dividing through by $B^2$ and rearranging gives
+
+$$
+\operatorname{Var}(\bar T) = \frac{\sigma^2}{B} + \frac{B-1}{B}\rho\sigma^2
+= \rho\sigma^2 + \frac{1-\rho}{B}\sigma^2,
+$$ {#eq-random-forest-avgvar-derived}
+
+which is exactly @eq-random-forest-avgvar. The derivation makes the mechanism transparent: smaller $m$ removes shared dominant predictors from many splits, lowering the off-diagonal covariance $\rho\sigma^2$ and hence the irreducible floor, but pushing $m$ too small also raises each tree's own variance $\sigma^2$ and its bias, since each split now chooses from a weaker pool of candidate variables. The optimal $m$ trades these two effects off, which is why it is tuned rather than fixed.
+
+::: {.callout-note title="A subtlety about the correlation"}
+The relevant $\rho$ is the correlation between the predictions of two forest trees *at the same test point $x$*, induced by their shared training data, not the sampling correlation of an estimator across independent data sets. As $B$ grows, $\bar T(x)$ converges almost surely to its expectation $\mathbb{E}_\Theta[T(x;\Theta)]$ over the randomization, so $B$ is not a tuning parameter in the usual sense: more trees only ever help (up to Monte Carlo noise) and never overfit. The bound @eq-random-forest-avgvar-derived is what guarantees this.
+:::
+
+We can confirm @eq-random-forest-avgvar-derived numerically with a small base-R simulation. We generate $B$ correlated Gaussian variables with variance $\sigma^2$ and pairwise correlation $\rho$, average them, repeat many times, and compare the empirical variance of the average to the formula.
+
+```{r random-forest-variance-check}
+set.seed(1)
+sigma2 <- 4; rho <- 0.3; B <- 20; reps <- 20000
+## equicorrelation covariance: Sigma = sigma2 * [(1-rho) I + rho 11']
+L <- t(chol(sigma2 * ((1 - rho) * diag(B) + rho * matrix(1, B, B))))
+means <- replicate(reps, mean(L %*% rnorm(B)))
+emp <- var(means)
+theo <- rho * sigma2 + (1 - rho) * sigma2 / B
+c(empirical = emp, theoretical = theo)
+```
+
+The two numbers agree to Monte Carlo error, and increasing `B` drives the average's variance toward the floor `rho * sigma2 = 1.2`, never below it.
 
 
 ::: {.callout-important title="Key idea"}
@@ -99,6 +139,22 @@ A pleasant side effect of bootstrapping is that the forest comes with its own va
 For each observation pair $(x_i, y_i)$, we can form an OOB prediction by averaging only the trees built on bootstrap samples in which that observation did not appear. Comparing these OOB predictions to the actual responses gives the OOB error, which behaves like a cross-validation error estimate but costs nothing extra to compute. A useful practical signal falls out of this: once the OOB error stops improving as you add trees, the forest has effectively converged and more trees will not help.
 
 
+### Why roughly a third is left out
+
+The "roughly a third" is not a heuristic; it follows from the bootstrap. A bootstrap sample draws $N$ points with replacement from a training set of size $N$, so each draw selects observation $i$ with probability $1/N$. The probability that observation $i$ is missed on all $N$ draws is
+
+$$
+\Pr(i \notin \mathbf{Z}^*) = \Big(1 - \frac{1}{N}\Big)^{N}
+\;\xrightarrow[N \to \infty]{}\; e^{-1} \approx 0.368,
+$$ {#eq-random-forest-oobfrac}
+
+using $\lim_{N\to\infty}(1 - 1/N)^N = e^{-1}$. Hence about $36.8\%$ of observations are out-of-bag for any given tree, and a given observation is OOB for, in expectation, a fraction $e^{-1}$ of the $B$ trees, leaving on the order of $0.368\,B$ trees to form its OOB prediction. Because the OOB prediction of $(x_i, y_i)$ uses only trees that never saw that point, the OOB error is a genuine held-out estimate of generalization error. As $B \to \infty$ it is asymptotically equivalent to leave-one-out cross-validation over the bootstrap distribution, which is why it can replace a manually held-out test set.
+
+::: {.callout-warning title="When OOB error is optimistic or unstable"}
+The OOB estimate degrades when the number of trees is small (each point then has very few OOB trees, so its prediction is noisy) and when observations are not independent, for example with spatial, temporal, or grouped data. In the latter case bootstrap resampling does not break the dependence between in-bag and out-of-bag points, and the OOB error can be badly optimistic, just as ordinary cross-validation is when folds share dependent records.
+:::
+
+
 ::: {.callout-tip}
 Watch the OOB error as a function of the number of trees. When the curve flattens, you have enough trees. This is the random forest equivalent of a learning curve, and you get it without holding out a separate set.
 :::
@@ -108,9 +164,26 @@ Watch the OOB error as a function of the number of trees. When the curve flatten
 
 Because each split sees a random subset of predictors, random forests give variables that would otherwise be overshadowed a chance to be chosen. As a result, the forest tends to surface more "important" variables than a single greedy tree would. There are two common ways to score importance.
 
-The first measures, for each variable, how much it improves the split criterion (such as node impurity) summed and averaged across all trees. Variables that produce big, frequent improvements score high.
+The first measures, for each variable, how much it improves the split criterion (such as node impurity) summed and averaged across all trees. Variables that produce big, frequent improvements score high. Formally, let a split $s$ at an internal node $t$ send a fraction $p_L$ of the node's samples left and $p_R = 1 - p_L$ right, and let $i(\cdot)$ be the node impurity (Gini index or entropy for classification, residual sum of squares for regression). The impurity decrease at that node is
 
-The second is permutation importance, which is based on OOB prediction. When the $b$-th tree is grown, its OOB samples are passed down the tree and the prediction accuracy is recorded. The values of the $j$-th variable are then randomly permuted across those OOB samples, breaking any relationship between that variable and the response, and the accuracy is recomputed. The drop in accuracy, averaged over all trees, measures the importance of variable $j$.
+$$
+\Delta i(s, t) = i(t) - p_L\, i(t_L) - p_R\, i(t_R),
+$$ {#eq-random-forest-mdi}
+
+weighted by the proportion of samples reaching $t$. The mean decrease in impurity (MDI) importance of variable $j$ is the sum of these weighted decreases over all nodes that split on $j$, averaged over the $B$ trees. MDI is essentially free, since the quantities are already computed during training, but it is biased: it inflates the apparent importance of high-cardinality categorical variables and continuous variables, which offer more candidate split points and thus more chances to reduce impurity even by chance.
+
+The second is permutation importance, which is based on OOB prediction. When the $b$-th tree is grown, its OOB samples are passed down the tree and the prediction accuracy is recorded. The values of the $j$-th variable are then randomly permuted across those OOB samples, breaking any relationship between that variable and the response, and the accuracy is recomputed. The drop in accuracy, averaged over all trees, measures the importance of variable $j$. Writing $\mathrm{OOB}_b$ for the out-of-bag set of tree $b$ and $\pi_j$ for a random permutation of the $j$-th coordinate within that set, the permutation importance is
+
+$$
+\mathrm{VI}(j) = \frac{1}{B}\sum_{b=1}^{B}
+\Big[ \mathrm{err}_b\big(\mathrm{OOB}_b^{\,\pi_j}\big) - \mathrm{err}_b\big(\mathrm{OOB}_b\big) \Big],
+$$ {#eq-random-forest-vi}
+
+where $\mathrm{err}_b$ is the tree's OOB error (misclassification rate or mean squared error). Because the comparison is made on held-out data with the model fixed, @eq-random-forest-vi measures how much the fitted forest actually relies on $X_j$ for prediction, which is a different and usually more trustworthy question than MDI's "how often did $X_j$ get chosen during training."
+
+::: {.callout-warning title="Correlated predictors distort both scores"}
+When two predictors are strongly correlated, the forest can split on either one, so neither looks individually indispensable and both can receive deflated permutation scores even though the pair is jointly important. Permuting a variable marginally also generates feature combinations that never occur in the data (extrapolation), which can make the importance unstable. Conditional permutation importance and grouped or drop-and-relearn schemes address these failure modes at higher computational cost.
+:::
 
 
 ::: {.callout-warning}
@@ -129,6 +202,49 @@ A few additional points round out the picture of how random forests behave in pr
 -   Software: common implementations include `randomForest`, `cforest`, `ParallelForest`, `ranger`, and `Rborist`.
 
 In short, random forests are a reliable, low-maintenance tool for general nonlinear, nonparametric prediction. With the mechanics in hand, the rest of the chapter walks through a complete worked example.
+
+
+## Statistical properties
+
+This section collects the theoretical facts that justify the method, going beyond the variance argument of @sec-random-forest.
+
+### Bias-variance decomposition of the ensemble
+
+Fix a test point $x$ and write the forest estimate as $\hat f_{rf}(x) = \mathbb{E}_\Theta[T(x;\Theta)]$ in the infinite-tree limit (averaging over the randomization $\Theta$ for a fixed training set, then over training sets). For squared-error loss the usual decomposition holds,
+
+$$
+\mathbb{E}\big[(Y - \hat f_{rf}(x))^2 \mid X = x\big]
+= \underbrace{\sigma_\varepsilon^2}_{\text{irreducible}}
++ \underbrace{\big(\mathbb{E}[\hat f_{rf}(x)] - f(x)\big)^2}_{\text{bias}^2}
++ \underbrace{\operatorname{Var}\big(\hat f_{rf}(x)\big)}_{\text{variance}} .
+$$ {#eq-random-forest-bv}
+
+Two facts make random forests work. First, averaging is a linear operation, so the bias of the ensemble equals the bias of a single randomized tree: $\mathbb{E}[\hat f_{rf}(x)] = \mathbb{E}_\Theta\mathbb{E}[T(x;\Theta)]$, and randomizing the candidate variables does not change the expected fitted function by much when trees are grown deep. This is the precise sense of the chapter's earlier remark that the forest's bias is essentially that of one tree. Second, the variance term is exactly @eq-random-forest-avgvar-derived and is driven down toward its floor $\rho\sigma^2$ by decorrelation. The entire MSE gain over a single tree comes from the variance term; the price of decorrelation is a slight increase in $\sigma^2$ and bias as $m$ shrinks, which is why very small $m$ can underperform.
+
+### Consistency and rates
+
+Random forests are nonparametric estimators, and consistency results require care because the bootstrap and the data-dependent splits make the trees hard to analyze. Two routes are standard. For *centered* or *purely random* forests, whose splits are chosen independently of $Y$, one can show $L^2$ consistency, $\mathbb{E}[(\hat f_{rf}(X) - f(X))^2] \to 0$, under mild smoothness of $f$, with rates governed by the effective number of cells. The convergence rate is the nonparametric rate $n^{-2/(2 + d)}$ for a $d$-dimensional Lipschitz target in the worst case, slower as $d$ grows (the curse of dimensionality), but the rate adapts to a smaller intrinsic dimension when only a few of the $p$ inputs are relevant, which is the regime where forests shine. For Breiman's original CART-split forests, whose splits depend on $Y$ and are far harder to analyze, consistency has been established under an additive-model assumption (Scornet, Biau, and Vert, 2015). The practical message is that forests are consistent under reasonable conditions but converge at nonparametric rates, so they cannot escape the curse of dimensionality when the truth genuinely depends on many interacting variables.
+
+### Connection to adaptive nearest neighbors and kernels
+
+A forest prediction can be written as a weighted average of the training responses,
+
+$$
+\hat f_{rf}(x) = \sum_{i=1}^N w_i(x)\, y_i,
+\qquad
+w_i(x) = \frac{1}{B}\sum_{b=1}^B \frac{\mathbf{1}\{x_i \in L_b(x)\}}{|L_b(x)|},
+$$ {#eq-random-forest-weights}
+
+where $L_b(x)$ is the terminal node ("leaf") of tree $b$ containing $x$ and $|L_b(x)|$ is the number of training points in it. The weight $w_i(x)$ is large when $x_i$ falls in the same leaf as $x$ in many trees, which is exactly the proximity used for the MDS plot in the application. Equation @eq-random-forest-weights shows a random forest is an *adaptive* nearest-neighbor or kernel method: it defines a data-driven similarity $w_i(x)$ that, unlike fixed-bandwidth $k$-nearest neighbors (@sec-knn), stretches and shrinks the neighborhood along directions the trees deem relevant. This view also yields quantile and survival forests (predict a weighted quantile or weighted Kaplan-Meier curve using the same $w_i$) and underlies the infinitesimal-jackknife and U-statistic variance estimators for forest predictions.
+
+### Computational and sample complexity
+
+Building one tree costs $O(\tilde m\, N \log N)$ in the typical balanced case, where $\tilde m$ is the number of candidate variables evaluated per node (here $m$) and the $N \log N$ comes from sorting or scanning $N$ points down a tree of depth $O(\log N)$; the full forest is $O(B\, m\, N \log N)$. Memory is $O(B \times \text{nodes per tree})$, which can be substantial for deep trees on large $N$. Prediction costs $O(B \log N)$ per query, since each query traverses $B$ trees of depth $O(\log N)$. The trees are independent, so both training and prediction are embarrassingly parallel across the $B$ trees, which is why packages such as `ranger` scale well across cores. Reducing $m$ reduces per-node work linearly, an underappreciated reason small $m$ is fast as well as more decorrelated.
+
+### Failure modes
+
+Random forests break or underperform in identifiable situations. They cannot extrapolate: because every prediction is a weighted average of observed $y_i$ via @eq-random-forest-weights, predictions are bounded by the range of the training responses, so a forest will systematically under- or over-predict beyond the training support and is a poor choice for strongly trending time series. They are inefficient on sparse high-dimensional problems where most of $p$ is noise, since with small $m$ a relevant variable is rarely even offered at a split; some implementations counter this with informed sampling of candidate variables. Smooth or strongly linear signals are fit with axis-aligned step functions, so a forest needs many trees to approximate a simple linear surface that a linear model captures exactly. Finally, default settings can overfit noisy classification when classes are imbalanced; class weights, stratified bootstrap sampling, or balanced subsampling are the usual remedies.
+
 
 ## Application
 

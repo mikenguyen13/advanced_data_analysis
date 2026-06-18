@@ -35,7 +35,7 @@ The score is built to decompose over local pieces. For a linear chain we assume 
 
 $$
 s(x, y) = \sum_{t=1}^{T} \psi_t(y_t, x) \;+\; \sum_{t=2}^{T} \phi(y_{t-1}, y_t),
-$$
+$$ {#eq-structured-prediction-score}
 
 where $\psi_t(k, x)$ scores "label $k$ at position $t$ given the input" (the emission or unary score) and $\phi(j, k)$ scores the transition from label $j$ to label $k$ (the pairwise score). The crucial property is the Markov assumption: a label interacts directly only with its immediate neighbors, never with distant positions except through the chain. This locality is what makes efficient inference possible.
 
@@ -61,7 +61,7 @@ The hidden Markov model (HMM) is the classical generative model for sequences. I
 
 $$
 p(x, y) = \pi(y_1) \prod_{t=2}^{T} A(y_{t-1}, y_t) \prod_{t=1}^{T} B(y_t, x_t),
-$$
+$$ {#eq-structured-prediction-hmm-joint}
 
 where $\pi$ is the initial-state distribution, $A(j,k) = p(y_t=k \mid y_{t-1}=j)$ is the transition matrix, and $B(k, o) = p(x_t = o \mid y_t = k)$ is the emission matrix. Taking logs turns the product into a sum and reveals an HMM as a special case of the additive score above, with $\psi_t(k, x) = \log B(k, x_t)$ (plus $\log \pi(k)$ at $t=1$) and $\phi(j, k) = \log A(j, k)$.
 
@@ -70,6 +70,69 @@ where $\pi$ is the initial-state distribution, $A(j,k) = p(y_t=k \mid y_{t-1}=j)
 An HMM is a *generative* model: it describes how $x$ and $y$ are jointly produced, and is trained to maximize $p(x, y)$. The discriminative models below model $p(y \mid x)$ or just a score, never spending capacity on explaining $x$. For prediction we only ever need $p(y \mid x)$, so the generative effort can be wasted, but HMMs are simple, have closed-form maximum-likelihood estimates (just count transitions and emissions), and decode with the very same Viterbi algorithm.
 :::
 
+
+#### The Markov assumptions, made precise
+
+The factorization of $p(x,y)$ rests on two conditional-independence statements. The first is the order-one Markov property on the hidden chain,
+
+$$
+p(y_t \mid y_1, \dots, y_{t-1}) = p(y_t \mid y_{t-1}),
+$$
+
+so the future of the chain is independent of its past given the present state. The second is the emission (output) independence,
+
+$$
+p(x_t \mid y_1,\dots,y_T, x_{1:t-1}, x_{t+1:T}) = p(x_t \mid y_t),
+$$
+
+so each observation depends only on its own hidden state. Applying the chain rule of probability and then deleting the variables these assumptions render irrelevant gives the factorization in @eq-structured-prediction-hmm-joint directly:
+
+$$
+p(x,y) = p(y_1)\prod_{t=2}^T p(y_t\mid y_{t-1}) \prod_{t=1}^T p(x_t \mid y_t) = \pi(y_1)\prod_{t=2}^T A(y_{t-1},y_t)\prod_{t=1}^T B(y_t,x_t).
+$$ {#eq-structured-prediction-hmm-joint-derived}
+
+These are exactly the assumptions that the additive, neighbor-only score of @eq-structured-prediction-score encodes, which is why the log-joint is a linear-chain score.
+
+#### Maximum-likelihood estimation from labeled data
+
+When the label sequences are observed in training (the fully supervised case relevant to structured prediction, as opposed to the latent-state case handled by Baum-Welch / EM), the maximum-likelihood estimates are simple normalized counts, and it is worth deriving why. Suppose we have a corpus of labeled sequences. The log-likelihood is, by @eq-structured-prediction-hmm-joint-derived,
+
+$$
+\ell(\pi, A, B) = \sum_i \Big[ \log \pi(y^{(i)}_1) + \sum_{t\ge 2}\log A(y^{(i)}_{t-1}, y^{(i)}_t) + \sum_{t}\log B(y^{(i)}_t, x^{(i)}_t) \Big].
+$$
+
+The parameters live in disjoint groups (each row of $A$, each row of $B$, and $\pi$ is a probability vector), so the objective separates and we maximize each row independently subject to its simplex constraint. Take one transition row $A(j,\cdot)$. Let $n_{jk}$ be the number of times the bigram $(j,k)$ occurs in the data. The relevant part of the objective is $\sum_k n_{jk}\log A(j,k)$ with $\sum_k A(j,k)=1$. Introduce a Lagrange multiplier $\nu$:
+
+$$
+\mathcal{L} = \sum_k n_{jk}\log A(j,k) - \nu\Big(\sum_k A(j,k) - 1\Big), \qquad
+\frac{\partial \mathcal{L}}{\partial A(j,k)} = \frac{n_{jk}}{A(j,k)} - \nu = 0.
+$$
+
+Hence $A(j,k) \propto n_{jk}$, and normalizing gives the closed form
+
+$$
+\hat A(j,k) = \frac{n_{jk}}{\sum_{k'} n_{jk'}}, \qquad
+\hat B(k, o) = \frac{m_{ko}}{\sum_{o'} m_{ko'}}, \qquad
+\hat\pi(k) = \frac{c_k}{\sum_{k'} c_{k'}},
+$$ {#eq-structured-prediction-hmm-mle}
+
+where $m_{ko}$ counts emissions of symbol $o$ from state $k$ and $c_k$ counts sequences that start in state $k$. The same Lagrangian argument is the multinomial MLE used throughout the book; it reappears below as the stationary condition of the CRF gradient. In practice one adds pseudo-counts (Laplace / Dirichlet smoothing) to avoid zeros, which corresponds to MAP estimation under a Dirichlet prior.
+
+#### The forward algorithm and the data likelihood
+
+Decoding uses the max-product recursion (Viterbi). The companion sum-product recursion, the forward algorithm, computes the marginal likelihood $p(x) = \sum_y p(x,y)$, which is needed for model comparison and is the HMM precursor of the CRF partition function. Define the forward variable $\alpha_t(k) = p(x_{1:t}, y_t = k)$. Conditioning on the previous state and using both Markov assumptions,
+
+$$
+\alpha_1(k) = \pi(k)B(k,x_1), \qquad
+\alpha_t(k) = B(k, x_t)\sum_{j} \alpha_{t-1}(j) A(j,k), \qquad
+p(x) = \sum_k \alpha_T(k).
+$$ {#eq-structured-prediction-forward}
+
+This is identical in shape to Viterbi (@eq-structured-prediction-viterbi) with the $\max$ replaced by a $\sum$, the manifestation of a single semiring template (max-plus for decoding, sum-product for likelihood) underlying both. It runs in the same $O(TK^2)$ time.
+
+::: {.callout-note}
+The MLE in @eq-structured-prediction-hmm-mle is consistent: as the number of labeled sequences grows, $\hat A, \hat B, \hat\pi$ converge to the true parameters at the standard $O_p(n^{-1/2})$ rate, because each is a smooth function of sample frequencies. What an HMM cannot fix is misspecification: if the emission-independence assumption is false (observations carry correlated, overlapping features), no amount of data recovers a model the family does not contain. This is the structural reason discriminative CRFs, which never commit to a generative story for $x$, often win in practice.
+:::
 
 ### Conditional Random Fields
 
@@ -91,9 +154,52 @@ This objective is concave, so it has a unique optimum. Its gradient has the eleg
 
 $$
 \nabla_w = \sum_i \Big[ \mathbf{f}(x^{(i)}, y^{(i)}) - \mathbb{E}_{y \sim p_w(\cdot \mid x^{(i)})}\,\mathbf{f}(x^{(i)}, y) \Big] - \lambda w,
-$$
+$$ {#eq-structured-prediction-crf-grad}
 
 where the expectation is computed with the forward-backward algorithm (the sum-product analogue of Viterbi). At the optimum, model expectations match empirical counts. The two hard quantities, $Z(x)$ and the feature expectations, are both computable in $O(T K^2)$ time by dynamic programming, the same complexity as decoding.
+
+#### Deriving the gradient
+
+The gradient form is not magic; it is the generic identity for an exponential family. Write the per-example conditional log-likelihood (drop the $\ell_2$ term, which contributes $-\lambda w$ trivially) as $\ell_i(w) = w^\top \mathbf f(x^{(i)}, y^{(i)}) - \log Z_w(x^{(i)})$. The only nontrivial piece is the gradient of the log-partition function. Differentiating $\log Z_w(x) = \log \sum_{y'} \exp(w^\top \mathbf f(x,y'))$,
+
+$$
+\nabla_w \log Z_w(x)
+= \frac{\sum_{y'} \exp(w^\top \mathbf f(x,y'))\,\mathbf f(x,y')}{\sum_{y'}\exp(w^\top \mathbf f(x,y'))}
+= \sum_{y'} p_w(y'\mid x)\,\mathbf f(x,y')
+= \mathbb E_{y\sim p_w(\cdot\mid x)}\,\mathbf f(x,y).
+$$ {#eq-structured-prediction-logZ-grad}
+
+So the log-partition function is the cumulant generating function of the features: its gradient is their mean. Subtracting it from $\mathbf f(x^{(i)},y^{(i)})$ and summing over examples gives @eq-structured-prediction-crf-grad. The exponentially large expectation in @eq-structured-prediction-logZ-grad does not require enumerating sequences: because the features decompose locally, the expectation reduces to per-position and per-edge marginals $p_w(y_t=k\mid x)$ and $p_w(y_{t-1}=j, y_t=k\mid x)$, which forward-backward delivers.
+
+#### Forward-backward for the CRF
+
+Define the (unnormalized) forward and backward variables in the CRF, with $M_t(j,k) = \exp(\phi(j,k) + \psi_t(k,x))$ the position-$t$ transition matrix:
+
+$$
+\alpha_1(k) = \exp(\psi_1(k,x)),\quad
+\alpha_t(k) = \sum_j \alpha_{t-1}(j)\,M_t(j,k),\qquad
+\beta_T(k)=1,\quad
+\beta_t(j) = \sum_k M_{t+1}(j,k)\,\beta_{t+1}(k).
+$$
+
+Then $Z(x) = \sum_k \alpha_T(k)$, and the marginals needed for the gradient are
+
+$$
+p_w(y_t = k\mid x) = \frac{\alpha_t(k)\,\beta_t(k)}{Z(x)}, \qquad
+p_w(y_{t-1}=j, y_t=k\mid x) = \frac{\alpha_{t-1}(j)\,M_t(j,k)\,\beta_t(k)}{Z(x)}.
+$$ {#eq-structured-prediction-marginals}
+
+Each marginal is a normalized product of "score of all ways to reach here from the left" times "score of all ways to finish from here to the right," which is exactly what the recursion accumulates. In practice run these in log space with log-sum-exp.
+
+#### Concavity and the Hessian
+
+The objective is concave because $\log Z_w$ is convex in $w$. Differentiating @eq-structured-prediction-logZ-grad once more gives the Hessian of $\log Z_w$ as a covariance matrix,
+
+$$
+\nabla^2_w \log Z_w(x) = \mathbb E_{y\sim p_w}\big[\mathbf f \mathbf f^\top\big] - \big(\mathbb E_{y\sim p_w}\mathbf f\big)\big(\mathbb E_{y\sim p_w}\mathbf f\big)^\top = \operatorname{Cov}_{p_w}\!\big(\mathbf f(x,y)\big) \succeq 0,
+$$ {#eq-structured-prediction-hessian}
+
+which is positive semidefinite since any covariance matrix is. Therefore the negative log-likelihood is convex, its sum is convex, and the $\frac{\lambda}{2}\lVert w\rVert^2$ penalty makes it $\lambda$-strongly convex, giving a unique global optimum. There are no spurious local optima to worry about, which is why off-the-shelf L-BFGS or stochastic gradient on the CRF objective is reliable. The price is that each gradient evaluation runs forward-backward on every sequence, $O(\sum_i T_i K^2)$ per epoch.
 
 
 ::: {.callout-tip title="Intuition"}
@@ -112,6 +218,38 @@ $$
 
 If the prediction is already correct, the two feature vectors cancel and nothing changes. The only structured ingredient is the $\arg\max$, which is again solved by Viterbi. There is no partition function, no expectation, no gradient of a log-likelihood. In practice one averages the weight vectors across all updates, which dramatically improves generalization and is the standard form.
 
+#### Convergence: the structured mistake bound
+
+Collins's analysis lifts Novikoff's classical perceptron theorem to structured outputs, and the proof is short enough to give. Say the data are separable with margin $\gamma > 0$: there exists a unit weight vector $u$, $\lVert u\rVert = 1$, such that for every training example and every wrong output $y \neq y^{(i)}$,
+
+$$
+u^\top \mathbf f(x^{(i)}, y^{(i)}) - u^\top \mathbf f(x^{(i)}, y) \ge \gamma.
+$$
+
+Assume also a radius bound $\lVert \mathbf f(x^{(i)}, y^{(i)}) - \mathbf f(x^{(i)}, y)\rVert \le R$ for all $i$ and all $y$. Let $w^{(m)}$ be the weight vector before the $m$-th mistake, with $w^{(1)} = 0$. On a mistake the update is $w^{(m+1)} = w^{(m)} + \boldsymbol\delta$ with $\boldsymbol\delta = \mathbf f(x^{(i)}, y^{(i)}) - \mathbf f(x^{(i)}, \hat y)$. Project onto $u$ and use the margin:
+
+$$
+u^\top w^{(m+1)} = u^\top w^{(m)} + u^\top \boldsymbol\delta \ge u^\top w^{(m)} + \gamma \;\;\Rightarrow\;\; u^\top w^{(m+1)} \ge m\gamma.
+$$
+
+Now bound the norm. Because $\hat y$ was the decoded (highest-scoring) output, $w^{(m)\top}\boldsymbol\delta = w^{(m)\top}\mathbf f(x^{(i)},y^{(i)}) - w^{(m)\top}\mathbf f(x^{(i)},\hat y) \le 0$ on a mistake, so
+
+$$
+\lVert w^{(m+1)}\rVert^2 = \lVert w^{(m)}\rVert^2 + 2 w^{(m)\top}\boldsymbol\delta + \lVert\boldsymbol\delta\rVert^2 \le \lVert w^{(m)}\rVert^2 + R^2 \;\;\Rightarrow\;\; \lVert w^{(m+1)}\rVert^2 \le m R^2.
+$$
+
+Combine with Cauchy-Schwarz, $u^\top w^{(m+1)} \le \lVert u\rVert\,\lVert w^{(m+1)}\rVert = \lVert w^{(m+1)}\rVert$:
+
+$$
+m\gamma \le u^\top w^{(m+1)} \le \lVert w^{(m+1)}\rVert \le \sqrt{m}\,R \;\;\Rightarrow\;\; m \le \frac{R^2}{\gamma^2}.
+$$ {#eq-structured-prediction-mistake-bound}
+
+The total number of updates is at most $R^2/\gamma^2$, independent of the sequence length $T$, the size of the output space $K^T$, and the number of examples. Two consequences matter in practice. First, separable data are learned in finitely many passes. Second, the bound depends only on the geometry of the feature differences, so the exponential output space costs nothing in the analysis; it is hidden entirely inside the Viterbi $\arg\max$. For non-separable data the averaged perceptron, $\bar w = \frac{1}{NT}\sum_{m} w^{(m)}$, is the standard fix and enjoys generalization bounds in terms of the number of mistakes a near-optimal separator would make.
+
+::: {.callout-note}
+The non-negativity step $w^{(m)\top}\boldsymbol\delta \le 0$ is where exact decoding matters. If Viterbi is replaced by an approximate (for example beam) search, $\hat y$ need not be the true argmax, the inequality can fail, and the convergence guarantee is lost. This is the structured-prediction face of the general rule that perceptron-style learning assumes an exact inference oracle.
+:::
+
 ### The Structured Support Vector Machine
 
 The structured SVM (Tsochantaridis et al.; Taskar et al.) brings the large-margin principle of the support vector machine (covered in the support vector machines chapter, @sec-svm) to structured outputs. It asks not merely that the correct output score higher than every wrong one, but that it score higher by a margin that grows with how wrong the alternative is. Let $\Delta(y, y')$ be a loss measuring the discrepancy between two label sequences, for example the Hamming loss $\sum_t \mathbb{1}[y_t \neq y'_t]$, the number of mislabeled positions. The training objective is
@@ -121,6 +259,42 @@ $$
 $$
 
 The inner maximization is called loss-augmented inference: find the output that is both high-scoring and far from the truth, the most dangerous competitor. When $\Delta$ decomposes over positions (as Hamming loss does), the loss-augmented argmax is still a linear-chain argmax and is solved by, once again, Viterbi with the per-position loss folded into the emission scores.
+
+#### From margin constraints to the slack-rescaled QP
+
+The objective above is the unconstrained form. The classical derivation starts from a hard constraint, one per wrong output, and relaxes it with slacks. We ask that the true output beat every alternative by a loss-scaled margin (margin rescaling):
+
+$$
+w^\top \mathbf f(x^{(i)}, y^{(i)}) - w^\top \mathbf f(x^{(i)}, y) \ge \Delta(y^{(i)}, y) - \xi_i \quad \forall y \in \mathcal Y(x^{(i)}),\qquad \xi_i \ge 0,
+$$
+
+and minimize $\frac{\lambda}{2}\lVert w\rVert^2 + \frac1n\sum_i \xi_i$. Because the objective increases in $\xi_i$, at the optimum each slack is as small as the constraints permit, so $\xi_i$ equals the largest violation:
+
+$$
+\xi_i = \max\Big(0,\; \max_{y}\big[\Delta(y^{(i)},y) + w^\top\mathbf f(x^{(i)},y)\big] - w^\top\mathbf f(x^{(i)},y^{(i)})\Big).
+$$
+
+Taking $y = y^{(i)}$ inside the inner max contributes $\Delta(y^{(i)},y^{(i)}) = 0$, so the bracket is always $\ge 0$ and the outer $\max(0,\cdot)$ is redundant; substituting back recovers the unconstrained structured hinge exactly. There are $K^T$ constraints per example, exponentially many, but the cutting-plane and stochastic-subgradient algorithms only ever instantiate the single most-violated one, found by loss-augmented inference, which is why training is tractable.
+
+#### Why this is a sound surrogate
+
+The structured hinge is a convex upper bound on the task loss at the decoder's prediction, which is what justifies minimizing it. Let $\hat y = \arg\max_y w^\top\mathbf f(x^{(i)},y)$ be the prediction. Then $w^\top\mathbf f(x^{(i)},\hat y) \ge w^\top\mathbf f(x^{(i)},y^{(i)})$, so
+
+$$
+\Delta(y^{(i)},\hat y) \le \Delta(y^{(i)},\hat y) + \big[w^\top\mathbf f(x^{(i)},\hat y) - w^\top\mathbf f(x^{(i)},y^{(i)})\big] \le \max_y\big[\Delta(y^{(i)},y) + w^\top\mathbf f(x^{(i)},y) - w^\top\mathbf f(x^{(i)},y^{(i)})\big],
+$$ {#eq-structured-prediction-ssvm-bound}
+
+the right-hand side being the per-example structured hinge. Minimizing the (convex) hinge therefore drives down a genuine upper bound on the (non-convex, discontinuous) structured task loss, the structured analogue of the binary SVM hinge bounding the 0/1 loss.
+
+#### Folding the loss into Viterbi
+
+The loss-augmented argmax $\max_y\big[w^\top\mathbf f(x^{(i)},y) + \Delta(y^{(i)},y)\big]$ is solvable by Viterbi precisely when $\Delta$ shares the chain's locality. For Hamming loss $\Delta(y^{(i)},y) = \sum_t \mathbb 1[y_t \neq y^{(i)}_t]$, the loss adds a per-position term, so we run ordinary Viterbi (@eq-structured-prediction-viterbi) on augmented emissions
+
+$$
+\tilde\psi_t(k, x) = \psi_t(k,x) + \mathbb 1[k \neq y^{(i)}_t].
+$$
+
+The transition scores are untouched; only the unary scores gain a reward of $1$ for each position where the candidate label disagrees with the gold label. The decoder is therefore biased toward exactly the high-scoring-yet-wrong sequences the margin must suppress. Any loss that decomposes over the chain's cliques (positions and edges) folds in the same way; a loss that does not (for example a sequence-level F-measure) breaks the dynamic program and needs special-purpose inference.
 
 
 ::: {.callout-important title="Key idea"}
@@ -159,9 +333,25 @@ The idea is to compute, for each position $t$ and each candidate label $k$, the 
 $$
 \delta_1(k) = \psi_1(k, x), \qquad
 \delta_t(k) = \psi_t(k, x) + \max_{j \in \mathcal{S}} \big[ \delta_{t-1}(j) + \phi(j, k) \big].
-$$
+$$ {#eq-structured-prediction-viterbi}
 
 We also record which previous label $j$ achieved each maximum, in a back-pointer table $\beta_t(k)$. After the forward sweep, the best final label is $\arg\max_k \delta_T(k)$, and we recover the full sequence by following back-pointers from $T$ down to $1$. The maximization over $j$ is the only place the previous position enters, which is precisely the Markov assumption paying off.
+
+#### Why the recursion is correct
+
+The recursion is a Bellman equation, and its correctness rests on optimal substructure. Define $\delta_t(k)$ formally as the score of the best length-$t$ prefix ending in label $k$,
+
+$$
+\delta_t(k) = \max_{y_{1:t-1}} \Big[ \sum_{s=1}^{t}\psi_s(y_s,x) + \sum_{s=2}^{t}\phi(y_{s-1},y_s) \Big]\quad\text{subject to } y_t = k.
+$$
+
+We prove @eq-structured-prediction-viterbi by induction. The base case $\delta_1(k)=\psi_1(k,x)$ is immediate. For the inductive step, group the maximization over $y_{1:t-1}$ by the value $j$ of the second-to-last label $y_{t-1}$. The objective splits into a part touching only $y_{1:t-1}$ and a part touching only the final edge and node, because the score is a sum of terms each local to at most one edge:
+
+$$
+\delta_t(k) = \psi_t(k,x) + \max_{j}\Big[ \phi(j,k) + \underbrace{\max_{y_{1:t-2}}\big(\text{score of prefix ending in }j\text{ at }t-1\big)}_{=\,\delta_{t-1}(j)} \Big].
+$$
+
+The inner maximum is $\delta_{t-1}(j)$ by the induction hypothesis, which is legitimate precisely because, once $y_{t-1}=j$ is fixed, no term in the prefix score depends on $y_t$ or beyond; the Markov structure decouples the past from the future given the present label. This is the substructure property: an optimal length-$t$ path must extend an optimal length-$(t-1)$ path to its penultimate state. Brute force re-optimizes the shared prefixes once per full path, doing $O(K^T)$ work; Viterbi memoizes them, paying $K$ states $\times$ $K$ predecessors $\times$ $T$ positions, hence $O(TK^2)$. The back-pointer $\beta_t(k) = \arg\max_j[\delta_{t-1}(j)+\phi(j,k)]$ records the maximizing predecessor so the argmax sequence, not just its score, can be reconstructed.
 
 
 ::: {.callout-warning}
@@ -320,6 +510,56 @@ cat("Scores agree:    ",
 ```
 
 The two methods return the same sequence and the same score, which is the reassurance we want before trusting the decoder on inputs too long to enumerate.
+
+### Verifying the Forward Algorithm and a Marginal
+
+The same enumeration lets us check the sum-product side of the story: the forward recursion of @eq-structured-prediction-forward should reproduce $p(x) = \sum_y p(x,y)$, and the forward-backward marginal of @eq-structured-prediction-marginals should match a brute-force posterior $p(y_t = k \mid x)$. Confirming the algebra on a model small enough to enumerate is the surest guard against an off-by-one in the recursion.
+
+```{r structured-prediction-forward-check}
+# Forward algorithm: returns p(x) and the full alpha table (linear space here,
+# fine for a short toy sequence; use log-sum-exp for real lengths)
+forward <- function(obs, states, pi0, A, B) {
+  Tlen <- length(obs); K <- length(states)
+  alpha <- matrix(0, Tlen, K, dimnames = list(t = seq_len(Tlen), state = states))
+  alpha[1, ] <- pi0 * B[, obs[1]]
+  for (t in 2:Tlen)
+    for (k in 1:K)
+      alpha[t, k] <- (alpha[t - 1, ] %*% A[, k]) * B[k, obs[t]]
+  list(px = sum(alpha[Tlen, ]), alpha = alpha)
+}
+
+# Backward algorithm for the position marginals
+backward <- function(obs, states, pi0, A, B) {
+  Tlen <- length(obs); K <- length(states)
+  beta <- matrix(1, Tlen, K, dimnames = list(t = seq_len(Tlen), state = states))
+  for (t in seq(Tlen - 1, 1))
+    for (j in 1:K)
+      beta[t, j] <- sum(A[j, ] * B[, obs[t + 1]] * beta[t + 1, ])
+  beta
+}
+
+short_obs <- c("3", "1", "3")
+
+# Brute-force p(x) by summing exp(score) over all K^T label sequences
+grid <- expand.grid(rep(list(states), length(short_obs)),
+                    stringsAsFactors = FALSE)
+joint <- apply(grid, 1, function(lab)
+  exp(score_seq(as.character(lab), short_obs, states, pi0, A, B)))
+px_brute <- sum(joint)
+
+fb <- forward(short_obs, states, pi0, A, B)
+cat(sprintf("p(x): forward = %.6f, brute force = %.6f, agree = %s\n",
+            fb$px, px_brute, isTRUE(all.equal(fb$px, px_brute))))
+
+# Marginal p(y_2 = Hot | x): forward-backward vs brute force
+bw <- backward(short_obs, states, pi0, A, B)
+marg_fb <- (fb$alpha[2, "Hot"] * bw[2, "Hot"]) / fb$px
+marg_bf <- sum(joint[grid$Var2 == "Hot"]) / px_brute
+cat(sprintf("p(y2 = Hot | x): forward-backward = %.6f, brute = %.6f, agree = %s\n",
+            marg_fb, marg_bf, isTRUE(all.equal(marg_fb, marg_bf))))
+```
+
+Both the likelihood and the position marginal match the brute-force sums, confirming that the forward recursion and the $\alpha_t(k)\beta_t(k)/Z$ marginal formula are implemented correctly. These are exactly the quantities a CRF needs for its gradient (@eq-structured-prediction-crf-grad), now validated on a model where we can check every number.
 
 ## Practical Guidance and Pitfalls
 

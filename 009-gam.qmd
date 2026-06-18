@@ -125,6 +125,16 @@ When predictors are collinear, do not over-interpret the straight-line part of a
 :::
 
 
+### Existence and the projection view of the penalty
+
+Before deriving an algorithm, it helps to know what the penalized criterion is really optimizing. Each penalty $\int f_j''(t)^2\,dt$ is a quadratic form in the function $f_j$. If we evaluate $f_j$ at the $n$ data points and collect the values into a vector $\mathbf{f}_j = (f_j(x_{1j}),\dots,f_j(x_{nj}))^\top$, then the cubic smoothing spline penalty can be written exactly as a quadratic form $\mathbf{f}_j^\top \mathbf{K}_j \mathbf{f}_j$, where $\mathbf{K}_j$ is a fixed, symmetric, positive semidefinite penalty matrix that depends only on the design points $\{x_{ij}\}$ (its construction is given in @sec-spline). With $\mathbf{f} = \sum_j \mathbf{f}_j$ and $\mathbf{1}$ the vector of ones, the criterion in vector form is
+
+$$
+PRSS(\alpha, \mathbf{f}_1,\dots,\mathbf{f}_p) = \Big\| \mathbf{y} - \alpha\mathbf{1} - \sum_{j=1}^p \mathbf{f}_j \Big\|^2 + \sum_{j=1}^p \lambda_j\, \mathbf{f}_j^\top \mathbf{K}_j \mathbf{f}_j .
+$$ {#eq-gam-prss-matrix}
+
+This is a strictly convex problem in the centered components (the data-fit term is convex and each penalty is convex, and centering removes the only flat direction, the shared constant), so a minimizer exists and, on the space of centered functions of full-rank predictors, it is unique. Convexity is what guarantees that the iterative scheme below converges to the global optimum rather than to a spurious stationary point.
+
 ### The Backfitting Algorithm for Additive Models
 
 There is no closed-form formula that solves all $p$ smoothers at once, so we fit the model with a simple iterative scheme called *backfitting*. The intuition is one of polite turn-taking: to update one function, hold the others fixed, strip their contributions out of the response, and smooth what remains. Concretely, let $S_j$ be the cubic smoothing spline for the $j$-th function. We apply it to the *partial residuals* $\{y_i - \hat{\alpha} - \sum_{k \neq j}\hat{f}(x_{ik}) \}^n_1$, viewed as a function of $x_{ij}$, to obtain the new estimate $\hat{f}_j$. We repeat this for each predictor, always using the current estimates of the other functions when forming the residuals, and we keep cycling until the estimates $\hat{f}_j$ stabilize.
@@ -153,6 +163,44 @@ $$
 
 The cycle continues until the functions $\hat{f}_j$ change by less than a prespecified threshold. The re-centering line is just the identifiability constraint from above, enforced at every update so that each curve keeps describing deviations from $\hat\alpha$.
 
+#### Why backfitting is the right update {#sec-gam-backfitting-derivation}
+
+The backfitting step is not an ad hoc heuristic: it is exactly the coordinate-wise minimizer of @eq-gam-prss-matrix. Fix all components except the $j$-th and treat $\mathbf{f}_j$ as the only free variable. Collecting the terms that involve $\mathbf{f}_j$, the criterion is
+
+$$
+\Big\| \big(\mathbf{y} - \alpha\mathbf{1} - \textstyle\sum_{k\neq j}\mathbf{f}_k\big) - \mathbf{f}_j \Big\|^2 + \lambda_j\, \mathbf{f}_j^\top \mathbf{K}_j \mathbf{f}_j .
+$$
+
+Writing $\mathbf{r}_j = \mathbf{y} - \alpha\mathbf{1} - \sum_{k\neq j}\mathbf{f}_k$ for the partial residual, this is precisely the objective of a single smoothing spline applied to $\mathbf{r}_j$. Differentiating with respect to $\mathbf{f}_j$ and setting the gradient to zero,
+
+$$
+-2(\mathbf{r}_j - \mathbf{f}_j) + 2\lambda_j \mathbf{K}_j \mathbf{f}_j = 0
+\;\;\Longrightarrow\;\;
+(\mathbf{I} + \lambda_j \mathbf{K}_j)\,\mathbf{f}_j = \mathbf{r}_j
+\;\;\Longrightarrow\;\;
+\hat{\mathbf{f}}_j = (\mathbf{I} + \lambda_j \mathbf{K}_j)^{-1}\mathbf{r}_j = \mathbf{S}_j\,\mathbf{r}_j .
+$$ {#eq-gam-backfit-normal}
+
+The matrix $\mathbf{S}_j = (\mathbf{I} + \lambda_j \mathbf{K}_j)^{-1}$ is the smoother matrix of the cubic smoothing spline, so applying $S_j$ to the partial residuals is the same as solving the one-dimensional penalized problem in closed form. Backfitting therefore cycles through these blocks, and each pass is one sweep of block Gauss-Seidel (equivalently block coordinate descent) on a convex quadratic. The stacked stationarity conditions for all $p$ blocks form the linear system
+
+$$
+\begin{pmatrix}
+\mathbf{I} & \mathbf{S}_1 & \cdots & \mathbf{S}_1 \\
+\mathbf{S}_2 & \mathbf{I} & \cdots & \mathbf{S}_2 \\
+\vdots & & \ddots & \vdots \\
+\mathbf{S}_p & \mathbf{S}_p & \cdots & \mathbf{I}
+\end{pmatrix}
+\begin{pmatrix}\mathbf{f}_1\\ \mathbf{f}_2\\ \vdots\\ \mathbf{f}_p\end{pmatrix}
+=
+\begin{pmatrix}\mathbf{S}_1\mathbf{y}\\ \mathbf{S}_2\mathbf{y}\\ \vdots\\ \mathbf{S}_p\mathbf{y}\end{pmatrix},
+$$ {#eq-gam-backfit-system}
+
+and backfitting is the Gauss-Seidel iteration for this system. Convergence: if every smoother $\mathbf{S}_j$ is a symmetric operator with eigenvalues in $[0,1]$ (true for cubic smoothing splines), the backfitting map is a contraction on the centered space and the iterates converge to the unique solution of @eq-gam-backfit-system; when two predictors are exactly collinear the system @eq-gam-backfit-system is singular and only the sum $\mathbf{f}_1+\mathbf{f}_2$ is determined, which is the concrete form of the non-identifiability flagged above. This is also why backfitting can converge slowly when predictors are strongly correlated: the off-diagonal blocks are large, so the Gauss-Seidel iteration mixes the components slowly, exactly as Gauss-Seidel slows for ill-conditioned linear systems.
+
+::: {.callout-note}
+The update @eq-gam-backfit-normal is the additive-model analogue of the normal equations. In ordinary least squares we invert $\mathbf{X}^\top\mathbf{X}$ once; here each block has its own simple inverse $(\mathbf{I}+\lambda_j\mathbf{K}_j)^{-1}$, and backfitting stitches the blocks together iteratively because no single closed form solves all of them jointly at reasonable cost.
+:::
+
 Two features of backfitting make it a workhorse rather than a one-off recipe. First, it is *modular*: any smoother can take the place of $S_j$, so you can mix and match the right tool for each predictor. The available choices include the following.
 
 -   Other univariate regression smoothers, for example local polynomial regression (@sec-local) and kernel smoothing (@sec-kernel).
@@ -162,6 +210,78 @@ Two features of backfitting make it a workhorse rather than a one-off recipe. Fi
 -   Smoothers for second or higher-order interactions, or periodic smoothers for seasonal effects.
 
 Second, backfitting gives us an honest accounting of model complexity. If we evaluate the smoother at the training points, it can be represented by the $n \times n$ smoother matrix $\mathbf{S}_j$, and the effective degrees of freedom for the $j$-th term can be estimated from $trace(\mathbf{S}_j) -1$. This is the number we report when we say a term "uses about 4 degrees of freedom," and it lets us compare a smooth term against, say, a quartic polynomial on a common scale.
+
+### Penalized regression splines and choosing the smoothing parameter {#sec-gam-pirls}
+
+The smoothing-spline view above puts a knot at every distinct value of each predictor, which makes the smoother matrices $n\times n$ and the fit expensive for large $n$. The `mgcv` package used in Example 2 takes the more scalable *penalized regression spline* route, and it is worth deriving because it also makes the automatic smoothness selection (the "we never told `mgcv` how many knots to use" payoff) concrete.
+
+Represent each smooth in a fixed, moderate basis of size $K_j \ll n$,
+
+$$
+f_j(x) = \sum_{m=1}^{K_j} \beta_{jm}\,b_{jm}(x),
+$$
+
+where $b_{jm}$ are spline basis functions (for example thin-plate or cubic-regression bases). Stacking the evaluations gives a model matrix $\mathbf{X}$ with one block of columns per smooth, and the wiggliness penalty becomes quadratic in the coefficients, $\int f_j''(t)^2\,dt = \boldsymbol\beta_j^\top \mathbf{S}_j \boldsymbol\beta_j$ for a fixed penalty matrix $\mathbf{S}_j$. The Gaussian objective is then a single penalized least squares problem in $\boldsymbol\beta$,
+
+$$
+\| \mathbf{y} - \mathbf{X}\boldsymbol\beta \|^2 + \sum_j \lambda_j\,\boldsymbol\beta^\top \mathbf{S}_j \boldsymbol\beta
+= \| \mathbf{y} - \mathbf{X}\boldsymbol\beta \|^2 + \boldsymbol\beta^\top \mathbf{S}_\lambda \boldsymbol\beta,
+\qquad \mathbf{S}_\lambda = \sum_j \lambda_j \mathbf{S}_j ,
+$$
+
+which, unlike the backfitting system, has a genuine ridge-type closed form. Setting the gradient to zero,
+
+$$
+\hat{\boldsymbol\beta} = (\mathbf{X}^\top\mathbf{X} + \mathbf{S}_\lambda)^{-1}\mathbf{X}^\top\mathbf{y},
+\qquad
+\hat{\mathbf{y}} = \mathbf{A}_\lambda \mathbf{y},
+\quad
+\mathbf{A}_\lambda = \mathbf{X}(\mathbf{X}^\top\mathbf{X} + \mathbf{S}_\lambda)^{-1}\mathbf{X}^\top .
+$$ {#eq-gam-pls-solution}
+
+The matrix $\mathbf{A}_\lambda$ is the GAM analogue of the hat matrix, and its trace defines the *effective degrees of freedom* of the whole model, $\mathrm{edf} = \mathrm{tr}(\mathbf{A}_\lambda)$. As $\lambda_j\to 0$ the penalty vanishes and $\mathrm{edf}\to \mathrm{rank}(\mathbf{X})$; as $\lambda_j\to\infty$ the smooth is forced into the null space of $\mathbf{S}_j$ (a straight line for the second-derivative penalty), so $\mathrm{edf}$ shrinks toward the dimension of that null space. This is the precise sense in which the penalty, not the knot count, controls flexibility: with $K_j$ large enough to be flexible, $\lambda_j$ alone decides how much of that flexibility is used.
+
+The smoothing parameters are chosen by minimizing a prediction-error criterion rather than by hand. Generalized cross-validation (GCV) uses a rotation-invariant approximation to leave-one-out error,
+
+$$
+\mathrm{GCV}(\lambda) = \frac{n\,\|\mathbf{y} - \mathbf{A}_\lambda\mathbf{y}\|^2}{\big(n - \mathrm{tr}(\mathbf{A}_\lambda)\big)^2},
+$$ {#eq-gam-gcv}
+
+obtained from ordinary cross-validation by replacing each leverage $A_{ii}$ with the average leverage $\mathrm{tr}(\mathbf{A}_\lambda)/n$. The denominator penalizes models that spend many effective degrees of freedom, so GCV trades fit against complexity automatically. Modern `mgcv` defaults instead to maximizing a (restricted) marginal likelihood, which treats $\boldsymbol\beta\sim N(\mathbf{0}, \mathbf{S}_\lambda^{-}/\,)$ as a Gaussian prior and is generally more resistant to the occasional severe undersmoothing that GCV can produce; both deliver the same automatic-smoothness behavior, and both are far cheaper than searching a grid of knot positions by hand.
+
+::: {.callout-tip title="When to use this"}
+Prefer the `mgcv` penalized-regression-spline machinery for anything beyond small data: it scales as $O(nK^2)$ rather than $O(n^3)$, selects all $\lambda_j$ jointly by GCV or REML, and reports an honest per-term $\mathrm{edf}$. Reserve the classic per-knot smoothing spline plus backfitting (the `gam` package) for pedagogy or when you want to plug in a nonstandard smoother such as `lo`.
+:::
+
+We can confirm the penalized-least-squares solution @eq-gam-pls-solution and the effective-degrees-of-freedom identity $\mathrm{edf}=\mathrm{tr}(\mathbf{A}_\lambda)$ on a tiny example with base R. As $\lambda$ grows the fit stiffens and the trace of the influence matrix falls toward the dimension of the penalty null space.
+
+```{r gam-pls-verify}
+set.seed(1)
+n <- 60
+x <- sort(runif(n))
+y <- sin(2 * pi * x) + rnorm(n, sd = 0.3)
+
+# cubic B-spline basis and a second-difference penalty (P-spline)
+X <- splines::bs(x, df = 12, intercept = TRUE)
+D <- diff(diag(ncol(X)), differences = 2)   # second-difference operator
+S <- crossprod(D)                            # penalty matrix S = D'D
+
+edf <- function(lambda) {
+  A <- X %*% solve(crossprod(X) + lambda * S, t(X))  # influence (hat) matrix
+  sum(diag(A))
+}
+
+# beta-hat from eq-gam.qmd-pls-solution equals the closed-form ridge solution
+lambda <- 1
+beta_hat <- solve(crossprod(X) + lambda * S, crossprod(X, y))
+fit_direct <- as.vector(X %*% beta_hat)
+fit_hat    <- as.vector(X %*% solve(crossprod(X) + lambda * S, t(X)) %*% y)
+max(abs(fit_direct - fit_hat))                # ~0: same fitted values
+
+sapply(c(0, 0.01, 1, 100, 1e6), edf)          # edf decreases as lambda grows
+```
+
+The first number is essentially zero (the two ways of writing the fit agree), and the effective degrees of freedom decrease monotonically from the full basis dimension toward 2, the dimension of the second-difference penalty null space (the space of straight lines), exactly as the theory predicts.
 
 ## Fitting Generalized Additive Models
 
@@ -192,6 +312,73 @@ Step 3 continues step 2 until the change in the functions falls below a pre-spec
 The working target $z_i$ is a local linear approximation to the link applied to the response, and the weights $w_i$ are the variance of a Bernoulli draw with probability $\hat p_i$. Observations whose probabilities are near 0 or 1 carry little weight, which is the same reweighting that drives standard logistic regression.
 :::
 
+#### Deriving the working response and weights {#sec-gam-localscoring-derivation}
+
+The working response and weights are not memorized formulas; they fall out of a Newton (Fisher scoring) step on the penalized log-likelihood, exactly as in a GLM. Write $\eta_i = \alpha + \sum_j f_j(x_{ij})$ for the additive predictor and let the response have a one-parameter exponential-family distribution with mean $\mu_i$, link $g(\mu_i)=\eta_i$, and variance function $V(\mu_i)$. The penalized log-likelihood to be maximized is
+
+$$
+\ell_p = \sum_{i=1}^n \ell(y_i; \mu_i) - \tfrac12 \sum_j \lambda_j \int f_j''(t)^2\,dt .
+$$
+
+Consider the score with respect to $\eta_i$. For an exponential family the per-observation score has the standard form
+
+$$
+\frac{\partial \ell_i}{\partial \eta_i}
+= \frac{y_i - \mu_i}{V(\mu_i)}\,\frac{\partial \mu_i}{\partial \eta_i},
+\qquad
+-\,\mathbb{E}\!\left[\frac{\partial^2 \ell_i}{\partial \eta_i^2}\right]
+= \frac{1}{V(\mu_i)}\left(\frac{\partial \mu_i}{\partial \eta_i}\right)^2 =: w_i ,
+$$
+
+where $w_i$ is the Fisher information for $\eta_i$, i.e. the IRLS weight. A single Fisher-scoring update solves a quadratic approximation to $\ell_p$ around the current $\hat\eta_i$. Completing the square, that quadratic is, up to constants, a weighted penalized least squares problem in the new predictor $\eta$,
+
+$$
+\sum_{i=1}^n w_i (z_i - \eta_i)^2 + \sum_j \lambda_j \int f_j''(t)^2\,dt,
+\qquad
+z_i = \hat\eta_i + \frac{y_i - \hat\mu_i}{w_i}\,\frac{\partial \eta_i}{\partial \mu_i}
+    = \hat\eta_i + (y_i - \hat\mu_i)\,g'(\hat\mu_i),
+$$ {#eq-gam-working-response}
+
+which is the *adjusted dependent variable*. Specializing to logistic regression makes the displayed formulas appear: with $g=\mathrm{logit}$ we have $\mu_i = p_i$, $g'(\mu_i) = 1/[p_i(1-p_i)]$, and $V(\mu_i)=p_i(1-p_i)$, so
+
+$$
+w_i = \frac{(\partial \mu_i/\partial\eta_i)^2}{V(\mu_i)} = \frac{[p_i(1-p_i)]^2}{p_i(1-p_i)} = p_i(1-p_i),
+\qquad
+z_i = \hat\eta_i + \frac{y_i - \hat p_i}{\hat p_i(1-\hat p_i)} ,
+$$
+
+exactly the weights and working target in the algorithm above. The inner "fit an additive model to $z_i$ with weights $w_i$" step is therefore the weighted version of the backfitting normal equations @eq-gam-backfit-normal, with the unweighted smoother $\mathbf{S}_j$ replaced by its weighted form $\mathbf{S}_j^{(w)} = (\mathbf{W} + \lambda_j \mathbf{K}_j)^{-1}\mathbf{W}$. Local scoring is thus a doubly nested loop: an outer Fisher-scoring (IRLS) loop that rebuilds $(z_i, w_i)$, and an inner backfitting loop that solves the weighted additive least squares problem. Because each outer step is a Newton step on a concave penalized log-likelihood (concave for canonical links), it inherits the local quadratic convergence of Newton's method once the iterates are near the optimum.
+
+
+## Theoretical properties and practical guidance
+
+### Why additivity beats the curse of dimensionality {#sec-gam-rates}
+
+The deepest reason GAMs are useful is a rate result. A fully nonparametric estimator of a $p$-dimensional regression surface $E(Y\mid X)=m(X)$ with two bounded derivatives converges at the rate $n^{-2/(4+p)}$ in mean squared error: the exponent collapses toward zero as $p$ grows, which is the curse of dimensionality. Stone (1985, 1986) showed that if the regression function is genuinely additive, $m(X)=\alpha+\sum_j f_j(X_j)$ with each $f_j$ twice differentiable, then each component, and hence the whole fit, can be estimated at the *one-dimensional* optimal rate
+
+$$
+\mathbb{E}\big[(\hat f_j(x) - f_j(x))^2\big] = O\!\big(n^{-4/5}\big),
+$$
+
+independent of $p$. The additive constraint converts a $p$-dimensional smoothing problem into $p$ one-dimensional ones, and that is precisely what restores a usable convergence rate. The price is bias: if the truth contains interactions, no additive model can represent them, so $\hat m$ is asymptotically biased no matter how large $n$ is. This is the bias-variance bargain of the method, lower variance and a fast rate in exchange for an approximation (modeling) bias whenever additivity fails.
+
+### Standard errors, inference, and the "p-value for a curve"
+
+Because each fit at the data points is linear in $\mathbf{y}$, $\hat f_j = \mathbf{S}_j^{\text{(full)}}\mathbf{y}$ for an appropriate row block, pointwise variance bands follow from $\mathrm{Var}(\hat f_j) = \sigma^2 \mathbf{S}_j^{\text{(full)}}\mathbf{S}_j^{\text{(full)\top}}$, which is what the `se = TRUE` bands in the figures display. The "Anova for Nonparametric Effects" table in the `gam` summary tests whether the *nonlinear* part of a term is needed by comparing the term's $\mathrm{edf}$ against its linear projection on an approximate $\chi^2$ (or $F$) scale; this is the formal version of the visual judgment that `year` is straight while `age` bends. In `mgcv`, the per-smooth p-value is computed from a Wald-type statistic on $\hat{\boldsymbol\beta}_j$ using a rank-truncated pseudo-inverse of its covariance, and these p-values are approximate because they condition on the selected $\lambda_j$ (they do not account for the smoothing-parameter estimation, so treat borderline values cautiously).
+
+### Failure modes
+
+Three failure modes recur in practice.
+
+-   **Concurvity**, the nonparametric analogue of collinearity: if one smooth term can be well approximated by a function of the others (for example $X_2 \approx h(X_1)$), the components trade variance back and forth, standard errors are understated, and the individual curves become unstable even though predictions stay reasonable. `mgcv::concurvity()` quantifies it; the cure is the same as for collinearity, drop or combine the redundant predictors.
+
+-   **Boundary and sparse-region instability**: smooths are poorly determined where data are thin, producing the wide bands and wild swings seen at the edges of `age`. The empty education cell in Example 1 is the discrete version of this, an estimated logit driven to $\pm\infty$, which is exactly why the chapter drops the lowest education level before refitting.
+
+-   **Missed interactions**: additivity is an assumption, not a conclusion. If `age` and `year` truly interact, the additive fit averages over the interaction and can be badly biased; the remedy is an explicit tensor-product or bivariate smooth (the `lo(year, age)` surface and `mgcv::te()` / `ti()` terms) for the suspected pair.
+
+### Hyperparameters and diagnostics
+
+The only real tuning knobs are the per-term smoothing parameters $\lambda_j$ (equivalently the target $\mathrm{edf}$ or `df`). With `mgcv` these are selected automatically by GCV or REML, and the practitioner sets only the basis dimension `k`, which is an upper bound on flexibility rather than the flexibility itself: choose `k` generously and let the penalty shrink it, then verify with `mgcv::gam.check()`, whose `k-index` and residual-vs-fitted diagnostics flag a basis that is too small. With the classic `gam` package the `df` argument fixes the $\mathrm{edf}$ directly and is typically chosen by comparing nested models on an F-test, as Example 1 does. For inference and prediction, report each term's $\mathrm{edf}$ (a smooth using near 1 df is effectively linear, a strong signal to simplify the term), inspect partial-residual plots for systematic structure the smooth missed, and remember the computational scaling: $O(n^3)$ per smoother for full smoothing splines versus $O(nK^2)$ for penalized regression splines, which is why `mgcv` is the default for anything but small $n$.
 
 ## Summary
 

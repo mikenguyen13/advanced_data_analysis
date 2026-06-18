@@ -48,6 +48,39 @@ Read the formula as a weighted average: each $y_i$ is multiplied by its weight $
 Nearest neighbors gives every neighbor an equal vote and everyone else zero. A kernel replaces that hard cutoff with a smooth falloff in influence, and smoothness in the weights produces smoothness in the fit.
 :::
 
+### The Nadaraya-Watson estimator as a local average
+
+The Nadaraya-Watson estimator is not an arbitrary recipe: it is the solution of a weighted least squares problem, and it is the natural plug-in estimator for the conditional mean. Both views are worth making precise.
+
+Assume the data $(x_i, y_i)_{i=1}^n$ are an i.i.d. sample from a joint distribution with density $f_{X,Y}$, and write the regression function as the conditional mean
+$$
+f(x_0) = \mathbb{E}[Y \mid X = x_0] = \int y \, \frac{f_{X,Y}(x_0, y)}{f_X(x_0)} \, dy = \frac{\int y \, f_{X,Y}(x_0, y)\, dy}{f_X(x_0)}.
+$$
+
+Replace the unknown joint and marginal densities by kernel density estimates. With a kernel $K_\lambda(x_0, x) = \lambda^{-1} D(|x - x_0|/\lambda)$ and a product kernel in $(x, y)$, the estimates are
+$$
+\hat f_X(x_0) = \frac{1}{n}\sum_{i=1}^n K_\lambda(x_0, x_i), \qquad
+\widehat{f_{X,Y}}(x_0, y) = \frac{1}{n}\sum_{i=1}^n K_\lambda(x_0, x_i)\, K_h(y, y_i).
+$$
+Substituting and using $\int y\, K_h(y, y_i)\, dy = y_i$ (any kernel that is a symmetric density centered at $y_i$ has mean $y_i$, so the bandwidth $h$ cancels) gives
+$$
+\hat f(x_0) = \frac{\frac{1}{n}\sum_i K_\lambda(x_0, x_i)\, y_i}{\frac{1}{n}\sum_i K_\lambda(x_0, x_i)} = \frac{\sum_{i=1}^n K_\lambda(x_0, x_i)\, y_i}{\sum_{i=1}^n K_\lambda(x_0, x_i)}.
+$$ {#eq-kernel-nw-derivation}
+This is exactly the Nadaraya-Watson average. The derivation shows the estimator is the conditional mean computed under the kernel density estimate of the data, which is why it inherits both the strengths (consistency) and the weaknesses (boundary bias) of kernel density estimation.
+
+Equivalently, $\hat f(x_0)$ is the constant $\beta_0$ that minimizes the locally weighted sum of squares
+$$
+\hat f(x_0) = \arg\min_{\beta_0} \sum_{i=1}^n K_\lambda(x_0, x_i)\,(y_i - \beta_0)^2 .
+$$ {#eq-kernel-nw-wls}
+Setting the derivative with respect to $\beta_0$ to zero gives $\sum_i K_\lambda(x_0,x_i)(y_i - \beta_0) = 0$, whose solution is the weighted average in @eq-kernel-nw-derivation. Reading the estimator this way, as fitting a local constant, makes it clear what local regression (@sec-local) changes: it replaces the local constant $\beta_0$ by a local line or polynomial, which is what removes the boundary bias discussed below.
+
+### The estimator is linear in the responses
+
+A fact that drives all of the theory is that the fit is linear in $y$. Define the equivalent kernel weights
+$$
+\ell_i(x_0) = \frac{K_\lambda(x_0, x_i)}{\sum_{j=1}^n K_\lambda(x_0, x_j)}, \qquad \hat f(x_0) = \sum_{i=1}^n \ell_i(x_0)\, y_i ,
+$$ {#eq-kernel-linear-smoother}
+where the weights satisfy $\sum_i \ell_i(x_0) = 1$ for every $x_0$ but in general $\sum_i x_i \,\ell_i(x_0) \neq x_0$. Stacking the fitted values at the training points gives $\hat{\mathbf{y}} = \mathbf{S}\,\mathbf{y}$ with smoother matrix $S_{ij} = \ell_j(x_i)$. Because $\mathbf S$ does not depend on $\mathbf y$, the kernel smoother is a *linear smoother*, exactly like ridge or spline smoothers, and the *effective degrees of freedom* of the fit can be defined as $\mathrm{df}_\lambda = \operatorname{tr}(\mathbf S)$. This single number summarizes complexity across kernels and bandwidths and is what makes different smoothers comparable: a kernel fit with $\operatorname{tr}(\mathbf S) = 8$ is roughly as flexible as a degree-$7$ polynomial regression.
 
 ### Choosing the kernel function
 
@@ -129,6 +162,83 @@ Reach for kernel smoothing when you want a flexible one-dimensional (or low-dime
 
 Because there is no formula that hands you the right width, $\lambda$ is chosen by data-driven tuning, most commonly [Cross-validation]: try a grid of widths, estimate out-of-sample error for each, and keep the width that minimizes it.
 
+### The bias-variance tradeoff, made precise
+
+The qualitative statements above can be turned into formulas, and the formulas tell you the optimal bandwidth and the best achievable error rate. Work in one dimension with equally weighted data of size $n$, a kernel that is a symmetric density with
+$$
+\int D(u)\, du = 1, \quad \int u\, D(u)\, du = 0, \quad \mu_2 = \int u^2 D(u)\, du, \quad R(D) = \int D(u)^2\, du,
+$$
+and suppose $f$ is twice continuously differentiable and the design density $g(x)$ is smooth and bounded away from zero near $x_0$. As $n \to \infty$ and $\lambda \to 0$ with $n\lambda \to \infty$, a Taylor expansion of the Nadaraya-Watson estimator gives the standard asymptotic moments at an interior point:
+$$
+\operatorname{Bias}\!\big(\hat f(x_0)\big) \approx \tfrac{1}{2}\lambda^2 \mu_2 \left[ f''(x_0) + \frac{2 f'(x_0) g'(x_0)}{g(x_0)} \right],
+$$ {#eq-kernel-nw-bias}
+$$
+\operatorname{Var}\!\big(\hat f(x_0)\big) \approx \frac{\sigma^2 R(D)}{n \lambda\, g(x_0)},
+$$ {#eq-kernel-nw-var}
+where $\sigma^2 = \operatorname{Var}(Y \mid X = x_0)$. Two structural facts are visible immediately. First, the bias grows like $\lambda^2$ (wider kernel, more averaging over curvature) while the variance shrinks like $1/(n\lambda)$ (wider kernel averages more points), so the two genuinely pull in opposite directions. Second, the variance is inversely proportional to the local design density $g(x_0)$: where data are sparse the estimate is noisier, which is the formal version of the adaptive-width remark in @sec-kernel.
+
+The design-density term $2 f' g'/g$ in @eq-kernel-nw-bias is the *design bias* of the local-constant fit. It does not vanish even where $f$ is linear, and it is exactly the term that local linear regression (@sec-local) annihilates, which is the precise reason local regression is preferred at boundaries and in regions of changing density.
+
+Minimizing the asymptotic mean squared error $\operatorname{MSE} = \operatorname{Bias}^2 + \operatorname{Var}$ over $\lambda$ gives the optimal local bandwidth. Writing $b(x_0)$ for the bracketed curvature term in @eq-kernel-nw-bias, $\operatorname{MSE}(\lambda) \approx \tfrac14 \lambda^4 \mu_2^2 b(x_0)^2 + \sigma^2 R(D)/(n\lambda g(x_0))$; differentiating and setting to zero,
+$$
+\lambda_{\text{opt}}(x_0) = \left[ \frac{\sigma^2 R(D)}{\mu_2^2\, b(x_0)^2\, g(x_0)} \right]^{1/5} n^{-1/5},
+\qquad
+\operatorname{MSE}\big(\lambda_{\text{opt}}\big) = O\!\left(n^{-4/5}\right).
+$$ {#eq-kernel-opt-bandwidth}
+This is the canonical rate for one-dimensional nonparametric smoothing: the best bandwidth shrinks like $n^{-1/5}$ and the pointwise error converges at $n^{-4/5}$, strictly slower than the $n^{-1}$ MSE of a correctly specified parametric model. That gap is the price of not committing to a global form, and it cannot be beaten without extra smoothness assumptions on $f$.
+
+::: {.callout-note title="Curse of dimensionality"}
+In $p$ dimensions with a product kernel the same expansion gives bias $O(\lambda^2)$ and variance $O\!\big(1/(n\lambda^p)\big)$, so the optimal bandwidth is $\lambda_{\text{opt}} \propto n^{-1/(p+4)}$ and the optimal MSE is $O\!\big(n^{-4/(p+4)}\big)$. The rate degrades sharply with $p$: matching the accuracy a one-dimensional smoother reaches with $n$ points requires roughly $n^{(p+4)/5}$ points in $p$ dimensions. This is why raw kernel smoothing is a low-dimensional tool, and why high-dimensional problems call for structure such as additivity (@sec-gam) or projection.
+:::
+
+### Practical bandwidth selection
+
+In practice three routes to a bandwidth are common, in increasing order of robustness.
+
+*Leave-one-out cross-validation, computed cheaply.* Because the smoother is linear (@eq-kernel-linear-smoother), the leave-one-out residual has a closed form that avoids refitting $n$ times. If $S_{ii}$ is the $i$th diagonal of the smoother matrix, then
+$$
+y_i - \hat f^{(-i)}(x_i) = \frac{y_i - \hat f(x_i)}{1 - S_{ii}},
+\qquad
+\operatorname{CV}(\lambda) = \frac{1}{n}\sum_{i=1}^n \left( \frac{y_i - \hat f(x_i)}{1 - S_{ii}} \right)^2 ,
+$$ {#eq-kernel-loocv}
+so a full LOOCV curve costs one fit per candidate $\lambda$, not $n$. The same identity underlies generalized cross-validation, which replaces $S_{ii}$ by the average $\operatorname{tr}(\mathbf S)/n$.
+
+*Plug-in rules.* @eq-kernel-opt-bandwidth depends only on $\sigma^2$, the design density, and the curvature functional $\int b(x)^2 g(x)\, dx$. Plug-in methods estimate these from a pilot fit and substitute them, giving a bandwidth without a search. They converge faster than cross-validation but require the smoothness assumptions to hold.
+
+*Rules of thumb (density estimation).* For Gaussian KDE of a roughly Gaussian sample, Silverman's rule sets $\lambda = 0.9\, \min(\hat\sigma, \widehat{\mathrm{IQR}}/1.34)\, n^{-1/5}$, which minimizes asymptotic integrated squared error under normality and is the default in `density()`. It oversmooths multimodal densities, so treat it as a starting point and reduce $\lambda$ if structure is suspected.
+
+The leave-one-out shortcut in @eq-kernel-loocv is worth checking directly: the closed-form residual should equal an honest refit that deletes each point. The following base R simulation confirms it for a Gaussian Nadaraya-Watson smoother.
+
+```{r}
+#| label: loocv-identity-check
+set.seed(1)
+n <- 40
+x <- sort(runif(n)); y <- sin(2 * pi * x) + rnorm(n, sd = 0.2)
+lambda <- 0.1
+
+# Smoother matrix S with row-normalized Gaussian weights
+W <- outer(x, x, function(a, b) dnorm((a - b) / lambda))
+S <- W / rowSums(W)
+fit <- as.vector(S %*% y)
+
+# Closed-form LOO residuals via the diagonal of S
+loo_closed <- (y - fit) / (1 - diag(S))
+
+# Brute-force LOO: delete each point and refit
+loo_brute <- sapply(seq_len(n), function(i) {
+  w <- dnorm((x[i] - x[-i]) / lambda)
+  y[i] - sum(w * y[-i]) / sum(w)
+})
+
+max(abs(loo_closed - loo_brute))  # ~ 0 up to floating point
+```
+
+A useful diagnostic across all routes: plot the fit at several bandwidths spanning the cross-validation minimum. A good $\lambda$ sits in a region where the fit is visually stable; if the curve changes character drastically for small changes in $\lambda$, the data do not pin the bandwidth down and the smoothest defensible choice should be preferred.
+
+::: {.callout-warning title="Failure modes"}
+Kernel smoothers break in predictable ways: (i) at boundaries, where the one-sided neighborhood induces $O(\lambda)$ bias rather than $O(\lambda^2)$, fixed only by local polynomials; (ii) under heteroscedastic or heavy-tailed noise, where the local average is not robust and a single outlier drags the fit; (iii) in regions of sharply varying density, where a global bandwidth is simultaneously too wide where data are dense and too narrow where data are sparse; and (iv) in moderate to high dimension, where the curse of dimensionality empties every neighborhood.
+:::
+
 ## Kernel Density Estimation
 
 Kernels did not begin as a regression tool. Their original job was to estimate a probability density, and that use is still common today. The shift in goal is small: instead of averaging response values $y_i$ near $x_0$, we count how many observations pile up near $x_0$, which tells us how probable that region is.
@@ -145,6 +255,30 @@ A common choice is the Gaussian kernel with standard deviation $\lambda$. The le
 ::: {.callout-tip title="Intuition"}
 Picture dropping a tiny mound of sand on the number line at each data point. Where points cluster, the mounds overlap and pile high; where points are scarce, the sand is thin. The resulting profile, rescaled to integrate to one, is the estimated density.
 :::
+
+### Bias, variance, and the optimal density bandwidth
+
+The same expansion that governed regression applies to the density estimate, and here it is cleaner because there is no design density to contend with. Write the estimator with a kernel $D$ that is a symmetric density as $\hat f_X(x_0) = \tfrac{1}{n\lambda}\sum_i D\!\big((x_0 - x_i)/\lambda\big)$. Taking the expectation over one observation,
+$$
+\mathbb{E}\,\hat f_X(x_0) = \frac{1}{\lambda}\int D\!\Big(\frac{x_0 - u}{\lambda}\Big) f_X(u)\, du = \int D(t)\, f_X(x_0 - \lambda t)\, dt ,
+$$
+and a second-order Taylor expansion $f_X(x_0 - \lambda t) = f_X(x_0) - \lambda t f_X'(x_0) + \tfrac12 \lambda^2 t^2 f_X''(x_0) + o(\lambda^2)$, together with $\int D = 1$ and $\int t D(t)\, dt = 0$, yields
+$$
+\operatorname{Bias}\!\big(\hat f_X(x_0)\big) \approx \tfrac{1}{2}\lambda^2 \mu_2\, f_X''(x_0),
+\qquad
+\operatorname{Var}\!\big(\hat f_X(x_0)\big) \approx \frac{f_X(x_0)\, R(D)}{n\lambda} .
+$$ {#eq-kernel-kde-bias-var}
+The bias is proportional to the curvature $f_X''$: a Gaussian KDE flattens peaks and fills valleys, the same oversmoothing that Silverman's rule risks. Integrating the mean squared error over $x_0$ gives the asymptotic mean integrated squared error,
+$$
+\operatorname{AMISE}(\lambda) = \frac{R(D)}{n\lambda} + \frac{1}{4}\lambda^4 \mu_2^2 \int f_X''(x)^2\, dx ,
+$$
+and minimizing over $\lambda$ gives the optimal density bandwidth and rate,
+$$
+\lambda_{\text{opt}} = \left[ \frac{R(D)}{\mu_2^2 \int (f_X'')^2}\right]^{1/5} n^{-1/5},
+\qquad
+\operatorname{AMISE}\big(\lambda_{\text{opt}}\big) = O\!\left(n^{-4/5}\right).
+$$ {#eq-kernel-kde-amise}
+The $n^{-1/5}$ bandwidth and $n^{-4/5}$ error mirror the regression case, and substituting the standard normal for $f_X$ and the Gaussian for $D$ in @eq-kernel-kde-amise reproduces Silverman's rule exactly.
 
 
 Density estimates are not only descriptive: they plug directly into classification through Bayes' theorem. Suppose there are $J$ classes, and we fit a separate nonparametric density $\hat{f}_j (X)$ for $j = 1, \dots, J$, one per class. Given a prior probability $\hat{\pi}_j$ for each class (these might come from the observed class proportions or from outside knowledge), the posterior probability that a new point $x_0$ belongs to class $j$ is

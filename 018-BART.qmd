@@ -227,7 +227,7 @@ Skipping this convergence check is the most common BART mistake. Point predictio
 
 To put BART's fitted values in context, we compare them against ordinary linear regression on the same two predictors. We line up the observed `y`, the BART fitted means, and the linear model fitted values, then look at their correlations and the pairwise scatterplots in @fig-BART-fit-pairs.
 
-```{r BART-fit-pairs, fig.cap="Pairwise scatterplots of the observed response, BART fitted means, and linear-regression fitted values. The BART fitted values track the observed response more closely than the linear fit."}
+```{r fig-BART-fit-pairs, fig.cap="Pairwise scatterplots of the observed response, BART fitted means, and linear-regression fitted values. The BART fitted values track the observed response more closely than the linear fit."}
 lmf <- lm(y~., data.frame(x, y))
 fitmat <- cbind(y, post$yhat.train.mean, lmf$fitted.values)
 colnames(fitmat) <- c("y", "BART", "Linear")
@@ -264,7 +264,7 @@ In the same chunk we also create a proper 75/25 train/test split and refit, prod
 
 Long MCMC runs can produce huge output objects, and consecutive draws are correlated anyway, so we often *thin* the chain: run many iterations but keep only a subset. Thinning trades a little statistical efficiency for large savings in memory and storage. Below we run a long chain (1000 burn-in, 10000 draws) but keep only 200 tree draws, then predict on the test set and compare against the earlier, unthinned predictions in @fig-BART-thin-pairs.^[The `nkeep*` arguments control which parts of the output are stored. Setting `nkeeptrain`, `nkeeptest`, and `nkeeptestmean` to 0 tells `wbart` not to keep those potentially large matrices, while `nkeeptreedraws = 200` keeps 200 tree ensembles so we can still predict later with `predict`.]
 
-```{r BART-thin-pairs, fig.cap="Pairwise scatterplots of the observed test response, the full unthinned predictions (yhat), and the thinned predictions (yhatThin). The thinned predictions line up closely with the full predictions."}
+```{r fig-BART-thin-pairs, fig.cap="Pairwise scatterplots of the observed test response, the full unthinned predictions (yhat), and the thinned predictions (yhatThin). The thinned predictions line up closely with the full predictions."}
 set.seed(4)
 post3 <-
     wbart(

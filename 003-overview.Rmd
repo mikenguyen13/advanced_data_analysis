@@ -8,6 +8,124 @@ We spend the most time on supervised learning, because it is the most common set
 
 > **Key idea:** The paradigm is decided by the data and the goal, not by the algorithm. Ask "what am I given, and what am I trying to produce?" first; the choice of method follows.
 
+## A Visual Map of the Field
+
+It helps to see the territory before walking through it. The diagrams below are the same map the book follows: first how the major types of learning relate, then how the methods inside each type connect and build on one another. Skim them now for orientation, and return to them whenever a new chapter feels disconnected from what came before.
+
+Figure \@ref(fig:overview-map-types) shows the top level. Supervised and unsupervised learning are split by whether labels are available; reinforcement learning is set apart by learning from interaction rather than a fixed dataset; deep learning is a modeling technology that cuts across all of them; and the learning paradigms describe how the training signal is obtained.
+
+```{r overview-map-types, echo=FALSE, fig.cap="How the major types of learning relate. Deep learning and the learning paradigms cut across the supervised and unsupervised distinction."}
+DiagrammeR::mermaid('
+graph TD
+  ML["Machine Learning"]
+  ML --> SUP["Supervised Learning"]
+  ML --> UNS["Unsupervised Learning"]
+  ML --> RL["Reinforcement Learning"]
+  SUP --> DL["Deep Learning"]
+  UNS --> DL
+  SUP --> PAR["Learning Paradigms"]
+  UNS --> PAR
+  DL --> PAR
+  RL --> PAR
+')
+```
+
+Within supervised learning, the methods form a few lineages, shown in Figure \@ref(fig:overview-map-supervised): smoothers that bend a global curve, instance- and margin-based classifiers, and the tree lineage that grows from a single tree into the most powerful ensembles in the book.
+
+```{r overview-map-supervised, echo=FALSE, fig.cap="The supervised-learning methods and how they relate. The tree lineage grows from a single tree into bagging, random forests, and boosting."}
+DiagrammeR::mermaid('
+graph TD
+  S["Supervised Learning"]
+  S --> LIN["Linear and Penalized Regression"]
+  S --> SMO["Smoothers: splines, GAM, kernel, local"]
+  S --> GP["Gaussian Processes"]
+  S --> KNN["k-Nearest Neighbors"]
+  S --> NB["Naive Bayes"]
+  S --> SVM["Support Vector Machines"]
+  S --> DA["Discriminant Analysis"]
+  S --> NN["Neural Networks"]
+  S --> TREE["Decision Trees"]
+  TREE --> BAG["Bagging"]
+  BAG --> RF["Random Forests"]
+  TREE --> BOOST["Boosting"]
+  BOOST --> GBM["Gradient Boosting: XGBoost, LightGBM"]
+  TREE --> BART["Bayesian Additive Regression Trees"]
+')
+```
+
+Unsupervised learning divides by goal, as Figure \@ref(fig:overview-map-unsupervised) shows: grouping points, compressing them into fewer dimensions, or estimating the density they came from.
+
+```{r overview-map-unsupervised, echo=FALSE, fig.cap="Unsupervised-learning methods, organized by goal: clustering, dimension reduction, and density estimation."}
+DiagrammeR::mermaid('
+graph TD
+  U["Unsupervised Learning"]
+  U --> CL["Clustering"]
+  U --> DR["Dimension Reduction"]
+  U --> DE["Density Estimation"]
+  U --> IM["Interpretable ML"]
+  DR --> PCA["PCA and linear projections"]
+  DR --> MAN["MDS, t-SNE, UMAP"]
+')
+```
+
+Deep learning is best read as an evolution, traced in Figure \@ref(fig:overview-map-deep): from the multilayer perceptron to convolutional and recurrent networks, then to attention and the Transformer, which underpins BERT and modern large language models, with autoencoders, generative models, and graph networks as parallel branches.
+
+```{r overview-map-deep, echo=FALSE, fig.cap="The deep-learning lineage, from the multilayer perceptron through attention and Transformers to large language models, with generative and graph branches."}
+DiagrammeR::mermaid('
+graph LR
+  MLP["Multilayer Perceptron"] --> CNN["CNN for images"]
+  MLP --> RNN["RNN and LSTM for sequences"]
+  CNN --> ATT["Attention"]
+  RNN --> ATT
+  ATT --> TR["Transformers"]
+  TR --> BERT["BERT"]
+  TR --> LLM["LLMs and Foundation Models"]
+  TR --> MOE["Mixture of Experts"]
+  MLP --> AE["Autoencoders"]
+  AE --> GEN["Generative: VAE, GAN, Diffusion"]
+  MLP --> GNN["Graph Neural Networks"]
+')
+```
+
+Reinforcement learning has its own progression, shown in Figure \@ref(fig:overview-map-rl): from the Markov decision process through dynamic programming and model-free methods to deep reinforcement learning, with bandits, model-based, offline, and multi-agent settings as branches.
+
+```{r overview-map-rl, echo=FALSE, fig.cap="Reinforcement-learning methods, from the Markov decision process to deep RL, with bandit, model-based, offline, and multi-agent branches."}
+DiagrammeR::mermaid('
+graph TD
+  RL["Reinforcement Learning"]
+  RL --> BAND["Multi-Armed and Contextual Bandits"]
+  RL --> MDP["Markov Decision Processes"]
+  MDP --> DP["Dynamic Programming"]
+  MDP --> MF["Model-Free Methods"]
+  MF --> MCTD["Monte Carlo and Temporal-Difference"]
+  MCTD --> QL["Q-learning and SARSA"]
+  MF --> PG["Policy Gradient"]
+  PG --> AC["Actor-Critic"]
+  QL --> DRL["Deep Reinforcement Learning"]
+  AC --> DRL
+  MDP --> MB["Model-Based RL"]
+  RL --> OFF["Offline RL"]
+  RL --> MARL["Multi-Agent RL"]
+')
+```
+
+Finally, the learning paradigms group into four families by the problem they solve, as Figure \@ref(fig:overview-map-paradigms) shows: where the labels come from, how to learn from few examples, how and where learning happens over time, and how the objective is structured.
+
+```{r overview-map-paradigms, echo=FALSE, fig.cap="The learning paradigms, grouped into four families by the problem they address."}
+DiagrammeR::mermaid('
+graph TD
+  P["Learning Paradigms"]
+  P --> DA["Data Availability"]
+  P --> SE["Sample Efficiency"]
+  P --> OP["Operational and Streamed"]
+  P --> AG["Architecture and Goal-Driven"]
+  DA --> DA1["Semi-, self-, weakly-supervised, active"]
+  SE --> SE1["Few/zero-shot, meta, transfer"]
+  OP --> OP1["Online, federated, ensemble, continual"]
+  AG --> AG1["Curriculum, imitation, transductive, adversarial, metric"]
+')
+```
+
 ## Prediction versus Estimation
 
 This book leans toward prediction, so it is worth being precise early about how prediction differs from the estimation and inference goals that dominate classical statistics and the companion volume on causal inference. The distinction is not about which algorithm you run; it is about which quantity you actually care about.

@@ -1,4 +1,4 @@
-# Feature Stores and Feature Pipelines
+# Feature Stores and Feature Pipelines {#sec-feature-stores}
 
 ```{r}
 #| include: false
@@ -15,9 +15,9 @@ By the end of the chapter you should be able to state the two correctness proble
 
 ## Where this fits in a modern ML/AI workflow
 
-Consider the lifecycle of a single prediction problem, say predicting whether a customer will churn. Raw events arrive continuously: logins, purchases, support tickets. A model does not consume raw events; it consumes features such as "number of logins in the last 7 days" or "days since last purchase." Those features have to be computed from the raw events. The trouble is that they are computed in (at least) two very different places.
+Consider the lifecycle of a single prediction problem, say predicting whether a customer will churn. Raw events arrive continuously: logins, purchases, support tickets. A model does not consume raw events; it consumes features such as "number of logins in the last 7 days" or "days since last purchase." Those features have to be computed from the raw events, a process treated in depth in the feature engineering chapter (@sec-feature-engineering). The trouble is that they are computed in (at least) two very different places.
 
-- During training, you compute features in batch over historical data, typically in a data warehouse or a `data.table`/Spark job, for millions of rows at once.
+- During training, you compute features in batch over historical data, typically in a data warehouse or a `data.table`/Spark job (see the Spark and sparklyr chapter, @sec-spark-sparklyr), for millions of rows at once.
 - During serving, you compute the same features for one customer at a time, on demand, with a latency budget of milliseconds, often from a different code path and a different data store.
 
 When the same feature is implemented twice, by two people, in two languages, against two storage systems, the two implementations drift. The model was trained on one definition and is served another. This is training-serving skew,^[The term comes from Google's account of operational ML (Sculley et al., 2015, listed under Further reading), where it is named as one of the leading causes of models that look healthy in evaluation but disappoint in production.] and it is one of the most common and most damaging failure modes in deployed ML. A feature store removes the duplication: a feature is defined once, and the same definition feeds both the offline (training) and online (serving) paths.
@@ -388,7 +388,7 @@ Pitfalls to watch for.
 - Online/offline drift in materialization cadence. The online store is only as fresh as the last materialization. If serving expects a 7-day window updated hourly but materialization runs daily, the served value lags the trained-on value. Match the cadence to the feature's freshness requirement and monitor it.
 - Null and type handling. A feature that returns `0` offline for "no purchases" but `NA` online (or vice versa) is skew. Pin the null policy in the single definition.
 - Backfill correctness. Recomputing historical features (backfill) must reuse the same point-in-time logic, not the current state of the data. A backfill that joins current values to old labels is a leakage generator.
-- Monitoring. Track the distribution of each served feature against the training distribution. A growing $\Delta$ between online and offline values is the early warning of skew before model metrics degrade.
+- Monitoring. Track the distribution of each served feature against the training distribution. A growing $\Delta$ between online and offline values is the early warning of skew before model metrics degrade; the model monitoring and drift detection chapter (@sec-model-monitoring) develops these techniques in detail.
 
 A reasonable progression: start with point-in-time-correct feature pipelines in `data.table` (the demo above is the skeleton), add explicit registration and an offline materialization step as features get reused, and adopt a managed feature store (Feast or a cloud equivalent) only when you genuinely need a low-latency online path and cross-team reuse.
 

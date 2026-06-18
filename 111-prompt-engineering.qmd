@@ -1,4 +1,4 @@
-# Prompt Engineering and Structured Output
+# Prompt Engineering and Structured Output {#sec-prompt-engineering}
 
 ```{r}
 #| include: false
@@ -61,7 +61,8 @@ contract. If the model returns free text, a human has to read it; if it returns
 JSON that matches a fixed schema, a downstream job can consume it like any other
 service. Validation is what turns a stochastic text generator into a typed
 function. The third is that prompting sits at the bottom of a clean fallback
-ladder. Prompting, few-shot prompting, retrieval, tool use, and fine-tuning are
+ladder. Prompting, few-shot prompting, retrieval (@sec-retrieval-augmented-generation),
+tool use (@sec-llm-agents), and fine-tuning are
 not competitors but rungs you climb only when the cheaper rung fails its
 evaluation. Prompt engineering is the rung you should exhaust first.
 
@@ -244,7 +245,8 @@ Tool use generalizes structured output. Instead of returning a final answer, the
 model returns a structured call to a named function whose argument shape is
 itself a JSON schema you provide. The model picks the function and fills the
 arguments; your code executes it and feeds the result back.^[This is the
-mechanism behind "agents" and tool-using assistants. The model never runs code
+mechanism behind "agents" and tool-using assistants, developed in
+@sec-llm-agents. The model never runs code
 itself; it only proposes a structured call, and your program decides whether and
 how to honor it.] A weather assistant
 might expose a `get_weather(location: string, unit: enum["C","F"])` tool; the
@@ -510,7 +512,8 @@ the ideas above:
 - Always validate, never trust. Parse, validate against a schema, and have a
   defined action on failure (retry with a corrective message, lower temperature,
   or emit a default record). Log validation failures; they are your evaluation
-  signal.
+  signal, and feed naturally into a broader evaluation harness
+  (@sec-evaluating-llms).
 - Decode cold for anything you parse. Set temperature near $0$ and top-$p$
   modest. Save high temperature for genuinely open-ended generation.
 - Pin versions. Prompts, schemas, model name, and decoding parameters are all
@@ -541,7 +544,8 @@ for these pitfalls in particular:
 This is where the deterministic stub pays off. The demo isolates the model behind
 one function, `model_stub(prompt, ...)`, so replacing it with a real client
 changes only that call; the template builder and the validator are unchanged. The
-snippet below sketches the shape of that call with a current R client. It is
+chapter on calling LLM APIs from R (@sec-llm-apis-r) covers the client side in
+depth. The snippet below sketches the shape of that call with a current R client. It is
 marked `eval=FALSE` because it needs the `ellmer` package and a live API key,
 neither of which is available in the book's build environment, so it is shown for
 reference but not run.

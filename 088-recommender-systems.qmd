@@ -1,4 +1,4 @@
-# Recommender Systems
+# Recommender Systems {#sec-recommender-systems}
 
 ```{r}
 #| include: false
@@ -11,7 +11,7 @@ The core difficulty is that the catalog is huge and any single person has touche
 
 We build up in layers. First the recommendation problem and its notation. Then content-based filtering, which recommends items similar to ones you liked, using item features. Then collaborative filtering, which ignores item features entirely and leans on the crowd, in both its user-based and item-based forms. Then matrix factorization, the workhorse idea that compresses the giant sparse grid into a handful of latent factors per user and per item, and which we implement from scratch in base R using both an SVD-style approach and alternating least squares. Along the way we treat implicit feedback (clicks and plays rather than star ratings), the cold-start problem (what to do about a brand-new user or item), and how to measure whether any of it is working, with precision@k, recall@k, and NDCG. The running demo trains on a small user-item ratings matrix, produces top-N lists, and reports a ranking metric.
 
-> **Note:** This chapter is self-contained, but it leans on ideas you may have met elsewhere in the book: the singular value decomposition (dimension reduction), regularized least squares (ridge regression), and cross-validation style evaluation. No prior exposure to recommender systems is assumed.
+> **Note:** This chapter is self-contained, but it leans on ideas you may have met elsewhere in the book: the singular value decomposition (dimension reduction, @sec-dimension-reduction), regularized least squares (ridge regression), and cross-validation style evaluation. No prior exposure to recommender systems is assumed.
 
 ## The recommendation problem {#recommender-systems-problem}
 
@@ -53,7 +53,7 @@ There are two symmetric ways to cash this in, depending on whether you compute s
 
 ### User-based collaborative filtering {#recommender-systems-userknn}
 
-In the user-based view we find, for the target user $u$, a neighborhood $\mathcal{N}(u)$ of other users with similar taste, and predict $r_{ui}$ as a similarity-weighted average of how those neighbors rated item $i$. A standard formula that corrects for the fact that some users rate generously and others harshly is
+In the user-based view we find, for the target user $u$, a neighborhood $\mathcal{N}(u)$ of other users with similar taste, and predict $r_{ui}$ as a similarity-weighted average of how those neighbors rated item $i$, the same nearest-neighbor logic used in the k-nearest neighbors chapter (@sec-knn), here applied over rows of the ratings matrix. A standard formula that corrects for the fact that some users rate generously and others harshly is
 
 $$
 \hat r_{ui} \;=\; \bar r_u \;+\; \frac{\sum_{v \in \mathcal{N}(u)} s_{uv}\,(r_{vi} - \bar r_v)}{\sum_{v \in \mathcal{N}(u)} \lvert s_{uv} \rvert},
@@ -134,7 +134,7 @@ $$
 
 ### Connection to the SVD {#recommender-systems-svd}
 
-When a matrix is *fully* observed, the Eckart-Young theorem says the best rank-$k$ approximation in squared-error (Frobenius) norm is exactly the truncated SVD: write $R = U \Sigma V^{\top}$ and keep the top $k$ singular triplets, $R \approx U_k \Sigma_k V_k^{\top}$. Setting $P = U_k \Sigma_k^{1/2}$ and $Q = V_k \Sigma_k^{1/2}$ recovers a factorization of the form above. This is why the truncated SVD is the natural baseline: it is the *optimal* low-rank fit when nothing is missing. The catch is that ratings matrices are not fully observed, so applying SVD requires first imputing the gaps (for example with each item's mean), which biases the result. ALS sidesteps imputation by optimizing over $\Omega$ directly. We will see both on the same data and compare.
+When a matrix is *fully* observed, the Eckart-Young theorem says the best rank-$k$ approximation in squared-error (Frobenius) norm is exactly the truncated SVD (a tool covered in the dimension reduction chapter, @sec-dimension-reduction): write $R = U \Sigma V^{\top}$ and keep the top $k$ singular triplets, $R \approx U_k \Sigma_k V_k^{\top}$. Setting $P = U_k \Sigma_k^{1/2}$ and $Q = V_k \Sigma_k^{1/2}$ recovers a factorization of the form above. This is why the truncated SVD is the natural baseline: it is the *optimal* low-rank fit when nothing is missing. The catch is that ratings matrices are not fully observed, so applying SVD requires first imputing the gaps (for example with each item's mean), which biases the result. ALS sidesteps imputation by optimizing over $\Omega$ directly. We will see both on the same data and compare.
 
 ## Implicit feedback {#recommender-systems-implicit}
 
@@ -500,7 +500,7 @@ Watch for feedback loops and popularity bias. A deployed recommender shapes the 
 
 > **Warning:** Offline metrics and online outcomes can disagree. A model that wins on held-out NDCG may lose on live engagement because the offline data was itself filtered by the old recommender, and because metrics like NDCG do not capture novelty, diversity, or long-term satisfaction. Treat offline evaluation as a screen, not a verdict; confirm with an A/B test.
 
-Finally, scale shapes the algorithm choice. Neighborhood methods are simple and explainable but degrade on very sparse, very large matrices; matrix factorization scales better and generalizes through the latent space; in industry both are now often components inside a larger two-stage pipeline (a cheap candidate generator followed by a learned re-ranker). @tbl-recommender-systems-metrics and the demo above cover the foundations every such pipeline rests on.
+Finally, scale shapes the algorithm choice. Neighborhood methods are simple and explainable but degrade on very sparse, very large matrices; matrix factorization scales better and generalizes through the latent space; in industry both are now often components inside a larger two-stage pipeline (a cheap candidate generator followed by a learned re-ranker, a setting taken up in the learning to rank chapter, @sec-learning-to-rank). @tbl-recommender-systems-metrics and the demo above cover the foundations every such pipeline rests on.
 
 ## Further reading {#recommender-systems-reading}
 

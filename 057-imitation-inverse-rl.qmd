@@ -1,4 +1,4 @@
-# Imitation Learning and Inverse Reinforcement Learning
+# Imitation Learning and Inverse Reinforcement Learning {#sec-imitation-inverse-rl}
 
 ```{r}
 #| include: false
@@ -7,7 +7,7 @@ suppressPackageStartupMessages(library(tidyverse))
 
 Suppose you want a system to drive a car, fold a shirt, or write a polite reply, and you have something better than a reward function: you have an expert who already knows how to do the task. Watching a skilled driver is far more informative than handing a robot a steering wheel and a scalar reward, then waiting for it to crash a few thousand times before it stumbles onto good behavior. Imitation learning is the family of methods that turns recorded expert behavior into a policy, and it is often the fastest path from "I have demonstrations" to "I have a working agent."
 
-The reinforcement learning chapters assume you could write down a reward function and let an agent discover good behavior through trial and error. That assumption breaks in two common situations. First, the reward is genuinely hard to specify: what numeric reward captures "drive like a careful human"? Second, trial and error is expensive or dangerous: you cannot let a self driving prototype explore by colliding with pedestrians. In both cases you usually do have examples of an expert doing the task well. Imitation learning and inverse reinforcement learning (IRL) are the two main ways to exploit those examples.
+The reinforcement learning chapters (@sec-rl-foundations) assume you could write down a reward function and let an agent discover good behavior through trial and error. That assumption breaks in two common situations. First, the reward is genuinely hard to specify: what numeric reward captures "drive like a careful human"? Second, trial and error is expensive or dangerous: you cannot let a self driving prototype explore by colliding with pedestrians. In both cases you usually do have examples of an expert doing the task well. Imitation learning and inverse reinforcement learning (IRL) are the two main ways to exploit those examples.
 
 > **Intuition:** Reinforcement learning answers "what should I do to maximize this reward?" Imitation learning answers a different question: "what would the expert do here?" You replace the reward signal with demonstrations and try to reproduce the behavior that produced them.
 
@@ -146,7 +146,7 @@ $$
 \max_{w:\, \|w\|_2 \le 1} \; \min_{j} \; w^\top \big( \mu(\pi_E) - \mu(\pi_j) \big),
 $$
 
-which seeks the reward direction along which the expert most outperforms every previously found policy $\pi_j$. This is the same structure as a support vector machine, and it gives the method its "maximum margin" name.
+which seeks the reward direction along which the expert most outperforms every previously found policy $\pi_j$. This is the same structure as a support vector machine (@sec-svm), and it gives the method its "maximum margin" name.
 
 ### Maximum entropy IRL and modern variants
 
@@ -158,7 +158,7 @@ $$
 
 where $\phi(\tau) = \sum_t \gamma^t \phi(s_t)$ is the trajectory feature count. The weights $w$ are then fit by maximum likelihood on the demonstrated trajectories, which handles suboptimal or noisy experts gracefully because it assigns nonzero probability to imperfect behavior.
 
-Two threads grew from this. Adversarial imitation, exemplified by generative adversarial imitation learning (GAIL, Ho and Ermon, 2016), trains a discriminator to tell expert trajectories from learner trajectories and uses it as a reward signal, connecting IRL to generative adversarial networks and skipping the explicit reward recovery. Deep maximum entropy IRL replaces the linear $w^\top \phi$ with a neural network reward. Both push the same idea to high dimensional problems.
+Two threads grew from this. Adversarial imitation, exemplified by generative adversarial imitation learning (GAIL, Ho and Ermon, 2016), trains a discriminator to tell expert trajectories from learner trajectories and uses it as a reward signal, connecting IRL to generative adversarial networks (@sec-generative-models) and skipping the explicit reward recovery. Deep maximum entropy IRL replaces the linear $w^\top \phi$ with a neural network reward. Both push the same idea to high dimensional problems.
 
 ## Comparing the approaches
 
@@ -188,7 +188,7 @@ A useful way to remember the relationships:
 - Behavioral cloning: demonstrations $\to$ policy (supervised, no reward, no dynamics).
 - Apprenticeship / GAIL: alternate IRL and RL until the learner matches the expert.
 
-In modern practice these blend. The reinforcement learning from human feedback (RLHF) used to align large language models is essentially IRL followed by RL: a reward model is fit to human preference comparisons (a form of recovering the reward behind expert judgments), then a policy is optimized against that learned reward. Behavioral cloning, under the name supervised fine tuning, is the warm start that precedes it.
+In modern practice these blend. The reinforcement learning from human feedback (RLHF) used to align large language models (@sec-llms) is essentially IRL followed by RL: a reward model is fit to human preference comparisons (a form of recovering the reward behind expert judgments), then a policy is optimized against that learned reward. Behavioral cloning, under the name supervised fine tuning, is the warm start that precedes it.
 
 > **Intuition:** If you only need the agent to act in the same environment it was trained in, copying actions (behavioral cloning) may be enough. If you need it to act well in a new environment, or to keep improving, recover the reward (IRL), because intent transfers where a memorized action map does not.
 

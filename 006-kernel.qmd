@@ -1,4 +1,4 @@
-# Kernel Smoothing
+# Kernel Smoothing {#sec-kernel}
 
 ```{r}
 #| include: false
@@ -13,11 +13,11 @@ The central idea is to fit a separate but very simple model at each query point 
 
 The kernel carries a parameter $\lambda$ that sets the "width" of the neighborhood, that is, how far away an observation can be and still influence the fit. Choosing $\lambda$ is the main modeling decision in kernel smoothing, which is one of its appeals: there is very little to train. The cost shows up at prediction time instead. Kernel smoothers are memory-based methods, meaning the entire training set must be kept around and consulted every time we want a prediction at a new location $x_0$.^[Contrast this with ordinary linear regression, which compresses all the training data into a handful of coefficients and then throws the data away. Kernel methods keep everything, which makes prediction more expensive but the model far more flexible.]
 
-In this chapter you will learn how a kernel turns nearby observations into a local estimate, the common choices of kernel and how they differ, how the width $\lambda$ trades bias against variance, and how the same kernel machinery can estimate a probability density rather than a regression function. Kernel smoothing sits between the rigidity of global parametric models and the full flexibility of methods like [Local Regression], which builds directly on the ideas here.
+In this chapter you will learn how a kernel turns nearby observations into a local estimate, the common choices of kernel and how they differ, how the width $\lambda$ trades bias against variance, and how the same kernel machinery can estimate a probability density rather than a regression function. Kernel smoothing sits between the rigidity of global parametric models and the full flexibility of methods like local regression (@sec-local), which builds directly on the ideas here.
 
 ## One-Dimensional Kernel Smoothers
 
-To see what a kernel buys us, start from a method you may already know: $k$-nearest neighbors. The $k$-NN estimate at a point $x$ is simply the average response over the $k$ observations closest to $x$,
+To see what a kernel buys us, start from a method you may already know: $k$-nearest neighbors (@sec-knn). The $k$-NN estimate at a point $x$ is simply the average response over the $k$ observations closest to $x$,
 
 $$
 \hat{f}(x) = Ave (y_i |x_i \in N_k(x))
@@ -91,7 +91,7 @@ A few consequences of these choices are worth keeping in mind:
 
 - A large $\lambda$ lowers variance, because we average over more observations (effectively a larger $n$), but it raises bias, because we approximate $f(x_0)$ using observations that lie further from $x_0$.
 - An adaptive width $h_\lambda(x)$ can hold the bias roughly constant across the input space, but then the variance becomes inversely proportional to the local density of observations: where data are sparse, the estimate is noisier.
-- The biggest weakness of kernel smoothers is estimation near the boundaries of the data. Near an edge the kernel becomes lopsided, with neighbors on only one side, so the fit is badly biased there. [Local Regression] was designed partly to correct this boundary bias.
+- The biggest weakness of kernel smoothers is estimation near the boundaries of the data. Near an edge the kernel becomes lopsided, with neighbors on only one side, so the fit is badly biased there. Local regression (@sec-local) was designed partly to correct this boundary bias.
 
 > **Warning:** Trust a kernel smoother least at the left and right ends of the data. The asymmetry of the neighborhood near a boundary systematically pulls the fit toward the interior, and no amount of width tuning fully removes it.
 
@@ -129,6 +129,6 @@ $$
 \hat{P}(G=j | X=x_0) = \frac{\hat{\pi}_j \hat{f}_j (x_0)}{\sum_{k=1}^J \hat{\pi}_k \hat{f}_k (x_0)}
 $$
 
-In words, we weight each class density by its prior and renormalize across classes, then assign $x_0$ to whichever class comes out largest. This is the kernel-based cousin of methods like the naive Bayes and discriminant classifiers.
+In words, we weight each class density by its prior and renormalize across classes, then assign $x_0$ to whichever class comes out largest. This is the kernel-based cousin of methods like the naive Bayes (@sec-naive-bayes) and discriminant (@sec-discriminant-analysis) classifiers.
 
 To recap, this chapter introduced kernels as smooth weighting functions, showed how the Nadaraya-Watson average turns them into a continuous regression estimate, explained how the width $\lambda$ governs the bias-variance tradeoff (and why boundaries are the weak spot), and closed by reusing the same kernels to estimate densities and, through Bayes' theorem, to classify. For a fuller treatment, see @hastie2001a (section 6.6).

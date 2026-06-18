@@ -1,17 +1,17 @@
-# Policy Gradient and Actor-Critic Methods
+# Policy Gradient and Actor-Critic Methods {#sec-policy-gradient}
 
 ```{r}
 #| include: false
 suppressPackageStartupMessages(library(tidyverse))
 ```
 
-In the previous reinforcement learning chapters the agent learned a value function and then read a policy off it: estimate $Q(s, a)$, then act greedily. That detour through values is not the only way, and sometimes it is the wrong way. Suppose the best action in a state is not "the single highest-value choice" but "choose left $70\%$ of the time and right $30\%$." A greedy reading of a value function cannot express that; it always commits to one action. Or suppose the action is a continuous quantity, such as a steering angle or a dosage, where taking a $\max$ over actions means searching over an infinite set on every step. In these situations it is more natural to skip the value function as the object of interest and instead adjust the policy itself, nudging the probabilities of actions up or down according to how well they turned out.
+In the previous reinforcement learning chapters (@sec-rl-foundations, @sec-td-learning) the agent learned a value function and then read a policy off it: estimate $Q(s, a)$, then act greedily. That detour through values is not the only way, and sometimes it is the wrong way. Suppose the best action in a state is not "the single highest-value choice" but "choose left $70\%$ of the time and right $30\%$." A greedy reading of a value function cannot express that; it always commits to one action. Or suppose the action is a continuous quantity, such as a steering angle or a dosage, where taking a $\max$ over actions means searching over an infinite set on every step. In these situations it is more natural to skip the value function as the object of interest and instead adjust the policy itself, nudging the probabilities of actions up or down according to how well they turned out.
 
 That is the idea behind policy gradient methods. We write the policy as a parameterized function, $\pi_\theta(a \mid s)$, with tunable parameters $\theta$ (the weights of a small model or a neural network). We define a scalar objective: the expected return when the agent follows that policy. Then we do what the rest of this book does everywhere else, climb the objective by gradient ascent. The twist is that the thing we are differentiating involves an expectation over trajectories that the policy itself generates, so the gradient is not a textbook derivative of a fixed loss. The central result of this chapter, the policy gradient theorem, tells us how to compute that gradient from sampled experience.
 
 > **Intuition:** A policy gradient method does not ask "which action is best?" It asks "in which direction should I shift my action probabilities so that, on average, returns go up?" If an action led to a good outcome, make it more likely; if it led to a bad outcome, make it less likely. The math below is a precise, unbiased way of carrying out that simple instinct.
 
-By the end of the chapter you will understand parameterized policies, the policy gradient theorem and its score-function derivation, the REINFORCE algorithm, why REINFORCE is noisy and how a baseline fixes it, the advantage function, the actor-critic family (with A2C as the concrete case), and the trust-region ideas behind TRPO and PPO that make these methods stable enough for production. A fully runnable base-R demonstration trains REINFORCE on a softmax-policy bandit and shows the average return climbing over training. This chapter sits naturally after the value-based reinforcement learning material and directly underpins the reinforcement learning from human feedback (RLHF) stage used to align large language models, which is built on PPO.
+By the end of the chapter you will understand parameterized policies, the policy gradient theorem and its score-function derivation, the REINFORCE algorithm, why REINFORCE is noisy and how a baseline fixes it, the advantage function, the actor-critic family (with A2C as the concrete case), and the trust-region ideas behind TRPO and PPO that make these methods stable enough for production. A fully runnable base-R demonstration trains REINFORCE on a softmax-policy bandit and shows the average return climbing over training. This chapter sits naturally after the value-based reinforcement learning material and directly underpins the reinforcement learning from human feedback (RLHF) stage used to align large language models (@sec-llms), which is built on PPO.
 
 ## Why parameterize the policy directly
 
@@ -171,7 +171,7 @@ REINFORCE with a value baseline needs an estimate of $V^\pi$. The cleanest way t
 - The actor is the policy $\pi_\theta(a \mid s)$, updated in the direction of the policy gradient.
 - The critic is a value function $V_w(s)$ with its own parameters $w$, trained to predict returns and used to compute the advantage that weights the actor's update.
 
-Instead of waiting for a full Monte Carlo return $G_t$, the critic lets us bootstrap: replace $G_t$ with the one-step temporal-difference (TD) target $r_t + \gamma V_w(s_{t+1})$. The TD error
+Instead of waiting for a full Monte Carlo return $G_t$, the critic lets us bootstrap: replace $G_t$ with the one-step temporal-difference (TD) target $r_t + \gamma V_w(s_{t+1})$ (@sec-td-learning). The TD error
 
 $$
 \delta_t = r_t + \gamma V_w(s_{t+1}) - V_w(s_t)
@@ -236,7 +236,7 @@ $$
 
 where $\hat{A}_t$ is an estimated advantage and $\epsilon$ (typically around $0.1$ to $0.2$) sets the clip width. The clip removes any incentive to push the probability ratio far beyond $1 \pm \epsilon$, so even if the raw gradient wants a huge step, the objective flattens and the update stays modest.
 
-> **Note:** PPO is the workhorse behind reinforcement learning from human feedback (RLHF) for large language models. In that setting the policy is the language model, the action is the next token, and the reward comes from a learned model of human preference. The clipping in PPO is what keeps the fine-tuned model from drifting catastrophically far from the pretrained one in a single update. The chapter on aligning large language models builds directly on these ideas.
+> **Note:** PPO is the workhorse behind reinforcement learning from human feedback (RLHF) for large language models. In that setting the policy is the language model, the action is the next token, and the reward comes from a learned model of human preference. The clipping in PPO is what keeps the fine-tuned model from drifting catastrophically far from the pretrained one in a single update. The chapter on large language models (@sec-llms) builds directly on these ideas.
 
 ## A runnable REINFORCE demo in base R
 
@@ -352,7 +352,7 @@ The whole story of policy gradients is on this one figure. The score function pu
 
 ## Deep-network policies
 
-For anything beyond a toy problem the actor and critic are neural networks rather than a handful of preferences, and the gradient is computed by automatic differentiation. The sketch below shows the shape of an A2C-style update with the torch package for R. It is shown for orientation only and is not run as part of this book.
+For anything beyond a toy problem the actor and critic are neural networks rather than a handful of preferences, and the gradient is computed by automatic differentiation. The sketch below shows the shape of an A2C-style update with the torch package for R (@sec-torch-for-r). It is shown for orientation only and is not run as part of this book.
 
 ```{r policy-gradient-torch, eval=FALSE}
 library(torch)

@@ -1,4 +1,4 @@
-# Databases and SQL from R
+# Databases and SQL from R {#sec-databases-sql-r}
 
 ```{r}
 #| include: false
@@ -29,7 +29,7 @@ The principle is to do filtering, joining, and aggregation in the database, wher
 [ database ]  --SQL/dbplyr-->  [ filtered, joined, aggregated result ]  --collect()-->  [ R data frame ]  -->  [ recipe / model / plot ]
 ```
 
-This pattern appears everywhere in practice: assembling a feature table for a model by joining several source tables, computing label definitions with window functions, sampling a class-balanced training set with a stratified query, or scoring new records by reading them in batches. The same `DBI` connection object is also what monitoring code, scheduled jobs, and feature stores use.
+This pattern appears everywhere in practice: assembling a feature table for a model by joining several source tables, computing label definitions with window functions, sampling a class-balanced training set with a stratified query, or scoring new records by reading them in batches. The same `DBI` connection object is also what monitoring code (@sec-model-monitoring), scheduled jobs, and feature stores (@sec-feature-stores) use.
 
 ## The relational model and relational algebra
 
@@ -355,7 +355,7 @@ The `DBI` interface is shared, but engines differ. @tbl-databases-sql-r-backends
 
 : Common database engines reachable through `DBI`, their driver packages, typical uses, and distinguishing notes. {#tbl-databases-sql-r-backends}
 
-For analytical work on large local files, DuckDB has become a popular default because it is serverless like SQLite but columnar and fast for aggregations, and it queries Parquet and CSV files in place.^[A "columnar" engine stores each column together rather than each row together. Analytical queries that scan one or two columns of a wide table then read far less data, which is why DuckDB is fast for aggregations over large files.] Because all of these engines share the `DBI` interface, switching among them costs almost nothing: the code differs only in the `dbConnect()` line.
+For analytical work on large local files, DuckDB has become a popular default because it is serverless like SQLite but columnar and fast for aggregations, and it queries Parquet and CSV files in place (the in-process analytics chapter, @sec-duckdb-arrow, covers this engine in depth).^[A "columnar" engine stores each column together rather than each row together. Analytical queries that scan one or two columns of a wide table then read far less data, which is why DuckDB is fast for aggregations over large files.] Because all of these engines share the `DBI` interface, switching among them costs almost nothing: the code differs only in the `dbConnect()` line.
 
 > **When to use this:** Use SQLite for tests and small embedded data, DuckDB for fast local analytics over big files, PostgreSQL or MySQL when the data lives in a shared production database, and the `odbc` driver when you must reach an enterprise warehouse such as Snowflake or SQL Server.
 
@@ -378,7 +378,7 @@ The concepts above turn into a handful of habits that separate smooth pipelines 
 - Push work down, pull results up. Filter, join, and aggregate in the database; `collect()` only the reduced result. Inspect `show_query()` to confirm the work really is happening in SQL.
 - Collect late, not early. Calling `collect()` or `as.data.frame()` too soon drags the full table into R and defeats the purpose. Watch for accidental triggers: passing a lazy table to a function that calls `nrow()` or to a non-`dbplyr` function forces a pull.
 - Always parameterize. Use `?` placeholders with `params` for values, and `dbQuoteIdentifier()` for dynamic table or column names. Never paste user input into SQL.
-- Close connections. Use `on.exit(dbDisconnect(con))` or `dbWithTransaction()`/`pool` so connections do not leak, especially in loops, scheduled jobs, and Shiny apps.
+- Close connections. Use `on.exit(dbDisconnect(con))` or `dbWithTransaction()`/`pool` so connections do not leak, especially in loops, scheduled jobs, and Shiny apps (@sec-ai-apps-shiny).
 - Mind translation gaps. Not every R function has a SQL equivalent in `dbplyr`. If translation errors, move that step after `collect()` or write the SQL by hand for that part.
 - Use transactions for multi-statement integrity and for bulk loads. Wrapping many inserts in one transaction is both safer and much faster than autocommitting each row.
 - Beware `NULL` versus `NA` and three-valued logic. In SQL, comparisons with `NULL` return unknown, not false, so `WHERE x = NULL` matches nothing; use `IS NULL`. `dbplyr` handles common cases, but check results when missingness matters.

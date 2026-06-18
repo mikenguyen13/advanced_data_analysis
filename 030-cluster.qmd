@@ -1,4 +1,4 @@
-# Cluster Analysis
+# Cluster Analysis {#sec-cluster}
 
 ```{r}
 #| include: false
@@ -9,7 +9,7 @@ Imagine you are handed a spreadsheet of customers, with no labels telling you wh
 
 Cluster analysis is a relatively large set of techniques used for finding subgroups, clusters, or segments in a set of features. The guiding idea is simple once you state it plainly. We first decide on some way to measure how similar or dissimilar two observations are, and we then try to form groups that are homogeneous, so that observations *in a subgroup are more similar to each other than to other observations not in the subgroup*. Everything else in this chapter is a way of making that one sentence precise and computable.
 
-Because there is no outcome variable telling us the "right" grouping, cluster analysis belongs to unsupervised learning. This is what separates it from classification methods you may already know. It is worth pausing on that contrast, because both families of methods sort observations into categories, but they do so for different reasons and with different information. @tbl-cluster-vs-discriminant lines up cluster analysis against discriminant analysis, a supervised cousin.
+Because there is no outcome variable telling us the "right" grouping, cluster analysis belongs to unsupervised learning (@sec-intro-unsupervised). This is what separates it from classification methods you may already know. It is worth pausing on that contrast, because both families of methods sort observations into categories, but they do so for different reasons and with different information. @tbl-cluster-vs-discriminant lines up cluster analysis against discriminant analysis, a supervised cousin.
 
 |                               | Cluster Analysis      | Discriminant Analysis |
 |-------------------------------|-----------------------|-----------------------|
@@ -19,7 +19,7 @@ Because there is no outcome variable telling us the "right" grouping, cluster an
 
 : Comparison of cluster analysis and discriminant analysis, highlighting that clustering is unsupervised and groups by closeness, while discriminant analysis is supervised and classifies by the differences between known groups. {#tbl-cluster-vs-discriminant}
 
-Both [Discriminant Analysis] and [Cluster Analysis] are used to classify, but the resemblance ends there. Discriminant analysis is handed labeled examples and learns rules that exploit the *differences* between known groups; clustering is handed unlabeled data and must invent the groups using nothing but *closeness*.
+Both discriminant analysis (@sec-discriminant-analysis) and cluster analysis are used to classify, but the resemblance ends there. Discriminant analysis is handed labeled examples and learns rules that exploit the *differences* between known groups; clustering is handed unlabeled data and must invent the groups using nothing but *closeness*.
 
 In this chapter you will learn how clustering puts that intuition on a firm footing. We start with how to measure proximity between observations, since every clustering method rests on that choice. We then look at the two best known families of algorithms. K-means clustering partitions observations into a number of clusters you choose in advance. Hierarchical clustering builds a whole tree of nested groupings, so you can decide on the number of clusters after looking at the structure. Along the way we will see the variants K-medoids (a more robust relative of K-means) and the different "linkage" rules that give hierarchical clustering its flavor.
 
@@ -235,6 +235,6 @@ Several further decisions follow, and most of them do not have a purely objectiv
 -   Clustering methods are typically not very robust to perturbations in the data, so small changes to the input can sometimes produce noticeably different groupings. It is wise to check stability rather than trust a single run.
 -   Choosing the number of clusters is always difficult and somewhat subjective, though many methods have been developed to make the choice more objective. The `NbClust` package, for example, provides 30 indices for determining the relevant number of clusters and reports the best scheme found by varying the number of clusters, the distance measure, and the clustering method.
 
-Finally, everything above treats clustering as a purely geometric, "hard assignment" exercise, but there is another route. We can approach the problem from a model-based, probabilistic perspective by assuming the data are drawn from a mixture of several distributions, often Gaussians though they need not be. The E-M algorithm is an efficient way to estimate such mixtures [@hastie2001a, 8.5], and as described in [@hastie2001a, 14.3.7], the mixture-of-Gaussians approach is essentially a "soft" version of K-means, in which each point gets a probability of belonging to each cluster rather than an all-or-nothing label.
+Finally, everything above treats clustering as a purely geometric, "hard assignment" exercise, but there is another route. We can approach the problem from a model-based, probabilistic perspective by assuming the data are drawn from a mixture of several distributions, often Gaussians though they need not be. Such mixture models are also the basis of model-based density estimation (@sec-density-estimation). The E-M algorithm is an efficient way to estimate such mixtures [@hastie2001a, 8.5], and as described in [@hastie2001a, 14.3.7], the mixture-of-Gaussians approach is essentially a "soft" version of K-means, in which each point gets a probability of belonging to each cluster rather than an all-or-nothing label.
 
 > **Takeaways:** Clustering finds the groups implied by your choices, not some objective truth. The choices that matter most are the dissimilarity measure, whether and how you scale or weight features, the algorithm and (for hierarchical methods) the linkage, and the number of clusters. Use multiple random starts for K-means, prefer K-medoids when you need a non-Euclidean dissimilarity or robustness to outliers, read dendrograms from the bottom up and cut them after seeing the structure, and always sanity-check that your clusters survive small perturbations before you trust them.

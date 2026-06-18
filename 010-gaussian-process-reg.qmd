@@ -1,4 +1,4 @@
-# Gaussian Process Regression
+# Gaussian Process Regression {#sec-gaussian-process-reg}
 
 ```{r}
 #| include: false
@@ -13,7 +13,7 @@ Suggested reading:
 
 Most of the regression methods in earlier chapters start by choosing a *form* for the function we want to learn: a line, a polynomial, a set of spline basis functions, a tree. Gaussian process (GP) regression takes a different starting point. Instead of committing to a particular functional form, we place a probability distribution directly over functions, and then let the data tell us which functions are plausible. The result is a flexible, nonparametric method that not only predicts a value at any new input but also reports how uncertain that prediction is.
 
-The intuition is worth pausing on before any math. Imagine you have measured an unknown function at a handful of input locations. A GP says: "before seeing the data, I believe the underlying function is smooth, and that points close together in input space should have similar output values." Once the data arrive, the GP keeps only the functions consistent with what was observed, and from that shrunken collection it forms a prediction (the average of the surviving functions) and a measure of confidence (how much those functions still disagree). Where you have data, the predictions are confident; where you do not, the uncertainty grows. This honest accounting of uncertainty is one of the main reasons GPs are popular in fields like spatial statistics, the design and analysis of computer experiments, and Bayesian optimization.
+The intuition is worth pausing on before any math. Imagine you have measured an unknown function at a handful of input locations. A GP says: "before seeing the data, I believe the underlying function is smooth, and that points close together in input space should have similar output values." Once the data arrive, the GP keeps only the functions consistent with what was observed, and from that shrunken collection it forms a prediction (the average of the surviving functions) and a measure of confidence (how much those functions still disagree). Where you have data, the predictions are confident; where you do not, the uncertainty grows. This honest accounting of uncertainty is one of the main reasons GPs are popular in fields like spatial statistics, the design and analysis of computer experiments, and Bayesian optimization (a workhorse of hyperparameter optimization, @sec-hyperparameter-optimization).
 
 In this chapter you will learn what a Gaussian process is and how it differs from an ordinary Gaussian distribution, how the conditioning formula for the multivariate normal gives us a closed-form predictor and prediction variance, why the choice of *covariance function* is the heart of the method, and how to fit a GP in R. The mathematical machinery turns out to be a single, reusable idea: any finite set of values from a GP is jointly multivariate normal, so prediction reduces to conditioning one part of a Gaussian on another.
 
@@ -240,7 +240,7 @@ $$
 k(x_0) = \mu_0 - \mathbf{c}'_0 \mathbf{C}^{-1}_z \mathbf{\mu}
 $$
 
-> **Intuition:** The weights $\mathbf{w}_0$ form an *effective kernel*, just as in [Spline Regression] and [Local Regression]. The prediction at $x_0$ is a weighted average of the observations, where each observation's weight is determined by how covariant it is with the target (through $\mathbf{c}_0$) after accounting for how the observations covary with each other (through $\mathbf{C}_z^{-1}$). Points that are "close" to $x_0$, in the sense the covariance function defines, get more say.
+> **Intuition:** The weights $\mathbf{w}_0$ form an *effective kernel*, just as in spline regression (@sec-spline) and local regression (@sec-local). The prediction at $x_0$ is a weighted average of the observations, where each observation's weight is determined by how covariant it is with the target (through $\mathbf{c}_0$) after accounting for how the observations covary with each other (through $\mathbf{C}_z^{-1}$). Points that are "close" to $x_0$, in the sense the covariance function defines, get more say.
 
 These formulas extend directly to multiple prediction locations, with each location getting its own vector of weights.
 
@@ -261,7 +261,7 @@ Not just any function will do. Two requirements shape the choice:
 
 -   Covariance functions must be positive semi-definite. This guarantees that the prediction variances coming out of the formulas above are never negative, which would be nonsensical.
 
--   Covariance functions should be realistic, encoding the dependence structure we actually believe is present. This can be hard, but a simple and often sufficient assumption is that "nearby" observations (nearby in the same sense as [Kernel Smoothing]) are more dependent than distant ones.
+-   Covariance functions should be realistic, encoding the dependence structure we actually believe is present. This can be hard, but a simple and often sufficient assumption is that "nearby" observations (nearby in the same sense as kernel smoothing, @sec-kernel) are more dependent than distant ones.
 
 > **Tip:** When in doubt, start from the principle that closeness in input space implies similarity in output. Almost every standard covariance function is just a different mathematical way of encoding that one idea.
 

@@ -1,4 +1,4 @@
-# Data Formats and Serialization
+# Data Formats and Serialization {#sec-data-formats}
 
 ```{r}
 #| include: false
@@ -19,7 +19,7 @@ A typical pipeline moves data through several storage stages:
 2. Cleaned and typed tables: after parsing and validation, you store an analysis-ready dataset. This is where columnar formats (Parquet, Feather) pay off.
 3. Feature stores and training snapshots: large, partitioned datasets read repeatedly during model development and tuning.
 4. Model artifacts and intermediate objects: fitted models, preprocessing recipes, and R objects, which is where RDS and `qs2` live.
-5. Serving and interchange: predictions and metadata passed to other services, frequently as JSON.
+5. Serving and interchange: predictions and metadata passed to other services, frequently as JSON (see the API chapter, @sec-api).
 
 Two costs recur across these stages, and they pull in different directions. The first is read time. During hyperparameter tuning or cross-validation you may read the same training set dozens of times, so a format that reads in 0.2 seconds instead of 5 seconds changes how you work, not just how long you wait. The second is storage cost, which dominates at the feature-store stage, where compression ratios of 5x to 10x translate directly into cloud bills. A recurring theme of this chapter is that no single format wins on both at once, so the right choice depends on which cost you are paying.
 
@@ -344,9 +344,9 @@ The following guidance maps each format to the job it does best:
 
 - CSV: small datasets, one-off interchange with tools you do not control, and cases where a human needs to open the file. Do not use it as the storage layer for large or repeatedly-read data, and never rely on it to preserve types.
 - JSON / JSONL: API payloads, configuration, logs, and genuinely nested or ragged records. Use JSON-lines for large volumes so you can stream and append.
-- RDS (or `qs2` for speed): R objects that only R will consume, especially fitted models, `recipes`, and `workflows` from tidymodels. It is the natural artifact format inside an R project.
-- Parquet: the default for analysis-ready tabular data of any real size, for feature stores, and for any dataset shared across R, Python, and Spark. Partition it on date or another low-cardinality filter column.
-- Feather / Arrow IPC: the fastest option for handing a table between R and Python on the same machine, and for memory-mapping data that does not fit comfortably in RAM.
+- RDS (or `qs2` for speed): R objects that only R will consume, especially fitted models, `recipes`, and `workflows` from tidymodels (@sec-tidymodels-framework). It is the natural artifact format inside an R project.
+- Parquet: the default for analysis-ready tabular data of any real size, for feature stores (@sec-feature-stores), and for any dataset shared across R, Python, and Spark. Partition it on date or another low-cardinality filter column.
+- Feather / Arrow IPC: the fastest option for handing a table between R and Python on the same machine, and for memory-mapping data that does not fit comfortably in RAM. For distributed reads, Parquet is the format Spark expects (@sec-spark-sparklyr).
 - Avro: row-oriented streaming and message-queue data, and anywhere schema evolution (adding or removing fields over time) is a requirement.
 
 Each of those choices has a matching failure mode. The pitfalls below are the ones that cause silent data corruption or slow pipelines, in rough order of how often they cause real damage:

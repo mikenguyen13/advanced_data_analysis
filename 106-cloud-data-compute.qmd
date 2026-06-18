@@ -1,4 +1,4 @@
-# Cloud Data and Compute from R
+# Cloud Data and Compute from R {#sec-cloud-data-compute}
 
 ```{r}
 #| include: false
@@ -136,7 +136,7 @@ Across all three providers the interface is the same five verbs over a key-value
 
 ### File formats matter more than the SDK
 
-What you store under those keys decides your query cost. The choice is usually between a row-oriented text format (CSV) and a columnar binary format (Parquet).^[Row-oriented means the file stores all the fields of record 1, then all the fields of record 2, and so on, so reading any column means stepping over the whole file. Columnar means the file stores all values of column 1 together, then all of column 2, so an engine can seek straight to the columns it needs and ignore the rest.] Columnar storage lets an engine read only the columns a query touches, and it compresses far better because values within a column share a type and a distribution.
+What you store under those keys decides your query cost. The choice is usually between a row-oriented text format (CSV) and a columnar binary format (Parquet); the formats themselves are treated more fully in @sec-data-formats.^[Row-oriented means the file stores all the fields of record 1, then all the fields of record 2, and so on, so reading any column means stepping over the whole file. Columnar means the file stores all values of column 1 together, then all of column 2, so an engine can seek straight to the columns it needs and ignore the rest.] Columnar storage lets an engine read only the columns a query touches, and it compresses far better because values within a column share a type and a distribution.
 
 A back-of-the-envelope model: if a query needs $c$ of $p$ columns and the columnar format compresses by factor $\rho$, the bytes scanned drop roughly by
 
@@ -295,8 +295,8 @@ For local development, the `.Renviron` file holds variables outside the script, 
 So far the data was too big for the laptop but the computation was light. Sometimes the reverse is true: the dataset fits, but training the model is what overwhelms one machine. When the model, not just the data, is too big for the laptop, the compute moves too. The common patterns from R:
 
 - Submit a job to a managed batch service or a cluster scheduler and poll for completion. R is the client.
-- Use a distributed engine such as Spark through `sparklyr`, which translates `dplyr` and MLlib calls into work on the cluster.
-- Train on a remote GPU instance with `keras`/`tensorflow` or `torch`, where R drives the training loop on hardware you rented.
+- Use a distributed engine such as Spark through `sparklyr`, which translates `dplyr` and MLlib calls into work on the cluster (covered in depth in @sec-spark-sparklyr).
+- Train on a remote GPU instance with `keras`/`tensorflow` or `torch`, where R drives the training loop on hardware you rented (see @sec-torch-for-r).
 
 A `sparklyr` sketch, where the data and the model fit both stay on the cluster:
 
@@ -491,7 +491,7 @@ When to reach for each layer:
 
 - Use object storage as the durable home for raw data, intermediate datasets, and model artifacts. It is the cheapest place to keep bytes and the natural handoff point between pipeline stages.
 - Use a warehouse when you have structured data and analysts who write SQL or `dplyr`, and you want the engine to handle scale and concurrency.
-- Use a query engine over Parquet (`arrow`, `duckdb`) when you want warehouse-style queries without running a warehouse, especially for single-analyst or batch workloads.
+- Use a query engine over Parquet (`arrow`, `duckdb`) when you want warehouse-style queries without running a warehouse, especially for single-analyst or batch workloads (see @sec-duckdb-arrow).
 - Use remote compute only when the work genuinely exceeds one machine, and prefer scaling up before scaling out, because a single large instance avoids the overhead and serial fraction that Amdahl's law penalizes.
 
 Pitfalls that cost real money or break pipelines:

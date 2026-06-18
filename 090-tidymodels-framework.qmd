@@ -1,4 +1,4 @@
-# The tidymodels Framework
+# The tidymodels Framework {#sec-tidymodels-framework}
 
 ```{r}
 #| include: false
@@ -45,7 +45,7 @@ The framework breaks into focused packages, each owning one job in the skeleton 
 | `dials` | Hyperparameter ranges and grids | Search space |
 | `tune` | Fits the workflow across the grid and resamples | `GridSearchCV` |
 | `yardstick` | Metrics for regression and classification | `metrics` module |
-| `stacks` | Ensembles tuned candidates | Stacking meta-learner |
+| `stacks` | Ensembles tuned candidates (@sec-model-stacking) | Stacking meta-learner |
 
 : The core tidymodels packages, the job each one owns in the modeling workflow, and the closest scikit-learn analogue. {#tbl-tidymodels-framework-package-map}
 
@@ -75,7 +75,7 @@ $$
 
 The same fixed $\hat\mu, \hat\sigma$ are then applied to validation and test rows. `recipes` enforces this through two verbs: `prep()` estimates the quantities from training data, and `bake()` applies them to any data.^[You rarely call `prep()` and `bake()` by hand once a recipe lives inside a workflow; the framework calls them for you at the right moments. They are worth knowing because they are exactly where the leakage-safe behavior is enforced, and because calling them manually is the best way to inspect what a recipe actually produces.] When a recipe sits inside a workflow that is resampled, `prep()` is re-run inside every fold automatically, so each fold's preprocessing is estimated only on that fold's analysis rows.
 
-A recipe is built by chaining `step_*` functions, each one a named transformation. The steps you reach for most often fall into a few families. For missing data, the `step_impute_*` family fills gaps (by mean, median, $k$-nearest-neighbors, and so on). For categorical predictors, `step_other` collapses rare levels into a single "other" category and `step_dummy` turns categories into one-hot or contrast-coded columns. For numeric predictors, `step_normalize` centers and scales, while `step_zv` and `step_nzv` drop columns with zero or near-zero variance that carry no usable signal. For dimension reduction, `step_pca` replaces correlated predictors with a smaller set of components.
+A recipe is built by chaining `step_*` functions, each one a named transformation. The steps you reach for most often fall into a few families. For missing data, the `step_impute_*` family fills gaps (by mean, median, $k$-nearest-neighbors, and so on). For categorical predictors, `step_other` collapses rare levels into a single "other" category and `step_dummy` turns categories into one-hot or contrast-coded columns. For numeric predictors, `step_normalize` centers and scales, while `step_zv` and `step_nzv` drop columns with zero or near-zero variance that carry no usable signal. For dimension reduction, `step_pca` replaces correlated predictors with a smaller set of components (see the dimension reduction chapter, @sec-dimension-reduction). The broader question of how to construct good features in the first place is the subject of the feature engineering chapter (@sec-feature-engineering).
 
 The order in which you add steps is itself a modeling decision, because each step sees the data as the previous steps left it.
 
@@ -400,7 +400,7 @@ The leaky version reports a healthy-looking positive cross-validated $R^2$ even 
 
 ## Comparison with alternatives
 
-`tidymodels` is not the only way to organize a modeling workflow, and it is worth knowing where it sits among the alternatives so you can choose deliberately. @tbl-tidymodels-framework-alternatives sketches the main options, from rolling your own loops to the older `caret` framework, the more object-oriented `mlr3`, and Python's `scikit-learn`.
+`tidymodels` is not the only way to organize a modeling workflow, and it is worth knowing where it sits among the alternatives so you can choose deliberately. @tbl-tidymodels-framework-alternatives sketches the main options, from rolling your own loops to the older `caret` framework, the more object-oriented `mlr3` (covered in @sec-mlr3-ecosystem), and Python's `scikit-learn`.
 
 | Approach | Pros | Cons |
 |---|---|---|
@@ -416,7 +416,7 @@ The remaining sections cover two things you will want once a pipeline grows beyo
 
 ## Scaling out the tuning grid
 
-Because the (fold, candidate) fits in a grid search are independent of one another, they parallelize almost perfectly: each can run in its own R session. For large grids or large data, that is the easiest speedup available. The chunk below shows the idiomatic pattern with the `future` package. It is marked `eval=FALSE` because it depends on a parallel backend being registered and is specific to the machine it runs on, but it is correct code a reader can run as-is.
+Because the (fold, candidate) fits in a grid search are independent of one another, they parallelize almost perfectly: each can run in its own R session. For large grids or large data, that is the easiest speedup available (the parallel computing chapter, @sec-parallel-computing, covers the backends in depth). The chunk below shows the idiomatic pattern with the `future` package. It is marked `eval=FALSE` because it depends on a parallel backend being registered and is specific to the machine it runs on, but it is correct code a reader can run as-is.
 
 ```{r tmf-parallel, eval=FALSE}
 library(future)

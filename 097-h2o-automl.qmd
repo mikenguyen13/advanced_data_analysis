@@ -1,4 +1,4 @@
-# Scalable Machine Learning with h2o
+# Scalable Machine Learning with h2o {#sec-h2o-automl}
 
 ```{r}
 #| include: false
@@ -42,7 +42,7 @@ Most predictive work on tabular data follows the same loop: import, clean, split
 
 The rows that distinguish `h2o` are larger-than-RAM data, a single API across model families, one-call AutoML, and exportable scoring artifacts (MOJO/POJO)^[A MOJO (Model Object, Optimized) or POJO (Plain Old Java Object) is a self-contained file that encodes a trained model so it can score new rows on any machine with a Java runtime, with no R, no Python, and no H2O cluster required. This is what makes `h2o` models easy to embed in production services.] that run wherever a JVM runs without R.
 
-> **When to use this:** Skim the table above first. If your data fits comfortably in memory and you want fine-grained control of the modeling pipeline, the `tidymodels` workflow elsewhere in this book is usually a better fit. Reach for `h2o` when the data is large, when you want a strong baseline from a single call, or when you need a portable scoring artifact.
+> **When to use this:** Skim the table above first. If your data fits comfortably in memory and you want fine-grained control of the modeling pipeline, the `tidymodels` workflow (@sec-tidymodels-framework) is usually a better fit. Reach for `h2o` when the data is large, when you want a strong baseline from a single call, or when you need a portable scoring artifact.
 
 ## Starting and managing the cluster
 
@@ -117,7 +117,7 @@ h2o.performance(glm_fit, newdata = test_h2o)
 
 ### Gradient boosting machines
 
-`h2o.gbm()` fits a forward stagewise additive ensemble of regression trees, the algorithm of the boosting chapter. Writing the model after $m$ trees as $F_m(\mathbf{x})$, each new tree $h_m$ is fit to the negative gradient of the loss $L$ evaluated at the current model, the so-called pseudo-residuals
+`h2o.gbm()` fits a forward stagewise additive ensemble of regression trees, the algorithm of the boosting chapter (@sec-boosting). Writing the model after $m$ trees as $F_m(\mathbf{x})$, each new tree $h_m$ is fit to the negative gradient of the loss $L$ evaluated at the current model, the so-called pseudo-residuals
 
 $$
 r_{im} = -\left.\frac{\partial L\big(y_i, F(\mathbf{x}_i)\big)}{\partial F(\mathbf{x}_i)}\right|_{F = F_{m-1}},
@@ -145,7 +145,7 @@ gbm_fit <- h2o.gbm(
 
 ### Random forest
 
-`h2o.randomForest()` fits a bagged ensemble of deep, decorrelated trees. Each tree is grown on a bootstrap (or subsample) of rows, and at each split only a random subset of the predictors is considered. With $B$ trees giving predictions $\hat f_b(\mathbf{x})$, the ensemble averages them,
+`h2o.randomForest()` fits a bagged ensemble of deep, decorrelated trees, the algorithm of the random forests chapter (@sec-random-forest). Each tree is grown on a bootstrap (or subsample) of rows, and at each split only a random subset of the predictors is considered. With $B$ trees giving predictions $\hat f_b(\mathbf{x})$, the ensemble averages them,
 
 $$
 \hat f_{\text{rf}}(\mathbf{x}) = \frac{1}{B}\sum_{b=1}^{B} \hat f_b(\mathbf{x}),
@@ -163,7 +163,7 @@ rf_fit <- h2o.randomForest(
 
 ### Deep learning
 
-`h2o.deeplearning()` fits a fully connected feed-forward network. With weight matrices $W^{(\ell)}$, bias vectors $b^{(\ell)}$, and an activation $\sigma$, layer $\ell$ computes $a^{(\ell)} = \sigma\!\big(W^{(\ell)} a^{(\ell-1)} + b^{(\ell)}\big)$ with $a^{(0)} = \mathbf{x}$. The H2O implementation is tuned for tabular data: it trains with the adaptive learning rate ADADELTA by default, uses dropout for regularization, and runs a distributed variant of stochastic gradient descent (HOGWILD!). It is not a substitute for the convolutional or transformer models in the deep learning part of this book; it is the dense-tabular network you reach for when trees underfit smooth interactions.
+`h2o.deeplearning()` fits a fully connected feed-forward network. With weight matrices $W^{(\ell)}$, bias vectors $b^{(\ell)}$, and an activation $\sigma$, layer $\ell$ computes $a^{(\ell)} = \sigma\!\big(W^{(\ell)} a^{(\ell-1)} + b^{(\ell)}\big)$ with $a^{(0)} = \mathbf{x}$. The H2O implementation is tuned for tabular data: it trains with the adaptive learning rate ADADELTA by default, uses dropout for regularization, and runs a distributed variant of stochastic gradient descent (HOGWILD!). It is not a substitute for the neural network architectures covered elsewhere, such as the transformer models (@sec-transformers); it is the dense-tabular network you reach for when trees underfit smooth interactions.
 
 > **Note:** On most tabular problems the tree ensembles (GBM and random forest) are hard to beat, and they need far less tuning than a neural network. Treat `h2o.deeplearning()` as a complement worth adding to the AutoML search rather than a default first choice for tables.
 
@@ -182,7 +182,7 @@ With the four families in hand, the natural next question is which to use and ho
 
 `h2o.automl()` automates the comparison loop. Given a training frame, a response, and a stopping budget (a wall-clock limit `max_runtime_secs` or a model count `max_models`), it trains a sequence of GLMs, GBMs, random forests, extremely randomized trees, and deep nets, tunes their hyperparameters with random search, and then trains two kinds of stacked ensemble on top of the base learners: one over all models and one over the best model of each family.
 
-The stacked ensemble is the model stacking of the earlier chapter. Each base model $\hat f_k$ produces cross-validated (out-of-fold) predictions $z_{ik} = \hat f_k^{(-\text{fold}(i))}(\mathbf{x}_i)$, and a metalearner $g$ (a non-negative GLM by default) is fit to combine them,
+The stacked ensemble is the model stacking of the earlier chapter (@sec-model-stacking). Each base model $\hat f_k$ produces cross-validated (out-of-fold) predictions $z_{ik} = \hat f_k^{(-\text{fold}(i))}(\mathbf{x}_i)$, and a metalearner $g$ (a non-negative GLM by default) is fit to combine them,
 
 $$
 \hat f_{\text{ens}}(\mathbf{x}) = g\big(\hat f_1(\mathbf{x}), \dots, \hat f_K(\mathbf{x})\big),
@@ -222,7 +222,7 @@ $$
 \widehat{\text{PD}}_S(\mathbf{x}_S) = \frac{1}{n}\sum_{i=1}^{n} \hat f\big(\mathbf{x}_S, \mathbf{x}_{C,i}\big),
 $$
 
-which holds the feature of interest fixed while sweeping the others over their observed values. This is the same partial dependence defined in the interpretability chapter; `h2o` just computes it in the cluster.
+which holds the feature of interest fixed while sweeping the others over their observed values. This is the same partial dependence defined in the interpretable machine learning chapter (@sec-interpretable-machine-learning); `h2o` just computes it in the cluster.
 
 > **Intuition:** A partial dependence plot answers the question "as this one predictor changes, how does the model's average prediction move, with everything else held at its typical mix?" It is the model's marginal story about that feature.
 

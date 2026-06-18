@@ -1,4 +1,4 @@
-# Meta-Learning and Few-Shot Learning
+# Meta-Learning and Few-Shot Learning {#sec-meta-learning}
 
 ```{r}
 #| include: false
@@ -21,8 +21,8 @@ In a typical applied setting you train once on a large dataset and serve that mo
 
 Collecting thousands of labels per new task is slow or impossible. Meta-learning amortizes that cost: you pay an expensive offline phase on many tasks that resemble the deployment tasks, and in return you get cheap, fast adaptation at deployment. In modern AI pipelines this idea sits next to two cousins that practitioners often confuse with it:
 
-- Transfer learning / fine-tuning. Pretrain a large model, then fine-tune on the new task. This usually needs more than a handful of labels and a gradient-descent run per task.
-- In-context learning with large language models. The model conditions on a few examples in its prompt and adapts with no weight update. This is, in effect, meta-learning whose "training across tasks" happened implicitly during pretraining.
+- Transfer learning / fine-tuning (@sec-transfer-multitask-learning). Pretrain a large model, then fine-tune on the new task. This usually needs more than a handful of labels and a gradient-descent run per task.
+- In-context learning with large language models (@sec-llms). The model conditions on a few examples in its prompt and adapts with no weight update. This is, in effect, meta-learning whose "training across tasks" happened implicitly during pretraining.
 
 Few-shot meta-learning is the explicit, supervised version of the same objective: optimize directly for fast adaptation from few examples.
 
@@ -112,7 +112,7 @@ Training minimizes the negative log probability of the true class on query point
 
 ### Matching networks
 
-Matching networks (Vinyals et al., 2016) predict by a weighted vote over support labels, where the weights are an attention kernel between the query and each support embedding:
+Matching networks (Vinyals et al., 2016) predict by a weighted vote over support labels, where the weights are an attention kernel (see @sec-transformers) between the query and each support embedding:
 
 $$
 \hat{y}^\* = \sum_{(x_j, y_j) \in \mathcal{S}} a(x^\*, x_j)\, \mathbf{1}[y_j = c],
@@ -316,7 +316,7 @@ Pitfalls.
 - Episode composition matters. Reported numbers depend on $N$, $K$, the query size, and how episodes are sampled. Always state the $N$-way $K$-shot configuration, and average over many episodes with confidence intervals, since per-episode accuracy is noisy.
 - Choose the family by your deployment budget. Metric-based methods (prototypical, matching) need no per-task gradient step, so they are cheap and robust to serve. Optimization-based methods (MAML) are more flexible but require an inner adaptation loop and careful tuning of the inner learning rate and step count.
 - Distance metric and feature scale. Prototypical networks assume distances are meaningful. Unnormalized or differently scaled features distort Euclidean distances; standardize features or learn an embedding that does so.
-- Class imbalance within a task. Prototypes from very few points are high variance. With $K=1$ a single outlier support point can dislocate a whole class prototype.
+- Class imbalance within a task (@sec-class-imbalance). Prototypes from very few points are high variance. With $K=1$ a single outlier support point can dislocate a whole class prototype.
 
 Sanity checks. Compare against a nearest-centroid baseline on raw or pretrained features (exactly the demo above). A learned meta-learner that does not beat this simple baseline is not earning its complexity. Also report the chance level $1/N$ so improvements are interpretable.
 

@@ -1,4 +1,4 @@
-# Support Vector
+# Support Vector {#sec-svm}
 
 ```{r}
 #| include: false
@@ -160,7 +160,7 @@ Turning that dial in either direction has predictable effects:
 -   $C$ small: narrow margins, few margin violations, low bias, high variance, and fewer support vectors.
 -   $C$ large: wide margins, more violations, more bias but less variance, and many support vectors.
 
-As before, the support vectors are the observations that lie on or inside the margins. Because the decision rule depends only on this relatively small set of points, the support vector classifier is robust to the behavior of observations far from the hyperplane. This is a real contrast with linear discriminant rules, which let every observation, even distant ones, pull on the boundary.
+As before, the support vectors are the observations that lie on or inside the margins. Because the decision rule depends only on this relatively small set of points, the support vector classifier is robust to the behavior of observations far from the hyperplane. This is a real contrast with linear discriminant rules (see @sec-discriminant-analysis), which let every observation, even distant ones, pull on the boundary.
 
 ## Nonlinear Decision Boundaries
 
@@ -211,7 +211,7 @@ $$
 
 We could then use the [Support Vector Classifiers] machinery to find parameters $\hat{\beta}$ in $f(x) = \beta_0 + h(x)^T \beta$, and classify by $\hat{G}(x) = \text{sign} (\hat{f}(x))$. This raises an obvious question: how do we choose the basis functions $h$?
 
-The remarkable answer is that we do not have to choose them at all. It is enough to choose a positive definite kernel function $K(x_i, x_{i'})$, and that single choice implicitly determines a whole collection of basis functions. To see why, we first need to recall inner products.
+The remarkable answer is that we do not have to choose them at all. It is enough to choose a positive definite kernel function $K(x_i, x_{i'})$, and that single choice implicitly determines a whole collection of basis functions. The same positive definite kernels underpin Gaussian process regression (@sec-gaussian-process-reg), which offers a probabilistic counterpart to the kernel machinery developed here. To see why, we first need to recall inner products.
 
 > **Note:** The kernel does double duty. It encodes a similarity between two observations, and it secretly stands in for an inner product in some (possibly enormous) feature space. The "trick" is that we get the second for free once we specify the first.
 
@@ -400,12 +400,12 @@ This $\epsilon$-insensitive loss resembles other robust regression losses, such 
 
 We close with a related technique that shares the same geometric flavor of partitioning space into regions, but serves a different purpose: compression. Vector quantization (VQ) is used for image and voice compression (a form of lossy data compression) and for pattern recognition (source^[<http://www.mqasem.net/vectorquantization/vq.html>]). A few orienting remarks before the details:
 
--   VQ is part of \@ref(neural-networks).
--   \@ref(k-means-clustering) is itself a type of VQ.
+-   VQ is part of the neural networks chapter (@sec-neural-networks).
+-   k-means clustering, covered in the cluster analysis chapter (@sec-cluster), is itself a type of VQ.
 -   Python currently has better tooling for VQ than R.
 -   For more background, see [@koikkalainen1999].
 
-The core idea is to replace a continuous range of vectors with a small, fixed dictionary of representative vectors. Formally, a vector quantizer maps $k$-dimensional vectors in the vector space $R^k$ into a finite set of vectors $Y = \{ y_i, i = 1,\dots, N\}$. Each $y_i$ is a code vector (or codeword), also known as a neuron in the language of \@ref(neural-networks). The set of all codewords is a codebook, each attribute in the codebook is a weight, and the collection of codebook vectors forms a network.
+The core idea is to replace a continuous range of vectors with a small, fixed dictionary of representative vectors. Formally, a vector quantizer maps $k$-dimensional vectors in the vector space $R^k$ into a finite set of vectors $Y = \{ y_i, i = 1,\dots, N\}$. Each $y_i$ is a code vector (or codeword), also known as a neuron in the language of the neural networks chapter (@sec-neural-networks). The set of all codewords is a codebook, each attribute in the codebook is a weight, and the collection of codebook vectors forms a network.
 
 Each codeword owns a region of space, namely the set of points closer to it than to any other codeword. This nearest-neighbor region is called a Voronoi region,
 
@@ -442,7 +442,7 @@ This structure gives a clean two-step compression scheme:
 
 Because we transmit or store only the small index instead of the full vector, we save space; the cost is that the reconstruction is the codeword rather than the exact input, which is why VQ is "lossy."
 
-The algorithm for building the codebook [@linde1980] is closely related to the K-means algorithm \@ref(k-means-clustering). It shares K-means's limitations, however: it is only locally optimal and can be quite slow.
+The algorithm for building the codebook [@linde1980] is closely related to the K-means algorithm covered in the cluster analysis chapter (@sec-cluster). It shares K-means's limitations, however: it is only locally optimal and can be quite slow.
 
 > **Note:** VQ performance is commonly assessed with either the Mean Squared Error (MSE) between inputs and their reconstructions, or the Peak Signal to Noise Ratio (PSNR), which expresses the same reconstruction quality on a decibel scale where higher is better.
 

@@ -1,4 +1,4 @@
-# k-Nearest Neighbors
+# k-Nearest Neighbors {#sec-knn}
 
 ```{r}
 #| include: false
@@ -9,7 +9,7 @@ Imagine you move to a new town and want to guess whether a house will sell quick
 
 This chapter builds that intuition into a precise method. You will learn how kNN turns "look at similar cases" into a formula for both classification and regression, why the single tuning parameter $k$ controls the tradeoff between fitting noise and oversmoothing, why the method breaks down when the number of features is large (the curse of dimensionality), and the practical steps (standardizing features, choosing $k$ by cross-validation, speeding up search) that make it work in practice. We close with a simulation that shows the bias-variance tradeoff and the decision boundary directly.
 
-kNN is one of the most fundamental predictive methods. It is the most direct embodiment of the principle that nearby points should have similar responses, and the same principle reappears, in more refined form, in the kernel and local-regression methods covered earlier. Because it is so transparent, kNN is a useful baseline: if an elaborate model cannot beat nearest neighbors on your problem, that is worth knowing.
+kNN is one of the most fundamental predictive methods. It is the most direct embodiment of the principle that nearby points should have similar responses, and the same principle reappears, in more refined form, in the kernel smoothing (@sec-kernel) and local regression (@sec-local) methods covered earlier. Because it is so transparent, kNN is a useful baseline: if an elaborate model cannot beat nearest neighbors on your problem, that is worth knowing.
 
 ## Intuition
 
@@ -63,7 +63,7 @@ $$
 \hat f(x) = \frac{1}{k} \sum_{i \in N_k(x)} y_i.
 $$
 
-This is a locally constant estimate: within any neighborhood, the fit is a flat line at the local average. It can be viewed as a kernel-weighted average with a uniform weight over the $k$ nearest points and zero weight elsewhere, which connects kNN to the kernel smoothing methods covered earlier in the book. The neighborhood is defined by a fixed count $k$ rather than a fixed bandwidth in distance, so the effective window adapts to local data density: it shrinks where data are dense and widens where data are sparse.
+This is a locally constant estimate: within any neighborhood, the fit is a flat line at the local average. It can be viewed as a kernel-weighted average with a uniform weight over the $k$ nearest points and zero weight elsewhere, which connects kNN to the kernel smoothing methods covered earlier in the book (@sec-kernel). The neighborhood is defined by a fixed count $k$ rather than a fixed bandwidth in distance, so the effective window adapts to local data density: it shrinks where data are dense and widens where data are sparse.
 
 > **Note:** Kernel smoothing fixes a window width (a bandwidth $h$) and averages whatever falls inside. kNN fixes a count $k$ and lets the window width float. The two are mirror images of the same locally-weighted-averaging idea, and which one behaves better depends on how evenly your data are spread.
 
@@ -304,10 +304,10 @@ The chapter's advice condenses into a short checklist. Keep these in mind whenev
 - Always standardize the features before computing distances, unless you use a scale-invariant metric like Mahalanobis.
 - Choose $k$ by cross-validation rather than by a rule of thumb. The optimal $k$ depends on the noise level and the sample size.
 - Use an odd $k$ for two-class problems to reduce voting ties.
-- Reduce dimensionality when $p$ is large. Feature selection or a projection (for example PCA) can restore the locality that kNN needs.
+- Reduce dimensionality when $p$ is large. Feature selection or a projection (for example PCA, discussed in the dimension reduction chapter, @sec-dimension-reduction) can restore the locality that kNN needs.
 - Mind the prediction cost. For large training sets, use a kd-tree or ball-tree (available through the `FNN` package in R), or an approximate nearest-neighbor library.
 - kNN handles multiclass naturally through the majority vote, with no change to the algorithm.
-- Class imbalance distorts the vote: a rare class is easily outvoted. Distance weighting, resampling, or per-class thresholds can help.
+- Class imbalance distorts the vote: a rare class is easily outvoted. Distance weighting, resampling, or per-class thresholds can help; see the class imbalance chapter (@sec-class-imbalance) for a fuller treatment.
 
 ## Further Reading
 

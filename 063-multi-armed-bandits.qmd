@@ -1,4 +1,4 @@
-# Multi-Armed Bandits
+# Multi-Armed Bandits {#sec-multi-armed-bandits}
 
 ```{r}
 #| include: false
@@ -13,7 +13,7 @@ The reason this toy problem matters is that the same structure appears everywher
 
 > **Intuition:** If you always exploit, you may lock onto an arm that looked good early by luck and never discover the truly best one. If you always explore, you waste pulls on arms you already know are bad. Good bandit algorithms explore aggressively when they are uncertain and taper off as evidence accumulates.
 
-This chapter treats the stochastic, context-free bandit: the arms' reward distributions are fixed and do not depend on any side information. When each round comes with features that should shape the choice, you have a contextual bandit, covered in Chapter \@ref(contextual-bandits). The methods here are the building blocks that the contextual version generalizes.
+This chapter treats the stochastic, context-free bandit: the arms' reward distributions are fixed and do not depend on any side information. When each round comes with features that should shape the choice, you have a contextual bandit, covered in the contextual bandits chapter (@sec-contextual-bandits). The methods here are the building blocks that the contextual version generalizes.
 
 ## The stochastic k-armed bandit
 
@@ -109,7 +109,7 @@ A practical detail: the bonus is infinite when $N_t(a) = 0$, so UCB1 begins by p
 
 ## Thompson sampling
 
-A different and older idea, due to Thompson (1933), is fully Bayesian. Instead of a single point estimate per arm, keep a probability distribution over each arm's unknown value, and at each step pick an arm by drawing a sample from each distribution and playing the arm with the highest draw. Arms we are unsure about have wide distributions, so they sometimes draw a high sample and get explored; arms we have pinned down have narrow distributions and get played only when they really are best. Exploration emerges from the randomness of the posterior, scaled automatically by uncertainty.
+A different and older idea, due to Thompson (1933), is fully Bayesian (see also the probabilistic programming chapter, @sec-probabilistic-programming). Instead of a single point estimate per arm, keep a probability distribution over each arm's unknown value, and at each step pick an arm by drawing a sample from each distribution and playing the arm with the highest draw. Arms we are unsure about have wide distributions, so they sometimes draw a high sample and get explored; arms we have pinned down have narrow distributions and get played only when they really are best. Exploration emerges from the randomness of the posterior, scaled automatically by uncertainty.
 
 For Bernoulli arms the math is especially clean because the Beta distribution is the conjugate prior for the Bernoulli likelihood. Start each arm with a prior $\text{Beta}(\alpha_a, \beta_a)$, the uniform prior $\text{Beta}(1, 1)$ being a standard uninformative choice. The Beta-Bernoulli update is simply bookkeeping of successes and failures: after observing reward $R_t$ from arm $a$,
 $$
@@ -342,9 +342,9 @@ A final, easy mistake is evaluating a bandit like an A/B test. A bandit delibera
 
 ## Connection to contextual bandits and reinforcement learning
 
-The bandits in this chapter are context-free: the best arm is the same on every round. Add a feature vector $x_t$ that arrives before each choice and lets the best arm vary by situation (this user, this time of day) and you have a contextual bandit, the subject of Chapter \@ref(contextual-bandits). The three strategies here carry over directly: epsilon-greedy still flips a coin, UCB becomes LinUCB by putting a confidence ellipsoid around a linear reward model, and Thompson sampling places a posterior over the model parameters instead of over a single value per arm.
+The bandits in this chapter are context-free: the best arm is the same on every round. Add a feature vector $x_t$ that arrives before each choice and lets the best arm vary by situation (this user, this time of day) and you have a contextual bandit, the subject of the contextual bandits chapter (@sec-contextual-bandits). The three strategies here carry over directly: epsilon-greedy still flips a coin, UCB becomes LinUCB by putting a confidence ellipsoid around a linear reward model, and Thompson sampling places a posterior over the model parameters instead of over a single value per arm.
 
-Go one step further and let your action change the *state* of the world, so that today's choice affects tomorrow's options, and you have left bandits entirely for full reinforcement learning, where the action-value update gains a term for future reward. The incremental update $Q \leftarrow Q + \alpha(\text{target} - Q)$ you met in this chapter is precisely the seed that grows into temporal-difference learning and Q-learning.
+Go one step further and let your action change the *state* of the world, so that today's choice affects tomorrow's options, and you have left bandits entirely for full reinforcement learning (@sec-rl-foundations), where the action-value update gains a term for future reward. The incremental update $Q \leftarrow Q + \alpha(\text{target} - Q)$ you met in this chapter is precisely the seed that grows into temporal-difference learning and Q-learning (@sec-td-learning).
 
 ## Further reading
 

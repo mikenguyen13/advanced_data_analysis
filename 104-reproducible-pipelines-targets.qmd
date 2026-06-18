@@ -1,4 +1,4 @@
-# Reproducible Pipelines with targets
+# Reproducible Pipelines with targets {#sec-reproducible-pipelines-targets}
 
 ```{r}
 #| include: false
@@ -19,7 +19,7 @@ In a small project you might keep one long script. As the project grows, the scr
 
 The idea is borrowed from software build systems. `make` reads a set of rules of the form "target $T$ depends on prerequisites $P_1, \dots, P_k$ and is produced by command $C$." It rebuilds $T$ only when $T$ is missing or older than some prerequisite. `targets` adapts this to R by representing each step as a target object, tracking dependencies between R objects rather than files, and deciding staleness by comparing content hashes rather than file timestamps. The result is a workflow that is incremental (only stale steps run), reproducible (outputs always match current code and data), and inspectable (you can draw the dependency graph).
 
-In an ML or AI engineering setting this matters because the expensive steps, fitting a gradient boosting model, computing embeddings, running a cross validated tuning grid, are exactly the ones you do not want to repeat unnecessarily. A pipeline lets you change a plot label and rebuild in seconds, while still guaranteeing that if you change the feature engineering, every downstream model and metric refits.
+In an ML or AI engineering setting this matters because the expensive steps, fitting a gradient boosting model (@sec-gradient-boosting), computing embeddings (@sec-embeddings-vector-search), running a cross validated tuning grid (@sec-hyperparameter-optimization), are exactly the ones you do not want to repeat unnecessarily. A pipeline lets you change a plot label and rebuild in seconds, while still guaranteeing that if you change the feature engineering, every downstream model and metric refits.
 
 > **When to use this:** Reach for a pipeline tool once an end to end rerun is slow enough to break your concentration, or once you have lost confidence that the report on disk reflects the current code. Below that threshold, a single tidy script is fine.
 
@@ -314,7 +314,7 @@ The mathematics of branching is just an index set. If `files` has elements index
 
 ## Scaling: parallel and distributed builds
 
-Branching does more than save typing: by creating many independent targets, it gives the build something to parallelize. Independent targets, those with no path between them in $G$, can run at the same time. `targets` delegates this to the `crew` package, which manages a pool of worker processes (local or on a cluster or cloud). You change how the pipeline scales without changing what it computes: the targets and their edges stay the same, only the controller changes.
+Branching does more than save typing: by creating many independent targets, it gives the build something to parallelize. Independent targets, those with no path between them in $G$, can run at the same time, applying the ideas from the parallel computing chapter (@sec-parallel-computing) to the pipeline as a whole. `targets` delegates this to the `crew` package, which manages a pool of worker processes (local or on a cluster or cloud). You change how the pipeline scales without changing what it computes: the targets and their edges stay the same, only the controller changes.
 
 ```{r targets-parallel, eval=FALSE}
 # In _targets.R, add a controller for parallel local workers

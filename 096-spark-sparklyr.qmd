@@ -1,4 +1,4 @@
-# Distributed Machine Learning with Spark and sparklyr
+# Distributed Machine Learning with Spark and sparklyr {#sec-spark-sparklyr}
 
 ```{r}
 #| include: false
@@ -15,7 +15,7 @@ Most of the modeling in this book assumes the data sits in memory as a single `d
 
 In a typical data and ML pipeline Spark sits at the data preparation and large scale training stage. Raw event logs or transactional records land in a distributed store (a data lake on cloud object storage, or a warehouse table). Spark reads them in parallel, filters and joins and aggregates them into a modeling table, and either trains a model directly with MLlib or writes a manageable extract that a downstream tool consumes. The data engineer often owns the ingestion and transformation; the ML engineer owns the feature pipeline and the model. `sparklyr` lets the R user participate in both without leaving R for SQL or Scala.
 
-The decision to use Spark is mostly about data size and where the data already lives, not about model accuracy. A gradient boosting model on a 10 GB sample will usually predict about as well as the same model on 1 TB; the value of Spark is processing the 1 TB at all when sampling would discard rare but important cases, or when the feature engineering itself requires the full table.
+The decision to use Spark is mostly about data size and where the data already lives, not about model accuracy. A gradient boosting model (@sec-gradient-boosting) on a 10 GB sample will usually predict about as well as the same model on 1 TB; the value of Spark is processing the 1 TB at all when sampling would discard rare but important cases, or when the feature engineering itself requires the full table.
 
 > **When to use this:** Reach for Spark when the data is too large for one machine, is already spread across many files in a data lake or warehouse, or when the feature engineering must scan a table larger than any one machine's RAM. If your data fits comfortably in memory, you almost certainly do not need it.[^spark-overhead] We return to this decision in detail at the end of the chapter.
 
@@ -191,7 +191,7 @@ rmse
 
 For multi step feature engineering plus a model, MLlib uses a pipeline: a sequence of stages (transformers that reshape features, and an estimator that learns) fit as one object so the same steps apply identically at training and scoring time. `sparklyr` builds these with `ml_pipeline()`. The functions prefixed `ft_` (for "feature transform") are the reshaping stages: `ft_string_indexer` turns text categories into integer codes, `ft_one_hot_encoder` expands those codes into indicator columns, and `ft_vector_assembler` packs several columns into the single `features` vector that MLlib estimators expect.
 
-> **Tip:** Bundling the preprocessing into the pipeline, rather than doing it ad hoc before the fit, is what guarantees that test data is transformed with the exact rules learned on the training data (the same category-to-index mapping, for instance). This is the distributed analogue of a `recipes` workflow from the `tidymodels` chapters.
+> **Tip:** Bundling the preprocessing into the pipeline, rather than doing it ad hoc before the fit, is what guarantees that test data is transformed with the exact rules learned on the training data (the same category-to-index mapping, for instance). This is the distributed analogue of a `recipes` workflow from the tidymodels framework (@sec-tidymodels-framework).
 
 ```{r spark-pipeline, eval=FALSE}
 pipeline <- ml_pipeline(sc) %>%
@@ -343,7 +343,7 @@ The honest default is: do not use Spark until you need it. Spark adds a cluster,
 
 : Comparison of common tools for an R user by where they run, the data size they suit, their parallelism, and when each is the right choice. {#tbl-spark-sparklyr-tool-comparison}
 
-A few rules of thumb summarize the table. If the data fits in RAM, prefer `data.table` or `dplyr`; you will not beat them with Spark on one machine. If the data is bigger than RAM but on one machine, try `duckdb` or `arrow` before reaching for a cluster. Move to Spark when the data is genuinely distributed (many large files in object storage, a warehouse table of billions of rows), when the feature engineering must scan the full table, or when you already operate in a Spark based platform and want to stay in R.
+A few rules of thumb summarize the table. If the data fits in RAM, prefer `data.table` or `dplyr`; you will not beat them with Spark on one machine. If the data is bigger than RAM but on one machine, try `duckdb` or `arrow` (@sec-duckdb-arrow) before reaching for a cluster. Move to Spark when the data is genuinely distributed (many large files in object storage, a warehouse table of billions of rows), when the feature engineering must scan the full table, or when you already operate in a Spark based platform and want to stay in R.
 
 > **Key idea:** Spark earns its overhead only past a size and locality threshold. The right question is not "is my data big?" but "does my data fit on one machine, and if not, where does it already live?" That answer, more than any accuracy concern, decides whether Spark belongs in your pipeline.
 

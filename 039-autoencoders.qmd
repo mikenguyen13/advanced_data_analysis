@@ -1,4 +1,4 @@
-# Autoencoders and Representation Learning
+# Autoencoders and Representation Learning {#sec-autoencoders}
 
 ```{r}
 #| include: false
@@ -11,7 +11,7 @@ An autoencoder is a neural network trained to copy its input to its output. That
 
 > **Key idea:** An autoencoder is not interesting because it can reconstruct the input. It is interesting because of *what it is forced to throw away* to do so. The discarded information is noise and redundancy; the retained information is the structure of the data.
 
-By the end of this chapter you will understand the encoder, the decoder, and the bottleneck that makes the whole thing work; you will see the precise sense in which a linear autoencoder is just PCA in disguise; you will meet the main regularized variants (denoising, sparse, contractive) and the variational autoencoder used for generation; and you will run a small demonstration in base R that confirms the linear-autoencoder-equals-PCA result numerically. Autoencoders sit next to the [Dimension Reduction] chapter as the nonlinear generalization of the ideas you saw there.
+By the end of this chapter you will understand the encoder, the decoder, and the bottleneck that makes the whole thing work; you will see the precise sense in which a linear autoencoder is just PCA in disguise; you will meet the main regularized variants (denoising, sparse, contractive) and the variational autoencoder used for generation; and you will run a small demonstration in base R that confirms the linear-autoencoder-equals-PCA result numerically. Autoencoders sit next to the dimension reduction chapter (@sec-dimension-reduction) as the nonlinear generalization of the ideas you saw there.
 
 ## Encoder, Decoder, and the Bottleneck
 
@@ -75,7 +75,7 @@ $$
 \min_{\operatorname{rank}(M)\le k} \; \sum_{i=1}^n \lVert x_i - M x_i \rVert^2 .
 $$
 
-Let $X$ be the $n \times p$ matrix with the centered observations in its rows and let $\Sigma = \frac{1}{n} X^\top X$ be the sample covariance. The minimizing $M$ is the projection $M = V_k V_k^\top$, where $V_k$ holds the top $k$ eigenvectors of $\Sigma$, equivalently the top $k$ right singular vectors of $X$. This is the Eckart and Young low-rank approximation result, and it is exactly the rank-$k$ representation that PCA produces. See the [Dimension Reduction] chapter for the PCA derivation through the singular value decomposition.
+Let $X$ be the $n \times p$ matrix with the centered observations in its rows and let $\Sigma = \frac{1}{n} X^\top X$ be the sample covariance. The minimizing $M$ is the projection $M = V_k V_k^\top$, where $V_k$ holds the top $k$ eigenvectors of $\Sigma$, equivalently the top $k$ right singular vectors of $X$. This is the Eckart and Young low-rank approximation result, and it is exactly the rank-$k$ representation that PCA produces. See the dimension reduction chapter (@sec-dimension-reduction) for the PCA derivation through the singular value decomposition.
 
 Two points are worth stating precisely, because they are easy to get wrong.
 
@@ -159,7 +159,7 @@ where $\odot$ is elementwise multiplication. The randomness now lives in $\epsil
 
 > **Note:** You cannot backpropagate through a coin flip. Sampling $z$ directly blocks the gradient because the random draw has no derivative with respect to the parameters. The reparameterization trick sidesteps this by moving the randomness into $\epsilon$, an input the network does not control, leaving a smooth deterministic path from the parameters to $z$.
 
-This is only a brief introduction. The full treatment of VAEs, including the decoder likelihood choices and the connection to other generative models, belongs with the Generative Models material.
+This is only a brief introduction. The full treatment of VAEs, including the decoder likelihood choices and the connection to other generative models, belongs with the generative models material (@sec-generative-models).
 
 ## What Autoencoders Are Used For
 
@@ -169,7 +169,7 @@ The pieces above come together in four recurring applications. Each one reuses t
 
 -   Pretraining. An encoder trained on unlabeled data gives features that can initialize or feed a supervised model, useful when labels are scarce.
 
--   Anomaly detection. Train the autoencoder on normal data only. Normal inputs reconstruct with small error, while anomalous inputs that do not match the learned structure reconstruct poorly. The reconstruction error $\lVert x - \hat{x} \rVert^2$ becomes an anomaly score.
+-   Anomaly detection (@sec-anomaly-detection). Train the autoencoder on normal data only. Normal inputs reconstruct with small error, while anomalous inputs that do not match the learned structure reconstruct poorly. The reconstruction error $\lVert x - \hat{x} \rVert^2$ becomes an anomaly score.
 
 -   Denoising. A denoising autoencoder maps corrupted inputs to clean ones, so it can be used directly to clean up noisy signals or images.
 

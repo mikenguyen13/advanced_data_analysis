@@ -1,4 +1,4 @@
-# But-for World
+# But-for World {#sec-but-for-world}
 
 ```{r}
 #| include: false
@@ -15,7 +15,7 @@ By the end of the chapter you should be able to state precisely what a but-for w
 
 ## What "but-for" actually means
 
-The but-for world is a counterfactual: a description of how things would have gone under a scenario that did not occur.^[A counterfactual is a conditional statement whose premise is contrary to fact, such as "if the competitor had not entered, sales would have been X." Counterfactuals cannot be observed, only inferred, which is why every but-for analysis rests on a model of some kind.] In the language of causal inference from Chapter \@ref(causal-machine-learning-and-uplift-modeling), it is the potential outcome under no treatment, evaluated for units that were in fact treated.
+The but-for world is a counterfactual: a description of how things would have gone under a scenario that did not occur.^[A counterfactual is a conditional statement whose premise is contrary to fact, such as "if the competitor had not entered, sales would have been X." Counterfactuals cannot be observed, only inferred, which is why every but-for analysis rests on a model of some kind.] In the language of causal inference from the causal machine learning chapter (@sec-causal-machine-learning), it is the potential outcome under no treatment, evaluated for units that were in fact treated.
 
 It helps to fix notation. Let $Y_t^{(1)}$ be the outcome we actually observe at time $t$ after the event, and let $Y_t^{(0)}$ be the outcome that would have occurred at the same time in the but-for world, with no event. The quantity we want, the effect of the event at time $t$, is the difference between them:
 
@@ -37,7 +37,7 @@ The honest problem is that $Y_t^{(0)}$ for the treated period is never observed.
 
 Because $Y_t^{(0)}$ is unobservable, every method for the but-for world is really a strategy for borrowing information from somewhere the event did *not* reach. There are three common sources, and most serious studies combine them.
 
-The first source is the past. Before the event, the treated unit is its own clean record of life without the event. If sales followed a stable seasonal pattern with a gentle trend, you can fit that pattern on the pre-event data and extrapolate it across the event window. This is the logic of an interrupted time series, and it is the approach we will code below.
+The first source is the past. Before the event, the treated unit is its own clean record of life without the event. If sales followed a stable seasonal pattern with a gentle trend, you can fit that pattern on the pre-event data and extrapolate it across the event window. This is the logic of an interrupted time series, and the same forecasting tools covered in the time-series forecasting chapter (@sec-time-series-forecasting) supply the projection; it is the approach we will code below.
 
 The second source is a control group. Somewhere there may be comparable units that the event never touched: stores in cities the competitor did not enter, product lines a layoff did not affect, markets a regulation skipped. If those controls track the treated unit closely before the event, their post-event path is a natural stand-in for the treated unit's but-for path. Difference-in-differences and synthetic-control methods formalize exactly this borrowing.^[A synthetic control builds a weighted average of untreated units that mimics the treated unit's pre-event behavior, then uses that weighted average as the but-for series afterward. It is the workhorse of modern impact evaluation precisely because it makes the borrowed counterfactual explicit and checkable.]
 
@@ -124,7 +124,7 @@ c(estimated_monthly = round(avg_effect, 2),
   estimated_total   = round(cum_effect, 2))
 ```
 
-The recovered monthly effect lands near the true value of $-18$, and the cumulative figure is our damages-style estimate of everything the event cost over the window. The two numbers differ slightly from the truth because of the random noise in the series, which is exactly the kind of uncertainty a real analysis would have to quantify with confidence intervals.
+The recovered monthly effect lands near the true value of $-18$, and the cumulative figure is our damages-style estimate of everything the event cost over the window. The two numbers differ slightly from the truth because of the random noise in the series, which is exactly the kind of uncertainty a real analysis would have to quantify with confidence intervals, for instance with the distribution-free intervals from the conformal prediction chapter (@sec-conformal-prediction).
 
 Finally, a picture makes the counterfactual logic obvious. @fig-but-for-world-counterfactual plots the observed series, the estimated but-for baseline, and the vertical gap between them after the event.
 

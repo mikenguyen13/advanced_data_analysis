@@ -1,4 +1,4 @@
-# Weakly-Supervised and Positive-Unlabeled Learning
+# Weakly-Supervised and Positive-Unlabeled Learning {#sec-weakly-supervised-pu}
 
 ```{r}
 #| include: false
@@ -11,7 +11,7 @@ Standard supervised learning assumes a clean training table: every row carries a
 
 Weak supervision is the umbrella term for learning under that kind of imperfect signal. Zhou (2018) organizes it into three flavors that we will keep returning to:
 
-- Incomplete supervision: only a subset of the training data is labeled. Semi-supervised learning and positive-unlabeled (PU) learning live here.
+- Incomplete supervision: only a subset of the training data is labeled. Semi-supervised learning (@sec-semi-supervised-learning) and positive-unlabeled (PU) learning live here.
 - Inexact supervision: labels exist but at the wrong granularity, for example a label on a bag of instances rather than on each instance (multiple-instance learning).
 - Inaccurate supervision: labels exist for everything but some are wrong (learning with label noise).
 
@@ -41,7 +41,7 @@ The constant $c$ is called the label frequency or propensity. SCAR says the lens
 
 > **Key idea:** SCAR turns an apparently hopeless problem (no negatives anywhere) into a solvable one. If labeled positives are a *representative* random sample of all positives, then the unlabeled pool is a known mixture of the same positives (the unlabeled fraction of them) and the negatives, and that mixture structure is enough to back out the clean classifier.
 
-> **Warning:** SCAR is an assumption, not a fact. If positives are labeled in a feature-dependent way (say, sicker patients are more likely to get diagnosed), the propensity becomes $c(x)$ and plain SCAR estimators are biased. The weaker **SAR** (selected at random given features) model of Bekker and Davis (2020) handles that case but needs a propensity model, much like inverse-propensity weighting in causal inference.
+> **Warning:** SCAR is an assumption, not a fact. If positives are labeled in a feature-dependent way (say, sicker patients are more likely to get diagnosed), the propensity becomes $c(x)$ and plain SCAR estimators are biased. The weaker **SAR** (selected at random given features) model of Bekker and Davis (2020) handles that case but needs a propensity model, much like inverse-propensity weighting in causal machine learning (@sec-causal-machine-learning).
 
 ## Why the Naive Classifier Is Biased, and How to Fix It
 
@@ -89,7 +89,7 @@ $$
 R(h) = \pi\, \mathbb{E}_{p}\big[\ell(h(x), +1)\big] \;+\; \underbrace{\Big( \mathbb{E}_{\text{u}}\big[\ell(h(x), -1)\big] - \pi\, \mathbb{E}_{p}\big[\ell(h(x), -1)\big] \Big)}_{\text{estimated negative risk}} ,
 $$
 
-where $\mathbb{E}_p$ averages over labeled positives and $\mathbb{E}_{\text{u}}$ over the unlabeled pool. The bracketed term estimates the negative-class risk by subtracting the positive contribution out of the unlabeled mixture. This is the unbiased PU (uPU) risk. Its flaw: with a flexible model the bracketed estimate can go negative, which is impossible for a real risk and signals overfitting. Kiryo, Niu, du Plessis, and Sugiyama (2017) fixed this by clamping the negative-risk term at zero, giving the non-negative PU (nnPU) risk that is the default for deep PU models today.
+where $\mathbb{E}_p$ averages over labeled positives and $\mathbb{E}_{\text{u}}$ over the unlabeled pool. The bracketed term estimates the negative-class risk by subtracting the positive contribution out of the unlabeled mixture. This is the unbiased PU (uPU) risk. Its flaw: with a flexible model the bracketed estimate can go negative, which is impossible for a real risk and signals overfitting. Kiryo, Niu, du Plessis, and Sugiyama (2017) fixed this by clamping the negative-risk term at zero, giving the non-negative PU (nnPU) risk that is the default for deep PU models built on neural networks (@sec-neural-networks) today.
 
 > **Note:** The two corrections answer different questions. Elkan-Noto post-processes a single naive model's scores by a constant and needs the propensity $c$. The risk-based view rebuilds the loss from scratch and needs the prior $\pi$. They are connected: under SCAR, $c$ and $\pi$ are related through the observed labeled fraction, so estimating one constrains the other.
 
@@ -230,7 +230,7 @@ par(old_par)
 
 PU learning assumes one weak signal (a partial positive label). Programmatic weak supervision, popularized by the Snorkel system (Ratner, Bach, Ehrenberg, Fries, Wu, and Ré, 2017), assumes the opposite: you have *many* weak signals and want to combine them. Instead of hand-labeling examples you write labeling functions (LFs), small heuristics that each vote a label or abstain. A spam LF might fire "spam" on any message containing a payment link, abstain otherwise. The LFs are noisy, they overlap, and they conflict. The job of a label model is to estimate each LF's reliability and fuse their votes into a single probabilistic label per example, without ever seeing ground truth.
 
-Formally, for example $i$ each of $m$ labeling functions emits a vote $\lambda_{ij} \in \{-1, 0, +1\}$, where $0$ means abstain. The data-programming model of Ratner, De Sa, Wu, Selsam, and Ré (2016) treats the unknown true label $y_i$ as latent and posits that each LF is right with some accuracy and abstains with some rate. The simplest version assumes conditional independence of LFs given $y$ (a Naive-Bayes-style assumption), giving
+Formally, for example $i$ each of $m$ labeling functions emits a vote $\lambda_{ij} \in \{-1, 0, +1\}$, where $0$ means abstain. The data-programming model of Ratner, De Sa, Wu, Selsam, and Ré (2016) treats the unknown true label $y_i$ as latent and posits that each LF is right with some accuracy and abstains with some rate. The simplest version assumes conditional independence of LFs given $y$ (a Naive-Bayes-style assumption; see @sec-naive-bayes), giving
 
 $$
 p(\lambda_{i \cdot}, y_i) \;\propto\; p(y_i) \prod_{j=1}^{m} p(\lambda_{ij} \mid y_i) ,

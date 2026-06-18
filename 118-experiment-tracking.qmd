@@ -1,4 +1,4 @@
-# Experiment Tracking and Model Registry
+# Experiment Tracking and Model Registry {#sec-experiment-tracking}
 
 ```{r}
 #| include: false
@@ -27,7 +27,7 @@ A model registry is the downstream half of this story. Once you have many runs, 
 
 > **Key idea:** Tracking, registry, and lineage are three views of one append-only record. Tracking writes runs, the registry promotes a chosen run's model under a stable name, and lineage reads the record backward from a deployed model to its origin.
 
-This chapter covers the concepts and the main R tooling: MLflow for tracking, and the tidymodels-adjacent stack of pins (a versioned model board) and vetiver (model deployment objects and metadata). Most of these packages are not installed in this environment, so their chunks are shown with `eval=FALSE` but written as correct, current code. The runnable demonstration is a minimal experiment logger written in base R that records parameters and metrics to a `data.frame`, persists them to CSV, and queries for the best run. That demo is enough to teach the core idea: tracking is, at bottom, an append-only log plus a query.
+This chapter covers the concepts and the main R tooling: MLflow for tracking, and the tidymodels-adjacent stack of pins (a versioned model board) and vetiver (model deployment objects and metadata; the broader serving story is the subject of the model deployment chapter, @sec-model-deployment). Most of these packages are not installed in this environment, so their chunks are shown with `eval=FALSE` but written as correct, current code. The runnable demonstration is a minimal experiment logger written in base R that records parameters and metrics to a `data.frame`, persists them to CSV, and queries for the best run. That demo is enough to teach the core idea: tracking is, at bottom, an append-only log plus a query.
 
 <br>
 
@@ -91,7 +91,7 @@ The R ecosystem offers several tools that overlap in places. @tbl-experiment-tra
 
 : R tools for experiment tracking, model versioning, and deployment, positioned by primary job and capabilities. {#tbl-experiment-tracking-tool-comparison}
 
-The rows are not competitors so much as stages of one pipeline. A common production pattern combines them: use `tune` to search, log everything to MLflow during development, then convert the final fit to a vetiver object and pin it to a board that the serving API reads from.
+The rows are not competitors so much as stages of one pipeline. A common production pattern combines them: use `tune` (introduced in the tidymodels chapter, @sec-tidymodels-framework, and extended in the tuning and stacking chapter, @sec-model-stacking) to search, log everything to MLflow during development, then convert the final fit to a vetiver object and pin it to a board that the serving API reads from.
 
 > **When to use this:** Reach for the base-R logger or a `tune` tibble for a solo, short-lived analysis; MLflow when a team needs a shared UI and a registry; pins plus vetiver when the deliverable is a served model that needs versioning and rollback. The next three sections show each in turn.
 
@@ -156,7 +156,7 @@ mlflow_transition_model_version_stage(
 
 ## pins as a model board, and vetiver for deployment (eval=FALSE)
 
-Where MLflow tracks the search, pins and vetiver handle the deliverable. pins treats a storage location (a local folder, S3, Azure, Posit Connect) as a board and versions every write automatically. vetiver wraps a trained model with the metadata needed to serve and monitor it, then pins it. The flow is: fit a model, wrap it as a vetiver object, write it to a board (creating a version), and stand up a REST API that reads from that board.
+Where MLflow tracks the search, pins and vetiver handle the deliverable. pins treats a storage location (a local folder, S3, Azure, Posit Connect) as a board and versions every write automatically. vetiver wraps a trained model with the metadata needed to serve and monitor it (drift detection is taken up in the model monitoring chapter, @sec-model-monitoring), then pins it. The flow is: fit a model, wrap it as a vetiver object, write it to a board (creating a version), and stand up a REST API that reads from that board.
 
 ```{r pins-vetiver, eval=FALSE}
 library(pins)

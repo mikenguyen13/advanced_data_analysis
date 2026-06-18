@@ -1,4 +1,4 @@
-# Multivariate Adaptive Regression Splines
+# Multivariate Adaptive Regression Splines {#sec-mars}
 
 ```{r}
 #| include: false
@@ -7,11 +7,11 @@ suppressPackageStartupMessages(library(tidyverse))
 
 Imagine you want to predict a house price from dozens of features (square footage, lot size, year built, neighborhood, and so on), and you suspect the relationship is not a straight line. Square footage might matter a lot up to a point and then flatten out; the effect of one feature might depend on the value of another. Plain linear regression cannot capture these bends and interactions on its own, and fitting a separate smooth curve to each predictor by hand quickly becomes unmanageable when there are many inputs.
 
-Multivariate Adaptive Regression Splines (MARS) is a method that handles exactly this situation automatically. It builds a regression model out of simple "hinge" pieces, lines that bend at chosen locations, and it decides on its own where to put the bends, which predictors to use, and which predictors should interact. In this sense MARS sits between two ideas you have already met: it generalizes stepwise linear regression by letting the model add bent (not just straight) terms, and it can be seen as a modification of the [CART][Classification and Regression Trees] procedure that performs better in the regression setting.^[MARS was introduced by Jerome Friedman in 1991. The name "MARS" is trademarked, which is why the popular R implementation is called `earth` rather than `mars`.]
+Multivariate Adaptive Regression Splines (MARS) is a method that handles exactly this situation automatically. It builds a regression model out of simple "hinge" pieces, lines that bend at chosen locations, and it decides on its own where to put the bends, which predictors to use, and which predictors should interact. In this sense MARS sits between two ideas you have already met: it generalizes stepwise linear regression by letting the model add bent (not just straight) terms, and it can be seen as a modification of the CART procedure from the classification and regression trees chapter (@sec-regression-trees) that performs better in the regression setting.^[MARS was introduced by Jerome Friedman in 1991. The name "MARS" is trademarked, which is why the popular R implementation is called `earth` rather than `mars`.]
 
-By the end of this chapter you will understand the building blocks MARS uses (piecewise linear basis functions, called hinge functions), how the forward, then backward, model-building strategy works, and how the method chooses a final model size. You will also see a short worked example. The core machinery is an expansion in the piecewise linear [basis function][Basis Function Representations] family.
+By the end of this chapter you will understand the building blocks MARS uses (piecewise linear basis functions, called hinge functions), how the forward, then backward, model-building strategy works, and how the method chooses a final model size. You will also see a short worked example. The core machinery is an expansion in the piecewise linear basis function family.
 
-> **Note:** MARS is not used as much today as it once was, having been largely overtaken by tree ensembles such as gradient boosting. It remains worth studying because its ideas, adaptive knot selection and automatic interaction discovery, are clear and instructive, and the model it produces is unusually easy to interpret.
+> **Note:** MARS is not used as much today as it once was, having been largely overtaken by tree ensembles such as gradient boosting (@sec-gradient-boosting). It remains worth studying because its ideas, adaptive knot selection and automatic interaction discovery, are clear and instructive, and the model it produces is unusually easy to interpret.
 
 ## How MARS relates to CART {-}
 
@@ -181,4 +181,4 @@ It also has clear limitations to keep in mind.
 
 You can also cap the complexity of interactions directly, restricting products to a chosen maximum order (for example, only second-degree or third-degree interactions). This is the `degree` argument in the worked example above.
 
-> **When to use this:** Reach for MARS when you want an automatic, interpretable model that captures nonlinearities and a modest number of interactions across many predictors, and you value being able to read off where the relationships bend. If raw predictive accuracy is the only goal, a tuned gradient boosting model will often do better, at the cost of interpretability.
+> **When to use this:** Reach for MARS when you want an automatic, interpretable model that captures nonlinearities and a modest number of interactions across many predictors, and you value being able to read off where the relationships bend. If raw predictive accuracy is the only goal, a tuned gradient boosting model (@sec-gradient-boosting) will often do better, at the cost of interpretability.

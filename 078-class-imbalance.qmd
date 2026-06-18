@@ -1,4 +1,4 @@
-# Class Imbalance
+# Class Imbalance {#sec-class-imbalance}
 
 ```{r}
 #| include: false
@@ -27,7 +27,7 @@ The remedies we will cover are:
 
 -   [Cost-Sensitive Training]
 
-> **Note:** Before applying any of these techniques, stop using plain accuracy as your scorecard. With heavy imbalance, accuracy is dominated by the majority class and hides poor minority performance. Track sensitivity (the proportion of true positive cases you correctly catch), specificity (the proportion of true negatives you correctly leave alone), precision, and summary measures such as the area under the ROC curve.^[Sensitivity is also called recall or the true positive rate; specificity is the true negative rate. A confusion matrix breaks predictions into true positives, false positives, true negatives, and false negatives, and every metric above is just a ratio of those four counts.]
+> **Note:** Before applying any of these techniques, stop using plain accuracy as your scorecard. With heavy imbalance, accuracy is dominated by the majority class and hides poor minority performance. Track sensitivity (the proportion of true positive cases you correctly catch), specificity (the proportion of true negatives you correctly leave alone), precision, and summary measures such as the area under the ROC curve (see @sec-model-performance).^[Sensitivity is also called recall or the true positive rate; specificity is the true negative rate. A confusion matrix breaks predictions into true positives, false positives, true negatives, and false negatives, and every metric above is just a ratio of those four counts.]
 
 ## Model Tuning
 
@@ -51,7 +51,7 @@ There is a subtlety about *where* you measure this. The relationship between cut
 
 ## Adjusting Prior Probabilities
 
-Several classifiers, naive Bayes and discriminant analysis among them, combine the evidence in the predictors with a prior probability for each class, the baseline belief about how common each class is before seeing the predictors. By default these priors are set to the class frequencies observed in the training data. Under heavy imbalance, that default prior is tiny for the minority class, which biases the model toward almost never predicting it.
+Several classifiers, naive Bayes (@sec-naive-bayes) and discriminant analysis (@sec-discriminant-analysis) among them, combine the evidence in the predictors with a prior probability for each class, the baseline belief about how common each class is before seeing the predictors. By default these priors are set to the class frequencies observed in the training data. Under heavy imbalance, that default prior is tiny for the minority class, which biases the model toward almost never predicting it.
 
 The remedy is direct: override the priors by hand. Increase the prior probability assigned to the minority class and decrease it for the majority class, nudging the model to take the rare class more seriously.
 
@@ -59,7 +59,7 @@ The remedy is direct: override the priors by hand. Increase the prior probabilit
 
 ## Unequal Case Weights
 
-A case weight lets an individual observation carry more or less emphasis during the model training phase, so that the algorithm tries harder to get the heavily weighted observations right. Many modeling procedures accept case weights directly, including boosting (see Chapter \@ref(boosting)). The natural move for imbalance is to give the minority-class observations larger weights, so that errors on them count for more when the model is fit.
+A case weight lets an individual observation carry more or less emphasis during the model training phase, so that the algorithm tries harder to get the heavily weighted observations right. Many modeling procedures accept case weights directly, including boosting (@sec-boosting). The natural move for imbalance is to give the minority-class observations larger weights, so that errors on them count for more when the model is fit.
 
 > **Intuition:** Up-weighting a rare observation is conceptually like cloning it. In several models, an observation with weight $w$ behaves exactly as if the dataset contained $w$ identical copies of it, same predictors, same label. Logistic regression is a clean example: duplicating a data point and weighting it by 2 give the same fitted model.
 

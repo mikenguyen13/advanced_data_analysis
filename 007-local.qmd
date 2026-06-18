@@ -1,11 +1,11 @@
-# Local Regression
+# Local Regression {#sec-local}
 
 ```{r}
 #| include: false
 suppressPackageStartupMessages(library(tidyverse))
 ```
 
-Imagine you are trying to draw a smooth curve through a cloud of scattered points, with no formula in mind for the shape of that curve. [Kernel Smoothing] gives one answer: at each point of interest, average the nearby observations, weighting closer neighbors more heavily. That works well in the middle of the data, but it stumbles near the edges. At a boundary, all of your neighbors sit on one side, so a simple weighted average is pulled inward and the fitted curve bends away from the truth. Local regression fixes this by replacing the local *average* with a local *line*: instead of asking "what is the typical $y$ near here?", it asks "what straight line best describes the data near here?" A line can tilt to follow a trend that runs off the edge of the data, so it corrects the boundary problem that plagues plain kernel smoothing.
+Imagine you are trying to draw a smooth curve through a cloud of scattered points, with no formula in mind for the shape of that curve. Kernel smoothing (@sec-kernel) gives one answer: at each point of interest, average the nearby observations, weighting closer neighbors more heavily. That works well in the middle of the data, but it stumbles near the edges. At a boundary, all of your neighbors sit on one side, so a simple weighted average is pulled inward and the fitted curve bends away from the truth. Local regression fixes this by replacing the local *average* with a local *line*: instead of asking "what is the typical $y$ near here?", it asks "what straight line best describes the data near here?" A line can tilt to follow a trend that runs off the edge of the data, so it corrects the boundary problem that plagues plain kernel smoothing.
 
 This chapter shows how that idea is made precise, how it extends to higher-degree polynomials and to more than one predictor, and how to fit it in R with `loess`. By the end you should understand why local *linear* fits are the workhorse choice, when a local *quadratic* fit earns its extra variance, and why the whole approach quietly breaks down once you have more than a few predictors.
 
@@ -15,7 +15,7 @@ This method is also known as locally weighted linear regression, and the most co
 
 ## From local averages to local lines
 
-At a target point $x_0$, local linear regression solves a weighted least squares problem: it fits a line to the data, but down-weights observations far from $x_0$ using the kernel weights $K_\lambda(x_0, x_i)$ (the same neighborhood weights from [Kernel Smoothing], where $\lambda$ controls how wide the neighborhood is). Formally, it seeks
+At a target point $x_0$, local linear regression solves a weighted least squares problem: it fits a line to the data, but down-weights observations far from $x_0$ using the kernel weights $K_\lambda(x_0, x_i)$ (the same neighborhood weights from kernel smoothing (@sec-kernel), where $\lambda$ controls how wide the neighborhood is). Formally, it seeks
 
 $$
 \min_{\alpha(x_0), \beta(x_0)} \sum_{1}^n K_\lambda (x_0, x_i)[y_i - \alpha (x_0) - \beta(x_0)x_i]^2
@@ -64,7 +64,7 @@ The accumulated wisdom on which degree to use can be summarized in a few rules o
 
 ## Higher Dimensions
 
-Everything so far assumed a single predictor. To generalize [Kernel Smoothing] and [Local Regression] to $p$ predictors, we fit local *hyperplanes* (or local polynomial surfaces) using a $p$-dimensional kernel. The only real change is bookkeeping in the basis $b(X)$.
+Everything so far assumed a single predictor. To generalize kernel smoothing (@sec-kernel) and local regression to $p$ predictors, we fit local *hyperplanes* (or local polynomial surfaces) using a $p$-dimensional kernel. The only real change is bookkeeping in the basis $b(X)$.
 
 To make the basis concrete, here are two small cases ($d$ is the polynomial degree, $p$ the number of predictors):
 
@@ -89,9 +89,9 @@ where $||.||$ is the Euclidean norm and $D$ is a one-dimensional weighting funct
 
 > **Warning:** The Euclidean norm mixes all coordinates together, so it is sensitive to the scale of each variable. A predictor measured in thousands will dominate one measured in fractions. Standardize the predictors before fitting, or the neighborhoods will be defined almost entirely by the large-scale variables.
 
-Higher dimensions make the boundary problem worse, not better. Because of the [Curse of Dimensionality], as $p$ grows a larger and larger fraction of the data sits on or near the boundary of the predictor space, so the very region where local fits struggle becomes most of the region.^[A quick way to feel this: in a unit hypercube, the fraction of volume within a thin shell of the surface grows toward 1 as the dimension increases. Almost every point is "near an edge" in high dimensions.] As in one dimension, local polynomial regression still corrects this boundary bias to first order, but the deeper difficulty is balancing localness (which lowers bias) against variance as $p$ climbs, all without the exponentially larger sample size that true localness in high dimensions would demand.
+Higher dimensions make the boundary problem worse, not better. Because of the curse of dimensionality, as $p$ grows a larger and larger fraction of the data sits on or near the boundary of the predictor space, so the very region where local fits struggle becomes most of the region.^[A quick way to feel this: in a unit hypercube, the fraction of volume within a thin shell of the surface grows toward 1 as the dimension increases. Almost every point is "near an edge" in high dimensions.] As in one dimension, local polynomial regression still corrects this boundary bias to first order, but the deeper difficulty is balancing localness (which lowers bias) against variance as $p$ climbs, all without the exponentially larger sample size that true localness in high dimensions would demand.
 
-> **Warning:** As a practical rule, do not use kernel smoothing or local polynomial regression in more than about three dimensions. Beyond that, the neighborhoods are either too sparse (high variance) or too wide to be local (high bias), and structured methods are needed.
+> **Warning:** As a practical rule, do not use kernel smoothing or local polynomial regression in more than about three dimensions. Beyond that, the neighborhoods are either too sparse (high variance) or too wide to be local (high bias), and structured methods such as generalized additive models (@sec-gam) are needed.
 
 ### Adding structure when dimension is high
 
@@ -103,7 +103,7 @@ $$
 K_{\lambda, \mathbf{A}(x_0, x)}= D(\frac{(x-x_0)^T \mathbf{A}(x-x_0)}{\lambda})
 $$
 
-where $\mathbf{A}$ is a $p \times p$ positive semi-definite matrix. By choosing $\mathbf{A}$ you can give different weights to different directions, or recombine coordinates to shrink ("compress") whole dimensions, effectively flattening the neighborhood along directions where the function changes little.
+where $\mathbf{A}$ is a $p \times p$ positive semi-definite matrix. By choosing $\mathbf{A}$ you can give different weights to different directions, or recombine coordinates to shrink ("compress") whole dimensions, effectively flattening the neighborhood along directions where the function changes little (a goal closely related to dimension reduction, @sec-dimension-reduction).
 
 The second strategy adds structure through varying coefficient models. Suppose you split the $p$ inputs into two groups: the first $q$ variables enter a linear regression, but their coefficients are allowed to depend on the remaining inputs $Z= (X_{q+1}, X_{q+2}, \dots, X_p)$. The model is
 

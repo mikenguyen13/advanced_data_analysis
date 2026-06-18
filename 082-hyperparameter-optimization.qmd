@@ -1,4 +1,4 @@
-# Hyperparameter Optimization
+# Hyperparameter Optimization {#sec-hyperparameter-optimization}
 
 ```{r}
 #| include: false
@@ -21,7 +21,7 @@ $$
 $$
 We never observe $f$ directly. We observe a noisy estimate of it, the cross-validation score, and each estimate costs one or more model fits. This is a black-box, derivative-free, expensive optimization problem. The methods in this chapter, grid search, random search, Bayesian optimization, and the bandit-style schedulers successive halving and Hyperband, are all answers to the same question: where should I spend my next evaluation?
 
-This chapter assumes you know cross-validation (Chapter \@ref(intro)) and have met the models used as examples. By the end you will understand why random search beats grid search in more than two or three dimensions, how a Gaussian-process surrogate turns past evaluations into a map of where to look next, how Hyperband throws away bad configurations early to fit far more of them, and why nested cross-validation is the only honest way to report the score of a tuned model.
+This chapter assumes you know cross-validation (introduced in @sec-intro) and have met the models used as examples. By the end you will understand why random search beats grid search in more than two or three dimensions, how a Gaussian-process surrogate turns past evaluations into a map of where to look next, how Hyperband throws away bad configurations early to fit far more of them, and why nested cross-validation is the only honest way to report the score of a tuned model.
 
 ## The configuration space and the loss surface
 
@@ -69,7 +69,7 @@ The recipe has two pieces: a surrogate model that approximates $f$ and quantifie
 
 ### The Gaussian-process surrogate
 
-The standard surrogate is a Gaussian process (Chapter \@ref(gaussian-process-regression)). A Gaussian process places a prior over functions such that any finite set of function values is jointly Gaussian. It is specified by a mean function $\mu(\boldsymbol{\lambda})$, usually taken to be a constant, and a covariance (kernel) function $k(\boldsymbol{\lambda}, \boldsymbol{\lambda}')$ that says how correlated the function values at two configurations are. A common choice is the squared-exponential kernel
+The standard surrogate is a Gaussian process (@sec-gaussian-process-reg). A Gaussian process places a prior over functions such that any finite set of function values is jointly Gaussian. It is specified by a mean function $\mu(\boldsymbol{\lambda})$, usually taken to be a constant, and a covariance (kernel) function $k(\boldsymbol{\lambda}, \boldsymbol{\lambda}')$ that says how correlated the function values at two configurations are. A common choice is the squared-exponential kernel
 $$
 k(\boldsymbol{\lambda}, \boldsymbol{\lambda}') = \sigma_f^2 \exp\!\left( -\frac{\lVert \boldsymbol{\lambda} - \boldsymbol{\lambda}' \rVert^2}{2 \ell^2} \right),
 $$
@@ -106,7 +106,7 @@ The lower confidence bound (the minimization counterpart of the upper confidence
 $$
 \mathrm{LCB}(\boldsymbol{\lambda}) = \mu - \kappa\, \sigma,
 $$
-and we minimize it. The constant $\kappa > 0$ dials exploration: large $\kappa$ chases uncertain regions, small $\kappa$ exploits the mean. This form connects directly to the bandit ideas of Chapter \@ref(multi-armed-bandits): "optimism in the face of uncertainty" applied to a continuous search space.
+and we minimize it. The constant $\kappa > 0$ dials exploration: large $\kappa$ chases uncertain regions, small $\kappa$ exploits the mean. This form connects directly to the bandit ideas of @sec-multi-armed-bandits: "optimism in the face of uncertainty" applied to a continuous search space.
 
 > **Intuition:** Expected improvement asks, "If I sample here, how much do I expect to improve on my best score so far?" It is large where the mean is good (likely improvement) and also where the variance is large (a small chance of a big improvement). That is the whole exploration/exploitation balance in one formula.
 
@@ -268,7 +268,7 @@ legend("topright",
 
 @fig-hyperparameter-optimization-curve shows what the theory predicts. With only two hyperparameters the advantage of random search is modest, because a $6 \times 6$ grid already resolves both axes reasonably. The gap widens dramatically as dimension grows, since the grid's resolution per important axis collapses while random search keeps drawing fresh values on every axis. The shaded band also makes the cost of randomness visible: any single random run can be lucky or unlucky, which is why averaging (or simply using a generous budget) matters.
 
-> **Note:** This demo hand-rolls a penalized regression to stay in base R. In real work you would tune a proper model: `glmnet` for the elastic net, `xgboost` for boosting, `e1071::svm` for an SVM, wrapped in a cross-validation loop or a framework such as `tidymodels`. The search logic (objective returns a CV score, track best-so-far) is identical.
+> **Note:** This demo hand-rolls a penalized regression to stay in base R. In real work you would tune a proper model: `glmnet` for the elastic net, `xgboost` for boosting (@sec-gradient-boosting), `e1071::svm` for a support vector machine (@sec-svm), wrapped in a cross-validation loop or a framework such as `tidymodels` (@sec-tidymodels-framework). The search logic (objective returns a CV score, track best-so-far) is identical.
 
 ## Nested cross-validation: not fooling yourself
 

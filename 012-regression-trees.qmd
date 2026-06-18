@@ -1,4 +1,4 @@
-# Classification and Regression Trees
+# Classification and Regression Trees {#sec-regression-trees}
 
 ```{r}
 #| include: false
@@ -13,7 +13,7 @@ A tree works by carving the predictor space into a set of simple, non-overlappin
 
 The first split, at the top of the tree (the "root"), is usually the one that buys you the largest drop in prediction error, measured by the sum of squared residuals (SSR) for regression. Once that split is chosen, the procedure repeats inside each of the two resulting pieces, and so on.
 
-In this chapter you will learn how a tree is grown one split at a time, how to stop it from memorizing the training data by pruning it back, and how to fit and interpret both regression and classification trees in R. Trees on their own are rarely the most accurate predictors, but they are the building block for some of the most powerful methods in this book, including bagging, random forests, and boosting, so understanding them well pays off later.
+In this chapter you will learn how a tree is grown one split at a time, how to stop it from memorizing the training data by pruning it back, and how to fit and interpret both regression and classification trees in R. Trees on their own are rarely the most accurate predictors, but they are the building block for some of the most powerful methods in this book, including bagging (@sec-bagging), random forests (@sec-random-forest), and boosting (@sec-boosting), so understanding them well pays off later.
 
 > **When to use this:** Reach for a single tree when interpretability matters more than raw accuracy, when you want a model a non-specialist can read off a diagram, or when you suspect the relationship between features and response is genuinely nonlinear and full of interactions. If the truth is close to linear, ordinary linear or logistic regression will usually beat a tree.
 
@@ -29,7 +29,7 @@ It helps to be honest up front about where trees struggle, because most of these
 
 - Trees are unstable. A small change in the training data can flip an early split and produce a completely different tree, which is another way of saying trees have high variance. Bagging (bootstrap aggregating) is the standard fix, and the instability persists even after pruning.
 
-- Trees produce a non-smooth prediction surface, a staircase of flat regions, which can be a poor match for a genuinely smooth regression function. The MARS procedure (multivariate adaptive regression splines) is a smoother alternative.
+- Trees produce a non-smooth prediction surface, a staircase of flat regions, which can be a poor match for a genuinely smooth regression function. The MARS procedure (multivariate adaptive regression splines, @sec-mars) is a smoother alternative.
 
 - Trees cannot naturally represent additive structure. Because every split conditions on the splits above it, a clean additive effect of several variables is hard to express, whereas MARS can capture it.
 
@@ -143,9 +143,9 @@ $$
 
 where $|T|$ is the number of terminal nodes
 
-The parameter $\alpha$ controls a tradoff between the subtree's complexity and how well it fits the training data ($\alpha = 0$ implies $T = T_0$). As $\alpha$ gets larger, the penalty for a larger tree is higher, so it penalizes similarly to the [Lasso regression]. Moreover, as $\alpha$ increases, the branches get pruned in a nested a predictable fashion. Hence, it's possible to get the whole sequence of subtrees as a function of $\alpha$ (based on cross-validation). After getting $\alpha$ using cross-validation, we can use that value with the full data set to obtain the fitted subtree
+The parameter $\alpha$ controls a tradoff between the subtree's complexity and how well it fits the training data ($\alpha = 0$ implies $T = T_0$). As $\alpha$ gets larger, the penalty for a larger tree is higher, so it penalizes similarly to lasso regression. Moreover, as $\alpha$ increases, the branches get pruned in a nested a predictable fashion. Hence, it's possible to get the whole sequence of subtrees as a function of $\alpha$ (based on cross-validation). After getting $\alpha$ using cross-validation, we can use that value with the full data set to obtain the fitted subtree
 
-> **Intuition:** The penalty $\alpha |T|$ plays the same role here that the penalty term plays in [Lasso regression]: it shrinks model complexity. Small $\alpha$ lets the tree stay large and flexible; large $\alpha$ forces it down to a stump. The beauty is that as $\alpha$ slides from 0 upward, the leaves drop off in a single nested sequence, so cross-validation only has to compare a handful of subtrees rather than all of them.
+> **Intuition:** The penalty $\alpha |T|$ plays the same role here that the penalty term plays in lasso regression: it shrinks model complexity. Small $\alpha$ lets the tree stay large and flexible; large $\alpha$ forces it down to a stump. The beauty is that as $\alpha$ slides from 0 upward, the leaves drop off in a single nested sequence, so cross-validation only has to compare a handful of subtrees rather than all of them.
 
 ### Algorithm for regression tree
 
@@ -153,7 +153,7 @@ Putting the pieces together, fitting a regression tree is a three-step recipe: g
 
 1.  [Recursive Binary Splitting] for growing a tree with your choice of stopping rule (e.g., observation-based)
 2.  Use [Cost complexity pruning] to obtain a sequence of best subtrees as a function of $\alpha$
-3.  Use [K-Fold Cross-Validation] to choose $\alpha$
+3.  Use K-fold cross-validation (see the introduction, @sec-intro) to choose $\alpha$
 
 Let us walk through this on the `Boston` housing data, where the goal is to predict `medv`, the median home value in a suburb. We grow a tree on a random half of the data so that we can later test it on the half we held out.
 

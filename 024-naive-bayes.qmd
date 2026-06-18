@@ -1,4 +1,4 @@
-# Naive Bayes
+# Naive Bayes {#sec-naive-bayes}
 
 ```{r}
 #| include: false
@@ -108,7 +108,7 @@ $$
 
 In words, fit a separate mean and variance to each feature within each class, then score a test point by how many standard deviations it sits from each class mean.
 
-Gaussian Naive Bayes is closely related to quadratic discriminant analysis: both model each class with a Gaussian, but here the per-class covariance is forced to be diagonal (the off-diagonal terms vanish under conditional independence). A diagonal covariance is exactly the geometric statement of conditional independence: the contour ellipses of each class are axis-aligned, never tilted, because tilt would encode correlation between features.
+Gaussian Naive Bayes is closely related to quadratic discriminant analysis (@sec-discriminant-analysis): both model each class with a Gaussian, but here the per-class covariance is forced to be diagonal (the off-diagonal terms vanish under conditional independence). A diagonal covariance is exactly the geometric statement of conditional independence: the contour ellipses of each class are axis-aligned, never tilted, because tilt would encode correlation between features.
 
 ### Multinomial Naive Bayes
 
@@ -277,7 +277,7 @@ pred_corr <- predict(nb_corr, sim[-s_train, ])
 mean(pred_corr == sim$y[-s_train])
 ```
 
-The classifier still separates the classes reasonably well, but its accuracy is lower than a method that models the within-class correlation (such as linear discriminant analysis or logistic regression) would achieve here, because Naive Bayes treats the two highly redundant features as if each carried independent information.
+The classifier still separates the classes reasonably well, but its accuracy is lower than a method that models the within-class correlation (such as linear discriminant analysis, see @sec-discriminant-analysis, or logistic regression) would achieve here, because Naive Bayes treats the two highly redundant features as if each carried independent information.
 
 ## Practical Notes
 
@@ -285,7 +285,7 @@ To close, here are the points that matter most when you actually deploy a Naive 
 
 - Naive Bayes trains in a single pass over the data and predicts in time linear in the number of features, which makes it a strong baseline and a good choice when speed or memory is limited.
 - It handles high-dimensional sparse inputs (such as text) gracefully, which is why the multinomial and Bernoulli variants remain standard text-classification baselines.
-- The predicted class is usually more trustworthy than the predicted probability. Correlated features make Naive Bayes overconfident, so its probabilities often need recalibration (for example, Platt scaling or isotonic regression) before being used as risk scores.
+- The predicted class is usually more trustworthy than the predicted probability. Correlated features make Naive Bayes overconfident, so its probabilities often need recalibration (for example, Platt scaling or isotonic regression; see the probability calibration chapter, @sec-probability-calibration) before being used as risk scores.
 - Always apply smoothing for count and binary features to avoid the zero-frequency problem. For continuous features, guard against zero or near-zero estimated variances, which produce unstable likelihoods.
 - Decorrelating or pruning highly redundant features can help, since duplicated features are effectively double-counted under the independence assumption.
 

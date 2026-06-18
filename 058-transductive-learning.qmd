@@ -1,4 +1,4 @@
-# Transductive Learning
+# Transductive Learning {#sec-transductive-learning}
 
 ```{r}
 #| include: false
@@ -17,7 +17,7 @@ Transductive learning is the discipline of exploiting exactly that situation. In
 
 That last sentence is Vapnik's principle, and it is the philosophical engine of this chapter. Vapnik (1998) put it sharply: when solving a problem of interest, do not solve a more general problem as an intermediate step. Estimating a function over the whole input space, only to read off its values at a handful of points, is a detour. If you know the points in advance, aim straight at them.
 
-This chapter develops that idea in three settings. First the formal distinction between induction and transduction, with the notation pinned down. Then transductive support vector machines, which push a margin through low-density regions defined partly by the test points. Then graph-based label propagation and label spreading, where labels diffuse from a few labeled seeds across a similarity graph built from labeled and unlabeled points together. We connect all of this to semi-supervised learning (Chapter \@ref(semi-supervised-learning)), since transduction is one of its two faces, and we are honest about the limits: a purely transductive method gives you labels for the batch and nothing for genuinely new arrivals. We close with a runnable label-propagation demo on a two-moons dataset, with a figure of the propagated labels and an accuracy table.
+This chapter develops that idea in three settings. First the formal distinction between induction and transduction, with the notation pinned down. Then transductive support vector machines, which push a margin through low-density regions defined partly by the test points. Then graph-based label propagation and label spreading, where labels diffuse from a few labeled seeds across a similarity graph built from labeled and unlabeled points together. We connect all of this to semi-supervised learning (@sec-semi-supervised-learning), since transduction is one of its two faces, and we are honest about the limits: a purely transductive method gives you labels for the batch and nothing for genuinely new arrivals. We close with a runnable label-propagation demo on a two-moons dataset, with a figure of the propagated labels and an accuracy table.
 
 ## Induction versus Transduction
 
@@ -42,7 +42,7 @@ $$
 \quad \text{s.t.} \quad y_i (w^\top x_i + b) \ge 1 - \xi_i,\; \xi_i \ge 0 ,
 $$
 
-where $\xi_i$ are slack variables and $C$ trades margin width against training error. This uses only the labeled points $L$. (See the SVM chapter for the full development.)
+where $\xi_i$ are slack variables and $C$ trades margin width against training error. This uses only the labeled points $L$. (See the support vector machines chapter, @sec-svm, for the full development.)
 
 The transductive SVM (TSVM) of Vapnik (1998), made practical by Joachims (1999), brings the unlabeled test points into the objective. The idea rests on the *cluster assumption*: the decision boundary should fall in a low-density region of $p(x)$, so it should not slice through a dense clump of unlabeled points. We therefore treat the unknown labels $y^*_{l+1}, \dots, y^*_{l+u}$ of $U$ as additional optimization variables and ask the margin to be large for the unlabeled points too:
 
@@ -144,13 +144,13 @@ $$
 
 > **Note:** The two methods differ in two knobs. Propagation uses the random-walk normalization $P = D^{-1}W$ and clamps seeds exactly; spreading uses the symmetric normalization $S = D^{-1/2} W D^{-1/2}$ and only pulls toward seeds with strength $1 - \alpha$. When labels are clean and few, propagation is the natural default; when some seed labels may be wrong, spreading's soft clamping is safer.
 
-Both methods are inherently transductive: they return labels for the $n$ nodes that were in the graph and nothing else. A point that arrives after the graph is built has no row in $F$. To label it you must either rebuild the graph with the new point included and re-solve (back to transduction on a larger batch) or add an out-of-sample extension, for example a Nadaraya-Watson average of neighbor labels using the same kernel.
+Both methods are inherently transductive: they return labels for the $n$ nodes that were in the graph and nothing else. A point that arrives after the graph is built has no row in $F$. To label it you must either rebuild the graph with the new point included and re-solve (back to transduction on a larger batch) or add an out-of-sample extension, for example a Nadaraya-Watson average of neighbor labels (@sec-kernel) using the same kernel.
 
 ## Connection to Semi-Supervised Learning
 
 Transduction and semi-supervised learning (SSL) overlap heavily but are not identical, and keeping them straight avoids confusion.
 
-SSL (Chapter \@ref(semi-supervised-learning)) is defined by its *data*: a little labeled, a lot unlabeled. Transduction versus induction is a distinction about the *goal*: label this fixed batch, or learn a reusable rule. Every transductive method is doing semi-supervised learning, since it uses unlabeled points during fitting. But not every SSL method is transductive: self-training and co-training (covered in the SSL chapter) produce a reusable inductive classifier, while label propagation and TSVMs produce a batch labeling.
+SSL (@sec-semi-supervised-learning) is defined by its *data*: a little labeled, a lot unlabeled. Transduction versus induction is a distinction about the *goal*: label this fixed batch, or learn a reusable rule. Every transductive method is doing semi-supervised learning, since it uses unlabeled points during fitting. But not every SSL method is transductive: self-training and co-training (covered in the SSL chapter) produce a reusable inductive classifier, while label propagation and TSVMs produce a batch labeling.
 
 > **Key idea:** SSL describes the data regime (few labels, many unlabeled). Transduction describes the target (a fixed set of points to label, no model for the future). They co-occur because the cheapest way to exploit unlabeled data is often to label it directly, which is exactly transduction. The two assumptions that make SSL work, the cluster assumption and the manifold assumption, are the same two assumptions that justify TSVMs and graph propagation respectively.
 
@@ -244,7 +244,7 @@ cat("Converged in", iter, "iterations.",
 
 ### Baseline comparison
 
-To show what the unlabeled structure buys us, we compare against a purely supervised baseline that sees only the four seeds: a 1-nearest-neighbor classifier trained on the seeds and applied to the same test points. With so few labels and a curved boundary, the geometry-blind baseline should struggle where propagation succeeds.
+To show what the unlabeled structure buys us, we compare against a purely supervised baseline that sees only the four seeds: a 1-nearest-neighbor classifier (@sec-knn) trained on the seeds and applied to the same test points. With so few labels and a curved boundary, the geometry-blind baseline should struggle where propagation succeeds.
 
 ```{r transductive-learning-baseline}
 # 1-NN trained ONLY on the labeled seeds, predicting the unlabeled test points.

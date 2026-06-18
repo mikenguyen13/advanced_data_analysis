@@ -1,4 +1,4 @@
-# CI/CD and Reproducibility for ML
+# CI/CD and Reproducibility for ML {#sec-cicd-reproducibility}
 
 ```{r}
 #| include: false
@@ -29,7 +29,7 @@ Reproducibility is a property that must hold at every arrow, not a step you do o
 Three observations motivate the investment.
 
 1. ML failures are often environmental, not logical. The same code gives different numbers because a dependency changed its default, a random seed was unset, or a BLAS library differs across machines. Pinning versions and seeds removes the most common source of "works on my machine."
-2. Models decay even when code does not. Data drifts, so a model that passed its threshold last month may fail it now. A retraining pipeline that re-runs the same evaluation gate catches decay automatically.
+2. Models decay even when code does not. Data drifts, so a model that passed its threshold last month may fail it now. A retraining pipeline that re-runs the same evaluation gate catches decay automatically, complementing the dedicated drift surveillance covered in the model monitoring chapter (@sec-model-monitoring).
 3. The evaluation gate is the contract. The single most useful piece of automation is a test that refuses to promote a model unless it beats a metric threshold on held-out data. Everything else (environment pinning, CI, scheduling) exists to make that gate trustworthy and to run it without a human in the loop.
 
 In an AI/ML setting these practices also guard against a subtler problem: a change that improves average accuracy while quietly degrading a slice (a subgroup, a recent time window). Tests that assert per-slice thresholds, run in CI, turn that risk into a build failure instead of a production incident.
@@ -381,7 +381,7 @@ Reading the steps in order: `checkout` fetches the code, `setup-r` installs R, `
 
 ## Automated retraining
 
-Code is not the only thing that changes; data changes too, and a model can rot even when its code is frozen. Retraining is the same CI machinery applied on a schedule or a data trigger rather than on a code push. The workflow restores the environment, pulls fresh data, trains, runs the same threshold gate, and promotes the artifact only if the gate passes. A scheduled GitHub Actions workflow uses a `cron` trigger:^[`cron` is a long-standing convention for scheduling jobs. The five fields are minute, hour, day-of-month, month, and day-of-week; `0 6 * * 1` means "at minute 0 of hour 6 on every Monday."]
+Code is not the only thing that changes; data changes too, and a model can rot even when its code is frozen. Retraining is the same CI machinery applied on a schedule or a data trigger rather than on a code push. The workflow restores the environment, pulls fresh data, trains, runs the same threshold gate, and promotes the artifact only if the gate passes, handing it off to the serving infrastructure discussed in the model deployment chapter (@sec-model-deployment). A scheduled GitHub Actions workflow uses a `cron` trigger:^[`cron` is a long-standing convention for scheduling jobs. The five fields are minute, hour, day-of-month, month, and day-of-week; `0 6 * * 1` means "at minute 0 of hour 6 on every Monday."]
 
 ```yaml
 # .github/workflows/retrain.yaml  -- reference only
@@ -415,7 +415,7 @@ The pattern that scales beyond toy projects records, on every run, the metric va
 
 ## Model cards
 
-The pipeline now produces trustworthy models automatically, but a model that nobody can describe is still hard to deploy responsibly. A model card closes that gap. Introduced by Mitchell and colleagues in 2019 (see Further reading), it is a short, structured document describing what a model is, how it was built, how it performs, and how it should and should not be used. It travels with the artifact so that whoever deploys or audits the model later does not have to reverse-engineer its provenance. A minimal card in Markdown:
+The pipeline now produces trustworthy models automatically, but a model that nobody can describe is still hard to deploy responsibly. A model card closes that gap (see also the dedicated model card chapter, @sec-model-card). Introduced by Mitchell and colleagues in 2019 (see Further reading), it is a short, structured document describing what a model is, how it was built, how it performs, and how it should and should not be used. It travels with the artifact so that whoever deploys or audits the model later does not have to reverse-engineer its provenance. A minimal card in Markdown:
 
 ```{r model-card, eval=FALSE}
 # reports/model-card.md  -- reference template

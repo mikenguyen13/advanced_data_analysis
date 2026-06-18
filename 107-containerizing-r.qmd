@@ -1,4 +1,4 @@
-# Containerizing R and Serving APIs
+# Containerizing R and Serving APIs {#sec-containerizing-r}
 
 ```{r}
 #| include: false
@@ -9,9 +9,9 @@ suppressPackageStartupMessages(library(tidyverse))
 knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE)
 ```
 
-The chapter on the [API](#api) shows how to wrap a fitted model behind an HTTP endpoint with `plumber`. That solves the question of *how a model is called*. This chapter answers a companion question: *how the serving process runs the same way on your laptop, a colleague's machine, a continuous integration runner, and a production cluster*. The answer in current practice is a container: a packaged, isolated, runnable image that carries the R version, the system libraries, the R packages, and your serving code together.
+The API chapter (@sec-api) shows how to wrap a fitted model behind an HTTP endpoint with `plumber`. That solves the question of *how a model is called*. This chapter answers a companion question: *how the serving process runs the same way on your laptop, a colleague's machine, a continuous integration runner, and a production cluster*. The answer in current practice is a container: a packaged, isolated, runnable image that carries the R version, the system libraries, the R packages, and your serving code together.
 
-This chapter is about reproducible deployment, not a new estimator. It connects to the API chapter (the thing inside the container is usually a `plumber` router) and to the chapters on scaling and parallel computing (the reason you run more than one container).
+This chapter is about reproducible deployment, not a new estimator. It connects to the API chapter (the thing inside the container is usually a `plumber` router) and to the chapter on parallel computing (@sec-parallel-computing) (the reason you run more than one container).
 
 By the end you will be able to read and write a `Dockerfile` for an R service, pin package versions so a build today and a build next year behave the same, understand the routing object that lives inside the image, and reason about when adding more containers actually buys you more throughput. None of this requires prior Docker experience; the intuition comes first, and the commands follow.
 
@@ -372,7 +372,7 @@ Common pitfalls, most of which cost hours the first time:
 
 > **Warning:** The single most common security mistake here is leaving the container running as `root` while it is exposed to a network. If the serving process is compromised, an attacker inherits whatever the container user can do. Add a `USER` instruction to drop to an unprivileged account before the `CMD` runs.
 
-For production model lifecycle (versioning, automatic Dockerfile generation, deployment to a board, and drift monitoring), `vetiver` builds directly on `plumber` and `pins` and is the natural next step; see the [API](#api) chapter's discussion of versioning and hosting.
+For production model lifecycle (versioning, automatic Dockerfile generation, deployment to a board, and drift monitoring), `vetiver` builds directly on `plumber` and `pins` and is the natural next step; see the API chapter's (@sec-api) discussion of versioning and hosting, the model deployment chapter (@sec-model-deployment) for serving patterns, and the model monitoring chapter (@sec-model-monitoring) for drift detection.
 
 To recap the path through the chapter: a container packages the R runtime, system libraries, pinned packages, and serving code into one portable artifact; a `Dockerfile` is the recipe and `renv.lock` pins the package layer; inside the image a `plumber` router dispatches requests to handler functions, exactly as the base-R simulation made concrete; and identical images replicate cheaply behind a proxy, which buys throughput up to the first shared bottleneck. With those pieces, the handoff from "it trains in my session" to "it serves the same way everywhere" stops being the place where deployments break.
 

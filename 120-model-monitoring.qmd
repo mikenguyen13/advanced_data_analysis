@@ -1,4 +1,4 @@
-# Model Monitoring and Drift Detection
+# Model Monitoring and Drift Detection {#sec-model-monitoring}
 
 ```{r}
 #| include: false
@@ -326,9 +326,9 @@ text(0.05, 0.26, "alert 0.25", pos = 4, col = "red", cex = 0.85)
 
 So far we have watched the inputs. Eventually the labels arrive and we can finally watch the thing we actually care about: whether the model is still right. Distribution metrics are leading indicators; performance metrics are the ground truth, available only once labels arrive. A monitoring program tracks both and uses the cheap label-free signals to decide where to spend scarce labels.
 
-For a classifier, track AUC, log loss, and calibration over a sliding or tumbling window.[^mm-window] For a regressor, track RMSE or MAE and the residual mean (a nonzero residual mean signals systematic bias creeping in). Always track the business metric the model exists to move, because a model can stay statistically accurate while the value it delivers erodes.
+For a classifier, track AUC, log loss, and calibration (@sec-probability-calibration) over a sliding or tumbling window.[^mm-window] For a regressor, track RMSE or MAE and the residual mean (a nonzero residual mean signals systematic bias creeping in). Always track the business metric the model exists to move, because a model can stay statistically accurate while the value it delivers erodes.
 
-[^mm-window]: A sliding window always covers the last $w$ cases and moves forward by one each time a new case arrives, so consecutive windows overlap. A tumbling window is a fixed, non-overlapping block (for example, each calendar day), so every case belongs to exactly one window. Sliding windows react sooner; tumbling windows are easier to reason about and report.
+[^mm-window]: A sliding window always covers the last $w$ cases and moves forward by one each time a new case arrives, so consecutive windows overlap. The same windowing ideas underpin learning on continuously arriving data (@sec-online-learning). A tumbling window is a fixed, non-overlapping block (for example, each calendar day), so every case belongs to exactly one window. Sliding windows react sooner; tumbling windows are easier to reason about and report.
 
 Two patterns for windowing, from simplest to most robust:
 
@@ -350,7 +350,7 @@ Tie the alert to an action and an owner, otherwise alerts become noise that peop
 
 ## Practical Guidance, Pitfalls, and When to Use What
 
-Use input drift metrics (PSI, KS) whenever labels are delayed or expensive, which is most production settings. They are cheap, run at scoring time, and give the earliest warning. Use output (score) drift as a compact summary when you have many input features: the model's own score is a learned one-dimensional projection, and a shift in $P(\hat Y)$ often captures multivariate input drift that no single feature reveals. Use performance metrics as the source of truth and as the trigger that actually justifies retraining.
+Use input drift metrics (PSI, KS) whenever labels are delayed or expensive, which is most production settings. They are cheap, run at scoring time, and give the earliest warning. Use output (score) drift as a compact summary when you have many input features: the model's own score is a learned one-dimensional projection, and a shift in $P(\hat Y)$ often captures multivariate input drift that no single feature reveals. Use performance metrics (@sec-model-performance) as the source of truth and as the trigger that actually justifies retraining.
 
 The errors below are the ones that bite teams most often. Each is easy to make and easy to avoid once named:
 

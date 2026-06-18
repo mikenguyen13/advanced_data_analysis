@@ -1,4 +1,4 @@
-# Bayesian Deep Learning and Uncertainty Quantification
+# Bayesian Deep Learning and Uncertainty Quantification {#sec-bayesian-deep-learning}
 
 ```{r}
 #| include: false
@@ -20,7 +20,7 @@ A standard supervised pipeline produces a function $f_\theta(x)$ trained by mini
 - At training time, it changes how you fit the model (Bayesian priors, dropout kept on, an ensemble of fits) so that the model can express uncertainty at all.
 - At serving time, it changes what you return: a predictive distribution $p(y \mid x)$ or an interval, instead of a single number.
 
-Downstream consumers use this in concrete ways. Active learning queries the points where epistemic uncertainty is highest. Out-of-distribution detection flags inputs where the model is uncertain because they look unlike anything in training. Risk-sensitive decisions (medical triage, autonomous control, pricing) use the predictive variance directly in an expected-cost calculation. Selective prediction abstains when uncertainty exceeds a threshold and routes the case to a human.^[Selective prediction is sometimes called "reject option" classification. The model is allowed to say "I don't know" for the hardest cases, trading coverage (the fraction of inputs it answers) for higher accuracy on the cases it does answer.]
+Downstream consumers use this in concrete ways. Active learning (@sec-active-learning) queries the points where epistemic uncertainty is highest. Out-of-distribution detection, closely related to anomaly detection (@sec-anomaly-detection), flags inputs where the model is uncertain because they look unlike anything in training. Risk-sensitive decisions (medical triage, autonomous control, pricing) use the predictive variance directly in an expected-cost calculation. Selective prediction abstains when uncertainty exceeds a threshold and routes the case to a human.^[Selective prediction is sometimes called "reject option" classification. The model is allowed to say "I don't know" for the hardest cases, trading coverage (the fraction of inputs it answers) for higher accuracy on the cases it does answer.]
 
 > **When to use this:** Reach for UQ whenever a wrong prediction has a cost that depends on how wrong it is, whenever you need to decide where to collect more data, or whenever the model will face inputs that may not resemble its training set. If every prediction is cheap and the data is stationary, a point estimate may be all you need.
 
@@ -410,7 +410,7 @@ library(torch)
 
 ## Practical guidance, pitfalls, and when to use each
 
-Always validate calibration, not just sharpness. A method can produce tight, confident-looking bands that are wrong. Check empirical coverage (does the 90% interval contain 90% of held-out points?) and use proper scoring rules such as the negative log predictive density or the continuous ranked probability score. A reliability diagram for classification is the analog. The coverage check in the bootstrap demo is the minimum you should run.
+Always validate calibration, not just sharpness. A method can produce tight, confident-looking bands that are wrong. Check empirical coverage (does the 90% interval contain 90% of held-out points?) and use proper scoring rules such as the negative log predictive density or the continuous ranked probability score. A reliability diagram for classification is the analog, covered in the probability calibration chapter (@sec-probability-calibration). The coverage check in the bootstrap demo is the minimum you should run.
 
 Do not confuse the two uncertainties when acting on them. High aleatoric uncertainty means "this region is inherently noisy; collecting more data will not help much." High epistemic uncertainty means "the model has not seen enough here; more data or abstention will help." Active learning targets epistemic; deciding whether a measurement is worth taking targets aleatoric. Reporting only total variance hides which lever to pull.
 
@@ -423,7 +423,7 @@ Method-specific traps.
 
 Distribution shift breaks everything. All these methods quantify uncertainty relative to the training distribution. Under genuine shift (new feature regimes, new label semantics) even well-calibrated models can be confidently wrong. Pair UQ with explicit out-of-distribution monitoring rather than assuming the predictive variance alone will catch it.
 
-A pragmatic decision rule. If you can afford to train a handful of models, a deep ensemble of size 5 is the strong default and the hardest baseline to beat. If the model is already trained and frozen, add MC dropout (if it has dropout layers) or a last-layer Laplace fit for cheap post-hoc intervals. Reserve variational inference for cases where memory forbids an ensemble and you are prepared for the extra engineering. For small tabular problems, the closed-form Bayesian linear or Gaussian process models in the earlier chapters give exact uncertainty and should be tried before any deep method.
+A pragmatic decision rule. If you can afford to train a handful of models, a deep ensemble of size 5 is the strong default and the hardest baseline to beat. If the model is already trained and frozen, add MC dropout (if it has dropout layers) or a last-layer Laplace fit for cheap post-hoc intervals. Reserve variational inference for cases where memory forbids an ensemble and you are prepared for the extra engineering. For small tabular problems, the closed-form Bayesian linear or Gaussian process models (@sec-gaussian-process-reg) in the earlier chapters give exact uncertainty and should be tried before any deep method.
 
 ## Summary
 

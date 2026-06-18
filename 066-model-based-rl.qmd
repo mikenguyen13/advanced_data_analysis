@@ -1,4 +1,4 @@
-# Model-Based Reinforcement Learning and Planning
+# Model-Based Reinforcement Learning and Planning {#sec-model-based-rl}
 
 ```{r}
 #| include: false
@@ -7,7 +7,7 @@ suppressPackageStartupMessages(library(tidyverse))
 
 Suppose you are learning to drive in an unfamiliar city. A purely trial-and-error driver would treat every intersection as a fresh surprise, slowly memorizing which turns earn a smooth trip and which lead into traffic. A more thoughtful driver builds a mental map: a model of how the streets connect and which routes tend to be slow. With that map in hand, the driver can rehearse a route in imagination before ever turning the wheel, and can replan instantly when a road is closed. That mental map is exactly what model-based reinforcement learning adds to an agent. Instead of only memorizing the value of actions it has tried, the agent learns (or is given) a model of how the world responds, and then it plans with that model.
 
-This chapter sits on top of the reinforcement learning (RL) machinery introduced in the deep reinforcement learning and contextual bandit chapters. There the agent learned a value function or a policy directly from experience, never forming an explicit picture of the environment's dynamics. Such methods are called model-free: they learn what to do without learning how the world works. Model-based methods take the opposite stance. They estimate the environment's transition and reward structure, and they use that structure to compute good behavior, either by full planning or by generating extra simulated experience to feed a model-free learner.
+This chapter sits on top of the reinforcement learning (RL) machinery introduced in the deep reinforcement learning (@sec-deep-reinforcement-learning) and contextual bandit (@sec-contextual-bandits) chapters. There the agent learned a value function or a policy directly from experience, never forming an explicit picture of the environment's dynamics. Such methods are called model-free: they learn what to do without learning how the world works. Model-based methods take the opposite stance. They estimate the environment's transition and reward structure, and they use that structure to compute good behavior, either by full planning or by generating extra simulated experience to feed a model-free learner.
 
 > **Intuition:** A model-free agent is like someone who has memorized, for every street corner, how good it felt to turn left versus right, without knowing where any street leads. A model-based agent knows the map and can reason about routes it has never driven. The map costs effort to build and can be wrong, but once you have it, a single real trip teaches you far more.
 
@@ -93,7 +93,7 @@ $$
 a^* = \arg\max_{a} \left[ \bar{Q}(s, a) + c \sqrt{\frac{\ln N(s)}{N(s, a)}} \right],
 $$
 
-where $\bar{Q}(s, a)$ is the average return observed for taking $a$ in $s$, $N(s)$ is the number of times state $s$ has been visited, $N(s, a)$ is the number of times action $a$ was taken from $s$, and $c > 0$ is an exploration constant. The first term exploits actions that have looked good; the second term, the exploration bonus, favors actions tried few times relative to their parent. UCT is a direct application of the UCB1 bandit rule (Auer, Cesa-Bianchi, and Fischer 2002) to each node, treating action choice at a node as a multi-armed bandit problem.
+where $\bar{Q}(s, a)$ is the average return observed for taking $a$ in $s$, $N(s)$ is the number of times state $s$ has been visited, $N(s, a)$ is the number of times action $a$ was taken from $s$, and $c > 0$ is an exploration constant. The first term exploits actions that have looked good; the second term, the exploration bonus, favors actions tried few times relative to their parent. UCT is a direct application of the UCB1 bandit rule (Auer, Cesa-Bianchi, and Fischer 2002) to each node, treating action choice at a node as a multi-armed bandit problem (@sec-multi-armed-bandits).
 
 > **Intuition:** The square-root term shrinks as an action is tried more often, so a much-visited action must keep earning high returns to stay attractive, while a rarely tried action gets a built-in benefit of the doubt. The constant $c$ sets how much weight curiosity gets relative to past success. Large $c$ explores broadly; small $c$ commits early to the current best line.
 
@@ -111,7 +111,7 @@ where $G$ is the return of the simulated trajectory passing through $(s, a)$. Af
 
 > **Key idea:** MCTS never builds the whole tree. The UCT rule steers the four-phase loop so that simulations cluster along promising lines, giving an *anytime* planner whose recommendation improves smoothly with more compute. This is why it scales to games such as Go where the full tree is astronomically large.
 
-A practical note bridges MCTS to the deep RL chapter: replacing the random rollout with a learned value network and biasing selection with a learned policy network is the core idea of AlphaGo and AlphaZero (Silver et al. 2016, 2017). The tree search supplies the planning; the networks supply learned priors that make each simulation far more informative.
+A practical note bridges MCTS to the deep RL chapter (@sec-deep-reinforcement-learning): replacing the random rollout with a learned value network and biasing selection with a learned policy network is the core idea of AlphaGo and AlphaZero (Silver et al. 2016, 2017). The tree search supplies the planning; the networks supply learned priors that make each simulation far more informative.
 
 ## The sample-efficiency versus model-bias tradeoff
 
@@ -322,7 +322,7 @@ The gap between the grey curve (no planning) and the blue curve (50 planning ste
 
 Model-based RL projects fail in characteristic ways, and most failures trace back to the bias-efficiency tradeoff. The following points collect the lessons that save the most time, roughly in the order you will meet them.
 
-Start by asking whether you even need a model. If real interaction is cheap and plentiful (a fast simulator, a logged dataset large enough for offline learning), a well-tuned model-free method is simpler to build and has no model-bias failure mode. Reach for model-based methods when real interaction is the bottleneck: physical robots, live systems with real users or real money, or any setting where each sample is slow or costly.
+Start by asking whether you even need a model. If real interaction is cheap and plentiful (a fast simulator, a logged dataset large enough for offline learning, @sec-offline-rl), a well-tuned model-free method is simpler to build and has no model-bias failure mode. Reach for model-based methods when real interaction is the bottleneck: physical robots, live systems with real users or real money, or any setting where each sample is slow or costly.
 
 When you do learn a model, treat model error as the central risk, not an afterthought. Validate the model the way you would validate any predictive model: hold out transitions and check one-step prediction accuracy, and watch multi-step rollout accuracy, which degrades faster. Prefer an ensemble of models so that disagreement among them flags states where the model is uncertain, and avoid planning into regions where the ensemble disagrees.
 

@@ -1,4 +1,4 @@
-# Structured Prediction
+# Structured Prediction {#sec-structured-prediction}
 
 ```{r}
 #| include: false
@@ -98,7 +98,7 @@ If the prediction is already correct, the two feature vectors cancel and nothing
 
 ### The Structured Support Vector Machine
 
-The structured SVM (Tsochantaridis et al.; Taskar et al.) brings the large-margin principle of the support vector machine (covered in the Support Vector chapter) to structured outputs. It asks not merely that the correct output score higher than every wrong one, but that it score higher by a margin that grows with how wrong the alternative is. Let $\Delta(y, y')$ be a loss measuring the discrepancy between two label sequences, for example the Hamming loss $\sum_t \mathbb{1}[y_t \neq y'_t]$, the number of mislabeled positions. The training objective is
+The structured SVM (Tsochantaridis et al.; Taskar et al.) brings the large-margin principle of the support vector machine (covered in the support vector machines chapter, @sec-svm) to structured outputs. It asks not merely that the correct output score higher than every wrong one, but that it score higher by a margin that grows with how wrong the alternative is. Let $\Delta(y, y')$ be a loss measuring the discrepancy between two label sequences, for example the Hamming loss $\sum_t \mathbb{1}[y_t \neq y'_t]$, the number of mislabeled positions. The training objective is
 
 $$
 \min_{w} \; \frac{\lambda}{2}\lVert w \rVert^2 + \frac{1}{n}\sum_i \max_{y \in \mathcal{Y}(x^{(i)})} \Big[ \Delta(y^{(i)}, y) + w^\top \mathbf{f}(x^{(i)}, y) - w^\top \mathbf{f}(x^{(i)}, y^{(i)}) \Big].
@@ -299,15 +299,15 @@ A few hard-won lessons separate a structured predictor that works from one that 
 
 - Always decode in log space. As the warning above stressed, multiplying probabilities underflows. Add logs. For computing the partition function and expectations in a CRF, use the log-sum-exp trick (subtract the row maximum before exponentiating) to stay stable.
 - Features are where the accuracy lives. For a CRF or structured perceptron, the model is only as good as $\mathbf{f}(x, y)$. Rich emission features (word identity, prefixes and suffixes, capitalization, neighboring words, gazetteer membership) typically matter far more than the choice between CRF and structured SVM. Spend your effort there.
-- Pick the training objective to match your needs. Use a CRF when you need calibrated probabilities or marginal confidences per position. Use the structured perceptron when you want something dead simple and fast that only needs the argmax. Use the structured SVM when a structured task loss (not plain accuracy) is what you will be judged on, since it optimizes that loss directly through loss-augmented inference.
+- Pick the training objective to match your needs. Use a CRF when you need calibrated probabilities (see the probability calibration chapter, @sec-probability-calibration) or marginal confidences per position. Use the structured perceptron when you want something dead simple and fast that only needs the argmax. Use the structured SVM when a structured task loss (not plain accuracy) is what you will be judged on, since it optimizes that loss directly through loss-augmented inference.
 - Label-bias is a real trap. The older maximum-entropy Markov model (MEMM) normalizes transitions locally, per position, which lets states with few outgoing transitions ignore the observation, the label-bias problem. Linear-chain CRFs normalize globally over the whole sequence and avoid it. If you find a per-position normalized model behaving strangely, suspect label bias.
 - Mind the inference budget. Viterbi is $O(TK^2)$. With a large tag set $K$ (hundreds of named-entity types, thousands of words in a language model) the $K^2$ term dominates and you need pruning (beam search) or structured tag sets. Higher-order chains (depending on the previous $m$ labels) cost $O(TK^{m+1})$, so order grows expensive fast.
 - Beyond chains, exact inference can be intractable. Viterbi exploits the chain. For general graphs (grids in image segmentation, loopy CRFs) exact argmax is NP-hard, and you fall back on approximate inference: loopy belief propagation, graph cuts for certain energy forms, or LP relaxations. Trees still admit exact dynamic programming.
-- Class and label imbalance still bite. Rare tags (a sparse entity type) can be swamped. Position-decomposable losses like weighted Hamming loss, plumbed through the structured SVM's loss-augmented inference, are a clean way to upweight what you care about.
+- Class and label imbalance still bite, the same difficulty studied in the class imbalance chapter (@sec-class-imbalance). Rare tags (a sparse entity type) can be swamped. Position-decomposable losses like weighted Hamming loss, plumbed through the structured SVM's loss-augmented inference, are a clean way to upweight what you care about.
 
 > **When to use this:** Reach for structured prediction whenever the output is a sequence, segmentation, alignment, or tree whose parts constrain each other, and when a per-part classifier visibly ignores obvious consistency. If the parts really are independent, the extra machinery buys nothing; predict them separately.
 
-A closing perspective: the linear-chain models here are the foundation, not the frontier. Modern sequence labelers usually compute the emission scores $\psi_t(k, x)$ with a neural network (a BiLSTM or a transformer encoder, see the Transformers chapter) and then place a CRF layer on top to enforce label consistency, decoded with the very Viterbi algorithm implemented above. The dynamic program has outlived every change in how the scores are produced.
+A closing perspective: the linear-chain models here are the foundation, not the frontier. Modern sequence labelers usually compute the emission scores $\psi_t(k, x)$ with a neural network (a BiLSTM or a transformer encoder, see the attention and transformers chapter, @sec-transformers) and then place a CRF layer on top to enforce label consistency, decoded with the very Viterbi algorithm implemented above. The dynamic program has outlived every change in how the scores are produced.
 
 ## Further Reading
 

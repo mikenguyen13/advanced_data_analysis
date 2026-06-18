@@ -1,4 +1,4 @@
-# Gradient Boosting in Practice
+# Gradient Boosting in Practice {#sec-gradient-boosting}
 
 ```{r}
 #| include: false
@@ -9,9 +9,9 @@ Imagine you are trying to predict house prices and your first simple model is wr
 
 This idea turns out to be one of the most reliable workhorses in all of machine learning. On the kind of tabular data that fills spreadsheets and databases (rows of mixed numeric and categorical columns), gradient-boosted trees routinely win against neural networks and almost everything else. They are the default first thing many practitioners reach for.
 
-The [Boosting] chapter introduced the foundations: forward stagewise additive modeling, AdaBoost, and the basic gradient boosting machine. This chapter picks up where that left off and focuses on the modern gradient-boosted-tree systems that dominate tabular prediction in practice: XGBoost, LightGBM, and CatBoost. By the end you will be able to read these systems in two complementary ways. First, as an optimization story: each one performs functional gradient descent against a regularized objective, and the formulas they use for leaf values and splits fall directly out of that view. Second, as a set of practical knobs you actually turn, with runnable training and validation loss curves that show overfitting happening and early stopping catching it.
+The boosting chapter (@sec-boosting) introduced the foundations: forward stagewise additive modeling, AdaBoost, and the basic gradient boosting machine. This chapter picks up where that left off and focuses on the modern gradient-boosted-tree systems that dominate tabular prediction in practice: XGBoost, LightGBM, and CatBoost. By the end you will be able to read these systems in two complementary ways. First, as an optimization story: each one performs functional gradient descent against a regularized objective, and the formulas they use for leaf values and splits fall directly out of that view. Second, as a set of practical knobs you actually turn, with runnable training and validation loss curves that show overfitting happening and early stopping catching it.
 
-> **Note:** This chapter assumes you have seen the [Boosting] chapter. If the phrase "fit a tree to the residuals" is not yet familiar, read that chapter first; here we move quickly from intuition to the regularized objective that the production systems optimize.
+> **Note:** This chapter assumes you have seen the boosting chapter (@sec-boosting). If the phrase "fit a tree to the residuals" is not yet familiar, read that chapter first; here we move quickly from intuition to the regularized objective that the production systems optimize.
 
 ## Boosting as Functional Gradient Descent
 
@@ -51,7 +51,7 @@ $$
 \frac{\partial l}{\partial F} = -(y - F), \qquad r_{im} = y_i - F_{m-1}(x_i).
 $$
 
-The pseudo-residual is exactly the ordinary residual, which recovers the "fit a tree to the residuals" algorithm from the [Boosting] chapter. The optimal leaf value for a terminal region is the mean of the residuals in that region. So the intuitive picture from the start of the chapter is not an analogy; for squared error it is literally what the gradient view prescribes.
+The pseudo-residual is exactly the ordinary residual, which recovers the "fit a tree to the residuals" algorithm from the boosting chapter (@sec-boosting). The optimal leaf value for a terminal region is the mean of the residuals in that region. So the intuitive picture from the start of the chapter is not an analogy; for squared error it is literally what the gradient view prescribes.
 
 ### Logistic loss gives probability residuals
 
@@ -85,7 +85,7 @@ Before the production-system formulas, it helps to know what you will actually b
 - Number of trees (rounds) $M$: more rounds keep reducing training loss, but validation loss eventually rises. This is the main overfitting control, and it is what early stopping monitors.
 - Tree depth / interaction order: a tree of depth $d$ can model interactions among up to $d$ features. Depth 1 (stumps) gives a purely additive model; deeper trees capture higher-order interactions at the cost of variance.
 - Subsampling rows (stochastic gradient boosting): fitting each tree on a random fraction of the rows decorrelates the trees and acts as a regularizer, often improving accuracy and speed.
-- Subsampling columns: sampling a fraction of features per tree or per split further decorrelates trees, in the same spirit as random forests.
+- Subsampling columns: sampling a fraction of features per tree or per split further decorrelates trees, in the same spirit as random forests (@sec-random-forest).
 
 > **Intuition:** The learning rate and the number of trees are two ends of the same lever. Halve the learning rate and you will roughly need to double the trees to fit the same amount. This is why we almost never tune them independently: we fix a small learning rate and let early stopping pick the count.
 
@@ -161,7 +161,7 @@ $$
 \text{Gain} = \frac12 \left[ \frac{G_L^2}{H_L + \lambda} + \frac{G_R^2}{H_R + \lambda} - \frac{(G_L + G_R)^2}{H_L + H_R + \lambda} \right] - \gamma.
 $$
 
-The first two terms are the structure scores of the children, the third is the score of the parent before splitting, and $\gamma$ is the cost of adding a leaf. A split is only kept when its gain is positive, which is a built-in form of pruning: the $\gamma$ term and the $\lambda$ shrinkage in the denominators both discourage splits that rely on few observations.^[This is why $\gamma$ is sometimes called `min_split_loss`: it is the minimum gain a split must earn to be worth keeping. Notice the family resemblance between split gain here and the impurity-reduction criterion of an ordinary CART tree; XGBoost has simply replaced impurity with a loss-and-penalty-aware score.]
+The first two terms are the structure scores of the children, the third is the score of the parent before splitting, and $\gamma$ is the cost of adding a leaf. A split is only kept when its gain is positive, which is a built-in form of pruning: the $\gamma$ term and the $\lambda$ shrinkage in the denominators both discourage splits that rely on few observations.^[This is why $\gamma$ is sometimes called `min_split_loss`: it is the minimum gain a split must earn to be worth keeping. Notice the family resemblance between split gain here and the impurity-reduction criterion of an ordinary CART tree (@sec-regression-trees); XGBoost has simply replaced impurity with a loss-and-penalty-aware score.]
 
 It is worth seeing that this general machinery collapses to the familiar cases. For squared error, $g_i = \hat y_i - y_i$ and $h_i = 1$, so $w_j^* = -G_j / (|I_j| + \lambda)$, a shrunken mean of the residuals: the residual-averaging rule from before, now with a regularization term in the denominator. For logistic loss, $g_i = p_i - y_i$ and $h_i = p_i(1-p_i)$, which is exactly the gradient and Hessian we derived in the classification subsection. The same two-line objective handles regression and classification by plugging in a different $g$ and $h$.
 
@@ -321,7 +321,7 @@ knitr::kable(
 
 The ranking in @tbl-gradient-boosting-importance is intuitive for housing data: `rm` (average number of rooms) and `lstat` (percent lower-status population) dominate, which matches both economic intuition and the linear-model coefficients you would get on the same data.
 
-> **Warning:** Importance scores describe what the model used, not causal effect, and they can be unstable when features are correlated (the model may "credit" one of two redundant features almost arbitrarily). Treat them as a rough guide for the model at hand, not as a measure of how the world works. For more careful attribution, the [Interpretable Machine Learning] chapter covers SHAP values and partial dependence.
+> **Warning:** Importance scores describe what the model used, not causal effect, and they can be unstable when features are correlated (the model may "credit" one of two redundant features almost arbitrarily). Treat them as a rough guide for the model at hand, not as a measure of how the world works. For more careful attribution, the interpretable machine learning chapter (@sec-interpretable-machine-learning) covers SHAP values and partial dependence.
 
 ### LightGBM on the same data
 

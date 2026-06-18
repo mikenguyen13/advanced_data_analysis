@@ -1,4 +1,4 @@
-# Density Estimation
+# Density Estimation {#sec-density-estimation}
 
 ```{r}
 #| include: false
@@ -7,11 +7,11 @@ suppressPackageStartupMessages(library(tidyverse))
 
 Suppose someone hands you a column of numbers: the response times of a web service over a day, the heights of a sample of customers, the brightness of pixels in a batch of images. Before you fit any model, a natural first question is simply, "what does this data look like?" Not the mean, not the variance, but the whole shape: where the values pile up, whether there are one or several peaks, how heavy the tails are, which regions are essentially empty. That shape is the *probability density* $p(x)$, and estimating it from a finite sample is the subject of this chapter.
 
-Density estimation sits quietly underneath a surprising amount of data science. A model that knows $p(x)$ can score a new point by how probable it is, which is the foundation of anomaly detection: rare points live where $p(x)$ is small. It can draw new samples that resemble the training data, which is generation. It can supply the likelihood that statistical inference and Bayesian methods are built on. And it gives the working analyst something more humble but just as valuable: an honest picture of a variable that no summary statistic can capture. A bimodal distribution and a wide unimodal one can share the same mean and standard deviation while telling completely different stories.
+Density estimation sits quietly underneath a surprising amount of data science. A model that knows $p(x)$ can score a new point by how probable it is, which is the foundation of anomaly detection (@sec-anomaly-detection): rare points live where $p(x)$ is small. It can draw new samples that resemble the training data, which is generation. It can supply the likelihood that statistical inference and Bayesian methods are built on. And it gives the working analyst something more humble but just as valuable: an honest picture of a variable that no summary statistic can capture. A bimodal distribution and a wide unimodal one can share the same mean and standard deviation while telling completely different stories.
 
 This chapter builds up the main tools in order of sophistication. We start with the humble histogram, expose its weaknesses, and fix them with kernel density estimation (KDE), where the central practical problem turns out to be choosing a bandwidth. We then move from these *nonparametric* methods, which let the data speak with few assumptions, to a *parametric* model, the Gaussian mixture, fitted with the expectation-maximization (EM) algorithm. Finally we sketch normalizing flows, the modern neural approach that scales density estimation to high dimensions. Throughout, $p(x)$ is the unknown density we want, and $\hat{p}(x)$ is our estimate of it.
 
-> **Note:** This chapter connects closely to two others. The generative view of density (sampling from $\hat{p}$, scoring likelihoods) is developed further in the Generative Models chapter, where variational autoencoders, GANs, and diffusion models all turn out to be density estimators in disguise. The use of $\hat{p}(x)$ to flag rare points underlies the anomaly and outlier detection discussions elsewhere in the book.
+> **Note:** This chapter connects closely to two others. The generative view of density (sampling from $\hat{p}$, scoring likelihoods) is developed further in the generative models chapter (@sec-generative-models), where variational autoencoders, GANs, and diffusion models all turn out to be density estimators in disguise. The use of $\hat{p}(x)$ to flag rare points underlies the anomaly and outlier detection chapter (@sec-anomaly-detection).
 
 ## What we are estimating, and why it is hard {#density-estimation-setup}
 
@@ -125,7 +125,7 @@ $$
 \pi_k \;=\; \frac{N_k}{n}.
 $$
 
-Iterating E and M is guaranteed to never decrease the log-likelihood, because each EM step maximizes a lower bound (the *expected complete-data log-likelihood*) that touches the true log-likelihood at the current parameters. It converges to a local maximum, not necessarily the global one, so multiple random restarts and a sensible initialization (commonly from k-means) matter in practice. The number of components $K$ is chosen by an information criterion such as the BIC, which balances fit against the parameter count.
+Iterating E and M is guaranteed to never decrease the log-likelihood, because each EM step maximizes a lower bound (the *expected complete-data log-likelihood*) that touches the true log-likelihood at the current parameters. It converges to a local maximum, not necessarily the global one, so multiple random restarts and a sensible initialization (commonly from k-means, see the cluster analysis chapter, @sec-cluster) matter in practice. The number of components $K$ is chosen by an information criterion such as the BIC, which balances fit against the parameter count.
 
 > **Intuition:** EM is soft k-means. Hard k-means assigns each point to its nearest center; EM assigns each point fractionally to every component in proportion to how well that component explains it, then moves each component toward the points it is most responsible for. As the model sharpens, the soft assignments harden.
 
@@ -141,7 +141,7 @@ $$
 
 where the Jacobian determinant accounts for how $f$ stretches and compresses volume. A normalizing flow makes $f$ a neural network, composed of many invertible layers, and trains it by maximizing the exact log-likelihood of the data under this formula. Because the likelihood is exact and tractable, a trained flow can do all three jobs at once: evaluate $p_X(x)$ for any point (likelihood and anomaly scoring), and generate new samples by drawing $z \sim p_Z$ and pushing it through $f$.
 
-The engineering challenge is designing layers that are simultaneously expressive, invertible, and have a cheap Jacobian determinant, since a general $d \times d$ determinant costs $O(d^3)$. Architectures such as RealNVP and Glow use *coupling layers* that transform half the coordinates as a function of the other half, producing a triangular Jacobian whose determinant is just the product of its diagonal. We treat flows only conceptually here; the Generative Models chapter places them alongside VAEs, GANs, and diffusion models, which trade exact likelihood for other advantages.
+The engineering challenge is designing layers that are simultaneously expressive, invertible, and have a cheap Jacobian determinant, since a general $d \times d$ determinant costs $O(d^3)$. Architectures such as RealNVP and Glow use *coupling layers* that transform half the coordinates as a function of the other half, producing a triangular Jacobian whose determinant is just the product of its diagonal. We treat flows only conceptually here; the generative models chapter (@sec-generative-models) places them alongside VAEs, GANs, and diffusion models, which trade exact likelihood for other advantages.
 
 > **When to use this:** Use histograms and KDE for one or two dimensions and quick exploration. Use Gaussian mixtures when you want a compact, interpretable density in up to perhaps a few dozen dimensions, or soft clustering as a byproduct. Reach for normalizing flows (or the other deep generative models) only when the dimension is high and you have the data and compute to train a neural network.
 
@@ -359,6 +359,6 @@ knitr::kable(
 
 Silverman (1986), *Density Estimation for Statistics and Data Analysis*, is the classic and still readable account of histograms and kernel methods, including the bias-variance analysis and the rule-of-thumb bandwidth. Scott (2015), *Multivariate Density Estimation*, extends this to higher dimensions and is the source of Scott's rule. Wand and Jones (1995), *Kernel Smoothing*, give the careful treatment of bandwidth selection, including the Sheather-Jones plug-in.
 
-For mixtures and EM, McLachlan and Peel (2000), *Finite Mixture Models*, is the standard reference, and the original EM paper is Dempster, Laird, and Rubin (1977). Bishop (2006), *Pattern Recognition and Machine Learning*, gives a particularly clear derivation of EM for Gaussian mixtures via the evidence lower bound, connecting it to the variational methods in the Generative Models chapter.
+For mixtures and EM, McLachlan and Peel (2000), *Finite Mixture Models*, is the standard reference, and the original EM paper is Dempster, Laird, and Rubin (1977). Bishop (2006), *Pattern Recognition and Machine Learning*, gives a particularly clear derivation of EM for Gaussian mixtures via the evidence lower bound, connecting it to the variational methods in the generative models chapter (@sec-generative-models).
 
 For normalizing flows, Rezende and Mohamed (2015) introduced the framework for variational inference, Dinh, Sohl-Dickstein, and Bengio (2017) presented RealNVP, and the survey by Papamakarios, Nalisnick, Rezende, Mohamed, and Lakshminarayanan (2021), *Normalizing Flows for Probabilistic Modeling and Inference*, is the comprehensive modern overview.

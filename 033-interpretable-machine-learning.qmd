@@ -1,15 +1,15 @@
-# Interpretable Machine Learning
+# Interpretable Machine Learning {#sec-interpretable-machine-learning}
 
 ```{r}
 #| include: false
 suppressPackageStartupMessages(library(tidyverse))
 ```
 
-A model that predicts well is useful. A model you can also explain is trustworthy. As predictive models have grown more accurate, they have often grown more opaque: a gradient boosting ensemble or a deep network can involve thousands of parameters interacting in ways no person can trace by hand. This chapter is about closing that gap. It introduces the tools that let us look inside a fitted model and answer questions like "which features matter?", "how does this feature change the prediction?", and "why did the model decide *this* for *this* particular case?".
+A model that predicts well is useful. A model you can also explain is trustworthy. As predictive models have grown more accurate, they have often grown more opaque: a gradient boosting ensemble (@sec-boosting) or a deep network (@sec-neural-networks) can involve thousands of parameters interacting in ways no person can trace by hand. This chapter is about closing that gap. It introduces the tools that let us look inside a fitted model and answer questions like "which features matter?", "how does this feature change the prediction?", and "why did the model decide *this* for *this* particular case?".
 
 The motivation is practical, not philosophical. A bank that denies a loan must, by law in many jurisdictions, give a reason. A doctor will not act on a risk score without understanding what drives it. A data scientist debugging a model needs to know whether it learned something real or just memorized an artifact of the training data.^[A classic cautionary tale, reported by Caruana and colleagues (2015): a pneumonia risk model learned that asthmatic patients had *lower* risk of dying, because in the training hospital asthmatics were admitted straight to intensive care and treated aggressively. The pattern was real in the data but exactly backwards as a basis for triage. An interpretability check would have caught it; a pure accuracy check did not.] In all of these settings, the prediction alone is not enough. We need an account of *how the model got there*.
 
-> **Key idea:** Interpretability is not a single technique but a goal, and there are two broad routes to it. We can use models that are transparent by construction (linear regression, a short decision tree, a generalized additive model), or we can fit a flexible black-box model and then apply *post-hoc* explanation methods on top of it. This chapter focuses on the second route, because that is where the interesting tooling lives, but the first route is always worth considering first.
+> **Key idea:** Interpretability is not a single technique but a goal, and there are two broad routes to it. We can use models that are transparent by construction (linear regression, a short decision tree (@sec-regression-trees), a generalized additive model (@sec-gam)), or we can fit a flexible black-box model and then apply *post-hoc* explanation methods on top of it. This chapter focuses on the second route, because that is where the interesting tooling lives, but the first route is always worth considering first.
 
 It helps to separate two words that are often used interchangeably. *Interpretability* usually refers to models that are understandable in themselves: you can read the coefficients or trace the tree. *Explainability* usually refers to producing human-readable accounts of an otherwise opaque model after the fact.^[The distinction is discussed at length in the survey by Barredo Arrieta and colleagues (2020) and in the popular write-up at <https://towardsdatascience.com/interperable-vs-explainable-machine-learning-1fa525e12f48>. Different authors draw the line differently, so do not over-invest in the terminology; what matters is the question you are trying to answer.] A second useful split is *global* versus *local* explanations. A global explanation describes the model's behavior across the whole data distribution ("income is the most important feature overall"). A local explanation describes a single prediction ("for *this* applicant, the low credit score pushed the decision toward denial"). Most methods in this chapter come in both flavors, and we will be explicit about which is which.
 
@@ -21,7 +21,7 @@ We will work throughout with one running example so that the methods are directl
 
 ## A running example
 
-We will predict house sale prices from the Ames housing data (De Cock, 2011), a modern replacement for the venerable Boston housing set. It is large enough to be interesting and clean enough to keep the focus on interpretation rather than data wrangling. We fit a random forest, which is accurate and nonlinear but completely opaque on its own, and then spend the rest of the chapter explaining it.
+We will predict house sale prices from the Ames housing data (De Cock, 2011), a modern replacement for the venerable Boston housing set. It is large enough to be interesting and clean enough to keep the focus on interpretation rather than data wrangling. We fit a random forest (@sec-random-forest), which is accurate and nonlinear but completely opaque on its own, and then spend the rest of the chapter explaining it.
 
 ```{r iml-setup, message=FALSE, warning=FALSE}
 library(AmesHousing)

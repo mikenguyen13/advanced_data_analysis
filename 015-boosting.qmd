@@ -1,13 +1,13 @@
-# Boosting
+# Boosting {#sec-boosting}
 
 ```{r}
 #| include: false
 suppressPackageStartupMessages(library(tidyverse))
 ```
 
-Imagine you are trying to predict house prices and your first model is a small, blunt decision tree. It captures the broad pattern (bigger houses cost more) but it misses many details, and its errors are large for certain neighborhoods. A natural human reaction would be to look at where the model went wrong and build a second, focused model that specializes in fixing those mistakes, then a third that fixes what is still wrong, and so on. Boosting is exactly this idea made precise: it builds a sequence of simple models, each one trained to correct the errors left behind by the models before it.
+Imagine you are trying to predict house prices and your first model is a small, blunt decision tree (@sec-regression-trees). It captures the broad pattern (bigger houses cost more) but it misses many details, and its errors are large for certain neighborhoods. A natural human reaction would be to look at where the model went wrong and build a second, focused model that specializes in fixing those mistakes, then a third that fixes what is still wrong, and so on. Boosting is exactly this idea made precise: it builds a sequence of simple models, each one trained to correct the errors left behind by the models before it.
 
-This stands in contrast to bagging and random forests (Chapter \@ref(random-forests)), where many trees are grown *independently* on bootstrap samples and then averaged. Boosting grows trees *sequentially*: each new tree depends strongly on the trees already built, because it is fit to what they got wrong. There are no bootstrap samples in classic boosting; instead, we repeatedly fit small trees to the *residuals* (the leftover error), not to the original response $Y$ directly.
+This stands in contrast to bagging and random forests (@sec-random-forest), where many trees are grown *independently* on bootstrap samples and then averaged. Boosting grows trees *sequentially*: each new tree depends strongly on the trees already built, because it is fit to what they got wrong. There are no bootstrap samples in classic boosting; instead, we repeatedly fit small trees to the *residuals* (the leftover error), not to the original response $Y$ directly.
 
 The phrase you will hear in the literature is that boosting "learns slowly." Rather than fitting one large tree that tries to capture everything at once (sometimes called "fitting the data hard"), boosting nudges the model in the right direction a little at a time, scaling each new tree by a small shrinkage factor $\lambda$. Learning slowly turns out to be a feature, not a bug: it concentrates effort on the parts of the problem that are still poorly fit and it guards against overfitting.
 
@@ -35,7 +35,7 @@ The costs to weigh against those benefits are:
 
 -   It can be computationally expensive, especially during a large grid search over hyperparameters.
 
-Underneath all of this, the general framework of boosting is a stagewise additive model built from $B$ regression trees, which connects it directly to the additive models of Chapter \@ref(generalized-additive-models):
+Underneath all of this, the general framework of boosting is a stagewise additive model built from $B$ regression trees, which connects it directly to the additive models of @sec-gam:
 
 $$
 f(x) = \sum_{b=1}^B f^b (x)
@@ -541,7 +541,7 @@ gbm.fit.final <- gbm(
 
 #### Visualization
 
-A trained boosting model is accurate but, on its own, opaque. The next few tools turn it back into something a human can reason about: which variables matter, how each variable affects the prediction, and why a particular prediction came out the way it did.
+A trained boosting model is accurate but, on its own, opaque. The next few tools turn it back into something a human can reason about: which variables matter, how each variable affects the prediction, and why a particular prediction came out the way it did. These model-agnostic methods are treated more fully in the interpretable machine learning chapter (@sec-interpretable-machine-learning).
 
 ##### Variable importance
 
@@ -681,7 +681,7 @@ The numerator pulls the leaf toward the residuals; the denominator, built from t
 
 ## Stochastic Gradient Boosting
 
-So far each tree has seen all of the data. Stochastic gradient boosting borrows the randomness that made bagging and random forests (Chapter \@ref(random-forests)) effective: by fitting each tree to a random subsample, we reduce the correlation between successive trees in the boosting sequence, which often improves generalization.
+So far each tree has seen all of the data. Stochastic gradient boosting borrows the randomness that made bagging (@sec-bagging) and random forests (@sec-random-forest) effective: by fitting each tree to a random subsample, we reduce the correlation between successive trees in the boosting sequence, which often improves generalization.
 
 Two common forms of subsampling are:
 

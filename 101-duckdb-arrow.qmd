@@ -1,4 +1,4 @@
-# In-Process Analytics with DuckDB and Arrow
+# In-Process Analytics with DuckDB and Arrow {#sec-duckdb-arrow}
 
 ```{r}
 #| include: false
@@ -15,7 +15,7 @@ By the end of the chapter you should be able to explain, in one sentence and wit
 
 ## Where This Fits in a Modern ML Workflow
 
-A typical supervised-learning project spends a surprising fraction of its time before the model: reading files, filtering to the relevant population, joining reference tables, aggregating to the grain you actually model on, and engineering features. When the source data is small this is invisible. When it is tens of millions of rows spread across hundreds of Parquet files, this stage dominates, and doing it naively (read everything into memory, then `dplyr`) either fails or wastes most of the runtime.
+A typical supervised-learning project spends a surprising fraction of its time before the model: reading files, filtering to the relevant population, joining reference tables, aggregating to the grain you actually model on, and engineering features (@sec-feature-engineering). When the source data is small this is invisible. When it is tens of millions of rows spread across hundreds of Parquet files, this stage dominates, and doing it naively (read everything into memory, then `dplyr`) either fails or wastes most of the runtime.
 
 DuckDB and Arrow attack this stage. The pattern, which recurs throughout the chapter, has three steps:
 
@@ -362,7 +362,7 @@ The same conditions, stated as a checklist, mark when this approach is the right
 When to prefer something else:
 
 - High-rate single-row inserts and updates (a transactional application) belong in a row store such as PostgreSQL or SQLite. Column stores pay a high price to write one row.
-- Genuinely distributed data across many machines, with terabytes that exceed one node, is the place for Spark (`sparklyr`) or a warehouse, not a single-process engine.
+- Genuinely distributed data across many machines, with terabytes that exceed one node, is the place for Spark (`sparklyr`; see @sec-spark-sparklyr) or a warehouse, not a single-process engine.
 - If the whole dataset already fits comfortably in RAM and you only touch it a few times, plain `data.table` or `dplyr` is simpler and fast enough.
 
 A handful of pitfalls account for most of the trouble people hit in practice:
@@ -375,7 +375,7 @@ A handful of pitfalls account for most of the trouble people hit in practice:
 - Memory limit versus available RAM. Spill-to-disk works only if you set a `memory_limit` below physical RAM and provide a `temp_directory` with enough free space; without a limit a runaway query can still exhaust memory.
 - Reproducibility of versions. Parquet and Arrow are stable formats, but pin the `arrow` and `duckdb` package versions in a project that ships, since on-disk and IPC details do evolve across major versions.
 
-A workable default for a local modeling project: store inputs as Parquet partitioned by date, do all reshaping and feature aggregation through a DuckDB or Arrow dplyr pipeline, `collect()` the model-ready frame once, and hand it to your usual R modeling stack. The data layer scales to far larger inputs than memory while the modeling code stays unchanged.
+A workable default for a local modeling project: store inputs as Parquet partitioned by date, do all reshaping and feature aggregation through a DuckDB or Arrow dplyr pipeline, `collect()` the model-ready frame once, and hand it to your usual R modeling stack (for example the tidymodels framework, @sec-tidymodels-framework). The data layer scales to far larger inputs than memory while the modeling code stays unchanged.
 
 To recap the chapter in one breath: columnar layout lets a scan read only the columns and rows a query needs, vectorized execution then processes those columns fast, Arrow lets the pieces of the pipeline share that data without copying, and DuckDB packages all of it as an engine inside your R session. The result is that the data-preparation stage, which used to set the ceiling on how large a problem you could tackle on one machine, mostly stops being the bottleneck.
 

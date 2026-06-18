@@ -1,11 +1,11 @@
-# Generalized Additive Models
+# Generalized Additive Models {#sec-gam}
 
 ```{r}
 #| include: false
 suppressPackageStartupMessages(library(tidyverse))
 ```
 
-Linear regression is easy to fit and easy to read: each coefficient tells you how the response changes when one predictor moves by one unit, holding the rest fixed. The price for that simplicity is the assumption that every effect is a straight line. Real relationships are rarely so obedient. Wages rise with age and then taper off near retirement; the effect of a neighborhood's poverty rate on house prices is steep at first and then flattens. We could chase these curves with polynomials, splines, or kernel smoothers (covered in the earlier chapters on [Smoothing splines], [Kernel Smoothing], and [Local Regression]), but those tools are usually presented one predictor at a time. Generalized additive models, or GAMs, are the natural way to put several such smooth pieces together in a single, interpretable model.
+Linear regression is easy to fit and easy to read: each coefficient tells you how the response changes when one predictor moves by one unit, holding the rest fixed. The price for that simplicity is the assumption that every effect is a straight line. Real relationships are rarely so obedient. Wages rise with age and then taper off near retirement; the effect of a neighborhood's poverty rate on house prices is steep at first and then flattens. We could chase these curves with polynomials, splines, or kernel smoothers (covered in the earlier chapters on spline regression (@sec-spline), kernel smoothing (@sec-kernel), and local regression (@sec-local)), but those tools are usually presented one predictor at a time. Generalized additive models, or GAMs, are the natural way to put several such smooth pieces together in a single, interpretable model.
 
 The idea is to keep the additive structure of linear regression but to replace each straight line with a flexible curve. We learn a separate smooth function for each predictor and then add the pieces up:
 
@@ -27,7 +27,7 @@ $$
 
 where $\epsilon$ is usually chosen to follow a Gaussian distribution.
 
-By this point in the book, several of the moving parts should look familiar, and it is worth naming the connections explicitly. If each function $f_j(.)$ were written as a basis expansion, then we would be back at least squares, GAMs are not a break from regression so much as a flexible generalization of it. A general way to fit each function is a "scatterplot smoother" (for example, a cubic [Smoothing splines] or [Kernel Smoothing]) applied through an algorithm that estimates all $p$ functions simultaneously. And a transformation of the mean response (a link function), exactly as in [Generalized linear models](https://bookdown.org/mike/data_analysis/generalized-linear-models.html), can be layered on top to handle responses that are not continuous.
+By this point in the book, several of the moving parts should look familiar, and it is worth naming the connections explicitly. If each function $f_j(.)$ were written as a basis expansion, then we would be back at least squares, GAMs are not a break from regression so much as a flexible generalization of it. A general way to fit each function is a "scatterplot smoother" (for example, a cubic smoothing spline (@sec-spline) or a kernel smoother (@sec-kernel)) applied through an algorithm that estimates all $p$ functions simultaneously. And a transformation of the mean response (a link function), exactly as in [Generalized linear models](https://bookdown.org/mike/data_analysis/generalized-linear-models.html), can be layered on top to handle responses that are not continuous.
 
 > **Intuition:** Think of a GAM as a relay team. Each predictor gets its own smoother to capture its private nonlinear effect, and the link function and additive structure stitch the contributions into one prediction.
 
@@ -87,7 +87,7 @@ $$
 PRSS(\alpha, f_1,\dots, f_p) = \sum_{i=1}^n (y_i - \alpha- \sum_{j=1}^p f_j(x_{ij}))^2 + \sum_{j=1}^p \lambda_j \int f''_j (t_j)^2 dt_j
 $$
 
-where the $\lambda_j \ge 0$ are tuning parameters. The first term rewards fitting the data; the second penalizes wiggliness, since $\int f''_j(t)^2 dt$ is large when $f_j$ curves sharply. Each $\lambda_j$ sets the trade-off for one predictor: large $\lambda_j$ forces $f_j$ toward a straight line, while $\lambda_j = 0$ lets it bend as much as the data demand.^[This is the same smoothness penalty used for a single [Smoothing splines]. A GAM simply applies it once per predictor and ties the pieces together additively.]
+where the $\lambda_j \ge 0$ are tuning parameters. The first term rewards fitting the data; the second penalizes wiggliness, since $\int f''_j(t)^2 dt$ is large when $f_j$ curves sharply. Each $\lambda_j$ sets the trade-off for one predictor: large $\lambda_j$ forces $f_j$ toward a straight line, while $\lambda_j = 0$ lets it bend as much as the data demand.^[This is the same smoothness penalty used for a single smoothing spline (@sec-spline). A GAM simply applies it once per predictor and ties the pieces together additively.]
 
 > **Intuition:** The penalty is a dial for honesty. Turn $\lambda_j$ up and the curve must justify every wiggle with strong evidence; turn it down and the curve is free to follow noise.
 
@@ -127,7 +127,7 @@ The cycle continues until the functions $\hat{f}_j$ change by less than a prespe
 
 Two features of backfitting make it a workhorse rather than a one-off recipe. First, it is *modular*: any smoother can take the place of $S_j$, so you can mix and match the right tool for each predictor. The available choices include the following.
 
--   Other univariate regression smoothers, for example local polynomial regression and [Kernel Smoothing].
+-   Other univariate regression smoothers, for example local polynomial regression (@sec-local) and kernel smoothing (@sec-kernel).
 
 -   Linear regression operators yielding polynomial fits, piecewise constant fits, parametric spline fits, or Fourier series fits.
 
@@ -175,7 +175,7 @@ GAMs occupy a useful middle ground: more flexible than linear models, more inter
 
 : Advantages and limitations of generalized additive models. {#tbl-gam-pros-cons}
 
-> **When to use this:** GAMs shine when you have a moderate number of predictors, you expect smooth nonlinear effects, and you still need to explain each effect to a stakeholder. If interactions dominate or the predictor count is very large, a tree-based method or a model that learns interactions automatically may serve you better.
+> **When to use this:** GAMs shine when you have a moderate number of predictors, you expect smooth nonlinear effects, and you still need to explain each effect to a stakeholder. If interactions dominate or the predictor count is very large, a tree-based method such as random forests (@sec-random-forest) or gradient boosting (@sec-boosting), which learns interactions automatically, may serve you better.
 
 The chief limitation, additivity, can be relaxed at a cost. An extension of GAM that includes random effects is called the Generalized Additive Mixed Model (GAMM), useful when observations are grouped or correlated (you can refer to this book^[<https://highstat.com/index.php/beginner-s-guide-to-generalized-additive-models-with-r>]).
 
@@ -294,7 +294,7 @@ plot(gam.lr.s, se = T, col = "green")
 
 ### Example 2
 
-Spline regression makes you choose where to place the knots by hand. To sidestep [Spline Regression]'s requirement for specifying the knots, we can use a GAM, which selects the smoothness automatically through its penalty. Here we fit a single smooth of `medv` on `lstat` with `mgcv` and check how well it generalizes to a held-out test set.
+Spline regression makes you choose where to place the knots by hand. To sidestep spline regression's (@sec-spline) requirement for specifying the knots, we can use a GAM, which selects the smoothness automatically through its penalty. Here we fit a single smooth of `medv` on `lstat` with `mgcv` and check how well it generalizes to a held-out test set.
 
 @fig-gam-boston-smooth shows the estimated smooth term, and @tbl-gam-boston-performance reports its accuracy on the held-out test set.
 

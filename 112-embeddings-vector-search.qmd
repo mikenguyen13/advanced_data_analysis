@@ -1,4 +1,4 @@
-# Embeddings and Vector Search
+# Embeddings and Vector Search {#sec-embeddings-vector-search}
 
 ```{r}
 #| include: false
@@ -15,17 +15,17 @@ This chapter covers how embeddings are produced, how similarity is measured, how
 
 ## Intuition and Where This Fits
 
-An embedding is a learned map $\phi: \mathcal{X} \to \mathbb{R}^d$ from raw objects (a sentence, a product description, an image) to a $d$-dimensional vector.^[The word "learned" is doing real work here. The map $\phi$ is not hand-designed; it is the output of training a neural network (often a transformer) on a large corpus, so that the geometry of the output space reflects patterns the model picked up from data.] The map is trained so that semantically similar objects land near each other and dissimilar objects land far apart. A typical text embedding model produces $d$ between 384 and 3072.
+An embedding is a learned map $\phi: \mathcal{X} \to \mathbb{R}^d$ from raw objects (a sentence, a product description, an image) to a $d$-dimensional vector.^[The word "learned" is doing real work here. The map $\phi$ is not hand-designed; it is the output of training a neural network (often a transformer, @sec-transformers) on a large corpus, so that the geometry of the output space reflects patterns the model picked up from data.] The map is trained so that semantically similar objects land near each other and dissimilar objects land far apart. A typical text embedding model produces $d$ between 384 and 3072.
 
 > **Key idea:** The intelligence lives in the encoder that produces the vectors. The search machinery in this chapter is "just" geometry. Once meaning has been baked into coordinates, finding similar items is a matter of measuring distances, which is fast and well understood.
 
 Embeddings sit between raw data and downstream tasks in many pipelines. The most common uses are the following.
 
-- Retrieval augmented generation (RAG): a user question is embedded, the closest document chunks are retrieved by vector search, and those chunks are passed to a language model as context.
+- Retrieval augmented generation (RAG): a user question is embedded, the closest document chunks are retrieved by vector search, and those chunks are passed to a language model as context. This is the foundation of the retrieval-augmented generation chapter (@sec-retrieval-augmented-generation).
 - Semantic search: rank documents by meaning rather than keyword overlap.
-- Recommendation: represent users and items in a shared space and recommend nearby items.
-- Deduplication and clustering: near-duplicate detection and grouping by proximity.
-- Classification features: embeddings are dense features for a simple downstream model such as logistic regression or gradient boosting.
+- Recommendation: represent users and items in a shared space and recommend nearby items, as developed in the recommender systems chapter (@sec-recommender-systems).
+- Deduplication and clustering: near-duplicate detection and grouping by proximity (@sec-cluster).
+- Classification features: embeddings are dense features for a simple downstream model such as logistic regression or gradient boosting (@sec-gradient-boosting).
 
 The reason this pattern is so common comes down to economics: training a good encoder is expensive and done once, but using it is cheap. You embed your corpus a single time, store the vectors, and answer queries with fast geometric lookups. The retrieval step is the part that has to scale to millions or billions of vectors, which is what most of this chapter is about.
 

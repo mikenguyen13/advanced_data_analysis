@@ -1,4 +1,4 @@
-# Model Deployment and Serving
+# Model Deployment and Serving {#sec-model-deployment}
 
 ```{r}
 #| include: false
@@ -13,13 +13,13 @@ A fitted model that lives only in an R session has no users. You can call `predi
 
 This chapter is about that handoff. We will look at the two basic serving patterns (batch versus online), the layered tooling in the R ecosystem (`vetiver`, `plumber`, Docker, Posit Connect), the contract a serving endpoint exposes to its callers, and the rollout strategies (versioned endpoints, A/B testing, canary releases) that let you change a model in production without taking down the system or silently degrading predictions. By the end you should be able to reason about *when* to serve a model in real time versus precompute it, *what* an endpoint must promise its callers, and *how* to ship a new version without betting the whole system on it.
 
-The mechanics of wrapping a function as an HTTP endpoint were introduced in the [API](#api) chapter, and packaging that endpoint into a portable image was covered in the [Containerizing R and Serving APIs](#containerizing-r-and-serving-apis) chapter. This chapter assumes both and focuses on the decisions around them: when to serve in real time versus in batch, how to keep the request and response format stable, and how to ship a new version with controlled risk.
+The mechanics of wrapping a function as an HTTP endpoint were introduced in the API chapter (@sec-api), and packaging that endpoint into a portable image was covered in the containerizing chapter (@sec-containerizing-r). This chapter assumes both and focuses on the decisions around them: when to serve in real time versus in batch, how to keep the request and response format stable, and how to ship a new version with controlled risk.
 
 > **Note:** This chapter is about *serving* a frozen model, not about training it. Choosing and fitting the model happened in earlier chapters. Here the model is a given, and the questions are all operational: where it runs, who calls it, and how you change it safely.
 
 ## Where Deployment Fits in the Workflow
 
-A predictive system has a lifecycle: explore, train, evaluate, package, deploy, monitor, retrain. Everything before "deploy" happens in an interactive session and is reversible at no cost. If you make a mistake while exploring, you fix a line and rerun. Everything from "deploy" onward touches infrastructure that other teams and end users depend on, and mistakes there are visible and expensive: a bad deploy can degrade a live product before anyone notices. Deployment is the boundary between a model as an analysis artifact and a model as a production dependency, and crossing it changes the cost of being wrong.
+A predictive system has a lifecycle: explore, train, evaluate, package, deploy, monitor (@sec-model-monitoring), retrain. Everything before "deploy" happens in an interactive session and is reversible at no cost. If you make a mistake while exploring, you fix a line and rerun. Everything from "deploy" onward touches infrastructure that other teams and end users depend on, and mistakes there are visible and expensive: a bad deploy can degrade a live product before anyone notices. Deployment is the boundary between a model as an analysis artifact and a model as a production dependency, and crossing it changes the cost of being wrong.
 
 Two properties make this boundary worth treating carefully. The first is that the training environment and the serving environment are different processes, often on different machines, running at different times. A prediction made at serving time must reproduce exactly what the model would have produced at training time on the same input. Any drift in package versions, factor levels, column order, or preprocessing breaks this silently: the endpoint still returns a number, it is just the wrong number. This kind of mismatch is known as training/serving skew, and it is the most common source of bugs that pass every unit test and still ruin predictions.
 
@@ -37,7 +37,7 @@ In batch serving, you score a large set of rows on a schedule (nightly, hourly) 
 
 In online (real-time) serving, the model sits behind an endpoint and scores one request at a time as it arrives. This is the made-to-order kitchen: the dish is fresh and tailored to the request, but someone has to be standing at the stove, fast, whenever an order comes in. Online serving gives fresh predictions on inputs you have never seen, at the cost of latency budgets, capacity planning, and the operational burden of keeping a service healthy.
 
-> **Warning:** "Online serving" here means real-time request scoring with a *fixed* model. It is distinct from *online learning* (the [Online and Streaming Learning](#online-and-streaming-learning) chapter), where the model parameters themselves update as data arrive. A real-time endpoint usually serves a frozen model and is retrained out of band. Confusing the two leads people to expect an endpoint to "learn" from traffic when it is doing nothing of the kind.
+> **Warning:** "Online serving" here means real-time request scoring with a *fixed* model. It is distinct from *online learning* (the online and streaming learning chapter, @sec-online-learning), where the model parameters themselves update as data arrive. A real-time endpoint usually serves a frozen model and is retrained out of band. Confusing the two leads people to expect an endpoint to "learn" from traffic when it is doing nothing of the kind.
 
 @tbl-model-deployment-batch-online lays out the two regimes side by side along the properties that usually drive the choice between them.
 
@@ -131,7 +131,7 @@ A minimal prediction contract has these parts, each of which a caller will event
 - Error semantics. What status code and body you return when the input is malformed (a `400` with a message naming the bad field), versus when the server itself fails (a `500`). Callers write retry and alerting logic against these codes, so they must be stable.
 - Versioning. A way to address a specific version of the model, usually in the path (`/v2/predict`) or a header.
 
-Of all these parts, the single most important property is input validation at the boundary. A model will happily extrapolate on garbage: feed a logistic regression an age of $-5$ or a category it never saw, and it will still return a confident-looking probability. The endpoint must therefore reject inputs that violate the schema before they reach the model. This is the same idea as the data validation chapter, applied at the request boundary.
+Of all these parts, the single most important property is input validation at the boundary. A model will happily extrapolate on garbage: feed a logistic regression an age of $-5$ or a category it never saw, and it will still return a confident-looking probability. The endpoint must therefore reject inputs that violate the schema before they reach the model. This is the same idea as the data validation chapter (@sec-data-validation), applied at the request boundary.
 
 > **Warning:** An endpoint that does not validate its input does not fail loudly; it fails *quietly*, returning plausible numbers for nonsense inputs. Silent wrong answers are far more dangerous than visible errors, because nobody knows to investigate them.
 
@@ -162,7 +162,7 @@ knitr::kable(
 
 ### vetiver: model to API
 
-`vetiver` packages a fitted model together with the metadata needed to serve it (the prediction method, the input prototype that defines the schema, and a version string), stores it in a `pins` board (a local folder, a cloud bucket, or Posit Connect), and can generate the `plumber` API and the Dockerfile for you. In other words, it automates the "ship three things together" rule from the start of the chapter: the fitted object, the schema, and the environment metadata all travel as one versioned artifact. It removes most of the hand-written glue from the API and Containerizing chapters.
+`vetiver` packages a fitted model together with the metadata needed to serve it (the prediction method, the input prototype that defines the schema, and a version string), stores it in a `pins` board (a local folder, a cloud bucket, or Posit Connect), and can generate the `plumber` API and the Dockerfile for you. In other words, it automates the "ship three things together" rule from the start of the chapter: the fitted object, the schema, and the environment metadata all travel as one versioned artifact. It removes most of the hand-written glue from the API chapter (@sec-api) and the containerizing chapter (@sec-containerizing-r).
 
 > **When to use this:** Reach for `vetiver` when you want the standard, opinionated path (model plus schema plus version plus API plus Dockerfile) generated for you. Drop to hand-written `plumber` and Docker only when you need control the generator does not give.
 

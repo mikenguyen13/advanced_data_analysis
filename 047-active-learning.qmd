@@ -1,4 +1,4 @@
-# Active Learning
+# Active Learning {#sec-active-learning}
 
 ```{r}
 #| include: false
@@ -20,7 +20,7 @@ Active learning shows up wherever the labeling budget binds:
 - Building a labeled dataset from scratch for a classifier, where you can afford to label only a few thousand of millions of available inputs.
 - Data programming and human-in-the-loop pipelines, where annotators are the bottleneck and you want to route their attention to the examples that matter.
 - LLM alignment and evaluation, where preference labels or rubric scores are collected from people or from a strong judge model, and each query has a real dollar cost.
-- Model monitoring and drift, where you sample production traffic for human review and want to oversample the cases the current model is least sure about.
+- Model monitoring and drift (@sec-model-monitoring), where you sample production traffic for human review and want to oversample the cases the current model is least sure about.
 
 The core loop is small and sits between your data store and your training code:
 
@@ -50,7 +50,7 @@ Two settings differ in how candidates arrive.
 
 In pool-based active learning the whole pool $\mathcal{U}$ is available at once. You score every point and pick the best. This is the common case in offline dataset construction and the one we demo below.
 
-In stream-based active learning inputs arrive one at a time and you must decide on the spot whether to pay for a label or discard the point. There is no global ranking, so you threshold the acquisition score: label $x$ if $a(x) \ge \tau$ for some threshold $\tau$ tuned to spend the budget at the right rate.^[Setting $\tau$ is the hard part: too low and you exhaust the budget on the first day's traffic, too high and you finish the month with labels unspent. A common fix is to track recent spend and nudge $\tau$ up or down to stay on pace.] This fits online systems and production traffic sampling, where storing and rescoring the full stream is impractical.
+In stream-based active learning inputs arrive one at a time and you must decide on the spot whether to pay for a label or discard the point. There is no global ranking, so you threshold the acquisition score: label $x$ if $a(x) \ge \tau$ for some threshold $\tau$ tuned to spend the budget at the right rate.^[Setting $\tau$ is the hard part: too low and you exhaust the budget on the first day's traffic, too high and you finish the month with labels unspent. A common fix is to track recent spend and nudge $\tau$ up or down to stay on pace.] This fits online systems and production traffic sampling (see the online and streaming learning chapter, @sec-online-learning), where storing and rescoring the full stream is impractical.
 
 > **When to use this:** Reach for pool-based active learning when you are building a dataset offline and can hold all candidates in memory. Reach for stream-based when points fly past in real time, as in sampling live production requests for human review, and you cannot revisit them later.
 
@@ -318,11 +318,11 @@ The last table reports how many labels each policy needs to first cross a target
 
 The demo uses raw `glm` probabilities for the score. Two refinements carry over to real work.
 
-First, uncertainty sampling trusts the model's probabilities, so calibration matters. A model is *calibrated* when its stated probabilities match reality: among inputs it labels "70% class 1," about 70% truly are. If $\hat{p}$ is overconfident, the "closest to 0.5" set may not be the genuinely ambiguous set. Calibrating probabilities (Platt scaling, isotonic regression) before scoring helps.
+First, uncertainty sampling trusts the model's probabilities, so calibration matters. A model is *calibrated* when its stated probabilities match reality: among inputs it labels "70% class 1," about 70% truly are. If $\hat{p}$ is overconfident, the "closest to 0.5" set may not be the genuinely ambiguous set. Calibrating probabilities (Platt scaling, isotonic regression; see @sec-probability-calibration) before scoring helps.
 
 > **Warning:** A model can be confidently wrong. An overconfident model pushes most predictions toward 0 or 1, so very few points look uncertain, and the ones that do may not be the truly hard cases. Calibrate before you trust an uncertainty score.
 
-Second, query-by-committee needs only a set of differing models. A cheap committee is a handful of bootstrap refits of the same `glm`: resample $\mathcal{L}$ with replacement, fit each, and score pool points by the variance of their predicted probabilities across committee members. High variance flags disagreement and is a drop-in replacement for the `abs(p - 0.5)` score above.
+Second, query-by-committee needs only a set of differing models. A cheap committee is a handful of bootstrap refits of the same `glm` (the same resampling idea behind bagging, @sec-bagging): resample $\mathcal{L}$ with replacement, fit each, and score pool points by the variance of their predicted probabilities across committee members. High variance flags disagreement and is a drop-in replacement for the `abs(p - 0.5)` score above.
 
 ## Practical guidance
 
@@ -338,7 +338,7 @@ Just as often, though, the strategy backfires in predictable ways. Watch for the
 
 - Cold start. Early on, the seed model is bad and its uncertainty is noise. Begin with a random or diversity-based seed batch before switching to uncertainty.
 - Sampling bias. Uncertainty sampling deliberately builds a non-random, boundary-heavy labeled set. That set is great for fitting the boundary but is not a representative sample, so do not use it to estimate class priors or population statistics, and keep a separate random test set for honest evaluation.
-- Outliers and label noise. Uncertainty scores spike on garbage inputs and mislabeled points, so the strategy can waste budget querying noise. Filter obvious outliers first, and consider density-weighted scores $a(x) \cdot \mathrm{density}(x)^\beta$ that down-weight isolated points.
+- Outliers and label noise. Uncertainty scores spike on garbage inputs and mislabeled points, so the strategy can waste budget querying noise. Filter obvious outliers first (see @sec-anomaly-detection), and consider density-weighted scores $a(x) \cdot \mathrm{density}(x)^\beta$ that down-weight isolated points.
 - Redundant batches. Top-$k$ by uncertainty often selects near-duplicate points clustered on one stretch of the boundary. Batch-mode methods add a diversity term (cluster the candidate set, or use determinantal point processes) so a batch covers different regions.
 - Model and oracle drift. If the labeling guidelines or the data distribution shift mid-collection, earlier queries may no longer reflect what you need.
 - Reproducibility. Because the labeled set depends on the model that selected it, results are tied to the strategy and seeds. Log which strategy chose each label.

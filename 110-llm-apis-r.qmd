@@ -1,11 +1,11 @@
-# Calling LLM APIs from R
+# Calling LLM APIs from R {#sec-llm-apis-r}
 
 ```{r}
 #| include: false
 suppressPackageStartupMessages(library(tidyverse))
 ```
 
-Most of this book fits models you train yourself. This chapter is different: the model already exists, it lives behind a network endpoint operated by a provider (OpenAI, Anthropic, Google, and others), and your job is to call it well. A large language model (LLM) takes a sequence of text tokens as input and returns a probability distribution over the next token. You never see the weights. You send text, you pay per token, and you get text back. The engineering problem is how to do that reliably, cheaply, and reproducibly from R.
+Most of this book fits models you train yourself. This chapter is different: the model already exists, it lives behind a network endpoint operated by a provider (OpenAI, Anthropic, Google, and others), and your job is to call it well. A large language model (LLM) takes a sequence of text tokens as input and returns a probability distribution over the next token; the transformer architecture behind these models is covered in @sec-transformers, and the models themselves in @sec-llms. You never see the weights. You send text, you pay per token, and you get text back. The engineering problem is how to do that reliably, cheaply, and reproducibly from R.
 
 The current standard R interface for this is the `ellmer` package (Wickham, Cheng, and the Posit team, 2024).^[The name is a play on "LLM" read aloud, in the same spirit as the tidyverse habit of phonetic package names. It is maintained by the same Posit team behind `dplyr` and `httr2`, so it follows the conventions you already know.] It gives a uniform "chat object" that hides the differences between providers, manages the running conversation, supports streaming, structured output, and tool calling, and exposes token counts so you can track cost. This chapter explains the message and turn structure that every provider shares, the small amount of math you need for token accounting and rate limiting, and the operational concerns (retries, backoff, cost) that decide whether an LLM feature survives contact with production. Because `ellmer` is not installed here and no API key is assumed, the `ellmer` code is shown with `eval=FALSE` but is correct and current. The runnable demo is a mock chat engine in base R that reproduces the message/turn mechanics so the structure is fully visible.
 
@@ -27,8 +27,8 @@ A useful mental model: a hosted LLM is a very general, very expensive prediction
 In a data science workflow the LLM call usually sits at one of three places:
 
 - As a preprocessing step that turns unstructured text into structured columns (extracting amounts, dates, sentiment, categories) that then feed an ordinary model.
-- As the model itself for a text task where you have no labels, often called zero-shot or few-shot prediction.
-- As an orchestration layer ("agent") that decides which tools or queries to run, where the LLM emits structured calls that your R code executes.^[The agent pattern is just tool calling, covered later in this chapter, wrapped in a loop: the model proposes a call, your code runs it, the result goes back to the model, and the cycle repeats until the model produces a final answer.]
+- As the model itself for a text task where you have no labels, often called zero-shot or few-shot prediction (see @sec-few-shot-zero-shot).
+- As an orchestration layer ("agent") that decides which tools or queries to run, where the LLM emits structured calls that your R code executes (the subject of @sec-llm-agents).^[The agent pattern is just tool calling, covered later in this chapter, wrapped in a loop: the model proposes a call, your code runs it, the result goes back to the model, and the cycle repeats until the model produces a final answer.]
 
 The discipline is the same as anywhere else in the book: define the task, hold out examples, measure accuracy and cost, and compare against a cheap baseline before committing. The difference is that the "model" is a remote service with latency, rate limits, nondeterminism, and a per-call bill. @tbl-llm-apis-r-fit-table summarizes which tool to reach for in a few common situations.
 
@@ -421,7 +421,7 @@ The mechanics above are necessary but not sufficient. The following habits separ
 - Expect nondeterminism. Even at temperature 0, outputs can vary across calls and across model updates. For evaluation, fix the model id, run multiple samples, and report variability rather than a single number.
 - Validate every output. Treat the reply as untrusted input. Parse structured output against a schema and check ranges; never `eval()` returned code or run returned SQL without sandboxing.
 - Measure against a baseline. Before shipping an LLM feature, compare its accuracy and cost to a cheap conventional model on held-out examples. Often a small classifier wins.
-- Watch for prompt injection. If user-supplied text reaches the model, it can contain instructions that hijack your system prompt. Keep tools narrow, sandbox their effects, and do not give the model authority it does not need.
+- Watch for prompt injection. If user-supplied text reaches the model, it can contain instructions that hijack your system prompt. Keep tools narrow, sandbox their effects, and do not give the model authority it does not need. Systematic evaluation and guardrails for LLM outputs are the subject of @sec-evaluating-llms.
 
 When the task is well-specified and you have labels, the models from earlier chapters are usually the better engineering choice. Reach for a hosted LLM when the input is unstructured, labels are scarce, and the cost per call is acceptable for your volume.
 

@@ -1,11 +1,11 @@
-# Learning to Rank
+# Learning to Rank {#sec-learning-to-rank}
 
 ```{r}
 #| include: false
 suppressPackageStartupMessages(library(tidyverse))
 ```
 
-Imagine you type a query into a search box. The system holds millions of documents, and almost all of them are useless to you. Its real job is not to label each document "relevant" or "not relevant" in isolation, but to put the few good ones at the very top of the list, where your eyes actually go. The same problem shows up everywhere: a recommender deciding which ten products to show on a page, an email client deciding which messages float to the top of the inbox, a hospital triage tool deciding which patients to review first. In all of these, the output that matters is an *ordering*, and the cost of a mistake depends on *where* in the ordering it happens. Putting the best result in position 1 versus position 2 is a small sin; burying it in position 50 is a large one.
+Imagine you type a query into a search box. The system holds millions of documents, and almost all of them are useless to you. Its real job is not to label each document "relevant" or "not relevant" in isolation, but to put the few good ones at the very top of the list, where your eyes actually go. The same problem shows up everywhere: a recommender (see @sec-recommender-systems) deciding which ten products to show on a page, an email client deciding which messages float to the top of the inbox, a hospital triage tool deciding which patients to review first. In all of these, the output that matters is an *ordering*, and the cost of a mistake depends on *where* in the ordering it happens. Putting the best result in position 1 versus position 2 is a small sin; burying it in position 50 is a large one.
 
 This is the ranking problem, and it is genuinely different from the regression and classification problems that fill most of this book. In ordinary supervised learning we score each example on its own and we are graded on per-example accuracy. In ranking we are graded on the quality of a *sorted list*, and the grade is dominated by the top of that list. The field that studies how to train models for this objective is called learning to rank (LTR).
 
@@ -159,7 +159,7 @@ knitr::kable(
 
 ## RankNet: a pairwise model with a probabilistic loss
 
-RankNet [@burges2005learning] is the cleanest way to see the pairwise idea, and it underlies the later Lambda methods. The model is any differentiable scoring function $f$ (originally a neural network, but it can be linear). For two documents $i$ and $j$ in the same query with scores $s_i = f(\mathbf{x}_i)$ and $s_j = f(\mathbf{x}_j)$, define the modeled probability that $i$ should rank above $j$ using a logistic (sigmoid) function of the score difference:
+RankNet [@burges2005learning] is the cleanest way to see the pairwise idea, and it underlies the later Lambda methods. The model is any differentiable scoring function $f$ (originally a neural network, see @sec-neural-networks, but it can be linear). For two documents $i$ and $j$ in the same query with scores $s_i = f(\mathbf{x}_i)$ and $s_j = f(\mathbf{x}_j)$, define the modeled probability that $i$ should rank above $j$ using a logistic (sigmoid) function of the score difference:
 
 $$
 P_{ij} = \frac{1}{1 + e^{-\sigma (s_i - s_j)}} ,
@@ -193,7 +193,7 @@ $$
 
 The model never differentiates NDCG (it cannot, NDCG is flat almost everywhere). Instead it defines the gradients *directly*, weighting each pairwise force by how much fixing that pair would improve the metric. Pairs that matter for NDCG pull harder. Empirically these "lambda" gradients optimize NDCG very well even though no closed-form loss is being differentiated.
 
-LambdaMART [@burges2010ranknet] is LambdaRank's gradient signal plugged into gradient-boosted regression trees (MART = Multiple Additive Regression Trees, the boosting machine of Chapter \@ref(boosting)) instead of a neural net. At each boosting round it computes the lambda gradients for every document, fits a regression tree to them, and adds that tree to the ensemble. LambdaMART has won ranking competitions and remains a default in production search and recommendation. The practical recipe is short:
+LambdaMART [@burges2010ranknet] is LambdaRank's gradient signal plugged into gradient-boosted regression trees (MART = Multiple Additive Regression Trees, the boosting machine of @sec-boosting) instead of a neural net. At each boosting round it computes the lambda gradients for every document, fits a regression tree to them, and adds that tree to the ensemble. LambdaMART has won ranking competitions and remains a default in production search and recommendation. The practical recipe is short:
 
 - Compute scores $s_i$ for all documents in a query with the current ensemble.
 - For each pair, compute $\lambda_{ij}$ (the RankNet tug) times $|\Delta\text{NDCG}_{ij}|$.
@@ -202,7 +202,7 @@ LambdaMART [@burges2010ranknet] is LambdaRank's gradient signal plugged into gra
 
 > **Key idea:** LambdaMART never optimizes a differentiable copy of NDCG. It hand-defines gradients that point in the direction NDCG improves, weighting each document-pair by the metric gain from fixing it, and feeds those gradients to gradient boosting.
 
-Both `xgboost` (objective `rank:pairwise`, `rank:ndcg`) and `lightgbm` (objective `lambdarank`) implement this family, and they are what you will actually run in practice.
+Both `xgboost` (objective `rank:pairwise`, `rank:ndcg`) and `lightgbm` (objective `lambdarank`) implement this family, and they are what you will actually run in practice; for the mechanics of tuning these boosted models, see @sec-gradient-boosting.
 
 ## A runnable demonstration in base R
 

@@ -1,11 +1,11 @@
-# Random Forests
+# Random Forests {#sec-random-forest}
 
 ```{r}
 #| include: false
 suppressPackageStartupMessages(library(tidyverse))
 ```
 
-A single decision tree is easy to read but hard to trust: change a few training points and the tree can split on a completely different variable, sending its predictions in a new direction. Trees are, in the language of the bias-variance tradeoff, low bias but high variance learners. [Bagging] already addresses this by growing many trees on bootstrap resamples and averaging them, which knocks down variance without raising bias much. Random forests push that idea one step further. They start from bagging and add a single, almost embarrassingly simple twist that turns out to matter a great deal: at every split, each tree is only allowed to look at a random handful of the predictors.
+A single decision tree is easy to read but hard to trust: change a few training points and the tree can split on a completely different variable, sending its predictions in a new direction. Trees are, in the language of the bias-variance tradeoff, low bias but high variance learners. Bagging (@sec-bagging) already addresses this by growing many trees on bootstrap resamples and averaging them, which knocks down variance without raising bias much. Random forests push that idea one step further. They start from bagging and add a single, almost embarrassingly simple twist that turns out to matter a great deal: at every split, each tree is only allowed to look at a random handful of the predictors.
 
 In this chapter you will learn why that twist works (it is a story about correlation, not about individual trees getting better), how the algorithm is put together step by step, how to read its built-in error estimate and variable-importance scores, and how to fit and tune one in R. Random forests are a strong default for general nonlinear, nonparametric prediction, so this is a method worth understanding well before reaching for anything fancier.
 
@@ -13,7 +13,7 @@ In this chapter you will learn why that twist works (it is a story about correla
 
 ## From bagging to decorrelated trees
 
-Random forests are a bootstrap-based procedure built on a committee of trees, exactly like [Bagging]. The difference is that random forests deliberately *decorrelate* the trees. At each split in the tree-building process, and separately for each bootstrap sample, the splitting rule is chosen from a randomly selected, relatively small subset of the input variables. Because different variables are available at different splits and in different trees, the trees stop leaning on the same dominant covariates and become much less dependent on one another. That reduced dependence is what reduces the variance of the final prediction.
+Random forests are a bootstrap-based procedure built on a committee of trees, exactly like bagging (@sec-bagging). The difference is that random forests deliberately *decorrelate* the trees. At each split in the tree-building process, and separately for each bootstrap sample, the splitting rule is chosen from a randomly selected, relatively small subset of the input variables. Because different variables are available at different splits and in different trees, the trees stop leaning on the same dominant covariates and become much less dependent on one another. That reduced dependence is what reduces the variance of the final prediction.
 
 This variance reduction is the whole point. Trees are inherently noisy, but when grown fairly deep they have relatively low bias. Averaging many low-bias, nearly independent trees therefore gives predictions (or classifications) that keep the low bias while shedding most of the variance.
 
@@ -25,7 +25,7 @@ $$
 
 Look at what happens as the forest grows. The second term, $\sigma^2 (1 - \rho)/B$, shrinks to zero as $B \to \infty$, but the first term, $\rho \sigma^2$, does not depend on $B$ at all. No matter how many trees you add, the variance cannot fall below this floor of $\rho \sigma^2$.
 
-> **Key idea:** Adding more trees only attacks the $\sigma^2(1-\rho)/B$ part of the variance. The floor $\rho \sigma^2$ can only be lowered by reducing the correlation $\rho$ between trees. Random forests lower $\rho$ by randomizing the variables available at each split, which is precisely the dependence that plain [Bagging] leaves in place.
+> **Key idea:** Adding more trees only attacks the $\sigma^2(1-\rho)/B$ part of the variance. The floor $\rho \sigma^2$ can only be lowered by reducing the correlation $\rho$ between trees. Random forests lower $\rho$ by randomizing the variables available at each split, which is precisely the dependence that plain bagging (@sec-bagging) leaves in place.
 
 ## The algorithm
 
@@ -34,7 +34,7 @@ Before the formal statement, here is the idea in four plain steps:
 1.  Create bootstrapped datasets (sampling with replacement).
 2.  Grow a decision tree on each bootstrapped dataset, but at every split consider only a random subset of the variables.
 3.  Repeat steps 1 and 2 many times to build a whole forest.
-4.  To predict, run a new observation through every tree and combine the results: average them for regression, or take a majority vote for classification (the same aggregation idea as in [Bagging], applied to many bootstrap samples).
+4.  To predict, run a new observation through every tree and combine the results: average them for regression, or take a majority vote for classification (the same aggregation idea as in bagging (@sec-bagging), applied to many bootstrap samples).
 
 The one new knob compared to bagging is $m$, the number of input variables made available at each split, where $m \le p$ and $p$ is the total number of predictors. Smaller $m$ means more aggressive decorrelation. There is no theory that pins down the best value, but two rules of thumb, supported by simulation studies rather than by any deeper result, work well as starting points:
 
@@ -72,9 +72,9 @@ To predict at a new point $x$, the two tasks differ only in how the trees are co
 
 > **Note:** Random subset selection happens *at every split*, not once per tree. A fresh random set of $m$ variables is drawn each time a node is split, which is what keeps even the same tree from being dominated by one strong predictor.
 
-How does this compare to its neighbors? In general, [Gradient Boosting] is roughly comparable to random forests, and random forests usually beat plain [Bagging], though in practice these orderings do not always hold. Which method wins depends on the structure of the problem: the degree of linearity or nonlinearity, the dependence among covariates, the relative importance of specific predictors, and so on.
+How does this compare to its neighbors? In general, gradient boosting (@sec-gradient-boosting) is roughly comparable to random forests, and random forests usually beat plain bagging (@sec-bagging), though in practice these orderings do not always hold. Which method wins depends on the structure of the problem: the degree of linearity or nonlinearity, the dependence among covariates, the relative importance of specific predictors, and so on.
 
-> **When to use this:** Reach for a random forest when you want strong nonlinear, nonparametric prediction with little tuning, mixed variable types, and a built-in honest error estimate. If you need to squeeze out the last bit of accuracy on highly structured data, compare against [Gradient Boosting].
+> **When to use this:** Reach for a random forest when you want strong nonlinear, nonparametric prediction with little tuning, mixed variable types, and a built-in honest error estimate. If you need to squeeze out the last bit of accuracy on highly structured data, compare against gradient boosting (@sec-gradient-boosting).
 
 ## Out-of-bag error: free cross-validation
 
@@ -101,7 +101,7 @@ A few additional points round out the picture of how random forests behave in pr
 -   Proximity plots show which observations the forest treats as effectively close together. They are useful mainly for seeing where points sit relative to the decision boundary; we use this idea in the application below to build an MDS plot.
 -   Overfitting: random forests are fairly robust to overfitting when the number of genuinely relevant variables in $X$ is large relative to $p$.
 -   Bias: the bias of a random forest is essentially the same as the bias of an individual tree. The gain in mean squared error comes entirely from variance reduction, not from lower bias.
--   Relationship to other methods: a random forest behaves somewhat like a nearest-neighbor classifier (such as $k$-nearest neighbor), since predictions are driven by training points that fall in the same regions.
+-   Relationship to other methods: a random forest behaves somewhat like a nearest-neighbor classifier (such as $k$-nearest neighbor; see @sec-knn), since predictions are driven by training points that fall in the same regions.
 -   Software: common implementations include `randomForest`, `cforest`, `ParallelForest`, `ranger`, and `Rborist`.
 
 In short, random forests are a reliable, low-maintenance tool for general nonlinear, nonparametric prediction. With the mechanics in hand, the rest of the chapter walks through a complete worked example.
@@ -347,7 +347,7 @@ The loop over `mtry` from 1 to 10 refits the forest for each candidate number of
 
 > **Tip:** The `mtry` loop is a small grid search over the one knob that distinguishes a random forest from bagging. Because OOB error is nearly free, sweeping `mtry` is cheap and often worthwhile, especially when predictors are correlated and the default may be too large or too small.
 
-Finally, the model is refit with the best `mtry` and its proximity matrix is turned into a distance matrix via `1 - proximity`, which feeds classical multidimensional scaling (`cmdscale`). @fig-random-forest-mds shows the resulting MDS plot, which places each patient in two dimensions so that patients the forest treats as similar sit close together. Coloring by true status shows how cleanly the forest separates healthy from unhealthy patients, a visual companion to the numeric OOB error.
+Finally, the model is refit with the best `mtry` and its proximity matrix is turned into a distance matrix via `1 - proximity`, which feeds classical multidimensional scaling (`cmdscale`; see @sec-scaling). @fig-random-forest-mds shows the resulting MDS plot, which places each patient in two dimensions so that patients the forest treats as similar sit close together. Coloring by true status shows how cleanly the forest separates healthy from unhealthy patients, a visual companion to the numeric OOB error.
 
 ```{r fig-random-forest-mds, fig.cap="Multidimensional scaling of the heart disease patients based on one minus the random forest proximities. Points the forest treats as similar sit close together, and coloring by true status shows how cleanly the forest separates healthy from unhealthy patients."}
 ## Now let's create an MDS-plot to show how the samples are related to each

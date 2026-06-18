@@ -1,4 +1,4 @@
-# Discriminant Analysis
+# Discriminant Analysis {#sec-discriminant-analysis}
 
 ```{r}
 #| include: false
@@ -135,13 +135,13 @@ The remarkable fact is that the sequence of $\beta_l$'s turns out to be the same
 
 > **Key idea:** Once LDA is written as a regression, the $\beta_l$ coefficients behave like ordinary regression coefficients. Anything we can do to generalize regression, we can now do to discriminant analysis.
 
-This is the entire point of the reformulation. The $\beta$ coefficients act like linear regression coefficients, so we can generalize the procedure exactly as we did in nonparametric regression: replace the linear fits with a more flexible class of functions $\eta_l(x)$, such as a [Spline][Spline Regression] or [MARS][Multivariate Adaptive Regression Splines] fit. A more general classifier is then defined by
+This is the entire point of the reformulation. The $\beta$ coefficients act like linear regression coefficients, so we can generalize the procedure exactly as we did in nonparametric regression: replace the linear fits with a more flexible class of functions $\eta_l(x)$, such as a spline (@sec-spline) or MARS (@sec-mars) fit. A more general classifier is then defined by
 
 $$
 \frac{1}{n} \sum_{l=1}^{L} [\sum_{i=1}^n (\theta_l(i) - \eta_l(x_i))^2 + \lambda J(\eta_l)]
 $$
 
-where the $\lambda J(\eta_l)$ term is the regularization penalty carried over from the nonparametric regression method we plug in (for example, the roughness penalty of [smoothing splines][Spline Regression]).
+where the $\lambda J(\eta_l)$ term is the regularization penalty carried over from the nonparametric regression method we plug in (for example, the roughness penalty of smoothing splines from the spline regression chapter (@sec-spline)).
 
 A particularly flexible choice uses additive splines, implemented by an algorithm called "bruto" in the `mda` package in R. Further details are in [@hastie2001a 12.5.1].
 
@@ -267,7 +267,7 @@ $$
 \hat{\mathbf{\Sigma}}_k (\gamma) = \gamma \hat{\mathbf{\Sigma}} + (1 - \gamma) diag (\hat{\mathbf{\Sigma}})
 $$
 
-for $\gamma \in [0,1]$. When $\gamma \neq 1$ the sample covariance is pulled toward its diagonal, which restores invertibility. This has a similar flavor to ridge regression \@ref(ridge-regression), except that it shrinks toward a diagonal matrix rather than toward zero. As usual, $\gamma$ is chosen by cross-validation. This is sometimes called $L_2$-penalized discriminant analysis.
+for $\gamma \in [0,1]$. When $\gamma \neq 1$ the sample covariance is pulled toward its diagonal, which restores invertibility. This has a similar flavor to ridge regression, discussed in the predictor reduction chapter (@sec-predictor-reduction), except that it shrinks toward a diagonal matrix rather than toward zero. As usual, $\gamma$ is chosen by cross-validation. This is sometimes called $L_2$-penalized discriminant analysis.
 
 > **Tip:** If your covariance estimate is singular or nearly so, a small amount of diagonal shrinkage is often all you need to make discriminant analysis usable again, without abandoning it for a different model class.
 
@@ -291,7 +291,7 @@ A nice feature of the $L_2$ penalty is that it tends to shrink correlated parame
 
 ### Other Regularization Penalties
 
-If we want sparsity, we can instead use an $L_1$ (lasso \@ref(lasso-regression)) penalty for the logistic classifier, whose advantage is that a subset of the $\beta$ parameters are shrunk exactly to zero. The objective is to maximize the penalized log-likelihood
+If we want sparsity, we can instead use an $L_1$ (lasso, covered in the predictor reduction chapter, @sec-predictor-reduction) penalty for the logistic classifier, whose advantage is that a subset of the $\beta$ parameters are shrunk exactly to zero. The objective is to maximize the penalized log-likelihood
 
 $$
 \underset{\{\beta_{k0}, \beta_k\}_1^K}{\operatorname{max}} [\sum_{i=1}^n \log Pr (g_i |x_i) - \lambda \sum_{k=1}^K \sum_{j=1}^p | \beta_{kj}|]
@@ -329,7 +329,7 @@ The striking feature of this model is that each data point gets its own mean, so
 
 ### A note on support vector machines
 
-It is worth ending with a method from outside the discriminant-analysis family, because it is one of the strongest competitors in the large-$p$, small-$n$ setting: the support vector classifier \@ref(support-vector-classifiers) works very well here. We can add regularization to the SVM, but when $p \gg n$ the unregularized support vector classifier usually performs about as well as, or better than, the regularized version. Overfitting is less of a worry than you might expect, because the SVM solution depends on relatively few support vectors rather than on all the data.
+It is worth ending with a method from outside the discriminant-analysis family, because it is one of the strongest competitors in the large-$p$, small-$n$ setting: the support vector classifier (@sec-svm) works very well here. We can add regularization to the SVM, but when $p \gg n$ the unregularized support vector classifier usually performs about as well as, or better than, the regularized version. Overfitting is less of a worry than you might expect, because the SVM solution depends on relatively few support vectors rather than on all the data.
 
 > **When to use this:** For a fresh high-dimensional classification problem, it is worth pitting nearest shrunken centroids, penalized logistic regression, and a support vector classifier against each other by cross-validation. Each can win depending on how the classes are shaped.
 

@@ -1,4 +1,4 @@
-# Machine Learning for Time-Series Forecasting
+# Machine Learning for Time-Series Forecasting {#sec-time-series-forecasting}
 
 ```{r}
 #| include: false
@@ -7,7 +7,7 @@ suppressPackageStartupMessages(library(tidyverse))
 
 Most of the methods in this book assume that the rows of a data set are exchangeable: we could shuffle them without losing anything, and a random train/test split is a fair test of generalization. Time series break that assumption. A measurement at noon is not interchangeable with a measurement at midnight, last month's value tells you a great deal about this month's, and the future is, by definition, the part of the data you have not seen yet. Forecasting is the task of using the ordered past to say something useful about the ordered future.
 
-This chapter builds the topic from the ground up. We start with the forecasting setup and the notation, explain why naive cross-validation leaks information across time, and then construct the two ingredients that make modern machine-learning forecasters work: lag features and rolling-window summaries. With those in hand we compare three families of forecasters on a real series: classical statistical baselines (the naive forecast, exponential smoothing, and ARIMA), tree-based machine learning (gradient boosting), and a brief look at deep sequence models. Throughout, the running example forecasts monthly airline passenger counts, and every claim about accuracy is backed by a rolling-origin evaluation rather than a single lucky split.
+This chapter builds the topic from the ground up. We start with the forecasting setup and the notation, explain why naive cross-validation leaks information across time, and then construct the two ingredients that make modern machine-learning forecasters work: lag features and rolling-window summaries. With those in hand we compare three families of forecasters on a real series: classical statistical baselines (the naive forecast, exponential smoothing, and ARIMA), tree-based machine learning (gradient boosting, @sec-gradient-boosting), and a brief look at deep sequence models. Throughout, the running example forecasts monthly airline passenger counts, and every claim about accuracy is backed by a rolling-origin evaluation rather than a single lucky split.
 
 > **Intuition:** A forecaster is a function that maps "everything known up to now" into "a guess about what comes next." The art is choosing what to feed it (features) and how to score it honestly (evaluation that respects time).
 
@@ -356,7 +356,7 @@ knitr::kable(
 
 ## Where Deep Sequence Models Fit
 
-When the data is long, high-dimensional, or shared across thousands of related series (retail demand across stores and products, sensor networks, energy load), deep models become attractive. Recurrent networks (LSTM, GRU) carry a hidden state forward through time, and Transformer-style architectures use self-attention to relate distant time points directly. These models can learn cross-series patterns through global training, which is exactly where the per-series classical methods struggle. The neural-network architectures behind them are developed in the chapters on neural networks and Transformers; the code below is an illustrative Keras sketch of an LSTM forecaster and is not executed here, because it needs the Python/TensorFlow backend.
+When the data is long, high-dimensional, or shared across thousands of related series (retail demand across stores and products, sensor networks, energy load), deep models become attractive. Recurrent networks (LSTM, GRU) carry a hidden state forward through time, and Transformer-style architectures use self-attention to relate distant time points directly. These models can learn cross-series patterns through global training, which is exactly where the per-series classical methods struggle. The neural-network architectures behind them are developed in the chapters on neural networks (@sec-neural-networks) and Transformers (@sec-transformers); the code below is an illustrative Keras sketch of an LSTM forecaster and is not executed here, because it needs the Python/TensorFlow backend.
 
 ```{r time-series-forecasting-lstm-sketch, eval=FALSE}
 # Illustrative only (requires keras + TensorFlow Python backend).
@@ -384,7 +384,7 @@ Forecasting projects fail in predictable ways. The recurring lessons:
 - Mind non-stationarity. Trends and changing variance violate the assumptions of many models. Differencing ($\nabla y_t = y_t - y_{t-1}$), seasonal differencing, and log or Box-Cox transforms are the standard fixes; ARIMA's middle "I" is integrated differencing.
 - Watch the warm-up cost. Large lags shorten your usable training data. A seasonal lag of 12 throws away the first year before any row is complete.
 - Tune the right thing. For boosting, the number of rounds, tree depth, and learning rate interact; tune them with the same rolling-origin scheme you use for evaluation, never with a random split.
-- Prediction intervals matter. A point forecast without uncertainty is half a forecast. ETS and ARIMA give intervals analytically; for machine-learning models use quantile loss or backtest the empirical error distribution.
+- Prediction intervals matter. A point forecast without uncertainty is half a forecast. ETS and ARIMA give intervals analytically; for machine-learning models use quantile loss (see the quantile regression chapter, @sec-quantile-reg) or backtest the empirical error distribution.
 
 > **Warning:** The most damaging bugs in forecasting are silent: a feature that secretly uses the future, a scaler fit on the whole series, or a backtest that forgot to refit. They inflate accuracy on paper and only reveal themselves after deployment. Audit every feature against the question "could this have been computed at the origin?" before trusting any number.
 

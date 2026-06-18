@@ -1,4 +1,4 @@
-# Model Performance
+# Model Performance {#sec-model-performance}
 
 ```{r}
 #| include: false
@@ -19,7 +19,7 @@ Most readers have met Type I errors (a false positive: rejecting a null hypothes
 
 This happens more often than you might expect, because building a model is technically demanding and absorbing. It is easy to pour all your attention into the mechanics, getting the features right, tuning the algorithm, validating carefully, and lose sight of what the model is ultimately for. The result is a model that performs its stated task flawlessly while missing the actual goal.
 
-A business example makes the trap concrete. Suppose a company wants to grow profit and decides to build a model around its marketing campaign. It is natural to model something convenient and well measured, such as whether a customer was contacted, or whether a contacted customer responded. But the real objective was profit, not contact, and not even response. A customer who would have bought anyway adds no profit when you spend money contacting them; a customer who only buys because of the campaign is the one worth targeting. A model optimized for "response" can confidently recommend exactly the wrong people to contact.
+A business example makes the trap concrete. Suppose a company wants to grow profit and decides to build a model around its marketing campaign. It is natural to model something convenient and well measured, such as whether a customer was contacted, or whether a contacted customer responded. But the real objective was profit, not contact, and not even response. A customer who would have bought anyway adds no profit when you spend money contacting them; a customer who only buys because of the campaign is the one worth targeting. A model optimized for "response" can confidently recommend exactly the wrong people to contact. Targeting the customers whose behavior the campaign actually changes is the subject of causal machine learning and uplift modeling (@sec-causal-machine-learning).
 
 Avoiding a Type III error is not a matter of better algorithms. It is a matter of thinking carefully, before any modeling begins, about what the problem really is. That means asking how the data were sampled, what loss function actually reflects the stakes, what the costs of different kinds of mistakes are, and what decision the model is meant to support.
 
@@ -46,7 +46,7 @@ How well we can correct for this depends heavily on the kind of model we are usi
 - For linear models, there is a mature toolkit for handling predictor uncertainty, including errors-in-variables methods and related techniques with well understood properties.
 - For complex models (most modern machine learning methods), comparable general purpose tools largely do not exist. The flexibility that makes these models powerful also makes their behavior under measurement error hard to characterize and correct.
 
-One general strategy that does apply broadly is hierarchical (Bayesian) modeling, which can represent the uncertainty in a predictor explicitly and propagate it through to the predictions. This is principled, but it comes with caveats: the hierarchical structure may not fit the problem at hand, and the computation can be expensive. The good news is that the error is sometimes quantifiable directly. Temperature sensors often come with a known error specification, and survey instruments can be studied for their reliability, which gives you a handle on the measurement uncertainty rather than leaving it as an unknown.
+One general strategy that does apply broadly is hierarchical (Bayesian) modeling (@sec-probabilistic-programming), which can represent the uncertainty in a predictor explicitly and propagate it through to the predictions. This is principled, but it comes with caveats: the hierarchical structure may not fit the problem at hand, and the computation can be expensive. The good news is that the error is sometimes quantifiable directly. Temperature sensors often come with a known error specification, and survey instruments can be studied for their reliability, which gives you a handle on the measurement uncertainty rather than leaving it as an unknown.
 
 > **When to use this:** Reach for explicit measurement error modeling when a key predictor is known to be noisy and that predictor's noise is large compared to the variation you are trying to explain. If the predictor is measured cleanly, the added complexity is rarely worth it.
 
@@ -81,6 +81,8 @@ This is one area where classical, explicitly probabilistic statistical models st
 ## Preferential/Biased Sampling
 
 The final issue is the one that sits earliest in the pipeline, and so can do the most damage: how the data were collected. A model can only generalize to the kind of data it was trained on. If your training data were gathered in a biased way, or collected for some other purpose entirely (this is often called preferential sampling), the patterns the model learns may not hold for the population you actually want to serve.
+
+When sampling bias is suspected, the predictions deserve honest uncertainty estimates rather than point values alone, which is the goal of conformal prediction (@sec-conformal-prediction).
 
 The trouble is that this bias can be either known or unknown. Sometimes you are aware that, say, only the most engaged customers were surveyed, or that environmental sensors were placed precisely where problems were already suspected. Other times the selection happened silently, baked into how the data arrived. In both cases the consequence is the same: the prediction or classification model may perform well on data that look like the training set and then fail badly on the broader population, where the sampling bias no longer holds.
 

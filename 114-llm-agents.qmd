@@ -1,11 +1,11 @@
-# LLM Agents and Tool Use
+# LLM Agents and Tool Use {#sec-llm-agents}
 
 ```{r}
 #| include: false
 suppressPackageStartupMessages(library(tidyverse))
 ```
 
-Most uses of a large language model (LLM) are single-shot: send a prompt, read back text, done. An LLM *agent* is different. It runs in a loop. At each step it looks at the current state, decides what to do next, takes an action that touches the outside world (calls a function, queries a database, runs code), reads the result, and decides again. The model is no longer just a text generator; it is the controller of a small program whose instructions are chosen at runtime by a language model.
+Most uses of a large language model (LLM, see @sec-llms) are single-shot: send a prompt, read back text, done. An LLM *agent* is different. It runs in a loop. At each step it looks at the current state, decides what to do next, takes an action that touches the outside world (calls a function, queries a database, runs code), reads the result, and decides again. The model is no longer just a text generator; it is the controller of a small program whose instructions are chosen at runtime by a language model.
 
 This chapter explains the agent loop (observe, think, act), how tool and function calling works mechanically, the ReAct pattern, planning, memory, multi-agent setups, and the guardrails you need because an agent that can take actions can also take wrong ones. The runnable demonstration is a tiny rule-based agent loop in base R: it parses an instruction, picks among a small set of R "tool" functions, executes one, observes the result, and repeats until the goal is met. The point of the demo is the control flow, not the language model. Real LLM calls are shown as `eval=FALSE` because they need network access and an API key.
 
@@ -54,7 +54,7 @@ The loop runs until the policy emits a final answer or a step budget $T_{\max}$ 
 
 > **Warning:** The step budget $T_{\max}$ is not optional. It is the single most important safety valve in an agent. Every API call costs money and time, and a model that misreads an observation can repeat the same wrong action indefinitely. Always cap the number of steps.
 
-This is the same observe/think/act cycle that reinforcement learning uses, with two differences. First, the policy is a frozen language model prompted with the transcript, not a network trained by gradient descent on this task. Second, the "reward" is usually implicit: the agent stops when it judges the goal met, and you evaluate success after the fact. The structural similarity is worth keeping in mind, because the pitfalls (reward hacking, getting stuck, taking unsafe actions) carry over.
+This is the same observe/think/act cycle that reinforcement learning uses (see the foundations of reinforcement learning chapter, @sec-rl-foundations), with two differences. First, the policy is a frozen language model prompted with the transcript, not a network trained by gradient descent on this task. Second, the "reward" is usually implicit: the agent stops when it judges the goal met, and you evaluate success after the fact. The structural similarity is worth keeping in mind, because the pitfalls (reward hacking, getting stuck, taking unsafe actions) carry over.
 
 ```
                 +-------------------+
@@ -208,7 +208,7 @@ Planning helps when the task has many steps with clear structure and when re-dec
 The model's context window is finite, so a long-running agent cannot keep every observation in the prompt. Memory is how the agent decides what to carry forward.
 
 - Short-term (working) memory is the running transcript inside the context window: recent thoughts, actions, and observations. It is lossy by necessity, so you summarize or truncate old turns.
-- Long-term memory lives outside the context window, usually as embeddings in a vector store. At each step the agent retrieves the most relevant past items by similarity and injects them into the prompt. This is the same retrieval machinery used in RAG, applied to the agent's own history.
+- Long-term memory lives outside the context window, usually as embeddings in a vector store (see the embeddings and vector search chapter, @sec-embeddings-vector-search). At each step the agent retrieves the most relevant past items by similarity and injects them into the prompt. This is the same retrieval machinery used in retrieval-augmented generation (@sec-retrieval-augmented-generation), applied to the agent's own history.
 
 The design question is always *what to remember and what to forget*. Keeping everything blows the context budget and dilutes attention with irrelevant detail; keeping too little makes the agent repeat work or lose the thread. A common compromise: keep a rolling summary of old turns plus verbatim retrieval of a few high-similarity items.
 

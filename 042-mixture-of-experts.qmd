@@ -1,4 +1,4 @@
-# Mixture of Experts and Conditional Computation
+# Mixture of Experts and Conditional Computation {#sec-mixture-of-experts}
 
 ```{r}
 #| include: false
@@ -13,7 +13,7 @@ This chapter builds the idea from the ground up. We start with the intuition and
 
 > **Key idea:** A mixture of experts is an ensemble whose combination weights depend on the input. The gate decides *who answers*, and that decision changes from one input to the next.
 
-The idea goes back to @jacobs1991 and @jordan1994, who framed it as a probabilistic model fit with an EM-like procedure. The same idea now powers some of the largest neural networks in production, where it appears as the *sparse* mixture of experts layer inside transformers [@shazeer2017; @fedus2022]. The modern motivation is *conditional computation*, the practice of activating only part of a model for each input: a model can hold a very large number of parameters but only switch on a small fraction of them per input, so the compute cost per token stays roughly fixed while capacity grows.
+The idea goes back to @jacobs1991 and @jordan1994, who framed it as a probabilistic model fit with an EM-like procedure. The same idea now powers some of the largest neural networks in production, where it appears as the *sparse* mixture of experts layer inside transformers (@sec-transformers) [@shazeer2017; @fedus2022]. The modern motivation is *conditional computation*, the practice of activating only part of a model for each input: a model can hold a very large number of parameters but only switch on a small fraction of them per input, so the compute cost per token stays roughly fixed while capacity grows.
 
 ## Where this fits in a modern ML/AI workflow
 
@@ -23,9 +23,9 @@ For a data scientist or ML engineer, MoE shows up in three practical situations.
 
 2.  Scaling model capacity under a compute budget. In large language models, a dense feed-forward block is replaced by many parallel expert blocks plus a router that sends each token to only the top-$k$ experts (often $k = 1$ or $k = 2$). The model can have hundreds of billions of parameters while activating only a few billion per token. This is the dominant reason MoE is discussed in 2020s AI engineering.
 
-3.  Ensembling with specialization. Unlike bagging or stacking where every base model sees every input, MoE weights are input-dependent. The combination is local, not global, which is closer to a learned partition of the feature space than to a uniform average.
+3.  Ensembling with specialization. Unlike bagging (@sec-bagging) or stacking where every base model sees every input, MoE weights are input-dependent. The combination is local, not global, which is closer to a learned partition of the feature space than to a uniform average.
 
-The core distinction from a standard ensemble is that the mixture weights depend on $x$. A stacked ensemble (see \@ref(model-stacking)) learns fixed blend weights; a mixture of experts learns weights $g_k(x)$ that change with the input.
+The core distinction from a standard ensemble is that the mixture weights depend on $x$. A stacked ensemble (see the model stacking chapter, @sec-model-stacking) learns fixed blend weights; a mixture of experts learns weights $g_k(x)$ that change with the input.
 
 > **Intuition:** Stacking asks "what is the best fixed recipe for blending these models everywhere?" A mixture of experts asks "given *this* input, who should I trust right now?" The second question is harder, but it is the right one when no single model is good across the whole input space.
 
@@ -353,7 +353,7 @@ Here the load is close to a 50/50 split, which is what we want. In a real sparse
 
 ## A note on the deep learning version
 
-In a transformer, the experts are feed-forward sub-networks and the gate is a small linear layer applied per token. The code below is the idiomatic Keras shape of a single sparse MoE feed-forward layer. It is kept `eval=FALSE` because it needs a configured deep learning backend (Keras and its TensorFlow backend), but it is correct, runnable code.
+In a transformer (@sec-transformers), the experts are feed-forward sub-networks and the gate is a small linear layer applied per token. The code below is the idiomatic Keras shape of a single sparse MoE feed-forward layer. It is kept `eval=FALSE` because it needs a configured deep learning backend (Keras and its TensorFlow backend), but it is correct, runnable code.
 
 > **Tip:** Even in the deep learning version, the two moving parts are the same ones we derived classically: a gate that scores experts and a weighted combination of expert outputs. The novelty is engineering (sparsity, capacity, distributing experts across devices), not a new statistical idea.
 
@@ -400,7 +400,7 @@ When MoE helps.
 
 When to prefer something else.
 
--   If the relationship is globally smooth, a GAM (see \@ref(generalized-additive-models)) or a gradient-boosted tree (see \@ref(boosting)) is simpler and usually stronger.
+-   If the relationship is globally smooth, a GAM (see the generalized additive models chapter, @sec-gam) or a gradient-boosted tree (see the boosting chapter, @sec-boosting) is simpler and usually stronger.
 -   With little data, the latent assignment is unstable and the gate overfits; a single regularized model is safer.
 
 Pitfalls.

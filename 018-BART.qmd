@@ -1,17 +1,17 @@
-# Bayesian Additive Regression Trees
+# Bayesian Additive Regression Trees {#sec-bart}
 
 ```{r}
 #| include: false
 suppressPackageStartupMessages(library(tidyverse))
 ```
 
-Imagine you want to predict the price of a house from its features (number of rooms, neighborhood income, distance to work, and so on). A single regression tree is easy to read but usually too crude. A forest of many trees predicts well but gives you a single point estimate with no honest sense of how uncertain that estimate is. Bayesian Additive Regression Trees, or BART [@sparapani2021], try to give you the best of both: the flexibility of a sum of many small trees, plus a full probability distribution over the prediction so you can attach uncertainty to every number you report.
+Imagine you want to predict the price of a house from its features (number of rooms, neighborhood income, distance to work, and so on). A single regression tree (@sec-regression-trees) is easy to read but usually too crude. A forest of many trees (@sec-random-forest) predicts well but gives you a single point estimate with no honest sense of how uncertain that estimate is. Bayesian Additive Regression Trees, or BART [@sparapani2021], try to give you the best of both: the flexibility of a sum of many small trees, plus a full probability distribution over the prediction so you can attach uncertainty to every number you report.
 
 This chapter introduces BART from intuition first, then states the algorithm precisely, and finally walks through worked examples in R using the `BART` package. By the end you should understand why BART is often called a "good out-of-the-box" method, how its three main settings (number of trees, number of iterations, and burn-in) work, and how to read its output, including convergence checks, variable importance, and partial dependence plots.
 
 > **When to use this:** BART is a strong default when you want flexible, nonlinear regression or classification with little tuning, and you also want uncertainty intervals around predictions. It pairs naturally with the tree-based and ensemble ideas you have already seen.
 
-BART sits in the same family as the methods in [Bagging], [Random Forests], and [Boosting], and it borrows one key idea from each. As in bagging and random forests, every tree is built using randomness rather than a single deterministic greedy search. As in boosting, every tree tries to capture the part of the signal that the rest of the model has not yet explained.^[The difference is that boosting fits each new tree to the residuals once, in a forward, greedy pass, while BART repeatedly *revisits and revises* every tree using a Markov chain Monte Carlo sampler. This revisiting is what produces a posterior distribution instead of a single fitted model.]
+BART sits in the same family as the methods in the chapters on bagging (@sec-bagging), random forests (@sec-random-forest), and boosting (@sec-boosting), and it borrows one key idea from each. As in bagging and random forests, every tree is built using randomness rather than a single deterministic greedy search. As in boosting, every tree tries to capture the part of the signal that the rest of the model has not yet explained.^[The difference is that boosting fits each new tree to the residuals once, in a forward, greedy pass, while BART repeatedly *revisits and revises* every tree using a Markov chain Monte Carlo sampler. This revisiting is what produces a posterior distribution instead of a single fitted model.]
 
 ## The model: a sum of trees
 
@@ -292,7 +292,7 @@ lines(x, apply(partial, 2, quantile, probs = 0.975), lty = 2)
 
 The curve slopes clearly downward: as the lower-status percentage increases, predicted median home value falls, and the decline is steeper at low values of `lstat` than at high ones (a nonlinear effect a linear model would miss). The dashed band reminds us that this estimated effect is itself uncertain, which is precisely the kind of honest summary BART was built to provide.
 
-> **Tip:** Partial dependence plots are model-agnostic. You met the same idea in the chapter on [Interpretable Machine Learning], and you can apply it to random forests, boosting, or BART alike. What is special here is that BART hands you a credible band for free, straight from its posterior draws.
+> **Tip:** Partial dependence plots are model-agnostic. You met the same idea in the chapter on interpretable machine learning (@sec-interpretable-machine-learning), and you can apply it to random forests, boosting, or BART alike. What is special here is that BART hands you a credible band for free, straight from its posterior draws.
 
 ## Summary
 

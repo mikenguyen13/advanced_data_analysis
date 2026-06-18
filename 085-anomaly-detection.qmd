@@ -1,4 +1,4 @@
-# Anomaly and Outlier Detection
+# Anomaly and Outlier Detection {#sec-anomaly-detection}
 
 ```{r}
 #| include: false
@@ -11,7 +11,7 @@ The same shape of problem appears far beyond fraud. A sensor on a turbine report
 
 > **Intuition:** Most supervised learning asks "which of these known categories does this point belong to?" Anomaly detection asks a stranger question: "does this point belong to the normal world *at all*?" We model what normal looks like and then measure how surprised we are by each new observation. Surprise is the score.
 
-This framing has a precise consequence. Because anomalies are rare and varied, we usually cannot learn a clean decision boundary between "normal" and "anomalous" the way a classifier learns boundaries between cats and dogs. Instead we learn the structure of the majority (normal) data, by its density, its geometry, or how easy it is to isolate, and we declare a point anomalous when it sits far from that structure. This connects anomaly detection tightly to two other topics in this book. Estimating where the normal data is dense and where it is sparse is exactly the problem of [Density Estimation], and evaluating a detector when positives are a tiny fraction of the data is exactly the problem studied in [Class Imbalance].
+This framing has a precise consequence. Because anomalies are rare and varied, we usually cannot learn a clean decision boundary between "normal" and "anomalous" the way a classifier learns boundaries between cats and dogs. Instead we learn the structure of the majority (normal) data, by its density, its geometry, or how easy it is to isolate, and we declare a point anomalous when it sits far from that structure. This connects anomaly detection tightly to two other topics in this book. Estimating where the normal data is dense and where it is sparse is exactly the problem of density estimation (@sec-density-estimation), and evaluating a detector when positives are a tiny fraction of the data is exactly the problem studied in the class imbalance chapter (@sec-class-imbalance).
 
 By the end of this chapter you will know the three kinds of anomaly (point, contextual, and collective), the classical statistical tests for the simplest cases, the distance and density methods that dominate practice (k-distance and the Local Outlier Factor), the isolation forest and one-class SVM, and how a deep autoencoder turns reconstruction error into an anomaly score. You will run a base-R demonstration that scores simulated data with injected anomalies and evaluates the scores under heavy imbalance using a precision-recall curve. The chapter closes with practical guidance and the pitfalls that trip up newcomers.
 
@@ -61,11 +61,11 @@ knitr::kable(
 
 We observe $n$ points $x_1, \dots, x_n$ with each $x_i \in \mathbb{R}^p$, where $p$ is the number of features. We assume most of these points are *normal*, drawn from some unknown distribution with density $f$, and that a small unknown fraction are *anomalies* drawn from somewhere else. We rarely know which is which.
 
-Nearly every method in this chapter produces an anomaly score $s(x) \in \mathbb{R}$, with the convention that larger means more anomalous. A detector is then just a threshold $\tau$: flag $x$ as anomalous when $s(x) > \tau$. Separating the *score* from the *threshold* is the single most useful habit in this field, because the score is a property of the model while the threshold is a downstream decision that trades false alarms against missed detections, exactly the cutoff trade-off discussed in [Class Imbalance].
+Nearly every method in this chapter produces an anomaly score $s(x) \in \mathbb{R}$, with the convention that larger means more anomalous. A detector is then just a threshold $\tau$: flag $x$ as anomalous when $s(x) > \tau$. Separating the *score* from the *threshold* is the single most useful habit in this field, because the score is a property of the model while the threshold is a downstream decision that trades false alarms against missed detections, exactly the cutoff trade-off discussed in the class imbalance chapter (@sec-class-imbalance).
 
 > **Note:** Throughout, "outlier" and "anomaly" are used interchangeably. Some authors reserve "outlier" for a data-quality nuisance to be removed and "anomaly" for a signal of interest, but the detection machinery is identical; only your intent afterward differs.
 
-The ideal score is the negative log density, $s(x) = -\log f(x)$, since a point in a low-density region is by definition rare and therefore surprising. Every practical method below is, at heart, an attempt to approximate this surprise without having to estimate the full density $f$, which is hard in high dimensions (see [Density Estimation]).
+The ideal score is the negative log density, $s(x) = -\log f(x)$, since a point in a low-density region is by definition rare and therefore surprising. Every practical method below is, at heart, an attempt to approximate this surprise without having to estimate the full density $f$, which is hard in high dimensions (see @sec-density-estimation).
 
 ## Statistical tests for the simplest case {#anomaly-detection-stat}
 
@@ -105,7 +105,7 @@ $$
 s_{\text{kNN}}(x) = \frac{1}{k} \sum_{j=1}^{k} d_{(j)}(x),
 $$
 
-where $d_{(j)}(x)$ is the distance to the $j$-th nearest neighbor. A point sitting alone in empty space has large neighbor distances and scores high; a point inside a dense cluster has tiny neighbor distances and scores low. This is essentially a kNN density estimate in disguise: where neighbors are far, density is low, and the connection to [Density Estimation] is exact.
+where $d_{(j)}(x)$ is the distance to the $j$-th nearest neighbor. A point sitting alone in empty space has large neighbor distances and scores high; a point inside a dense cluster has tiny neighbor distances and scores low. This is essentially a kNN density estimate in disguise: where neighbors are far, density is low, and the connection to density estimation (@sec-density-estimation) is exact.
 
 The weakness is that a single global notion of "far" fails when the data has clusters of genuinely different densities. A point that is loosely attached to a sparse cluster may have larger neighbor distances than a point that is a true outlier near a dense cluster, and the global kNN score would rank them backwards.
 
@@ -167,7 +167,7 @@ This maps path length onto $(0, 1)$ with a useful reading: $s \to 1$ means very 
 
 ## One-class SVM {#anomaly-detection-ocsvm}
 
-The one-class support vector machine (Schölkopf and others, 2001) adapts the support vector machinery of the [Support Vector Machines] chapter to the unlabeled setting. With only "normal" data and no negatives, it learns a boundary that encloses most of the training points and treats everything outside as anomalous.
+The one-class support vector machine (Schölkopf and others, 2001) adapts the support vector machinery of the support vector machines chapter (@sec-svm) to the unlabeled setting. With only "normal" data and no negatives, it learns a boundary that encloses most of the training points and treats everything outside as anomalous.
 
 In the standard formulation we map inputs into a feature space with a kernel and find a hyperplane that separates the data from the origin with maximum margin, while allowing a controlled fraction of points to fall on the wrong side. The optimization is
 
@@ -185,7 +185,7 @@ The parameter $\nu$ has a beautiful dual meaning that makes it easy to set: it i
 
 ## Autoencoder reconstruction error {#anomaly-detection-autoencoder}
 
-For high-dimensional data with rich nonlinear structure (images, sequences, sensor arrays), the most flexible scorer is a neural network trained to reconstruct its input. As developed in the [Autoencoders and Representation Learning] chapter, an autoencoder compresses an input $x$ to a low-dimensional code and rebuilds it as $\hat{x}$. Trained on mostly normal data, it learns to reconstruct *normal* patterns well, because those dominate the training signal. An anomaly, being unlike anything the network saw, reconstructs poorly. The reconstruction error becomes the anomaly score:
+For high-dimensional data with rich nonlinear structure (images, sequences, sensor arrays), the most flexible scorer is a neural network trained to reconstruct its input. As developed in the autoencoders and representation learning chapter (@sec-autoencoders), an autoencoder compresses an input $x$ to a low-dimensional code and rebuilds it as $\hat{x}$. Trained on mostly normal data, it learns to reconstruct *normal* patterns well, because those dominate the training signal. An anomaly, being unlike anything the network saw, reconstructs poorly. The reconstruction error becomes the anomaly score:
 
 $$
 s(x) = \lVert x - \hat{x} \rVert^2 = \sum_{j=1}^p \bigl(x_j - \hat{x}_j\bigr)^2 .
@@ -219,7 +219,7 @@ anomaly_score <- rowSums((x_new - recon)^2)
 
 ## Evaluating detectors under heavy imbalance {#anomaly-detection-eval}
 
-Suppose your detector flags 1% of transactions and 99% are genuinely normal. A detector that flags *nothing* is 99% accurate, and useless. This is the imbalance trap from [Class Imbalance], and it forces us to evaluate with metrics that ignore the easy majority and focus on the rare positives.
+Suppose your detector flags 1% of transactions and 99% are genuinely normal. A detector that flags *nothing* is 99% accurate, and useless. This is the imbalance trap from the class imbalance chapter (@sec-class-imbalance), and it forces us to evaluate with metrics that ignore the easy majority and focus on the rare positives.
 
 The two summary curves are the ROC curve and the precision-recall curve. The ROC curve plots the true positive rate against the false positive rate as the threshold $\tau$ sweeps; the area under it (AUC) is the probability that a random anomaly outscores a random normal point. ROC is threshold-free and intuitive, but under extreme imbalance it is overly optimistic, because the false positive rate has the huge normal count in its denominator and stays small even when the absolute number of false alarms is large.
 
@@ -437,13 +437,13 @@ The methods above are easy to run and easy to misuse. A few principles separate 
 
 Scale your features. Distance and density methods (kNN, LOF, one-class SVM) compute distances, and a feature measured in dollars will dominate a feature measured in counts purely because of its numeric range. Standardize or robustly scale before scoring. Isolation forests are far less sensitive to scale, since they split per feature, which is one of their quiet advantages.
 
-Mind the dimensionality. As $p$ grows, all pairwise distances concentrate toward the same value and "nearest neighbor" becomes nearly meaningless, which guts LOF and kNN scores. In high dimensions, prefer isolation forests or autoencoders, or reduce dimension first (see [Dimension Reduction]). A related trap is irrelevant features: a handful of noise dimensions can drown the signal in any distance-based method.
+Mind the dimensionality. As $p$ grows, all pairwise distances concentrate toward the same value and "nearest neighbor" becomes nearly meaningless, which guts LOF and kNN scores. In high dimensions, prefer isolation forests or autoencoders, or reduce dimension first (see @sec-dimension-reduction). A related trap is irrelevant features: a handful of noise dimensions can drown the signal in any distance-based method.
 
 Do not tune on the test set. It is tempting, with so few labeled anomalies, to peek at them when choosing $k$, $\nu$, or the threshold. This inflates every metric and the gain evaporates in production. Hold out a labeled validation set if you have any labels at all, and choose the operating threshold there.
 
 Watch for contamination during training. One-class SVMs and autoencoders assume the training data is mostly normal. If anomalies are mixed in, the model learns to treat them as normal and stops flagging them. When you can, train on data verified to be clean, or use a method like the isolation forest that tolerates contamination by design.
 
-Calibrate the threshold to a budget, not to 0.5. The default cutoff of a classifier is irrelevant here. Decide how many alerts a human can review per day, or what recall the application demands, and set $\tau$ to meet that, exactly the cutoff reasoning from [Class Imbalance].
+Calibrate the threshold to a budget, not to 0.5. The default cutoff of a classifier is irrelevant here. Decide how many alerts a human can review per day, or what recall the application demands, and set $\tau$ to meet that, exactly the cutoff reasoning from the class imbalance chapter (@sec-class-imbalance).
 
 > **Warning:** A detector with high average precision can still be operationally useless if its alerts arrive faster than anyone can triage them. The "alert fatigue" failure mode, where investigators stop trusting a noisy detector, is a product problem that good scores alone do not solve. Always pair a score with a realistic alert budget.
 

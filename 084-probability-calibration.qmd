@@ -1,4 +1,4 @@
-# Probability Calibration
+# Probability Calibration {#sec-probability-calibration}
 
 ```{r}
 #| include: false
@@ -29,7 +29,7 @@ In words: condition on the model having announced the value $q$; among all such 
 
 It is useful to name two ways a probability can be wrong:
 
-- Discrimination is the ability to assign higher scores to positives than to negatives. The ROC curve and its area (AUC) measure this, and they are invariant to any monotone transformation of the scores. You can squash, stretch, or relabel the scores however you like, as long as the order is preserved, and AUC does not change.
+- Discrimination is the ability to assign higher scores to positives than to negatives. The ROC curve and its area (AUC), discussed alongside other evaluation metrics in @sec-model-performance, measure this, and they are invariant to any monotone transformation of the scores. You can squash, stretch, or relabel the scores however you like, as long as the order is preserved, and AUC does not change.
 - Calibration is the agreement between predicted probability and observed frequency. It is destroyed by exactly those monotone transformations that AUC ignores.
 
 That contrast is the whole reason recalibration is possible and safe: a strictly monotone map can repair calibration without touching the ranking, so you can fix the probabilities without sacrificing the model's ability to discriminate.^[This is why the recalibration methods below are all monotone functions of the original score. Platt scaling is a logistic curve, isotonic regression is a non-decreasing step function, and temperature scaling is a monotone reshaping of the logits. None of them reorders cases, so AUC is preserved up to ties.]
@@ -40,9 +40,9 @@ Miscalibration is the rule, not the exception, and the causes differ by model fa
 
 Models trained with a penalty, regularized logistic regression, ridge, lasso, and most neural networks with weight decay, are pulled toward simpler functions. Regularization shrinks coefficients toward zero, which pushes predicted probabilities toward the base rate. The result is *under-confidence*: probabilities that hug the middle of the $[0,1]$ interval and rarely commit to the extremes.
 
-Margin-based learners do the opposite. A support vector machine optimizes a hinge loss that cares only about the decision margin, not about probabilities, so its raw output is not a probability at all. Naive Bayes multiplies many feature likelihoods under a false independence assumption, and the redundant evidence compounds into probabilities pinned near 0 or 1. Boosted trees, trained to minimize an exponential or logistic loss stage by stage, likewise tend to push scores toward the extremes. These produce *over-confidence*: a characteristic sigmoid distortion where the model says 0.99 when the truth is 0.85.
+Margin-based learners do the opposite. A support vector machine (@sec-svm) optimizes a hinge loss that cares only about the decision margin, not about probabilities, so its raw output is not a probability at all. Naive Bayes (@sec-naive-bayes) multiplies many feature likelihoods under a false independence assumption, and the redundant evidence compounds into probabilities pinned near 0 or 1. Boosted trees (@sec-boosting), trained to minimize an exponential or logistic loss stage by stage, likewise tend to push scores toward the extremes. These produce *over-confidence*: a characteristic sigmoid distortion where the model says 0.99 when the truth is 0.85.
 
-Modern deep networks deserve a special mention. Guo and colleagues (2017) documented that large, accurate image classifiers are badly over-confident, and that the problem got *worse* as networks grew deeper and wider even as their accuracy improved. Capacity, batch normalization, and training far past the point of zero training error all conspire to inflate confidence.
+Modern deep networks (@sec-neural-networks) deserve a special mention. Guo and colleagues (2017) documented that large, accurate image classifiers are badly over-confident, and that the problem got *worse* as networks grew deeper and wider even as their accuracy improved. Capacity, batch normalization, and training far past the point of zero training error all conspire to inflate confidence.
 
 > **Intuition:** Think of the loss the model optimized. Almost no model is trained to make $\Pr(Y=1 \mid \hat p = q) = q$ hold; it is trained to minimize a surrogate loss subject to a regularizer and an architecture. Calibration is a side effect of that objective, and side effects are not guaranteed to be benign.
 

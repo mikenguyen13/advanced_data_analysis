@@ -1,4 +1,4 @@
-# Data Storage
+# Data Storage {#sec-data-storage}
 
 ```{r}
 #| include: false
@@ -28,7 +28,7 @@ This chapter introduces the two broad families of databases you will meet in pra
 
 A structured database, often called a relational database, stores data in tables that look much like a spreadsheet. Every row is one record, and every record has exactly the same columns (the attributes). If your "customers" table has columns for name, address, and phone number, then every customer row carries those three fields, no more and no less. This rigid, predictable shape is enforced by a schema, a fixed definition of what columns exist and what type of value each one holds.^[The word "schema" just means the blueprint of the table: the column names and the data type of each column, fixed in advance. Adding a new column later usually means changing the schema for the whole table.]
 
-That rigidity is a strength. Because the structure is known ahead of time, the database can check that incoming data is well formed, it can guarantee that relationships between tables stay consistent, and it gives you a powerful, standardized query language, SQL, to ask questions of the data. Relational databases are also the easiest family to learn, which is why they are the default in most introductory courses and most business applications. Popular examples include MySQL and PostgreSQL.
+That rigidity is a strength. Because the structure is known ahead of time, the database can check that incoming data is well formed, it can guarantee that relationships between tables stay consistent, and it gives you a powerful, standardized query language, SQL, to ask questions of the data (the databases and SQL chapter, @sec-databases-sql-r, shows how to drive these systems from R). Relational databases are also the easiest family to learn, which is why they are the default in most introductory courses and most business applications. Popular examples include MySQL and PostgreSQL.
 
 The same rigidity is also the main limitation. Forcing every record into identical columns is awkward when records genuinely differ from one another, and the bookkeeping that keeps everything consistent tends to make these systems slower and harder to scale when the data gets very large.
 
@@ -38,13 +38,13 @@ The same rigidity is also the main limitation. Forcing every record into identic
 
 An unstructured database (the term used loosely here for the broader NoSQL family) relaxes the rule that every record must share the same columns. Two records stored side by side can carry different fields entirely: one customer document might record a loyalty number while another omits it and instead lists three phone numbers. Nothing has to be declared in advance.
 
-This flexibility buys two things. First, it is more efficient when records are sparse or irregular, because you do not waste space storing empty columns for fields a record does not use. Second, these systems are built to scale out across many machines, which lets them handle genuinely large data and a wide range of data types, including audio and video, not just numbers and text. They also tend to have lower latency, meaning faster responses, for the kinds of read and write patterns they are designed around.
+This flexibility buys two things. First, it is more efficient when records are sparse or irregular, because you do not waste space storing empty columns for fields a record does not use. Second, these systems are built to scale out across many machines, which lets them handle genuinely large data and a wide range of data types, including audio and video, not just numbers and text (the data formats and serialization chapter, @sec-data-formats, covers how such records are encoded on disk). They also tend to have lower latency, meaning faster responses, for the kinds of read and write patterns they are designed around.
 
 The cost is a steeper learning curve and less of the automatic consistency checking that relational databases give you for free. Because there is no fixed schema, the discipline of keeping data clean shifts from the database onto you and your application code.
 
 > **Intuition:** A structured database is like a paper form where every box is labeled and must be filled in. An unstructured database is like a stack of index cards where each card can say whatever it needs to. Forms are easy to total up; index cards are easy to adapt.
 
-> **When to use this:** Reach for an unstructured database when records vary a lot from one another, when the data is very large or includes rich media, or when you expect the structure to keep evolving. Document stores like MongoDB and graph databases like Neo4j are common choices.
+> **When to use this:** Reach for an unstructured database when records vary a lot from one another, when the data is very large or includes rich media, or when you expect the structure to keep evolving. Document stores like MongoDB and graph databases like Neo4j are common choices; the latter are a natural backing store when the data itself is a network, as in the graph neural networks chapter (@sec-graph-neural-networks).
 
 With that contrast in hand, the rest of the chapter looks at one unstructured database in detail so the abstract trade-offs become concrete.
 

@@ -1,4 +1,4 @@
-# Ensemble Learning
+# Ensemble Learning {#sec-ensemble-learning}
 
 ```{r}
 #| include: false
@@ -11,7 +11,7 @@ The appeal is practical. In applied work the gap between a good single model and
 
 > **Intuition:** Combining models helps for the same reason that averaging repeated noisy measurements helps. If each measurement is unbiased but noisy, the average is still unbiased but less noisy. The catch, and the entire art of ensembles, is that model errors are usually correlated, so they do not cancel as cleanly as independent measurements would. Most of the engineering goes into making the members disagree in useful ways.
 
-This book already covers the three workhorse ensemble families in their own chapters: bagging (Chapter \@ref(bagging)), which builds many models on bootstrap resamples and averages them; boosting (Chapter \@ref(boosting)), which builds models in sequence so each one corrects its predecessor; and stacking (Chapter \@ref(model-stacking)), which trains a meta-model to learn how to weight a set of base learners. Random forests (Chapter \@ref(random-forests)) are a specialized, decorrelated form of bagging. This chapter steps back from any single recipe and gives the unifying view: why combining works at all, what "diversity" means mathematically, and how the simplest combiners (voting and averaging) already capture most of the intuition. Read it as the conceptual glue that ties those other chapters together.
+This book already covers the three workhorse ensemble families in their own chapters: bagging (@sec-bagging), which builds many models on bootstrap resamples and averages them; boosting (@sec-boosting), which builds models in sequence so each one corrects its predecessor; and stacking (@sec-model-stacking), which trains a meta-model to learn how to weight a set of base learners. Random forests (@sec-random-forest) are a specialized, decorrelated form of bagging. This chapter steps back from any single recipe and gives the unifying view: why combining works at all, what "diversity" means mathematically, and how the simplest combiners (voting and averaging) already capture most of the intuition. Read it as the conceptual glue that ties those other chapters together.
 
 By the end you will be able to state the bias-variance and decorrelation arguments precisely, derive the Condorcet jury result that explains majority voting, and run a small simulation in base R that combines several genuinely different base learners and watches the ensemble beat every one of its members.
 
@@ -52,7 +52,7 @@ P(\text{majority correct}) = \sum_{k = \lfloor M/2 \rfloor + 1}^{M} \binom{M}{k}
 $$
 The theorem says that if each voter is better than a coin flip ($p > 1/2$), then this probability increases with $M$ and tends to $1$ as $M \to \infty$. If each voter is worse than a coin flip ($p < 1/2$), the majority is worse than any individual and tends to $0$. The boundary case $p = 1/2$ leaves the majority at a coin flip.
 
-> **Intuition:** A committee of mediocre-but-better-than-chance jurors who think independently will, by majority vote, approach certainty as the committee grows. The same arithmetic that makes a jury reliable makes a voting ensemble of weak classifiers strong. This is exactly the promise that boosting cashes in, turning many "weak learners" into one strong one (Chapter \@ref(boosting)).
+> **Intuition:** A committee of mediocre-but-better-than-chance jurors who think independently will, by majority vote, approach certainty as the committee grows. The same arithmetic that makes a jury reliable makes a voting ensemble of weak classifiers strong. This is exactly the promise that boosting cashes in, turning many "weak learners" into one strong one (@sec-boosting).
 
 The two pillars, the variance formula for regression and the Condorcet theorem for classification, share one assumption that does all the work: independence, or at least low correlation, between members. Real models are never independent, because they learn from the same data and often the same signal. Everything practical about ensembles is a negotiation with that fact.
 
@@ -78,7 +78,7 @@ $$
 $$
 The weights might come from validation accuracy, or from solving a small constrained least-squares problem on held-out predictions. Be careful: weights fit on the same data the members were trained on will overfit, which is precisely the trap stacking is designed to avoid.
 
-Stacking (blending) replaces the fixed combiner with a learned one. A meta-learner is trained on the members' *out-of-fold* predictions to discover the best way to combine them, which can include down-weighting redundant members to zero. Stacking is the most powerful combiner and the most prone to overfitting if the out-of-sample discipline is not maintained. It gets its own treatment in Chapter \@ref(model-stacking).
+Stacking (blending) replaces the fixed combiner with a learned one. A meta-learner is trained on the members' *out-of-fold* predictions to discover the best way to combine them, which can include down-weighting redundant members to zero. Stacking is the most powerful combiner and the most prone to overfitting if the out-of-sample discipline is not maintained. It gets its own treatment in @sec-model-stacking.
 
 The three big families differ mainly in how they generate diversity, not in how they combine. @tbl-ensemble-learning-families lays out the comparison.
 
@@ -139,7 +139,7 @@ test  <- make_data(2000)
 table(train$y)
 ```
 
-Now we fit four members of different families: logistic regression (a linear boundary), a classification tree (axis-aligned splits), k-nearest neighbors (local, nonparametric), and naive Bayes (a probabilistic generative model). Each returns a probability that an observation belongs to class `"A"`, which is what soft voting averages.
+Now we fit four members of different families: logistic regression (a linear boundary), a classification tree (@sec-regression-trees, axis-aligned splits), k-nearest neighbors (@sec-knn, local, nonparametric), and naive Bayes (@sec-naive-bayes, a probabilistic generative model). Each returns a probability that an observation belongs to class `"A"`, which is what soft voting averages.
 
 ```{r ensemble-learning-members}
 # Member 1: logistic regression. P(y = A).
@@ -263,7 +263,7 @@ The theory tells you exactly when to expect a gain and when not to.
 
 > **When to use this:** Reach for an ensemble when (1) you have several models that are each better than chance, (2) they make *different* mistakes (low correlation), and (3) a small, stable accuracy gain is worth extra compute and reduced interpretability. If any of these fails, the ensemble may not help.
 
-The strongest practical lever is diversity. You manufacture it by varying the data (bagging, random subspaces), varying the algorithm (mixing model families, as in the demo above), or varying the sequence (boosting). Combining ten tuned gradient-boosted models that were all trained the same way gives far less than combining a boosted model, a random forest, a regularized linear model, and a neural net, because the latter set disagrees more.
+The strongest practical lever is diversity. You manufacture it by varying the data (bagging, random subspaces), varying the algorithm (mixing model families, as in the demo above), or varying the sequence (boosting). Combining ten tuned gradient-boosted models that were all trained the same way gives far less than combining a boosted model, a random forest, a regularized linear model, and a neural net, because the latter set disagrees more. (See @sec-gradient-boosting for gradient boosting, @sec-random-forest for random forests, and @sec-neural-networks for neural nets.)
 
 A few pitfalls recur often enough to call out.
 
@@ -273,7 +273,7 @@ A few pitfalls recur often enough to call out.
 
 > **Warning:** Fitting combination weights (or a stacking meta-learner) on the same data used to train the members leaks information and overfits. Always weight or stack on held-out or out-of-fold predictions. This is the single most common ensemble mistake.
 
-Two further considerations are operational rather than statistical. Ensembles cost more at training and inference time, since you must run every member, which can matter for latency-sensitive deployment. And they are harder to explain: a stakeholder can follow one decision tree but not a weighted blend of four models, so plan for interpretability tooling (Chapter \@ref(interpretable-machine-learning)) if explanations are required. None of these is a reason to avoid ensembles, but each is a reason to be deliberate.
+Two further considerations are operational rather than statistical. Ensembles cost more at training and inference time, since you must run every member, which can matter for latency-sensitive deployment. And they are harder to explain: a stakeholder can follow one decision tree but not a weighted blend of four models, so plan for interpretability tooling (@sec-interpretable-machine-learning) if explanations are required. None of these is a reason to avoid ensembles, but each is a reason to be deliberate.
 
 A useful closing perspective: the deepest theoretical reason no single algorithm is always best is the "no free lunch" result (Wolpert and Macready, 1997). Averaged over all possible problems, every learner is equally good. Ensembles are a hedge against not knowing which inductive bias your problem rewards. By blending several biases you avoid betting the whole result on one guess about the structure of the world, which is why a well-built ensemble is so often the safe and the strong choice at once.
 

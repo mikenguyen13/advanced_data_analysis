@@ -1,4 +1,4 @@
-# Feature Engineering
+# Feature Engineering {#sec-feature-engineering}
 
 ```{r}
 #| include: false
@@ -91,7 +91,7 @@ An interaction is a product of features, $z = x_j \, x_k$, that lets the effect 
 
 Binning (discretization) replaces a continuous variable with the bin it falls into, turning it into a categorical feature. This lets a linear model fit a step function and so capture nonlinearity, and it can tame outliers by capping them into the end bins. The cost is a loss of resolution within each bin and a dependence on where the cut points fall.
 
-> **Intuition:** Interactions and binning both add flexibility that the model could not otherwise represent. Interactions add it across variables; binning adds it within a variable. Splines (covered earlier in the book) are usually a smoother alternative to binning.
+> **Intuition:** Interactions and binning both add flexibility that the model could not otherwise represent. Interactions add it across variables; binning adds it within a variable. Splines (covered in the spline regression chapter, @sec-spline) are usually a smoother alternative to binning.
 
 ## Date, time, and text features
 
@@ -103,7 +103,7 @@ $$
 
 for hour $h \in \{0, \dots, 23\}$. This pair places the 24 hours evenly on a circle, so the model sees that late night and early morning are close.
 
-Free text is commonly reduced to a bag of words: counts (or presence) of each token, optionally reweighted by inverse document frequency so that rare, discriminating words count more than ubiquitous ones. Modern alternatives replace counts with learned embeddings, covered in the embeddings chapter. The engineering principle is the same as for dates: explode the raw object into many simple, model-readable columns.
+Free text is commonly reduced to a bag of words: counts (or presence) of each token, optionally reweighted by inverse document frequency so that rare, discriminating words count more than ubiquitous ones. Modern alternatives replace counts with learned embeddings, covered in the embeddings and vector search chapter (@sec-embeddings-vector-search). The engineering principle is the same as for dates: explode the raw object into many simple, model-readable columns.
 
 ## Handling missing values
 
@@ -367,7 +367,7 @@ The lesson is not that linear models beat random forests, nor the reverse. It is
 
 ## A note on doing this with `recipes`
 
-The `recipes` package (part of `tidymodels`) lets you declare a feature pipeline once and have it refit correctly inside resampling, which removes most opportunities for leakage. The code below is illustrative; it expresses the same kinds of steps as the manual pipeline above. It is shown rather than run to keep this chapter's executed output self-contained, but it is idiomatic and will run in a `tidymodels` session.
+The `recipes` package (part of `tidymodels`, see @sec-tidymodels-framework) lets you declare a feature pipeline once and have it refit correctly inside resampling, which removes most opportunities for leakage. The code below is illustrative; it expresses the same kinds of steps as the manual pipeline above. It is shown rather than run to keep this chapter's executed output self-contained, but it is idiomatic and will run in a `tidymodels` session.
 
 ```{r feature-engineering-recipe, eval=FALSE}
 library(recipes)
@@ -410,7 +410,7 @@ Keep missingness indicators. The fact that a value was missing is often predicti
 
 > **Warning:** Resist the temptation to engineer features by eyeballing the relationship between a candidate feature and the outcome on the full dataset. That inspection is itself a use of the outcome, and features chosen this way can look strong and generalize poorly. Choose feature ideas from domain knowledge and the training data, and let held-out data be the judge.
 
-> **Note:** More features are not always better. Each engineered column adds variance and a maintenance cost in production. After engineering, the predictor-reduction and regularization tools elsewhere in this book help prune the set back down to what earns its place.
+> **Note:** More features are not always better. Each engineered column adds variance and a maintenance cost in production. After engineering, the predictor-reduction tools (@sec-predictor-reduction) and regularization elsewhere in this book help prune the set back down to what earns its place.
 
 ## Further reading
 

@@ -1,4 +1,4 @@
-# Retrieval-Augmented Generation (RAG)
+# Retrieval-Augmented Generation (RAG) {#sec-retrieval-augmented-generation}
 
 ```{r}
 #| include: false
@@ -11,7 +11,7 @@ This pattern matters because the two failure modes of a bare language model are 
 
 > **Intuition:** Think of a bare language model as a smart student answering from memory in a closed-book exam, and a RAG system as the same student taking an open-book exam. The student is no more intelligent in the second case, but the answers are better because the relevant facts are sitting open on the desk.
 
-This chapter covers the components of a RAG system in the order they run: chunking the documents, embedding the chunks, retrieving by similarity, reranking the candidates, assembling the context, and grounding the answer with citations. It then covers evaluation and the failure modes that show up in production. The retrieval step builds directly on the [Embeddings](#large-language-models-and-foundation-models) and dense-vector ideas, and the generation step builds on the [Large Language Models](#large-language-models-and-foundation-models) chapter. The runnable demonstration implements a minimal retriever in base R: cosine similarity over a small document set returning the top-$k$ chunks for a query. The generation call is shown as `eval=FALSE` because it requires an external model.
+This chapter covers the components of a RAG system in the order they run: chunking the documents, embedding the chunks, retrieving by similarity, reranking the candidates, assembling the context, and grounding the answer with citations. It then covers evaluation and the failure modes that show up in production. The retrieval step builds directly on the embeddings and dense-vector ideas from the embeddings and vector search chapter (@sec-embeddings-vector-search), and the generation step builds on the large language models chapter (@sec-llms). The runnable demonstration implements a minimal retriever in base R: cosine similarity over a small document set returning the top-$k$ chunks for a query. The generation call is shown as `eval=FALSE` because it requires an external model.
 
 ## Where This Fits in a Modern Workflow
 
@@ -57,7 +57,7 @@ In practice, split on natural boundaries (paragraphs, headings, list items) rath
 
 Once a document is chunked, each chunk has to become something a computer can compare for meaning, not just for shared words. That is the job of an embedding. The intuition is that we place every chunk as a point in a high-dimensional space, arranged so that chunks about the same idea land close together, and a query lands near the chunks that answer it. Retrieval then becomes "find the nearest points."
 
-More precisely, each chunk is mapped to a vector by an embedding model. An embedding is a function $f$ that maps a piece of text $t$ to a vector $f(t) \in \mathbb{R}^{d}$ such that texts with similar meaning map to nearby vectors. The same $f$ embeds the query and the chunks, so query and chunk live in the same space and can be compared directly. The construction and training of these models is the subject of the embeddings material; here we use the property that the geometry of the space encodes semantic similarity.
+More precisely, each chunk is mapped to a vector by an embedding model. An embedding is a function $f$ that maps a piece of text $t$ to a vector $f(t) \in \mathbb{R}^{d}$ such that texts with similar meaning map to nearby vectors. The same $f$ embeds the query and the chunks, so query and chunk live in the same space and can be compared directly. The construction and training of these models is the subject of the embeddings and vector search chapter (@sec-embeddings-vector-search); here we use the property that the geometry of the space encodes semantic similarity.
 
 The standard similarity is cosine similarity. For two vectors $u, v \in \mathbb{R}^{d}$,
 
@@ -75,7 +75,7 @@ for unit vectors. This equivalence is why most vector stores normalize once at i
 
 > **Tip:** Normalize every embedding to unit length the moment you compute it. After that, "most similar," "largest dot product," and "smallest Euclidean distance" all pick the same chunk, and the comparison reduces to one multiplication-and-sum.
 
-Two embedding strategies are worth distinguishing, because the choice between them is the reason RAG has two retrieval stages rather than one. A bi-encoder embeds the query and each chunk separately, so all chunk vectors are precomputed at index time and retrieval is a fast similarity search. A cross-encoder takes the query and a chunk together and outputs a single relevance score; it is more accurate because it can attend across both texts, but it cannot precompute anything and must run once per candidate. RAG uses the bi-encoder for the first-stage retrieval (fast, over the whole corpus) and reserves the cross-encoder for reranking a short candidate list, covered below.
+Two embedding strategies are worth distinguishing, because the choice between them is the reason RAG has two retrieval stages rather than one. A bi-encoder embeds the query and each chunk separately, so all chunk vectors are precomputed at index time and retrieval is a fast similarity search. A cross-encoder takes the query and a chunk together and outputs a single relevance score; it is more accurate because it can attend across both texts (the attention mechanism is covered in @sec-transformers), but it cannot precompute anything and must run once per candidate. RAG uses the bi-encoder for the first-stage retrieval (fast, over the whole corpus) and reserves the cross-encoder for reranking a short candidate list, covered below.
 
 > **Note:** The bi-encoder is fast but reads the query and the chunk in isolation; the cross-encoder is slow but reads them together, so it can notice that a chunk answers *this exact* question. Keep this trade in mind: it is exactly why we retrieve cheaply over everything, then rerank expensively over a few.
 
@@ -273,7 +273,7 @@ answer <- chat$chat(user_message)
 cat(answer)
 ```
 
-The instruction to cite sources and to abstain is what turns retrieved text into a grounded, auditable answer. Everything upstream (chunking, embedding, retrieval, reranking) exists to make sure the context handed to this step actually contains the answer.
+The instruction to cite sources and to abstain is what turns retrieved text into a grounded, auditable answer, and writing those instructions well is the subject of the prompt engineering chapter (@sec-prompt-engineering). Everything upstream (chunking, embedding, retrieval, reranking) exists to make sure the context handed to this step actually contains the answer.
 
 ## Evaluation
 

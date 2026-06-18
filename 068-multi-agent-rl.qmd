@@ -1,11 +1,11 @@
-# Multi-Agent Reinforcement Learning
+# Multi-Agent Reinforcement Learning {#sec-multi-agent-rl}
 
 ```{r}
 #| include: false
 suppressPackageStartupMessages(library(tidyverse))
 ```
 
-A single reinforcement learning agent treats the world as a fixed, if uncertain, machine: it acts, the environment responds with a reward and a new state, and the rules behind that response never change. Now put two such agents in the same world and let each one learn. The "environment" that any one agent sees now contains the other agent, whose behavior is shifting from one episode to the next as it learns too. The ground the first agent is standing on is moving, because part of that ground is another mind. Multi-agent reinforcement learning (MARL) is the study of what happens, and what can be made to happen, when several learning agents share one environment.
+A single reinforcement learning agent (@sec-rl-foundations) treats the world as a fixed, if uncertain, machine: it acts, the environment responds with a reward and a new state, and the rules behind that response never change. Now put two such agents in the same world and let each one learn. The "environment" that any one agent sees now contains the other agent, whose behavior is shifting from one episode to the next as it learns too. The ground the first agent is standing on is moving, because part of that ground is another mind. Multi-agent reinforcement learning (MARL) is the study of what happens, and what can be made to happen, when several learning agents share one environment.
 
 This shift sounds small but it breaks the foundation that single-agent theory rests on. The Markov decision process assumes stationary dynamics: the probability of the next state given the current state and action does not change over time. With other learners present, that assumption fails from the point of view of each individual agent, and most of the difficulty (and most of the interesting structure) in MARL flows from that one fact. The payoff for confronting it is large. Traffic routing, electricity markets, automated bidding, warehouse robots, network packet routing, and the self-play training behind game-playing systems are all genuinely multi-agent. Treating them as single-agent problems throws away the very interaction that defines them.^[The same lens applies inside modern AI systems: a debate between two language models, a population of trading bots, or a fleet of delivery drones coordinating routes are all multi-agent systems whether or not they are described that way. Recognizing the structure tells you which tools, and which failure modes, to expect.]
 
@@ -130,7 +130,7 @@ The monotonicity condition is what matters: it guarantees that the action maximi
 
 ## Self-play
 
-In two-player zero-sum games there is no fixed opponent to learn against, so where does training data come from? Self-play answers: let the agent play against copies of itself. The agent improves, the opponent (a copy) improves with it, and the difficulty of the opposition automatically tracks the agent's own skill. This produces a natural curriculum, easy when both sides are weak, progressively harder as both improve, without anyone hand-designing the stages.
+In two-player zero-sum games there is no fixed opponent to learn against, so where does training data come from? Self-play answers: let the agent play against copies of itself. The agent improves, the opponent (a copy) improves with it, and the difficulty of the opposition automatically tracks the agent's own skill. This produces a natural curriculum (@sec-curriculum-learning), easy when both sides are weak, progressively harder as both improve, without anyone hand-designing the stages.
 
 Self-play is the engine behind the strongest game-playing systems, from TD-Gammon (Tesauro, 1995) through the AlphaGo and AlphaZero line (Silver et al., 2016, 2018). Its theoretical comfort comes from the minimax structure: in a zero-sum game there is a single value to converge to, and an agent that becomes unbeatable by every version of itself is approaching minimax-optimal play.
 
@@ -329,7 +329,7 @@ Several pitfalls recur often enough to name explicitly.
 
 ## Reference: deep multi-agent learning sketch
 
-The runnable demo is tabular because tables expose every moving part. Real systems with large or continuous state spaces replace each table with a network, and the CTDE structure becomes a centralized critic feeding decentralized actors. The sketch below shows the shape of a centralized critic plus per-agent actors in the style of MADDPG. It is kept `eval=FALSE` because a full agent also needs an environment loop and replay buffer, and the deep-learning backend is not assumed available in this build.
+The runnable demo is tabular because tables expose every moving part. Real systems with large or continuous state spaces replace each table with a network, and the CTDE structure becomes a centralized critic feeding decentralized actors. The sketch below shows the shape of a centralized critic plus per-agent actors in the style of MADDPG, an actor-critic method (@sec-policy-gradient) scaled up with the deep reinforcement learning machinery of @sec-deep-reinforcement-learning. It is kept `eval=FALSE` because a full agent also needs an environment loop and replay buffer, and the deep-learning backend (@sec-torch-for-r) is not assumed available in this build.
 
 ```{r multi-agent-rl-maddpg-sketch, eval=FALSE}
 library(torch)

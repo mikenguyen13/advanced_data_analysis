@@ -1,4 +1,4 @@
-# High Frequency Predictors
+# High Frequency Predictors {#sec-high-frequency}
 
 ```{r}
 #| include: false
@@ -21,7 +21,7 @@ A series is stationary when its statistical behavior does not drift over time: t
 
 -   Project the series onto a set of basis functions (principal components, Fourier/spectral, wavelets, and so on) and use the projection coefficients as predictors. This is the spectral route, and it may need a further round of dimension reduction.
 
--   Feed the raw series to a sequence model such as a recurrent neural network (RNN) or a one-dimensional convolutional neural network (1D CNN), which learn their own representation.
+-   Feed the raw series to a sequence model such as a recurrent neural network (RNN) or a one-dimensional convolutional neural network (1D CNN), which learn their own representation (see the neural networks chapter, @sec-neural-networks).
 
 When the series is non-stationary, its character changes as it unfolds, so a single set of stationary parameters or a single spectrum no longer describes it. The toolkit then expands:
 
@@ -117,7 +117,7 @@ $$
 \mathbf{\alpha = (\Phi \Phi)^{-1} \Phi' Y}
 $$
 
-which is exactly the form of ordinary least squares estimates whenever $(\mathbf{\Phi' \Phi})^{-1}$ is defined. In other words, we are regressing the data onto the Fourier basis functions, just as we did in the spline setting.
+which is exactly the form of ordinary least squares estimates whenever $(\mathbf{\Phi' \Phi})^{-1}$ is defined. In other words, we are regressing the data onto the Fourier basis functions, just as we did in the spline setting (@sec-spline).
 
 > **Key idea:** A spectral expansion is a regression of the signal onto sines and cosines. Everything you know about least squares (projection, orthogonality, collinearity) carries over directly.
 
@@ -201,7 +201,7 @@ Three strategies are common, ordered roughly from simplest to most flexible:
 
 -   Compute simple, interpretable summaries of the spectrum, such as the frequency of maximum power, the total power in a band, or the spectral centroid.
 
--   Apply PCA (or another empirical dimension-reduction method) to the spectral coefficients across many series, keeping only the leading components.
+-   Apply PCA (or another empirical dimension-reduction method, @sec-dimension-reduction) to the spectral coefficients across many series, keeping only the leading components.
 
 -   Project the spectral estimate itself onto a smaller set of basis functions defined over the entire frequency domain, and use those projection coefficients.
 
@@ -223,7 +223,7 @@ Once you have a spectrogram, you have an image, and the question becomes how to 
 
 The first is to find distinctive local features in the image, such as the constellation of peak points used in audio fingerprinting.^[Audio fingerprinting systems like those behind song-identification apps pick out robust peak "constellations" in the spectrogram precisely because they survive noise and compression.] These engineered features can be compact and very robust.
 
-The second, more general, approach is to treat the spectrogram as a plain image and apply the same machinery you would use on any image: reduce it with PCA or another method to get a feature vector, or feed it directly to a convolutional neural network that learns its own features. This is why audio classification is so often done with image models: the spectrogram converts a hearing problem into a seeing problem.
+The second, more general, approach is to treat the spectrogram as a plain image and apply the same machinery you would use on any image: reduce it with PCA or another method to get a feature vector, or feed it directly to a convolutional neural network (@sec-neural-networks) that learns its own features. This is why audio classification is so often done with image models: the spectrogram converts a hearing problem into a seeing problem.
 
 > **When to use this:** Prefer the spectrogram-as-image route when the signal is clearly non-stationary and when you have enough labeled data to train (or fine-tune) a CNN. Prefer handcrafted feature summaries when data are scarce or interpretability matters.
 

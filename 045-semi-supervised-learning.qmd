@@ -1,4 +1,4 @@
-# Semi-Supervised Learning
+# Semi-Supervised Learning {#sec-semi-supervised-learning}
 
 ```{r}
 #| include: false
@@ -17,14 +17,14 @@ By the end of this chapter you will be able to state the two assumptions that ma
 
 This only works when the marginal distribution of $x$, written $p(x)$, carries information about the conditional $p(y \mid x)$. Two standard assumptions make that link precise:
 
-- Cluster assumption. Points in the same cluster (a high-density region of $p(x)$) tend to share a label. Equivalently, the decision boundary should pass through low-density regions, not through the middle of a dense clump. This is the basis of low-density separation methods such as transductive SVMs.
+- Cluster assumption. Points in the same cluster (a high-density region of $p(x)$) tend to share a label. Equivalently, the decision boundary should pass through low-density regions, not through the middle of a dense clump. This is the basis of low-density separation methods such as transductive support vector machines (@sec-svm).
 - Manifold assumption. The data lie near a low-dimensional manifold embedded in the high-dimensional input space, and the label varies smoothly along that manifold. Two points that are close along the manifold should get similar predictions, even if they are far apart in raw Euclidean distance. This is the basis of graph-based methods.
 
 If neither assumption holds, the unlabeled data is at best useless and at worst harmful: it can pull the model toward structure in $p(x)$ that has nothing to do with the label.
 
 > **Warning:** SSL is not a free lunch. Adding unlabeled data only helps when the shape of $p(x)$ actually lines up with the labels. When it does not, the extra data can degrade a model that would have been fine with the labels alone. Always sanity-check the assumptions before reaching for SSL.
 
-Where this fits in a modern workflow: SSL is a labeling-efficiency tool. It appears as pseudo-labeling in deep learning pipelines (a teacher model labels a large unlabeled pool, a student trains on the union), as a pre-step before active learning, and as a way to exploit a data lake when annotation budget is the bottleneck. It overlaps with self-supervised pretraining in spirit (both use unlabeled data) but differs in mechanics: self-supervised methods learn representations from a pretext task, while classic SSL propagates label information directly.
+Where this fits in a modern workflow: SSL is a labeling-efficiency tool. It appears as pseudo-labeling in deep learning pipelines (a teacher model labels a large unlabeled pool, a student trains on the union), as a pre-step before active learning (@sec-active-learning), and as a way to exploit a data lake when annotation budget is the bottleneck. It overlaps with self-supervised pretraining (@sec-self-supervised-learning) in spirit (both use unlabeled data) but differs in mechanics: self-supervised methods learn representations from a pretext task, while classic SSL propagates label information directly.
 
 ## Notation and Setup
 
@@ -32,7 +32,7 @@ We observe labeled pairs $L = \{(x_1, y_1), \dots, (x_l, y_l)\}$ and unlabeled i
 
 Before listing methods, it helps to settle one distinction that quietly shapes which method you reach for. Two related but distinct goals appear in the literature:
 
-- Transductive learning: predict labels only for the specific unlabeled points $U$ we have in hand. There is no separate test set; the answer is the labeling of $U$.
+- Transductive learning (@sec-transductive-learning): predict labels only for the specific unlabeled points $U$ we have in hand. There is no separate test set; the answer is the labeling of $U$.
 - Inductive learning: fit a function $\hat f$ that generalizes to new, unseen points. Transductive methods can be turned inductive by retraining a supervised model on the (now fully labeled) data, or by an out-of-sample extension.
 
 > **Key idea:** Transductive asks "what are the labels of these particular unlabeled points?" Inductive asks "what is the rule for labeling any future point?" The first is a one-time fill-in-the-blanks; the second is a reusable function.
@@ -441,7 +441,7 @@ When you do apply SSL, a handful of recurring traps account for most failures. E
 
 Label propagation and spreading label only the points you give them. To predict on new data, either rebuild the graph including the new points and rerun (transductive), or train a standard supervised model on the now-labeled set and use it inductively. The second route is common in production: SSL is the labeling engine, and a fast supervised model is the deployed predictor.
 
-> **Tip:** In a deployed system, do not put a graph method on the serving path. Run it offline to manufacture labels, then train a lightweight inductive model (logistic regression, a gradient-boosted tree, a small network) on the enlarged labeled set and ship that. You get the labeling benefit of SSL with the latency of an ordinary classifier.
+> **Tip:** In a deployed system, do not put a graph method on the serving path. Run it offline to manufacture labels, then train a lightweight inductive model (logistic regression, a gradient-boosted tree (@sec-gradient-boosting), a small network) on the enlarged labeled set and ship that. You get the labeling benefit of SSL with the latency of an ordinary classifier.
 
 ## Further Reading
 

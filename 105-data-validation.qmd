@@ -1,4 +1,4 @@
-# Data Validation and Quality
+# Data Validation and Quality {#sec-data-validation}
 
 ```{r}
 #| include: false
@@ -33,7 +33,7 @@ Why bother encoding these expectations in code at all, rather than relying on a 
 2. Silent corruption is the dangerous kind. A pipeline that crashes is annoying but safe. A pipeline that quietly trains on bad data is dangerous because the failure surfaces later as degraded predictions, when the link to the root cause is hard to trace.
 3. The same checks serve training and serving. The expectations you assert about training data are exactly the expectations that must hold at inference time. Reusing them prevents training/serving skew.
 
-In an AI/ML context, validation also guards the inputs to feature stores and the outputs of LLM-based extraction steps, where free text gets parsed into structured fields that may or may not conform to a schema.^[A *feature store* is a shared repository of computed model inputs reused across teams and projects. *Training/serving skew* is the situation where the data a model sees in production differs systematically from the data it was trained on; validating both with the same rules is one of the most reliable defenses against it.]
+In an AI/ML context, validation also guards the inputs to feature stores (@sec-feature-stores) and the outputs of LLM-based extraction steps (@sec-llms), where free text gets parsed into structured fields that may or may not conform to a schema.^[A *feature store* is a shared repository of computed model inputs reused across teams and projects. *Training/serving skew* is the situation where the data a model sees in production differs systematically from the data it was trained on; validating both with the same rules is one of the most reliable defenses against it.]
 
 > **Note:** Validation does not replace exploratory data analysis. EDA is how you *discover* what to expect; validation is how you *encode and enforce* those expectations so they keep holding on every future batch.
 
@@ -224,7 +224,7 @@ Because rules are objects, you can keep them under version control separately fr
 
 ## Checks inside a tidymodels pipeline
 
-The tools so far validate data as a standalone step. But recall the training/serving skew problem: the surest way to guarantee the model sees consistent data is to validate it with the *exact same code* at training time and at serving time. The `recipes` package (part of tidymodels) makes this automatic. A recipe bundles preprocessing steps into one object, and its `check_*` steps raise an error during `bake()` if a rule is violated. Because the very same recipe object that prepared the training data is the one that processes serving data, the contract travels with the pipeline and cannot drift apart from it.
+The tools so far validate data as a standalone step. But recall the training/serving skew problem: the surest way to guarantee the model sees consistent data is to validate it with the *exact same code* at training time and at serving time. The `recipes` package (part of the tidymodels framework, @sec-tidymodels-framework) makes this automatic. A recipe bundles preprocessing steps into one object, and its `check_*` steps raise an error during `bake()` if a rule is violated. Because the very same recipe object that prepared the training data is the one that processes serving data, the contract travels with the pipeline and cannot drift apart from it.
 
 > **Key idea:** Embedding checks in the recipe means there is no separate "did you remember to validate serving data?" step to forget. The recipe refuses to transform data that breaks the contract, so a violation surfaces before a single prediction is made.
 
@@ -462,7 +462,7 @@ Both curves rise from near 0 to near 1 as $\pi$ crosses the corresponding tolera
 
 Having seen the machinery, the harder question is how to use it well in practice. The advice below distills the habits that separate validation that protects you from validation that merely decorates a pipeline.
 
-When to validate. Always validate at ingestion (the trust boundary with upstream) and immediately before training or scoring. For high-stakes pipelines, validate outputs too: predictions outside a plausible range often signal an input problem.
+When to validate. Always validate at ingestion (the trust boundary with upstream) and immediately before training or scoring. For high-stakes pipelines, validate outputs too: predictions outside a plausible range often signal an input problem, and continuous checks of this kind connect directly to model monitoring (@sec-model-monitoring).
 
 Set tolerances deliberately. A tolerance of 0 is right for keys and types, which should never be wrong. Small positive tolerances suit noisy real-world fields where a few bad records are normal but a spike is not. Tie the tolerance to a cost, not to a round number that feels safe.
 

@@ -1,4 +1,4 @@
-# Online and Streaming Learning
+# Online and Streaming Learning {#sec-online-learning}
 
 ```{r}
 #| include: false
@@ -60,7 +60,7 @@ reproduces the exact sample mean of $x_1, \dots, x_t$. This is the bridge to sto
 
 ## The Perceptron
 
-The perceptron (Rosenblatt, 1958) is the earliest online classifier and still the cleanest illustration of mistake-driven learning. Labels are $y_t \in \{-1, +1\}$ and the prediction is $\hat y_t = \operatorname{sign}(\theta_t^\top x_t)$. The update fires only on a mistake:
+The perceptron (Rosenblatt, 1958) is the earliest online classifier and the ancestor of modern neural networks (@sec-neural-networks); it is still the cleanest illustration of mistake-driven learning. Labels are $y_t \in \{-1, +1\}$ and the prediction is $\hat y_t = \operatorname{sign}(\theta_t^\top x_t)$. The update fires only on a mistake:
 
 $$
 \theta_{t+1} =
@@ -273,7 +273,7 @@ The online weights end up close to both the batch `glm` estimate and the true co
 
 ## Trees for Streams: Hoeffding (Very Fast) Decision Trees
 
-So far the parameters have been continuous weights that gradient descent can nudge. Trees are different: a split is a discrete choice, and the obvious way to pick the best split is to scan the whole dataset. That makes trees awkward online, because a split decision normally needs all the data at once to compare candidate features. The Hoeffding tree, also called the Very Fast Decision Tree or VFDT (Domingos and Hulten, 2000), solves this with a statistical stopping rule for how much data a node needs before it can commit to a split.
+So far the parameters have been continuous weights that gradient descent can nudge. Trees are different: a split is a discrete choice, and the obvious way to pick the best split is to scan the whole dataset. That makes trees awkward online, because a split decision normally needs all the data at once to compare candidate features, exactly the assumption behind batch tree induction (@sec-regression-trees). The Hoeffding tree, also called the Very Fast Decision Tree or VFDT (Domingos and Hulten, 2000), solves this with a statistical stopping rule for how much data a node needs before it can commit to a split.
 
 The idea: at a leaf, accumulate sufficient statistics (per-feature, per-class counts) as examples stream through. Let $G(\cdot)$ be a split-quality measure (information gain or Gini), and let $\bar G_a$ and $\bar G_b$ be the observed quality of the best and second-best features after $n$ examples have reached the leaf. The Hoeffding bound says that, with probability $1-\delta$, the true mean of a bounded quantity in range $[0,R]$ is within
 
@@ -331,7 +331,7 @@ No single mechanism handles every kind of drift, so production systems combine s
 - Forgetting through the learning rate. A non-decaying or slowly-decaying $\eta_t$ keeps the model plastic so recent examples dominate. The cost is more variance and never fully converging.
 - Sliding windows. Train on the last $w$ examples and drop older ones. Window size sets the bias-variance and stability-plasticity trade-off: short windows adapt fast but are noisy.
 - Explicit drift detectors. ADWIN (Adaptive Windowing, Bifet and Gavalda, 2007) maintains a variable-length window and shrinks it when a statistically significant change in the mean error is detected; DDM (Drift Detection Method, Gama et al., 2004) watches the online error rate and signals warning and drift thresholds. On a signal, the model is reset or retrained on recent data.
-- Ensembles. Keep a pool of models trained on different recent segments and weight them by recent accuracy, retiring stale members.
+- Ensembles. Keep a pool of models trained on different recent segments and weight them by recent accuracy, retiring stale members; this is ensemble learning (@sec-ensemble-learning) adapted to a moving distribution.
 
 A concrete decision rule: if accuracy is drifting, first check whether $P(x)$ moved (cheap to monitor) before assuming $P(y\mid x)$ did. Covariate shift often just needs more coverage or reweighting, while real drift needs the model to forget.
 

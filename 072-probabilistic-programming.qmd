@@ -1,4 +1,4 @@
-# Probabilistic Programming with Stan and brms
+# Probabilistic Programming with Stan and brms {#sec-probabilistic-programming}
 
 ```{r}
 #| include: false
@@ -15,7 +15,7 @@ This chapter explains the idea, the sampling machinery (Markov chain Monte Carlo
 
 ## Where this fits in a modern ML and AI workflow
 
-Most supervised learning methods in this book return a point prediction or a point estimate of parameters. A probabilistic model returns a full distribution. For a regression coefficient you get not a single number but a posterior distribution that summarizes every value consistent with the data and the prior.^[The same shift in mindset shows up in Gaussian process regression and Bayesian additive regression trees (BART) elsewhere in this book: those methods also return distributions rather than points. Probabilistic programming generalizes the idea to any model you can write down.] For a prediction at a new input you get a predictive distribution, not just a mean.
+Most supervised learning methods in this book return a point prediction or a point estimate of parameters. A probabilistic model returns a full distribution. For a regression coefficient you get not a single number but a posterior distribution that summarizes every value consistent with the data and the prior.^[The same shift in mindset shows up in Gaussian process regression (@sec-gaussian-process-reg) and Bayesian additive regression trees (BART, @sec-bart) elsewhere in this book: those methods also return distributions rather than points. Probabilistic programming generalizes the idea to any model you can write down.] For a prediction at a new input you get a predictive distribution, not just a mean.
 
 This matters in practice when:
 
@@ -24,7 +24,7 @@ This matters in practice when:
 -   You want to encode domain knowledge as priors, for example bounding a rate to be positive or shrinking coefficients toward zero in a principled way.
 -   The likelihood is custom or non-standard, so off-the-shelf estimators do not exist.
 
-In an ML or AI pipeline, probabilistic models often sit at the layer where decisions are made under uncertainty: A/B test analysis, demand forecasting, sensor fusion, and Bayesian optimization of hyperparameters. They are usually slower to fit than gradient-boosted trees or neural networks and are not the right tool for very large feature spaces with no structure, but they are hard to beat when uncertainty and interpretability are the deliverable.
+In an ML or AI pipeline, probabilistic models often sit at the layer where decisions are made under uncertainty: A/B test analysis, demand forecasting, sensor fusion, and Bayesian optimization of hyperparameters (@sec-hyperparameter-optimization). They are usually slower to fit than gradient-boosted trees or neural networks and are not the right tool for very large feature spaces with no structure, but they are hard to beat when uncertainty and interpretability are the deliverable.
 
 ## The probabilistic programming idea
 
@@ -51,7 +51,7 @@ an algorithm that only needs the posterior up to a constant can ignore $p(y)$ en
 
 > **Key idea:** Because the posterior is proportional to likelihood times prior, and the only missing piece, $p(y)$, is a constant that does not depend on $\theta$, any sampler that works with ratios or gradients of the posterior can skip the hard integral entirely. This single observation is what makes Bayesian computation practical.
 
-A probabilistic programming language separates the model from the inference. You write the model (priors and likelihood), and the system compiles it and runs a general-purpose sampler. Stan compiles your model to C++ and runs an adaptive Hamiltonian Monte Carlo sampler. You do not derive update equations by hand.^[This separation is the same design principle that makes SQL useful: you declare what you want, and an engine figures out how to compute it. Here you declare the generative model, and the sampler figures out how to explore the posterior.]
+A probabilistic programming language separates the model from the inference. You write the model (priors and likelihood), and the system compiles it and runs a general-purpose sampler. Stan compiles your model to C++ and runs an adaptive Hamiltonian Monte Carlo sampler. You do not derive update equations by hand.^[This separation is the same design principle that makes SQL useful (@sec-databases-sql-r): you declare what you want, and an engine figures out how to compute it. Here you declare the generative model, and the sampler figures out how to explore the posterior.]
 
 The rest of the chapter follows the natural order of a Bayesian analysis: first the samplers that explore the posterior, then how priors and likelihood combine into that posterior, then a worked example you can run, then how to check the fit, and finally the tools that let you write all of this with a one-line formula.
 
@@ -81,7 +81,7 @@ $$
 p(\theta, r) \propto \exp\left(-U(\theta) - \tfrac{1}{2} r^\top M^{-1} r\right), \qquad U(\theta) = -\log\big(p(y \mid \theta)\, p(\theta)\big)
 $$
 
-Here $U(\theta)$ is the potential energy (the negative log posterior) and the quadratic term in $r$ is the kinetic energy with mass matrix $M$. HMC simulates the physics of a particle moving across the posterior surface by integrating Hamilton's equations, usually with the leapfrog integrator, for a number of steps, then proposes the endpoint. Because the trajectory follows the gradient of the log posterior, proposals can travel far across the distribution while still being accepted with high probability. This is why HMC needs the gradient $\nabla_\theta \log p(\theta \mid y)$, which Stan computes automatically by reverse-mode automatic differentiation.^[Automatic differentiation, the same technique that powers backpropagation in neural networks, computes exact gradients of the log posterior from the model code without you writing any derivatives by hand.]
+Here $U(\theta)$ is the potential energy (the negative log posterior) and the quadratic term in $r$ is the kinetic energy with mass matrix $M$. HMC simulates the physics of a particle moving across the posterior surface by integrating Hamilton's equations, usually with the leapfrog integrator, for a number of steps, then proposes the endpoint. Because the trajectory follows the gradient of the log posterior, proposals can travel far across the distribution while still being accepted with high probability. This is why HMC needs the gradient $\nabla_\theta \log p(\theta \mid y)$, which Stan computes automatically by reverse-mode automatic differentiation.^[Automatic differentiation, the same technique that powers backpropagation in neural networks (@sec-neural-networks), computes exact gradients of the log posterior from the model code without you writing any derivatives by hand.]
 
 > **Intuition:** Instead of taking blind random steps, HMC gives the explorer a sense of the local slope and a push of momentum, so it skis along the contours of the landscape. One trajectory can cross to a far corner of the posterior in a single proposal, which is why HMC mixes so much faster than random-walk MH in high dimensions.
 

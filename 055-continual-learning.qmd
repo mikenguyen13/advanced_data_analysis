@@ -1,4 +1,4 @@
-# Continual and Lifelong Learning
+# Continual and Lifelong Learning {#sec-continual-learning}
 
 ```{r}
 #| include: false
@@ -92,7 +92,7 @@ $$
 = \log p(\mathcal{D}_B \mid \theta) + \log p(\theta \mid \mathcal{D}_A) - \log p(\mathcal{D}_B).
 $$
 
-The first term is just the task-B loss (up to sign). The middle term, the task-A posterior, carries everything we need to remember about A, but it is intractable. EWC approximates it with a Gaussian centered at the task-A solution $\theta_A^\star$ (a Laplace approximation). The precision of that Gaussian is the Fisher information matrix $F$, approximated by its diagonal so the cost is one number per parameter. With $F_i$ the $i$-th diagonal Fisher entry, the second-order Taylor expansion of $-\log p(\theta \mid \mathcal{D}_A)$ around $\theta_A^\star$ gives the EWC objective
+The first term is just the task-B loss (up to sign). The middle term, the task-A posterior, carries everything we need to remember about A, but it is intractable. EWC approximates it with a Gaussian centered at the task-A solution $\theta_A^\star$ (a Laplace approximation, a workhorse of Bayesian deep learning; see @sec-bayesian-deep-learning). The precision of that Gaussian is the Fisher information matrix $F$, approximated by its diagonal so the cost is one number per parameter. With $F_i$ the $i$-th diagonal Fisher entry, the second-order Taylor expansion of $-\log p(\theta \mid \mathcal{D}_A)$ around $\theta_A^\star$ gives the EWC objective
 
 $$
 \mathcal{L}_{\text{EWC}}(\theta) = \mathcal{L}_B(\theta) + \frac{\lambda}{2} \sum_{i=1}^{d} F_i \, (\theta_i - \theta^\star_{A,i})^2,
@@ -118,7 +118,7 @@ $$
 \mathcal{L}_{\text{replay}}(\theta) = \mathcal{L}_k(\theta) + \frac{1}{|\mathcal{M}|} \sum_{(x,y) \in \mathcal{M}} \ell(\theta; x, y).
 $$
 
-The buffer is tiny relative to the full history, so the question is what to keep. Reservoir sampling keeps a uniform random sample of everything seen with a fixed buffer size; herding keeps examples closest to each class mean. *Generative replay* (Shin et al., 2017) avoids storing raw data at all by training a generative model to synthesize old-task examples on demand, which sidesteps privacy concerns at the cost of generator quality. Despite its simplicity, a small replay buffer is one of the strongest and most reliable baselines in the field, which is exactly what the demo below shows.
+The buffer is tiny relative to the full history, so the question is what to keep. Reservoir sampling keeps a uniform random sample of everything seen with a fixed buffer size; herding keeps examples closest to each class mean. *Generative replay* (Shin et al., 2017) avoids storing raw data at all by training a generative model (@sec-generative-models) to synthesize old-task examples on demand, which sidesteps privacy concerns at the cost of generator quality. Despite its simplicity, a small replay buffer is one of the strongest and most reliable baselines in the field, which is exactly what the demo below shows.
 
 ### Parameter Isolation
 
@@ -351,7 +351,7 @@ A few traps recur often enough to call out:
 - Task boundaries are often unknown. Much of the cleanest theory assumes you know when one task ends and the next begins. Real streams blur this. If boundaries are fuzzy, prefer methods that do not need them (reservoir replay, online importance estimation).
 - Class-incremental is harder than it looks. When new classes arrive with no task hint at test time, the model must also calibrate across tasks. A classifier that is individually good on each task can still be badly biased toward the most recent classes. Watch for this bias explicitly.
 
-> **Note:** Continual learning shares a border with online and incremental learning, transfer learning, and meta-learning, but the goal is distinct. Online learning optimizes performance on a moving target and does not especially care about old data; transfer learning moves knowledge from a source to a single target; continual learning insists on doing well on *every* task it has ever seen, with bounded resources.
+> **Note:** Continual learning shares a border with online and incremental learning (@sec-online-learning), transfer learning (@sec-transfer-multitask-learning), and meta-learning (@sec-meta-learning), but the goal is distinct. Online learning optimizes performance on a moving target and does not especially care about old data; transfer learning moves knowledge from a source to a single target; continual learning insists on doing well on *every* task it has ever seen, with bounded resources.
 
 ## Further Reading
 

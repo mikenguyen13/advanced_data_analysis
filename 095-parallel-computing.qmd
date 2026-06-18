@@ -13,7 +13,7 @@ By the end of the chapter you will understand when parallelism actually helps (a
 
 ## When parallelism helps {-}
 
-Before reaching for parallel tools, it is worth knowing what is actually slowing your program down. Following [*Matt Jones*](https://nceas.github.io/oss-lessons/parallel-computing-in-r/parallel-computing-in-r.html), the time a computation takes is usually limited by one of four resources:
+Before reaching for parallel tools, it is worth knowing what is actually slowing your program down. Following *Matt Jones*^[<https://nceas.github.io/oss-lessons/parallel-computing-in-r/parallel-computing-in-r.html>], the time a computation takes is usually limited by one of four resources:
 
 -   CPU bound: the processor is the bottleneck because the work involves heavy arithmetic (fitting many models, simulating, optimizing).
 -   Memory bound: the data barely fit (or do not fit) in RAM, so the machine spends its time juggling memory.
@@ -69,7 +69,7 @@ There are two situations where this pays off:
 1.  A large data set that you can break into smaller pieces and analyze piece by piece.
 2.  A data set on which you need to run several independent analyses (for example, fitting one model per group).
 
-> **Note:** An older walkthrough by [Business Science](https://www.business-science.io/code-tools/2016/12/18/multidplyr.html#figure1) is no longer available; the examples below follow the package author's current interface.
+> **Note:** An older walkthrough by Business Science^[<https://www.business-science.io/code-tools/2016/12/18/multidplyr.html#figure1>] is no longer available; the examples below follow the package author's current interface.
 
 The first step is to create a cluster of workers and tell each one which libraries it will need. Remember that on a PSOCK backend each worker starts empty, so loading `dplyr` on the cluster is not optional.
 
@@ -131,7 +131,7 @@ rm(list = ls())
 
 ## parallel
 
-The base `parallel` package is more general than `multidplyr`: it is not tied to data frames, so you can parallelize arbitrary computations. The following example, adapted from [Blas M. Benito](https://www.blasbenito.com/post/02_parallelizing_loops_with_r/), first makes sure a handful of packages are installed and loaded.
+The base `parallel` package is more general than `multidplyr`: it is not tied to data frames, so you can parallelize arbitrary computations. The following example, adapted from Blas M. Benito^[<https://www.blasbenito.com/post/02_parallelizing_loops_with_r/>], first makes sure a handful of packages are installed and loaded.
 
 ```{r}
 #automatic install of packages if they are not installed already
@@ -199,7 +199,7 @@ parallel::stopCluster(cl = my.cluster)
 
 > **Warning:** Always call `stopCluster()` when you are done. Each worker is a live R process; if you forget to stop the cluster, those processes linger in the background and keep consuming memory.
 
-A common pattern is to parallelize an `lapply()`. The function `parLapply()` is the parallel twin of `lapply()`: it applies a function to each element of a list, but spreads the elements across workers. The example below, following [Jens Moll-Elsborg](https://towardsdatascience.com/getting-started-with-parallel-programming-in-r-d5f801d43745), builds a list of four large numeric vectors and computes each one's mean in parallel.
+A common pattern is to parallelize an `lapply()`. The function `parLapply()` is the parallel twin of `lapply()`: it applies a function to each element of a list, but spreads the elements across workers. The example below, following Jens Moll-Elsborg^[<https://towardsdatascience.com/getting-started-with-parallel-programming-in-r-d5f801d43745>], builds a list of four large numeric vectors and computes each one's mean in parallel.
 
 > **Note:** The original example used vectors of length `1e9`. Under PSOCK each of those vectors (about 4 GB) must be copied to a worker, which can exhaust memory on a typical machine. We use `1e7` here so the example runs reliably while illustrating the same idea; raise it on a machine with ample RAM.
 
@@ -222,7 +222,7 @@ parallel::parLapply(cl,
 parallel::stopCluster(cl)
 ```
 
-The result is a list of four means, one per input vector, each computed on a separate worker. [Blas Benito](https://www.blasbenito.com/post/02_parallelizing_loops_with_r/) gives a fuller example of the same machinery applied to tuning random forest hyperparameters in parallel, which is a natural fit because each hyperparameter setting can be evaluated independently.
+The result is a list of four means, one per input vector, each computed on a separate worker. Blas Benito^[<https://www.blasbenito.com/post/02_parallelizing_loops_with_r/>] gives a fuller example of the same machinery applied to tuning random forest hyperparameters in parallel, which is a natural fit because each hyperparameter setting can be evaluated independently.
 
 ## doParallel
 
@@ -266,7 +266,7 @@ pacman::p_unload(pacman::p_loaded(), character.only = TRUE)
 
 ## rslurm
 
-Everything so far has run on the cores of a single machine. To go further, research computing often uses a *cluster*: many separate machines (nodes) coordinated by a scheduler. Slurm is one of the most common schedulers, and the [`rslurm`](https://cran.r-project.org/web/packages/rslurm/vignettes/rslurm.html) package lets you send R work to a Slurm cluster without leaving R.
+Everything so far has run on the cores of a single machine. To go further, research computing often uses a *cluster*: many separate machines (nodes) coordinated by a scheduler. Slurm is one of the most common schedulers, and the `rslurm`^[<https://cran.r-project.org/web/packages/rslurm/vignettes/rslurm.html>] package lets you send R work to a Slurm cluster without leaving R.
 
 > **When to use this:** Single-machine tools like `parallel` are enough until your job outgrows one computer's cores or memory. When that happens (very large simulations, sweeping a huge parameter grid) `rslurm` distributes the work across the cluster's nodes for you.
 

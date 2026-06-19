@@ -13,11 +13,9 @@ The reason we hand this job to a machine is that the relationships are usually t
 
 This chapter lays the conceptual foundation for everything that follows. We begin with the vocabulary and the big picture: the kinds of learning problems, the kinds of data, and what "learning" even means. We then set up the general statistical framework ($Y = f(X) + \epsilon$) that unifies the later chapters, and we use it to derive how prediction error decomposes into reducible and irreducible parts. From there we turn to the practical questions every analyst faces: how do we measure whether a model is any good (model assessment), how do we estimate that quality honestly using cross-validation and the bootstrap, and how do we improve a model when we have too many predictors (subset selection, shrinkage, and dimension reduction). Linear regression appears throughout as the running example, both because it is the simplest model and because almost every advanced method can be understood as a relaxation of it.
 
-
-::: {.callout-tip}
+::: callout-tip
 This is a reference-style chapter. You do not need to read it front to back. If you are new to the field, read the first three sections (the big picture, the general framework, and model accuracy) carefully, then skim the rest and return as needed. If you are experienced, use the headings to jump to the topic you want; the callouts flag the ideas most worth remembering.
 :::
-
 
 For readers who like a visual map of how the methods relate, @fig-intro-method-map lays out the field at a glance, and the overview chapter that follows (@sec-overview) expands each branch. Two textbooks are the standard references and are cited throughout this book: @james2013 is the most accessible introduction, while @hastie2001a is the most mathematically complete.
 
@@ -41,36 +39,35 @@ graph LR
 
 The first fork in the road is whether or not your data come with an outcome to predict. In supervised learning we have both inputs and a labeled output, and the goal is to predict or estimate the output from the inputs. In unsupervised learning we have only inputs and no labeled output; the goal is to understand the structure and relationships among the inputs themselves.
 
-
 ::: {.callout-important title="Key idea"}
 Supervised learning asks "given these inputs, what is the output?" Unsupervised learning asks "what structure is hidden in these inputs?" Much of this book is about supervised learning, but later parts treat unsupervised learning, reinforcement learning, and many further learning paradigms in their own right. The two basic modes are also complementary: unsupervised methods are often used to reduce the number of inputs before a supervised model is fit.
 :::
-
 
 Two quantities recur constantly and deserve names up front. We write $n$ for the sample size (the number of observations) and $p$ for the number of features (the number of input variables). As a rough rule, more observations are almost always better, which is why deep learning practitioners go to such lengths to manufacture extra training examples through data augmentation, and fewer features are usually better, which is one of the main reasons unsupervised dimension-reduction methods exist (they shrink $p$).
 
 @tbl-intro-method-families organizes the major method families by two questions: is the output (or the structure of interest) continuous or categorical, and is the problem supervised or unsupervised. Use it as a map; each entry is a chapter or section later in the book.
 
-| Output type | Unsupervised | Supervised |
-|:--|:--|:--|
-| Continuous | Clustering and dimension reduction (SVD, PCA, k-means) | Regression (linear, polynomial); tree-based methods |
-| Categorical | Association analysis (Apriori, FP-growth); hidden Markov models | Classification (kNN, trees, logistic, naive Bayes, SVM) |
++----------------------+-----------------------------------------------------------------+---------------------------------------------------------+
+| Output type          | Unsupervised                                                    | Supervised                                              |
++:=====================+:================================================================+:========================================================+
+| Continuous           | Clustering and dimension reduction (SVD, PCA, k-means)          | Regression (linear, polynomial); tree-based methods     |
++----------------------+-----------------------------------------------------------------+---------------------------------------------------------+
+| Categorical          | Association analysis (Apriori, FP-growth); hidden Markov models | Classification (kNN, trees, logistic, naive Bayes, SVM) |
++----------------------+-----------------------------------------------------------------+---------------------------------------------------------+
 
 : Major method families, organized by output type (continuous or categorical) and by whether the problem is supervised or unsupervised. {#tbl-intro-method-families}
 
 ### What kind of data are you working with?
 
-Before choosing a method it helps to recognize what form your data take, because that often dictates the preprocessing you will need. Data come in three broad forms. Structured data live in neat tables of rows and columns, the kind you can load straight into a data frame. Semi-structured data carry some organizing markup but are not a flat table; XML, JSON, and HTML are typical examples. Unstructured data have no built-in tabular form and must be turned into features before most models can use them; these include text, images (photos and videos), and networks such as social graphs.
+Before choosing a method it helps to recognize what form your data take, because that often dictates the preprocessing you will need. Data come in three broad forms. Structured data live in neat tables of rows and columns, the kind you can load straight into a data frame. Semi-structured data carry some organizing markup but are not a flat table (e.g., XML, JSON, and HTML). Unstructured data have no built-in tabular form and must be turned into features before most models can use them; these include text, images (photos and videos), and networks such as social graphs.
 
 ### What does it mean for a machine to "learn"?
 
 Machine learning is concerned with the development, the analysis, and the application of algorithms that allow computers to learn. The operational definition we will use is simple: a computer learns if it improves its performance at some task as it gains experience, where "experience" means data. More concretely, learning means extracting a model of a system purely from observing it (or from simulating it), where by a model we mean some set of relationships among the variables that describe the system.
 
-
-::: {.callout-note}
+::: callout-note
 A "model" in this book is not a single equation handed down from theory. It is whatever object (a formula, a tree, a network of weights) encodes the relationships we estimated from data. Different chapters use very different objects, but they all play this same role.
 :::
-
 
 We learn for one of two goals, and it is worth being clear which one you are pursuing because it changes how you should build and judge a model. Prediction asks only for accurate outputs on new inputs; the model can be an opaque black box as long as it predicts well. Inference asks how the inputs relate to the output, which variables matter, in what direction, and by how much; here interpretability is the whole point.
 
@@ -96,19 +93,15 @@ A learning project moves through four stages, and skipping or rushing any one of
 
 How well the final model performs is not determined by the algorithm alone. Four factors interact: the type of training data provided, the form and extent of any prior knowledge you can build in, the type of feedback the learner receives, and the learning algorithm itself. It helps to keep two of these factors separate in your mind throughout the book, because nearly every method is a particular choice on each axis: modeling (what family of relationships are we willing to consider?) and optimization (how do we search that family for the best fit?).
 
-
 ::: {.callout-tip title="Intuition"}
 An algorithm is the engine that searches through possible models and builds up the knowledge structure that represents what was learned. A good learning algorithm extracts the useful, generalizable information from the training examples while ignoring the accidental noise. The whole game is generalization, performing well on data you have not seen, not memorization of the data you have.
 :::
 
-
 This brings us to a foundational caveat. Training is the process of making the machine learn from a training set, and we then judge it on a separate test set. But this only works under assumptions, summarized by the no free lunch principle: there is no single algorithm that is best for every possible problem.
 
-
-::: {.callout-warning}
+::: callout-warning
 Every method in this book carries an implicit assumption that the training set and the test set are drawn from the same distribution. When that assumption breaks (the world shifts after you train, or your sample is not representative), even a model that validated beautifully can fail in deployment. No amount of cleverness removes the need for assumptions.
 :::
-
 
 ### A taxonomy of learning algorithms
 
@@ -154,11 +147,9 @@ E(Y - \hat{Y})^2 &= E[f(X) + \epsilon - \hat{f}(X)]^2 \\
 \end{aligned}
 $$
 
-
 ::: {.callout-important title="Key idea"}
 No model, however sophisticated, can do better than the irreducible error $var(\epsilon)$. This sets a hard floor on accuracy and is a useful sanity check: if your goal sits below that floor, the answer is to collect better inputs, not to fit a fancier model.
 :::
-
 
 For inference, the object of interest is the conditional mean $f(X) = E(Y|X)$, but the conditional distribution of $Y|X$ is unknown and so must be estimated. Either way, the practical goal is to find an $\hat{f}$ such that $Y \approx \hat{f}(X) \forall (X,Y)$.
 
@@ -186,11 +177,9 @@ This choice exposes a tradeoff between prediction accuracy and model interpretab
 
 : Restrictive versus flexible models and the tradeoff between interpretability for inference and accuracy for prediction. {#tbl-intro-restrictive-flexible}
 
-
 ::: {.callout-tip title="When to use this"}
 If your stakeholders need to understand and trust the "why" (a regulator, a clinician, a policymaker), lean restrictive and interpretable. If all that matters is the accuracy of the output and the model can stay a black box, you are free to lean flexible.
 :::
-
 
 ## Assessing Model Accuracy - Model fit
 
@@ -228,11 +217,9 @@ where $0$ subscript means training data set. Reading this equation term by term 
 
     -   As the model gets more complex, it can fit (approximate) the true function better, but it also fits noise better (i.e., overfit)
 
-
 ::: {.callout-tip title="Intuition"}
 Think of **bias** as systematic error from a model that is too rigid to capture the truth, and **variance** as instability, how much your fitted model would jump around if you redrew the training sample. Flexible models bend to fit the data (low bias) but wobble from sample to sample (high variance); rigid models are stable (low variance) but miss the shape (high bias). The art is finding the flexibility that minimizes their sum.
 :::
-
 
 ### Categorical output: training error rate
 
@@ -262,11 +249,9 @@ This quantity plays the same role for classification that the irreducible error 
 
 -   analogous to the irreducible error
 
-
 ::: {.callout-important title="Key idea"}
 The Bayes classifier is the gold standard, the lowest error any classifier can reach. We can never build it in practice because we never know $P(Y|X)$ exactly, so every real classifier is an attempt to approximate that conditional probability.
 :::
-
 
 A concrete example of such an approximation is K-nearest neighbors (KNN), treated in full in @sec-knn, which estimates the conditional probability by simply looking at the labels of the $K$ closest training points:
 
@@ -285,11 +270,9 @@ $$
 
 In one dimension, capturing 1% of the data needs a window covering 1% of the range. In ten dimensions, capturing that same 1% requires a "subcube" that spans 63% of each axis, which is no longer local in any meaningful sense.
 
-
-::: {.callout-warning}
+::: callout-warning
 In high dimensions there is no such thing as a local neighborhood: every point is far from every other point. This is why methods built on local averaging (KNN, kernel smoothers; see @sec-kernel) degrade as $p$ grows, and why dimension reduction and regularization, covered later in this chapter, become necessary rather than optional.
 :::
-
 
 ### Reminder
 
@@ -378,11 +361,9 @@ $$
 
 Since OLS is an unbiased estimator, $\tilde{\beta} = \hat{\beta}$.
 
-
 ::: {.callout-important title="Key idea"}
 Gauss-Markov only guarantees that OLS is best among *unbiased* estimators. We could often achieve a smaller MSE by deliberately accepting a little bias in exchange for a large drop in variance. That single observation is the entire justification for the shrinkage methods (ridge, lasso) introduced later in this chapter.
 :::
-
 
 Inference. If we additionally assume normal errors, we can attach uncertainty to the estimates. The error variance is estimated by
 
@@ -400,19 +381,15 @@ $$
 (n-p-1) \hat{\sigma}^2 \sim \sigma^2 \chi^2_{n-p-1}
 $$
 
-
-::: {.callout-warning}
+::: callout-warning
 If $p$ is large (many covariates), you will likely find at least one variable significant purely by chance, so an individual partial $t$-statistic can mislead you. The $F$-test does not suffer from this problem because it accounts for the number of predictors jointly. Treat per-coefficient significance with suspicion in wide datasets.
 :::
 
-
 Real data rarely satisfy the linear model's assumptions exactly, and it is worth knowing the standard failure modes so you can diagnose them: nonlinearity of the response-predictor relationship, correlated errors, non-constant error variance, high-leverage points, and collinearity.
 
-
-::: {.callout-tip}
+::: callout-tip
 Parametric methods tend to outperform nonparametric ones when the number of observations per predictor is small. When data are scarce, the structure imposed by a parametric model is an asset, not a limitation.
 :::
-
 
 <br>
 
@@ -468,11 +445,9 @@ the amount that $\bar{err}$ underestimates the true test error depends on how st
 
 This single insight organizes the two families of remedies. [@hastie2001a] Ch. 7.5 shows that most model-selection criteria (AIC, BIC, $C_p$) work by estimating that optimism and adding it back to the training error, producing an unbiased estimate of prediction error. The alternative family, cross-validation and the bootstrap, instead estimates the expected prediction error $Err$ directly, without modeling the optimism at all.
 
-
-::: {.callout-note}
+::: callout-note
 A model with a larger *effective number of parameters* is more flexible. The word "effective" matters because for many modern methods the count of tunable knobs is not an integer; the definition below makes it precise.
 :::
-
 
 To make "effective number of parameters" concrete, restrict attention to linear fitting methods. Writing the outputs as
 
@@ -545,11 +520,9 @@ where $MSE_i = (y_i - \hat{f}^{-i}(x_i))^2$ (an alternative loss function could 
 
 -   LOOCV is expensive to implement
 
-
 ::: {.callout-tip title="Intuition"}
 Because every leave-one-out training set differs by just a single point, the $n$ fitted models are almost identical, so their errors are highly correlated. Averaging highly correlated quantities does little to reduce variance, which is why LOOCV, despite its low bias, can be a noisy estimate of test error.
 :::
-
 
 In R, fitting with `glm()` (rather than `lm()`) lets us pass the model to `cv.glm()` from the `boot` package, which computes the LOOCV error for us. Note that `glm()` without a link family gives exactly the same coefficients as `lm()`.
 
@@ -593,11 +566,9 @@ $$
 CV_{(K)} = \frac{1}{K} \sum_{k=1}^K MSE_k
 $$
 
-
-::: {.callout-tip}
+::: callout-tip
 In practice $K = 5$ or $K = 10$ is the standard choice. These values give a good balance: each training set is large enough that the models are not badly degraded, yet the held-out folds are different enough that the errors are not as correlated as in LOOCV. K-fold with $K=10$ is the default you should reach for unless you have a specific reason not to.
 :::
-
 
 The code is identical to the LOOCV loop except for the `K = 10` argument:
 
@@ -650,11 +621,9 @@ $$
 
 which is $-2$ times the log-likelihood (the deviance). It rewards a classifier for being confident *and* correct, and penalizes confident mistakes harshly.
 
-
-::: {.callout-warning}
+::: callout-warning
 Cross-validation must wrap the *entire* sequence of modeling steps. Any step that uses the outputs (variable selection, feature filtering by correlation with $y$) must happen *inside* the CV loop, after the fold is removed. Selecting features on the full data and then cross-validating only the final fit is a common and serious mistake that produces wildly optimistic error estimates. The one exception is a purely *unsupervised* preprocessing step on the inputs; since it never touches the outputs, it can be done once outside the loop.
 :::
-
 
 #### Bootstrapping
 
@@ -676,11 +645,9 @@ $$
 
 A few practical points are worth absorbing before the code. The bootstrap can in principle estimate model error, but it tends to be optimistic because the resampled training and test sets share many of the same observations; "leave-one-out" bootstrap variants help, though a training-set bias problem remains, and [@hastie2001a] gives an estimator that reduces it further.
 
-
 ::: {.callout-tip title="When to use this"}
 Reach for cross-validation when you want to evaluate *predictive performance* (how well does the model predict new data?). Reach for the bootstrap when you want to evaluate the *properties of an estimator* (what is the standard error of this coefficient or statistic?). They answer different questions.
 :::
-
 
 For a genuine big-data prediction problem you can combine the two approaches in a clean three-step recipe:
 
@@ -764,11 +731,9 @@ Ordinary least squares handles none of these gracefully. There are three broad f
 
 3.  [Dimension Reduction]: Project the p predictors in an M-dimensional subpsace where $M <p$ (i.e., compute M different linear combination or projection of the p predictors and use them as new predictors). (e.g., principal component analysis)
 
-
 ::: {.callout-important title="Key idea"}
 All three families fight the same enemy, variance from having too many parameters, but by different means. Subset selection drops predictors entirely; shrinkage keeps them all but pulls their coefficients toward zero; dimension reduction replaces the predictors with a few informative combinations. Each accepts a little bias to win a larger reduction in variance.
 :::
-
 
 ### Subset Selection
 
@@ -841,11 +806,9 @@ When you use cross-validation to pick the model size, do not simply grab the siz
 
 -   Select the smallest model where the estimated test error is within one SE of the lowest point on the curve (i.e.more parsimonious model)
 
-
-::: {.callout-tip}
+::: callout-tip
 The one-standard-error rule deliberately prefers a simpler model over a marginally-better-scoring complex one. Since the CV curve is estimated with noise, models within one standard error of the minimum are statistically indistinguishable, so you may as well take the simplest among them.
 :::
-
 
 ### Shrinkage Methods
 
@@ -881,11 +844,9 @@ $$
 
 The tuning parameter $\lambda$ is chosen by cross-validation. Several properties are worth keeping in mind:
 
-
-::: {.callout-warning}
+::: callout-warning
 The ridge estimator is *not* scale-invariant: rescale a predictor and its coefficient changes substantially. You must therefore standardize (center and divide each column by its standard deviation) *before* fitting, or the penalty will fall unequally on predictors merely because of their units.
 :::
-
 
 -   $\lambda$ allows for a continuous range of bias-variance trade-offs.
 
@@ -913,11 +874,9 @@ The only change from ridge is the penalty term:
 
 That seemingly small change has a large consequence: once $\lambda$ is large enough, the lasso sets some coefficients exactly to zero, dropping those predictors from the model and performing variable selection automatically. There is no closed form for $\hat{\beta}^L$, and $\lambda$ is again chosen by cross-validation.
 
-
 ::: {.callout-tip title="Intuition"}
 Why does the $l_1$ penalty zero out coefficients while the $l_2$ penalty does not? The $l_1$ constraint region is a diamond with sharp corners that sit on the axes, and the solution tends to land on a corner, where some coordinates are exactly zero. The $l_2$ region is a smooth ball with no corners, so it shrinks coefficients toward zero but rarely lands exactly on it.
 :::
-
 
 A few comparisons help decide between the two:
 
@@ -1009,11 +968,9 @@ $$
 \beta_j = \sum_{m=1}^M \theta_m \phi_{jm}
 $$
 
-
 ::: {.callout-important title="Key idea"}
 Dimension-reduction regression is just OLS with the coefficients $\beta_j$ *constrained* to lie in a lower-dimensional space. When $M = p$ and the $Z_m$ are linearly independent, the constraint disappears and you recover plain OLS (with the bonus that the new predictors are orthogonal). The benefit appears when $M \ll p$: the constraint biases the fit slightly but cuts its variance sharply.
 :::
-
 
 As with the [Shrinkage Methods], this constrained solution is biased but typically has much lower variance in the fitted coefficients, especially when $M \ll p$.
 
@@ -1051,11 +1008,9 @@ $$
 
 so large singular values mark directions of large variance and small ones mark directions of little variance. Principal component regression (PCR) then constructs the first $M$ components $Z_1, \dots, Z_M$ and uses them as the predictors in a least-squares regression.
 
-
-::: {.callout-warning}
+::: callout-warning
 PCR rests on the assumption that the directions in which $X_1, \dots, X_p$ vary the most are also the directions most associated with $Y$. This is usually, but not always, true: the inputs are chosen entirely without looking at $Y$, so PCR can in principle discard a low-variance direction that happens to be the one that predicts $Y$. And capturing variance never establishes causation.
 :::
-
 
 A few further notes situate PCR among its neighbors:
 
@@ -1073,11 +1028,9 @@ A few further notes situate PCR among its neighbors:
 
     -   The singular vectors that have smaller variation (i.e., smaller $d_j^2$) are shrunk more than those with larger variation
 
-
-::: {.callout-tip}
+::: callout-tip
 Standardize the predictors before running the SVD. If you do not, predictors measured on large numerical scales will dominate the variance and the principal components purely because of their units, regardless of their actual importance for $Y$.
 :::
-
 
 #### Partial Least Squares
 
@@ -1109,11 +1062,9 @@ $$
 
 subject to $||\alpha|| =1, \alpha^T \mathbf{S}\hat{\phi}_l =0,l = 1, \dots, m-1$. That extra $corr^2(\mathbf{y}, \mathbf{X\alpha})$ factor is exactly the "supervision" that PCR lacks.
 
-
-::: {.callout-note}
+::: callout-note
 In practice the variance term tends to dominate the correlation term, so PLS often behaves very similarly to ridge regression and PCR. The supervision can reduce bias, but it adds variance, and that extra variance can erode the advantage PLS is supposed to have over plain PCR. Do not expect dramatic gains.
 :::
-
 
 A few closing points on PLS:
 
@@ -1139,8 +1090,6 @@ We close the chapter by stepping back to the high-dimensional setting that motiv
 
 -   The test error tends to increase as the dimensionality of the problem increases ([Curse of dimensionality])
 
-
 ::: {.callout-important title="Key idea"}
 The unifying message of this chapter is that flexibility is double-edged. The whole craft of statistical learning is choosing, and honestly validating, just enough flexibility to capture the signal without chasing the noise. Every method that follows in this book is one more tool for striking that balance.
 :::
-

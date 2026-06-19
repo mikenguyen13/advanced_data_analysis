@@ -1,5 +1,7 @@
 # Advanced Data Analysis
 
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20764815.svg)](https://doi.org/10.5281/zenodo.20764815)
+
 The second book in the Data Analysis series by [Mike Nguyen](https://mikenguyen.netlify.app). Where the first book, [*A Guide on Data Analysis*](https://bookdown.org/mike/data_analysis/), focuses on interpretation and causal inference, this one focuses on **prediction**: machine learning and AI for data scientists, data analysts, data engineers, and AI/ML engineers who work in R.
 
 - Read it online: https://advanced-data-analysis.netlify.app
@@ -32,6 +34,6 @@ quarto publish netlify # upload the rendered site
 
 ## How to cite
 
-Nguyen, M. *Advanced Data Analysis*. https://advanced-data-analysis.netlify.app
+Nguyen, M. *Advanced Data Analysis*. https://advanced-data-analysis.netlify.app. https://doi.org/10.5281/zenodo.20764815
 
 A machine-readable citation is in [`CITATION.cff`](CITATION.cff).

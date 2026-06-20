@@ -192,6 +192,50 @@ Computational cost. Training cost is dominated by forming and inverting the cova
 LDA and QDA degrade predictably. (i) Rank deficiency: when $p \ge n - K$ the pooled $\hat\Sigma$ is singular and cannot be inverted; QDA fails even sooner, as soon as $n_k \le p$ for some class. (ii) Strong non-normality, especially heavy tails or discrete or skewed predictors, biases the boundaries; transforming features toward symmetry helps. (iii) Severe class imbalance pushes the boundary toward the rare class through the $\log\pi_k$ term; if the operational priors or misclassification costs differ from the training frequencies, set $\pi_k$ deliberately rather than from the sample. (iv) Outliers distort $\hat\mu_k$ and $\hat\Sigma$ because both are non-robust; robust covariance estimators are a remedy.
 :::
 
+### LDA and QDA in R {#sec-lda-worked}
+
+The choice between LDA and QDA is the bias--variance tradeoff in miniature: LDA assumes one shared covariance (a *linear* boundary, few parameters, low variance); QDA fits a covariance per class (a *quadratic* boundary, many more parameters, higher variance). Theory says QDA should win when the class covariances genuinely differ and lose when they do not --- and that this is worth *measuring*, not assuming. Both live in `MASS`.
+
+Start with `iris`, where the classes are close to Gaussian:
+
+```{r}
+#| label: lda-iris
+library(MASS)
+set.seed(1)
+i <- sample(150, 105); tr <- iris[i, ]; te <- iris[-i, ]
+c(LDA = mean(predict(lda(Species ~ ., tr), te)$class == te$Species),
+  QDA = mean(predict(qda(Species ~ ., tr), te)$class == te$Species))
+```
+
+The two are nearly tied here, which is itself the lesson: when covariances are similar, QDA's extra parameters buy nothing, so the parsimonious LDA is preferred. LDA also doubles as a supervised dimension reducer --- Fisher's reduced-rank idea, developed in the next section. The fitted object already carries the discriminant directions, and the singular values say how much between-class separation each captures:
+
+```{r}
+#| label: lda-fisher
+fit <- lda(Species ~ ., iris)
+round(fit$svd^2 / sum(fit$svd^2), 3)   # share of between-class variance per discriminant axis
+```
+
+The first discriminant absorbs ~99% of the class separation, so a one-dimensional projection of this four-dimensional problem loses almost nothing --- exactly the reduced-rank payoff.
+
+To see *when QDA earns its keep*, simulate the two regimes directly. We hold the means fixed and toggle only whether the two classes share a covariance, then average accuracy over many draws:
+
+```{r}
+#| label: lda-vs-qda
+trial <- function(equal_cov, n) {
+  S2  <- if (equal_cov) diag(2) else matrix(c(6, 0, 0, 0.2), 2)   # unequal: one class stretched
+  gen <- function(m, S, lab) setNames(data.frame(mvrnorm(n, m, S), lab), c("x1", "x2", "y"))
+  d <- rbind(gen(c(0, 0), diag(2), "A"), gen(c(1.5, 1.5), S2, "B")); d$y <- factor(d$y)
+  k <- sample(nrow(d), 0.6 * nrow(d)); trn <- d[k, ]; tst <- d[-k, ]
+  c(LDA = mean(predict(lda(y ~ ., trn), tst)$class == tst$y),
+    QDA = mean(predict(qda(y ~ ., trn), tst)$class == tst$y))
+}
+set.seed(1)
+rbind(`equal cov, n=25`   = rowMeans(replicate(200, trial(TRUE,  25))),
+      `unequal cov, n=300` = rowMeans(replicate(200, trial(FALSE, 300))))
+```
+
+The verdict matches the theory. With equal covariances and few observations, **LDA wins** because QDA squanders its degrees of freedom estimating covariance structure that is not there. With genuinely unequal covariances and enough data to estimate them, **QDA wins** because LDA's single straight boundary cannot bend to fit two differently-shaped classes. The practical rule follows directly: default to LDA, and only pay for QDA when you have both evidence of unequal spread and the sample size to estimate it. `predict()` also returns `posterior` class probabilities, so either model drops straight into a cost-sensitive or calibrated decision rule rather than a bare label.
+
 ### Background: Fisher's reduced-rank idea
 
 The historical root of discriminant analysis is R. A. Fisher's goal of finding low-dimensional linear classifiers. His idea was to summarize the class structure with just a few linear combinations of the predictors (for example $a_1' x, a_2'x, \dots$), which is useful both for classifying and for *seeing* the data: a small number of well-chosen directions can reveal how the class centroids separate. This is also called reduced-rank linear discriminant analysis [@hastie2001a, 4.3.3].

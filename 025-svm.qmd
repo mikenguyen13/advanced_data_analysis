@@ -588,6 +588,78 @@ $$ {#eq-svm-svr-dual}
 
 subject to $\sum_i(\alpha_i - \alpha_i^\ast)=0$ and $0\le \alpha_i,\alpha_i^\ast \le C$. The fitted function is $f(x)=\beta_0+\sum_i(\alpha_i-\alpha_i^\ast)K(x,x_i)$. The KKT conditions make the tube concrete: points strictly inside the tube have $\alpha_i = \alpha_i^\ast = 0$ and drop out entirely, so once again only the points on or outside the tube are support vectors. The width $\epsilon$ is now an extra hyperparameter alongside $C$; enlarging $\epsilon$ admits a flatter fit with fewer support vectors. The $\nu$-SVR variant replaces $\epsilon$ with a parameter $\nu$ that controls the fraction of points allowed to lie outside the tube, which is often easier to set than $\epsilon$ directly.
 
+## SVM in R: A Worked Example {#sec-svm-worked}
+
+The theory built two ideas worth seeing in action: the **kernel trick** (@sec-svm.qmd-mercer), which buys a nonlinear boundary without ever leaving the dual, and the **cost** parameter $C$ (@sec-svm.qmd-soft-dual), which trades margin width against margin violations. We use `e1071`, whose `svm()` wraps `libsvm`.
+
+We need data that a straight line cannot separate, so generate an inner disk of one class surrounded by a ring of the other --- the two-dimensional analogue of "no hyperplane will do":
+
+```{r}
+#| label: svm-data
+library(e1071)
+set.seed(1)
+n <- 400; rad <- c(runif(n/2, 0, 1), runif(n/2, 1.6, 2.6)); th <- runif(n, 0, 2*pi)
+dat <- data.frame(x1 = rad*cos(th), x2 = rad*sin(th),
+                  y = factor(rep(c("inner", "outer"), each = n/2)))
+i <- sample(n, 0.7*n); train <- dat[i, ]; test <- dat[-i, ]
+```
+
+### The kernel trick, measured
+
+A linear kernel is restricted to a straight boundary; the radial basis function (RBF) kernel maps into an implicit infinite-dimensional space where the ring *is* linearly separable. The test accuracy tells the whole story:
+
+```{r}
+#| label: svm-kernels
+lin <- svm(y ~ ., train, kernel = "linear")
+rbf <- svm(y ~ ., train, kernel = "radial")
+c(linear = mean(predict(lin, test) == test$y),
+  radial = mean(predict(rbf, test) == test$y))
+```
+
+The linear SVM is near chance because no line separates a disk from its surrounding ring; the RBF SVM is essentially perfect. Crucially, it never materializes the high-dimensional features --- it only ever evaluates the kernel $K(x_i, x_j)$ between points, which is the entire payoff of the dual formulation in @sec-svm.qmd-dual.
+
+```{r}
+#| label: svm-plot
+#| fig-cap: "RBF-kernel SVM decision regions; circled points are the support vectors that define the boundary."
+plot(rbf, train)
+```
+
+### Cost: the bias--variance dial
+
+$C$ governs how much the model pays for points inside the margin. Small $C$ tolerates violations (a wide, smooth margin defined by *many* support vectors --- higher bias); large $C$ insists on classifying training points correctly (a narrow margin clinging to *few* support vectors --- higher variance). Watch the support-vector count contract as $C$ grows:
+
+```{r}
+#| label: svm-cost
+sapply(c(0.1, 1, 100), function(C) svm(y ~ ., train, kernel = "radial", cost = C)$tot.nSV)
+```
+
+Because the support vectors are exactly the points on or inside the margin (@sec-svm.qmd-dual), this count *is* the effective complexity of the fit --- a model resting on 12 points generalizes differently from one resting on 100.
+
+### Tuning, honestly
+
+$C$ and the RBF width $\gamma$ are not separable by eye; tune them jointly by cross-validation. `tune()` runs a 10-fold grid and returns the best cell:
+
+```{r}
+#| label: svm-tune
+set.seed(1)
+tuned <- tune(svm, y ~ ., data = train, kernel = "radial",
+              ranges = list(cost = c(0.1, 1, 10, 100), gamma = c(0.5, 1, 2)))
+tuned$best.parameters
+```
+
+### Support vector regression
+
+The same machinery solves regression by fitting an $\epsilon$-insensitive tube (@eq-svm-svr-dual): errors smaller than $\epsilon$ cost nothing, so only points on or outside the tube become support vectors. On a noisy sine wave:
+
+```{r}
+#| label: svm-svr
+set.seed(1); x <- sort(runif(120, -3, 3)); y <- sin(x) + rnorm(120, 0, 0.2)
+svr <- svm(x, y, kernel = "radial", epsilon = 0.1)
+sqrt(mean((predict(svr, x) - y)^2))     # training RMSE
+```
+
+The recurring practical lesson: the kernel encodes your assumption about *shape*, $C$ and $\epsilon$ encode your tolerance for error, and all three must be tuned rather than guessed. With a sensible kernel and cross-validated hyperparameters, the SVM is among the strongest off-the-shelf classifiers for small-to-medium tabular data.
+
 ## Vector Quantization
 
 We close with a related technique that shares the same geometric flavor of partitioning space into regions, but serves a different purpose: compression. Vector quantization (VQ) is used for image and voice compression (a form of lossy data compression) and for pattern recognition (source^[<http://www.mqasem.net/vectorquantization/vq.html>]). A few orienting remarks before the details:

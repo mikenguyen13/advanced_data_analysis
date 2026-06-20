@@ -439,63 +439,128 @@ rbind(em = em_centers, kmeans = km_centers)      # should match closely
 
 ## Clustering in R: A Worked Example {#sec-cluster-worked}
 
-Theory settles once you run it on real data. We use `USArrests`, the violent-crime rates of the 50 US states, because it is small enough to read off by hand yet rich enough to cluster meaningfully. Because the four variables are on wildly different scales (`Assault` runs into the hundreds while `Murder` is single digits), we standardize first; otherwise the distance is dominated by whichever variable happens to carry the largest numbers, exactly the failure mode flagged in @sec-cluster.qmd-kmeans-cost.
+The theory above makes several claims that are easy to state and easy to forget: that scale silently decides the answer, that K-means only finds a local optimum, that "the number of clusters" is a modeling choice rather than a fact, and that the whole enterprise assumes clusters are roughly convex blobs. Rather than restate them, this section makes each one *happen* in code, on data small enough to audit. We lean on `cluster`, `factoextra` (for cluster plots), `mclust` (model-based clustering and the adjusted Rand index), and `dbscan`.
 
 ```{r}
-#| label: cluster-setup-data
-library(cluster)
-library(factoextra)
-arrests <- scale(USArrests)   # standardize: every feature gets mean 0, sd 1
+#| label: cluster-setup
+library(cluster); library(factoextra); library(mclust); library(dbscan)
 ```
 
-**K-means.** With `centers` fixed in advance and `nstart` restarting Lloyd's algorithm from several random seeds (so we keep the best of the local optima discussed in @sec-cluster.qmd-lloyd), one call does the work:
+### Scale is a modeling decision, not a formality
+
+`USArrests` records four crime statistics for the 50 US states. Look at their spreads before doing anything else:
+
+```{r}
+#| label: cluster-scales
+round(sapply(USArrests, sd), 1)
+```
+
+`Assault` has a standard deviation near 83 while `Murder`'s is around 4. Euclidean distance squares those differences, so on the raw data `Assault` contributes roughly $(83/4)^2 \approx 430$ times the influence of `Murder` --- the clustering would essentially be "sort states by assault rate." Standardizing puts every feature on equal footing, which is the right default unless you have a substantive reason to privilege one (@sec-cluster.qmd-kmeans-cost):
+
+```{r}
+#| label: cluster-standardize
+arrests <- scale(USArrests)   # mean 0, sd 1 per column
+```
+
+### K-means and the local-optimum trap
+
+Lloyd's algorithm (@sec-cluster.qmd-lloyd) descends to a *local* minimum that depends on where the centers start. This is not a footnote --- it changes answers. Run it twenty times from a single random start each and watch the within-cluster sum of squares wander:
+
+```{r}
+#| label: cluster-localoptima
+spread <- sapply(1:20, function(s) { set.seed(s); kmeans(arrests, 4, nstart = 1)$tot.withinss })
+range(spread)                 # best vs worst local optimum from one random start
+```
+
+The fix is not cleverness but repetition: `nstart` runs many initializations and keeps the best. This is why you should essentially never call `kmeans` with the default `nstart = 1` in production.
 
 ```{r}
 #| label: cluster-kmeans
-#| fig-cap: "K-means with k = 4 on standardized USArrests, projected onto the first two principal components."
+#| fig-cap: "K-means (k = 4, 25 restarts) on standardized USArrests, projected onto the first two principal components."
 set.seed(1)
 km <- kmeans(arrests, centers = 4, nstart = 25)
-km$size                       # how many states landed in each cluster
-fviz_cluster(km, data = arrests)
+km$size
+fviz_cluster(km, data = arrests, ggtheme = theme_minimal())
 ```
 
-**Choosing k.** The chapter warned that $k$ is yours to pick (@sec-cluster.qmd-choosing-k). The elbow (within-cluster sum of squares) and the average silhouette width turn that judgment into a picture:
+### Choosing k without fooling yourself
+
+Because $k$ is yours to choose (@sec-cluster.qmd-choosing-k), lean on more than one diagnostic; they routinely disagree, and the disagreement is information. The elbow and silhouette are quick visual reads (`fviz_nbclust(arrests, kmeans, method = "wss")` and `"silhouette"`); the **gap statistic** compares your within-cluster dispersion against the null of no clustering and is harder to fool:
 
 ```{r}
-#| label: cluster-choose-k
-#| fig-cap: "Average silhouette width across candidate k; the peak suggests how many clusters the data actually support."
-fviz_nbclust(arrests, kmeans, method = "silhouette")
+#| label: cluster-gap
+set.seed(1)
+gap <- clusGap(arrests, kmeans, K.max = 8, B = 50, nstart = 25)
+maxSE(gap$Tab[, "gap"], gap$Tab[, "SE.sim"])   # k chosen by the gap statistic
 ```
 
-**Hierarchical clustering.** Rather than commit to $k$ up front, build the whole tree from the proximity matrix and cut it afterward. Here `complete` linkage merges groups by their farthest pair:
+### Hierarchical and medoid variants
+
+Hierarchical clustering avoids committing to $k$ up front: build the whole tree, then cut. Linkage is the consequential knob --- `complete` (farthest-pair) gives compact clusters, `single` (nearest-pair) tends to "chain" --- so it deserves a deliberate choice, not the default:
 
 ```{r}
 #| label: cluster-hclust
-#| fig-cap: "Complete-linkage dendrogram of the states; the boxes show a four-cluster cut."
+#| fig-cap: "Complete-linkage dendrogram of the states, cut into four clusters."
 hc <- hclust(dist(arrests), method = "complete")
 plot(hc, cex = 0.6, hang = -1, main = "")
 rect.hclust(hc, k = 4, border = 2:5)
-table(cutree(hc, k = 4))      # cluster sizes from cutting the tree at k = 4
 ```
 
-**K-medoids (PAM).** When you want cluster centers that are *actual observations* and more robustness to outliers (@sec-cluster.qmd-kmeans-cost), `pam` swaps means for medoids:
+K-medoids (`pam`) answers a different need: centers that are *actual observations* (so you can name them) and robustness to outliers, since a medoid cannot be dragged off by one extreme point the way a mean can (@sec-cluster.qmd-kmeans-cost):
 
 ```{r}
 #| label: cluster-pam
-pm <- pam(arrests, k = 4)
-pm$medoids                    # the representative state for each cluster
+pam(arrests, k = 4)$medoids   # the representative state for each cluster
 ```
 
-**Model-based clustering.** Finally, `Mclust` fits the Gaussian mixtures of @sec-cluster.qmd-gmm and uses the BIC to choose *both* the number of clusters and the covariance shape automatically, so the soft-assignment view of clustering needs no manual $k$ at all:
+### Does the clustering recover real structure?
+
+On `USArrests` we have no answer key. On `iris` we do --- the species labels --- which lets us *score* a clustering with the **adjusted Rand index** (chance-corrected agreement; 0 is random, 1 is perfect). We cluster on the four measurements alone, then compare to the held-out species:
 
 ```{r}
-#| label: cluster-mclust
-library(mclust)
-mc <- Mclust(arrests, verbose = FALSE)
-summary(mc)                   # BIC-selected model and number of clusters
+#| label: cluster-ari
+X <- scale(iris[, 1:4]); set.seed(1)
+km_iris <- kmeans(X, centers = 3, nstart = 25)
+adjustedRandIndex(km_iris$cluster, iris$Species)
 ```
 
-The four routines will not agree exactly, and that is the lesson rather than a bug: each encodes a different notion of what a cluster *is*. Read them together, anchor on the silhouette and BIC for guidance, and treat the grouping as a hypothesis about structure, not a verdict.
+An ARI near 0.6 is the honest verdict: K-means cleanly isolates *setosa* but blurs the *versicolor*/*virginica* boundary, because those two species genuinely overlap in feature space. The score keeps us from over-claiming.
+
+### When K-means is the wrong tool
+
+Every method so far inherits K-means' core assumption: clusters are convex blobs around a centroid. Break that assumption and the method breaks with it. Two concentric rings are the textbook counterexample --- the "clusters" wrap around a shared center, so no set of centroids can separate them:
+
+```{r}
+#| label: cluster-rings
+#| fig-cap: "Two concentric rings: K-means (left) splits them by angle; DBSCAN (right) recovers them exactly."
+set.seed(1)
+ring  <- function(n, r, s = 0.05) { th <- seq(0, 2*pi, length.out = n); cbind(r*cos(th) + rnorm(n,0,s), r*sin(th) + rnorm(n,0,s)) }
+rings <- rbind(ring(200, 1), ring(400, 2.5)); truth <- rep(1:2, c(200, 400))
+
+km_r <- kmeans(rings, 2, nstart = 25)
+db_r <- dbscan(rings, eps = 0.20, minPts = 5)   # density-based: groups by connectivity, not distance to a center
+
+c(kmeans = adjustedRandIndex(km_r$cluster, truth),
+  dbscan = adjustedRandIndex(db_r$cluster, truth))
+```
+
+K-means scores ~0 (it slices the rings into pie wedges), while DBSCAN scores a perfect 1.0 by following the *density* of each ring rather than its distance to a center. When your clusters are non-convex, reach for density-based methods like DBSCAN, or for the graph-based spectral clustering of @sec-spectral-clustering; when you want soft, probabilistic membership instead of hard labels, use the Gaussian mixtures of @sec-cluster.qmd-gmm via `Mclust`, which also selects $k$ and the covariance shape by BIC automatically.
+
+### Putting a clustering into production
+
+A subtle gap bites teams in deployment: `kmeans` returns labels for the *training* rows but has no `predict` method for new data. You assign a new observation by standardizing it with the *training* center and scale (never re-scaling on the new point alone) and snapping it to the nearest centroid:
+
+```{r}
+#| label: cluster-predict
+predict_kmeans <- function(newdata, km, center, scale) {
+  z <- scale(newdata, center = center, scale = scale)
+  apply(z, 1, function(row) which.min(colSums((t(km$centers) - row)^2)))
+}
+ctr <- attr(arrests, "scaled:center"); scl <- attr(arrests, "scaled:scale")
+predict_kmeans(USArrests["California", , drop = FALSE], km, ctr, scl)
+```
+
+That one function is the difference between a clustering that lives in a notebook and one that can label tomorrow's records. The broader lesson of this section is that clustering is a sequence of decisions --- scale, algorithm, $k$, linkage, distance --- each of which can move the answer, so the defensible workflow validates where it can (ARI when labels exist, gap and silhouette when they do not) and treats the grouping as a hypothesis about structure, never a verdict.
 
 ## Summary
 

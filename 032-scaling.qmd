@@ -167,6 +167,31 @@ As with PCA, you usually do not know the target dimension $k$ in advance. In gen
 :::
 
 
+## Scaling in R: A Worked Example {#sec-scaling-worked}
+
+Multidimensional scaling makes a striking promise: hand it only the *distances* between objects and it reconstructs their coordinates. The cleanest demonstration uses `eurodist`, the road distances between 21 European cities --- no map, no latitudes, just a distance matrix. Classical (metric) MDS factors the double-centered distances and returns a two-dimensional layout:
+
+```{r}
+#| label: mds-classical
+#| fig-cap: "Classical MDS of European road distances. The recovered layout is the map of Europe, up to an arbitrary rotation and reflection."
+mds <- cmdscale(eurodist, k = 2, eig = TRUE)
+co  <- mds$points
+sum(mds$eig[1:2]) / sum(abs(mds$eig))           # share of structure captured in 2-D
+plot(co, type = "n", xlab = "", ylab = "", asp = 1)
+text(co, labels = rownames(co), cex = 0.7)
+```
+
+The picture *is* the map of Europe --- Lisbon and Athens fall at opposite ends, the Scandinavian cities cluster to one side --- recovered from distances alone, up to the rotation and reflection that MDS can never pin down (a road map carries no notion of "north"). Metric MDS assumes the distances are quantitatively meaningful. When only their *rank order* can be trusted (common for perceptual or survey dissimilarities), nonmetric MDS (`isoMDS`) fits a monotone transform instead and reports **stress**, the percentage of distance structure it failed to preserve:
+
+```{r}
+#| label: mds-nonmetric
+suppressPackageStartupMessages(library(MASS))
+nm <- isoMDS(eurodist, k = 2, trace = FALSE)
+c(stress_pct = nm$stress, distance_fidelity = cor(dist(co), eurodist))
+```
+
+A stress under ~10% and a near-0.99 correlation between recovered and original distances say the two-dimensional embedding is faithful. The workflow generalizes directly: any dissimilarity you can define --- between genes, documents, or survey respondents --- becomes a low-dimensional map you can actually look at, with stress (or the eigenvalue share) telling you how many dimensions the structure truly needs and how much you sacrificed by stopping at two.
+
 ## Nonlinear Multidimensional Scaling
 
 So far the methods have been essentially linear, and classical scaling is literally PCA. But there is interest in nonlinear dimension reduction that preserves not only similarity/dissimilarity, but also other notions of "shape" in the higher dimensional space.

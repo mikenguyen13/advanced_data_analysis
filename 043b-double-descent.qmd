@@ -161,6 +161,33 @@ ggplot(df, aes(x = Degree)) +
 
 ```
 
+### Regularization removes the peak {#sec-dd-ridge}
+
+The spike at the interpolation threshold is not inevitable --- it is specific to the *minimum-norm* interpolator that ordinary least squares falls back on when $p > n$. The practical remedy is the oldest one in the book: a ridge penalty. Hold $n = 100$ fixed, sweep the number of features $p$ straight through the threshold, and compare the unregularized excess risk against ridge:
+
+```{r}
+#| label: dd-ridge
+set.seed(1)
+n <- 100                                              # interpolation threshold at p = n
+fit <- function(X, y, lambda) {
+  p <- ncol(X)
+  if (lambda > 0)  solve(crossprod(X) + lambda * diag(p), crossprod(X, y))
+  else if (p <= n) solve(crossprod(X), crossprod(X, y))
+  else             crossprod(X, solve(tcrossprod(X), y))   # minimum-norm interpolator
+}
+risk <- function(p, lambda, reps = 40) mean(replicate(reps, {
+  beta <- rnorm(p, sd = 1 / sqrt(p))
+  X <- matrix(rnorm(n * p), n, p); y <- X %*% beta + rnorm(n, 0, 1)
+  sum((beta - fit(X, y, lambda))^2)                   # excess risk, test features ~ N(0, I)
+}))
+ps <- c(20, 50, 80, 95, 105, 140, 200, 400)
+rbind(p          = ps,
+      min_norm   = round(sapply(ps, risk, lambda = 0), 2),
+      ridge      = round(sapply(ps, risk, lambda = 5), 2))
+```
+
+The `min_norm` row traces the full double descent: risk climbs to a sharp peak as $p$ approaches $n = 100$ (the model is forced to interpolate noise with a wildly large-norm solution), then *descends a second time* as extra features give the minimum-norm solution room to stay small. The `ridge` row barely moves --- a modest penalty caps the solution norm exactly where it would otherwise explode, cutting the peak by an order of magnitude and restoring an ordinary, monotone-looking risk curve. This is the operational lesson behind the phenomenon: double descent is mostly a story about *implicit* regularization being weak near the threshold, and a touch of *explicit* regularization, tuned by cross-validation as usual, makes the whole spike disappear. You rarely have to live on the peak.
+
 ### Verifying the asymptotic risk formula {#sec-dd-verify}
 
 The following base-R simulation confirms @eq-double-descent-asymptotic-risk for the isotropic linear model. We fix $n$, vary $p$, fit the minimum-norm least squares solution via the pseudoinverse (`MASS::ginv`), and compare the Monte Carlo test risk to the theory. The empirical curve tracks the closed form and blows up at $\gamma = 1$.

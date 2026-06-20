@@ -329,6 +329,43 @@ Do not treat a contextual bandit as a plain classification task by simply traini
 
 A final point of clarification: although a contextual bandit builds on the multi-armed bandit and shares the bandit-feedback structure, it is not the same as the multi-armed bandit problem. The presence of context, and the goal of learning a policy that varies with that context, is what separates the two.
 
+## LinUCB and Regret in R: A Worked Example {#sec-cb-linucb-worked}
+
+The off-policy section above evaluated a *fixed* policy from logged data. The harder, more characteristic problem is learning a good policy *online*, where the only way to discover a promising arm is to try it. This is where the exploration-exploitation tension becomes concrete, and where regret --- the running gap between the best arm in hindsight and the one you played --- becomes the scoreboard. We implement **LinUCB**, which assumes each arm's reward is linear in the context and acts on an "optimism in the face of uncertainty" rule: pick the arm with the highest *upper confidence bound*, $\hat\theta_a^\top x + \alpha\sqrt{x^\top A_a^{-1} x}$, so an arm is tried either because it looks good or because we are still unsure about it.
+
+```{r}
+#| label: cb-linucb
+set.seed(1)
+d <- 5; K <- 4; T <- 3000
+Theta <- matrix(rnorm(d * K), d, K)            # true per-arm reward weights (unknown to the agent)
+
+run <- function(policy, alpha = 1, eps = 0.1) {
+  A <- replicate(K, diag(d), simplify = FALSE) # ridge "design" matrix per arm
+  b <- replicate(K, numeric(d), simplify = FALSE)
+  reg <- numeric(T)
+  for (t in 1:T) {
+    x <- rnorm(d); x <- x / sqrt(sum(x^2))      # this round's context
+    truth <- as.numeric(crossprod(Theta, x))    # true expected reward of each arm
+    Ai  <- lapply(A, solve)
+    est <- vapply(1:K, function(a) sum(Ai[[a]] %*% b[[a]] * x), 0)   # ridge estimate per arm
+    a <- switch(policy,
+      const_eps = if (runif(1) < eps) sample(K, 1) else which.max(est),
+      decay_eps = if (runif(1) < min(1, 5 / t)) sample(K, 1) else which.max(est),
+      linucb    = which.max(vapply(1:K, function(a)
+                    est[a] + alpha * sqrt(sum(x * (Ai[[a]] %*% x))), 0)))  # estimate + uncertainty bonus
+    r <- truth[a] + rnorm(1, 0, 0.1)            # observe reward for the CHOSEN arm only
+    A[[a]] <- A[[a]] + tcrossprod(x); b[[a]] <- b[[a]] + r * x          # online update
+    reg[t] <- max(truth) - truth[a]             # instantaneous regret
+  }
+  cumsum(reg)[c(500, 1500, 3000)]               # cumulative regret at three checkpoints
+}
+set.seed(1)
+t(sapply(c(const_eps = "const_eps", decay_eps = "decay_eps", linucb = "linucb"),
+         run)) |> `colnames<-`(c("t=500", "t=1500", "t=3000")) |> round(1)
+```
+
+Read the rows by their *growth*, not their level. The $\varepsilon$-greedy policy with a **fixed** exploration rate piles up regret at a constant rate (here roughly 0.11 per round) because it never stops paying the exploration tax --- its cumulative regret is *linear*, the hallmark of a policy that cannot learn to quit exploring. **Decaying** $\varepsilon$ fixes this: as $\varepsilon_t \to 0$ the regret curve flattens (sublinear), the property any good bandit algorithm must have. **LinUCB** reaches that flat regime fastest and lowest, because its confidence bonus shrinks automatically as $A_a^{-1}$ accumulates data --- it explores exactly as much as its uncertainty warrants and no more, with no exploration schedule to hand-tune. That self-regulating exploration, not a cleverer point estimate, is the whole game in bandits.
+
 ## Summary
 
 Contextual bandits handle repeated decisions where you act, observe a reward only for the action you chose, and use side information to choose well. They sit one step beyond the multi-armed bandit (which ignores context) and one step short of full reinforcement learning (where actions change future states). The central challenge is balancing exploration against exploitation, and the standard measuring stick is regret, the gap between the best policy in hindsight and what you actually achieved. With that framing in hand, the Vowpal Wabbit tutorial linked at the top is a good next step for seeing these ideas run on real data.

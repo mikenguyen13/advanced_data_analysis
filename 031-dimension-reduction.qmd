@@ -338,6 +338,59 @@ PCA also has several relatives that extend or reinterpret the same basic idea, e
 
 Taken together, the methods in this section share one DNA: find a small number of structured ingredients, recovered through an eigen- or singular-value decomposition, that reconstruct the data well. What changes from method to method is the structure we insist on (orthogonal, sparse, non-negative, independent) and how nonlinear we are willing to be.
 
+## Dimension Reduction in R: A Worked Example {#sec-dimred-worked}
+
+Two claims from the theory deserve a demonstration: that the leading principal components reconstruct the data with controllable error (@sec-dimension-reduction-varmax), and that the linearity of ordinary PCA is a real limit that the kernel trick removes. `prcomp` is base R; kernel PCA lives in `kernlab`.
+
+### PCA: variance and reconstruction
+
+`prcomp` on standardized data returns components ordered by the variance they capture. The cumulative share tells you how many you can keep:
+
+```{r}
+#| label: pca-variance
+X <- scale(USArrests)
+pca <- prcomp(X)
+round(cumsum(pca$sdev^2) / sum(pca$sdev^2), 3)   # cumulative variance explained
+```
+
+Two of the four components already carry ~87% of the variance. "Variance explained" is not an abstraction --- it is reconstruction accuracy. Project onto the first $k$ components and rotate back, and the mean squared error falls exactly as the discarded variance predicts:
+
+```{r}
+#| label: pca-reconstruct
+recon_mse <- sapply(1:4, function(k) {
+  Xk <- pca$x[, 1:k, drop = FALSE] %*% t(pca$rotation[, 1:k, drop = FALSE])
+  mean((X - Xk)^2)
+})
+round(recon_mse, 3)                              # MSE using 1..4 components (0 = lossless)
+```
+
+This is exactly the lever behind PCA-as-compression and PCA-as-denoising: keep the components that hold signal, drop the tail that holds mostly noise.
+
+```{r}
+#| label: pca-biplot
+#| fig-cap: "PCA biplot of USArrests: states in the first two principal components, with the original variables as loadings."
+biplot(pca, scale = 0, cex = 0.6)
+```
+
+### When linear PCA is not enough
+
+PCA can only rotate; it cannot bend. Put two classes on concentric rings --- separable by *radius* but by no linear combination of the coordinates --- and no principal axis will tell them apart. Kernel PCA maps the data into a feature space first, so a linear axis *there* corresponds to a curved one here:
+
+```{r}
+#| label: kpca
+library(kernlab); library(MASS)
+set.seed(1)
+ring <- function(n, r, s = 0.05) { th <- seq(0, 2*pi, length.out = n); cbind(r*cos(th)+rnorm(n,0,s), r*sin(th)+rnorm(n,0,s)) }
+R   <- rbind(ring(150, 1), ring(300, 2.5)); cls <- factor(rep(c("inner", "outer"), c(150, 300)))
+lin <- prcomp(R)$x[, 1:2]                                    # ordinary PCA
+ker <- rotated(kpca(R, kernel = "rbfdot", kpar = list(sigma = 2), features = 2))  # kernel PCA
+
+sep <- function(z) mean(predict(lda(cls ~ ., data.frame(z, cls)), data.frame(z))$class == cls)
+c(linear_PCA = sep(lin), kernel_PCA = sep(ker))             # how separable are the two rings in each space?
+```
+
+A classifier built on the two linear principal components is barely above chance, because the rings overlap completely along every straight axis; on the two kernel-PCA components the same classifier is perfect. The kernel "unrolls" the rings into a representation where structure that was hopelessly nonlinear becomes linearly obvious --- the same idea that powered the RBF SVM (@sec-svm), now in service of representation rather than classification. When your data plausibly lie on a curved manifold, this is the moment to reach past `prcomp` toward kernel PCA or the nonlinear methods next.
+
 ## Nonlinear Dimension Reduction
 
 Everything so far has been fundamentally linear: even kernel PCA achieves its nonlinearity by mapping into a new space and then doing linear PCA there. Neural-network approaches to the same goal, which learn a nonlinear encoding directly, are taken up in the chapter on autoencoders and representation learning (@sec-autoencoders). The next step is to drop the linearity assumption directly and let the low-dimensional representation follow whatever curved structure (manifold) the data actually lie on. These manifold-learning methods are developed in the chapter on multidimensional scaling and nonlinear dimension reduction (@sec-scaling).

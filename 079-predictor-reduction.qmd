@@ -84,5 +84,40 @@ The fix is to treat selection as just another modeling decision that the data sh
 A simple mental check: ask whether any step of your pipeline that looked at the outcome was repeated inside cross-validation. If predictor selection was done once, up front, on all the data, your reported accuracy is probably too good.
 :::
 
+### The trap, demonstrated {#sec-selbias-worked}
+
+This trap is easy to dismiss as a technicality until you watch it manufacture accuracy from nothing. We build a dataset with **no signal whatsoever** --- 100 samples, 2000 standard-normal predictors, and class labels assigned by a coin flip --- so the only honest accuracy is 50%.
+
+```{r}
+#| label: selbias-data
+library(MASS)
+set.seed(1)
+n <- 100; p <- 2000
+X <- matrix(rnorm(n * p), n, p)
+y <- factor(sample(c("A", "B"), n, replace = TRUE))   # labels independent of X
+```
+
+Now compare two cross-validation protocols. Both keep only the ten predictors most correlated with the label; they differ *only* in whether that selection happens before the folds are cut or inside each fold:
+
+```{r}
+#| label: selbias-cv
+pick <- function(rows, m = 10) order(abs(cor(X[rows, ], as.numeric(y[rows]))), decreasing = TRUE)[1:m]
+cv_acc <- function(select_inside) {
+  folds  <- sample(rep(1:5, length.out = n))
+  global <- pick(1:n)                                  # selection on ALL data (peeks at test labels)
+  mean(sapply(1:5, function(k) {
+    tr <- which(folds != k); ts <- which(folds == k)
+    f  <- if (select_inside) pick(tr) else global      # honest: re-select using only training rows
+    fit <- lda(X[tr, f], y[tr])
+    mean(predict(fit, X[ts, f, drop = FALSE])$class == y[ts])
+  }))
+}
+set.seed(1)
+c(select_outside_CV = mean(replicate(20, cv_acc(FALSE))),
+  select_inside_CV  = mean(replicate(20, cv_acc(TRUE)))) |> round(3)
+```
+
+Selecting outside the loop reports ~85% accuracy on data that contains no signal at all; selecting inside the loop reports the truthful ~50%. The inflation is entirely an artifact of letting the held-out labels influence which predictors were chosen --- with 2000 candidates, ten of them will correlate with the labels *by chance*, and once chosen they keep "working" on every fold. The fix is mechanical and non-negotiable: every outcome-dependent step, selection included, must live *inside* the resampling loop, which in practice means wrapping it in a pipeline (for example `recipes` + `workflows` in tidymodels, or `caret`'s `rfe` with selection nested in its folds) rather than running it once by hand.
+
 
 To summarize, wrapper methods search predictor subsets using model performance as the guide and tend to be more powerful but more expensive, while filter methods screen predictors with a cheaper external criterion that is faster but less directly aligned with model quality. Both can sharpen a model, and both will mislead you about that model's real performance unless selection is folded honestly into your validation procedure.

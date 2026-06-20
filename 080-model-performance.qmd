@@ -66,6 +66,32 @@ Reach for explicit measurement error modeling when a key predictor is known to b
 :::
 
 
+## Measurement Error in R: A Worked Example {#sec-measerror-worked}
+
+The two measurement-error sections make a claim that is easy to state and easy to doubt: error in a *predictor* biases its coefficient toward zero, while error in the *outcome* leaves the coefficient unbiased and merely adds noise. A short simulation settles it. We know the truth --- the slope is exactly 3 --- and corrupt one variable at a time:
+
+```{r}
+#| label: measerr-predictor
+set.seed(1)
+n <- 5000; x <- rnorm(n); y <- 2 + 3*x + rnorm(n)        # true slope = 3
+slopes <- sapply(c(0, 0.5, 1, 2), function(s) coef(lm(y ~ I(x + rnorm(n, 0, s))))[2])
+rbind(error_sd = c(0, 0.5, 1, 2),
+      slope    = round(slopes, 2),
+      theory   = round(3 / (1 + c(0, 0.5, 1, 2)^2), 2))   # attenuation = reliability ratio
+```
+
+As noise is added to the predictor the estimated slope collapses from 3 toward 0, and it does so at exactly the rate theory predicts: the coefficient is multiplied by the *reliability ratio* $\sigma_x^2 / (\sigma_x^2 + \sigma_{\text{err}}^2)$. This is **regression dilution**, and it is why a weak-looking coefficient can mean "noisily measured," not "unimportant." Contrast that with corrupting the outcome instead:
+
+```{r}
+#| label: measerr-outcome
+out <- sapply(c(0, 1, 2, 4), function(s) {
+  m <- lm(I(y + rnorm(n, 0, s)) ~ x); c(slope = coef(m)[2], r2 = summary(m)$r.squared)
+})
+round(out, 2)
+```
+
+The slope stays pinned near 3 no matter how much outcome noise we add; only the $R^2$ deteriorates. The lesson for performance evaluation is sharp: a low $R^2$ does **not** by itself indict your model --- it may simply reflect a noisy outcome you were never going to predict tightly --- whereas attenuated coefficients are a real bias you can diagnose, and correct for, only if you know the predictor's measurement error. Judging a model means knowing which of these you are looking at.
+
 ## Discretizing Continuous Outcomes
 
 There is a natural instinct to treat a continuous outcome as continuous and predict it on its original scale. Often that is right. But sometimes it makes more sense to deliberately coarsen a continuous response into categories, even when the underlying quantity is continuous, because the categorical version is the part we can actually predict with skill.

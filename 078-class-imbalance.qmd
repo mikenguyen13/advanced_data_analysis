@@ -169,4 +169,50 @@ Instead of tricking a cost-blind algorithm into respecting the rare class throug
 
 A closely related implementation is to add a misclassification cost term to the classification probabilities, which can be tuned to accommodate the different class frequencies and the different consequences of each error type. Either way, the costs become a transparent part of the model rather than a side adjustment.
 
+## Class Imbalance in R: A Worked Example {#sec-imbalance-worked}
+
+The chapter's opening warning --- that accuracy flatters a model on imbalanced data --- is best felt as a number. Simulate a problem with about 11% positives:
+
+```{r}
+#| label: imb-data
+suppressPackageStartupMessages(library(pROC))
+set.seed(1)
+n <- 3000; X <- matrix(rnorm(n*3), n, 3)
+p <- plogis(-3.2 + 1.5*X[, 1] + X[, 2])
+y <- factor(ifelse(runif(n) < p, "pos", "neg"), levels = c("neg", "pos"))
+d <- data.frame(X, y); i <- sample(n, 0.7*n); tr <- d[i, ]; te <- d[-i, ]
+prop.table(table(tr$y))
+```
+
+A model that predicts "negative" for *everyone* already scores ~91% accuracy --- while catching zero positives. Worse, a real logistic regression with genuine signal looks excellent on accuracy yet quietly misses most of the cases you actually care about:
+
+```{r}
+#| label: imb-naive
+recall <- function(pred) sum(pred == "pos" & te$y == "pos") / sum(te$y == "pos")
+m  <- glm(y ~ ., binomial, tr)
+ph <- predict(m, te, type = "response")
+p05 <- factor(ifelse(ph > 0.5, "pos", "neg"), levels = c("neg", "pos"))
+c(accuracy = mean(p05 == te$y), recall = recall(p05), AUC = as.numeric(auc(te$y, ph, quiet = TRUE)))
+```
+
+Accuracy near 0.92 hides a recall near 0.31 --- two of every three positives are missed at the default 0.5 cutoff. The AUC (~0.89) is the honest summary because it is threshold-free and prevalence-insensitive. Now apply two of the chapter's remedies and watch recall recover. First, **down-sample** the majority class so training sees a balanced problem:
+
+```{r}
+#| label: imb-downsample
+pos <- which(tr$y == "pos"); neg <- sample(which(tr$y == "neg"), length(pos))
+mb  <- glm(y ~ ., binomial, tr[c(pos, neg), ])
+pb  <- factor(ifelse(predict(mb, te, type = "response") > 0.5, "pos", "neg"), levels = c("neg", "pos"))
+recall(pb)
+```
+
+Second, leave the model alone and **move the cutoff** (this changes the decision, not the fit) --- lowering the threshold trades precision for the recall the problem demands:
+
+```{r}
+#| label: imb-cutoff
+pt <- factor(ifelse(ph > 0.15, "pos", "neg"), levels = c("neg", "pos"))
+c(recall = recall(pt), precision = sum(pt == "pos" & te$y == "pos") / sum(pt == "pos"))
+```
+
+Either intervention lifts recall from ~0.31 to ~0.8, at a deliberate cost in precision that you choose with the relative cost of the two error types in mind. The mechanics differ --- one reshapes the data, the other reshapes the decision --- but both encode the same refusal to let raw accuracy declare victory.
+
 To close, it helps to see these remedies as different points of intervention along the same pipeline. You can change the data before training (sampling methods), change the emphasis during training (case weights, cost-sensitive loss), change the prior beliefs the model holds (adjusting priors), or change how you turn a fitted model into a decision (alternative cutoffs, with tuning watching over all of it). They are not mutually exclusive, and in difficult problems they are often combined. The constant across every one of them is the discipline introduced at the start of the chapter: judge the model on metrics that reward catching the rare class, never on raw accuracy alone.

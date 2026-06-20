@@ -437,6 +437,66 @@ rbind(em = em_centers, kmeans = km_centers)      # should match closely
 ```
 :::
 
+## Clustering in R: A Worked Example {#sec-cluster-worked}
+
+Theory settles once you run it on real data. We use `USArrests`, the violent-crime rates of the 50 US states, because it is small enough to read off by hand yet rich enough to cluster meaningfully. Because the four variables are on wildly different scales (`Assault` runs into the hundreds while `Murder` is single digits), we standardize first; otherwise the distance is dominated by whichever variable happens to carry the largest numbers, exactly the failure mode flagged in @sec-cluster.qmd-kmeans-cost.
+
+```{r}
+#| label: cluster-setup-data
+library(cluster)
+library(factoextra)
+arrests <- scale(USArrests)   # standardize: every feature gets mean 0, sd 1
+```
+
+**K-means.** With `centers` fixed in advance and `nstart` restarting Lloyd's algorithm from several random seeds (so we keep the best of the local optima discussed in @sec-cluster.qmd-lloyd), one call does the work:
+
+```{r}
+#| label: cluster-kmeans
+#| fig-cap: "K-means with k = 4 on standardized USArrests, projected onto the first two principal components."
+set.seed(1)
+km <- kmeans(arrests, centers = 4, nstart = 25)
+km$size                       # how many states landed in each cluster
+fviz_cluster(km, data = arrests)
+```
+
+**Choosing k.** The chapter warned that $k$ is yours to pick (@sec-cluster.qmd-choosing-k). The elbow (within-cluster sum of squares) and the average silhouette width turn that judgment into a picture:
+
+```{r}
+#| label: cluster-choose-k
+#| fig-cap: "Average silhouette width across candidate k; the peak suggests how many clusters the data actually support."
+fviz_nbclust(arrests, kmeans, method = "silhouette")
+```
+
+**Hierarchical clustering.** Rather than commit to $k$ up front, build the whole tree from the proximity matrix and cut it afterward. Here `complete` linkage merges groups by their farthest pair:
+
+```{r}
+#| label: cluster-hclust
+#| fig-cap: "Complete-linkage dendrogram of the states; the boxes show a four-cluster cut."
+hc <- hclust(dist(arrests), method = "complete")
+plot(hc, cex = 0.6, hang = -1, main = "")
+rect.hclust(hc, k = 4, border = 2:5)
+table(cutree(hc, k = 4))      # cluster sizes from cutting the tree at k = 4
+```
+
+**K-medoids (PAM).** When you want cluster centers that are *actual observations* and more robustness to outliers (@sec-cluster.qmd-kmeans-cost), `pam` swaps means for medoids:
+
+```{r}
+#| label: cluster-pam
+pm <- pam(arrests, k = 4)
+pm$medoids                    # the representative state for each cluster
+```
+
+**Model-based clustering.** Finally, `Mclust` fits the Gaussian mixtures of @sec-cluster.qmd-gmm and uses the BIC to choose *both* the number of clusters and the covariance shape automatically, so the soft-assignment view of clustering needs no manual $k$ at all:
+
+```{r}
+#| label: cluster-mclust
+library(mclust)
+mc <- Mclust(arrests, verbose = FALSE)
+summary(mc)                   # BIC-selected model and number of clusters
+```
+
+The four routines will not agree exactly, and that is the lesson rather than a bug: each encodes a different notion of what a cluster *is*. Read them together, anchor on the silhouette and BIC for guidance, and treat the grouping as a hypothesis about structure, not a verdict.
+
 ## Summary
 
 Stepping back, clustering is less a single algorithm than a sequence of modeling choices, each of which can move the answer. It is worth gathering those choices and the cautions that go with them in one place.

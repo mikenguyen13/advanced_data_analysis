@@ -222,52 +222,37 @@ Both tricks fight the curse of dimensionality the same way: by refusing to let t
 
 ## Application
 
-We now fit local regression in R to the `Wage` data from the `ISLR2` package, predicting an individual's wage from their age. The standard function is `loess`. Its key tuning parameter is `span`, the fraction of observations that fall in each local neighborhood: a larger span uses more neighbors and produces a smoother, lower-variance fit, while a smaller span follows the data more closely at the cost of higher variance.^[An alternative R package for local regression is `locfit`, which offers more control over the local degree and adaptive bandwidths. We use base `loess` here because it ships with R and is the most common entry point.]
+We fit local regression in R with `loess` to `mcycle` (in `MASS`), a classic nonparametric-regression benchmark: head acceleration measured through a simulated motorcycle crash. The signal is sharply nonlinear and the noise level changes across the range, so it is an honest test of a smoother. The one tuning parameter is `span`, the fraction of observations in each local neighborhood: a larger span averages more neighbors (smoother, lower variance), a smaller span follows the data closely (wigglier, higher variance).^[An alternative is the `locfit` package, which offers adaptive bandwidths and more control over the local degree. We use base `loess` because it ships with R.]
 
-In the code below we fit two models, one with `span = 0.2` (each neighborhood holds 20% of the observations) and one with `span = 0.5`, then overlay both on the scatterplot so you can see the effect of the span directly. @fig-local-span-comparison shows the two fits.
+We overlay a narrow (`span = 0.2`) and a wide (`span = 0.5`) fit so the bias-variance effect is visible directly:
 
-```{r fig-local-span-comparison, fig.cap="Local regression fits of wage on age in the Wage data, comparing a narrow neighborhood (span = 0.2, red) with a wider one (span = 0.5, blue). The wider span produces a smoother, lower-variance curve."}
-library(ISLR2)
-attach(Wage)
-library (splines)
-
-# we want to predict for a grid of values for age
-agelims <- range (age)
-age.grid <- seq (from = agelims[1], to = agelims [2])
-
-
-
-plot(age,
-     wage,
-     xlim = agelims,
-     cex = .5,
-     col = "darkgrey")
-title("Local Regression")
-
-# each neighborhood consists of (spans) percentage of the observations
-fit <- loess(wage ~ age, span = .2, data = Wage) # using spans of 0.2 (i.e., each neighborhood consists of 20% of the observaitons)
-fit2 <- loess(wage ~ age, span = .5, data = Wage) # using spans of 0.5
-
-# with larger span, we have smoother fit
-
-
-lines(age.grid,
-      predict(fit, data.frame(age = age.grid)),
-      col = "red",
-      lwd = 2)
-lines(age.grid,
-      predict(fit2, data.frame(age = age.grid)),
-      col = "blue",
-      lwd = 2)
-legend(
-    "topright",
-    legend = c("span = 0.2", "Span = 0.5"),
-    col = c("red", "blue"),
-    lty = 1,
-    lwd = 2 ,
-    cex = 0.8
-)
+```{r fig-local-span-comparison, fig.cap="Local regression of head acceleration on time, span 0.2 (red) versus 0.5 (blue). The wider span is smoother but lags the sharp dip; the narrower one tracks it at the cost of more wiggle."}
+data(mcycle, package = "MASS")
+grid <- data.frame(times = seq(min(mcycle$times), max(mcycle$times), length.out = 200))
+plot(mcycle$times, mcycle$accel, cex = .5, col = "darkgrey",
+     xlab = "time (ms)", ylab = "acceleration (g)")
+f02 <- loess(accel ~ times, span = 0.2, data = mcycle)
+f05 <- loess(accel ~ times, span = 0.5, data = mcycle)
+lines(grid$times, predict(f02, grid), col = "red",  lwd = 2)
+lines(grid$times, predict(f05, grid), col = "blue", lwd = 2)
+legend("topright", c("span = 0.2", "span = 0.5"), col = c("red", "blue"), lty = 1, lwd = 2, cex = 0.8)
 ```
+
+Eyeballing two fits is not a selection rule, though. The span *is* the bias-variance dial, so choose it the way the theory says --- by minimizing honest held-out error. A 10-fold cross-validation over a grid of spans traces the U-shaped risk curve and names the winner:
+
+```{r local-span-cv}
+set.seed(1); folds <- sample(rep(1:10, length.out = nrow(mcycle)))
+cv_rmse <- function(sp) sqrt(mean(unlist(sapply(1:10, function(k) {
+  tr <- mcycle[folds != k, ]; te <- mcycle[folds == k, ]
+  fit <- suppressWarnings(loess(accel ~ times, span = sp, data = tr,
+                                control = loess.control(surface = "direct")))
+  (predict(fit, te) - te$accel)^2
+})), na.rm = TRUE))
+spans <- seq(0.2, 0.9, by = 0.1)
+rbind(span = spans, cv_rmse = round(sapply(spans, cv_rmse), 1))
+```
+
+The error is flat-to-best at the small spans and then climbs steeply as the neighborhood widens --- oversmoothing erases the very dip that matters, so the cross-validated RMSE more than half again worse at `span = 0.9` than at the optimum near `span = 0.3`. This is the same lesson as the kernel bandwidth (@sec-kernel-bandwidth) in a different costume: the smoother shape barely matters, the amount of smoothing is everything, and you set it by cross-validation rather than by eye.
 
 The red curve (`span = 0.2`) wiggles to track local features in the data, while the blue curve (`span = 0.5`) is noticeably smoother because each fitted point borrows strength from a wider neighborhood. This single picture captures the bias-variance trade-off that runs through the whole chapter: widen the neighborhood to reduce variance and you risk smoothing away real structure, narrow it to reduce bias and you let noise back into the fit. Choosing the span (by cross-validation or by judgment) is therefore the central practical decision when using local regression.
 

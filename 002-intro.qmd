@@ -47,19 +47,19 @@ Two quantities recur constantly and deserve names up front. We write $n$ for the
 
 @tbl-intro-method-families organizes the major method families by two questions: is the output (or the structure of interest) continuous or categorical, and is the problem supervised or unsupervised. Use it as a map; each entry is a chapter or section later in the book.
 
-+----------------------+-----------------------------------------------------------------+---------------------------------------------------------+
-| Output type          | Unsupervised                                                    | Supervised                                              |
-+:=====================+:================================================================+:========================================================+
-| Continuous           | Clustering and dimension reduction (SVD, PCA, k-means)          | Regression (linear, polynomial); tree-based methods     |
-+----------------------+-----------------------------------------------------------------+---------------------------------------------------------+
-| Categorical          | Association analysis (Apriori, FP-growth); hidden Markov models | Classification (kNN, trees, logistic, naive Bayes, SVM) |
-+----------------------+-----------------------------------------------------------------+---------------------------------------------------------+
++--------------+-----------------------------------------------------------------+---------------------------------------------------------+
+| Output type  | Unsupervised                                                    | Supervised                                              |
++:=============+:================================================================+:========================================================+
+| Continuous   | Clustering and dimension reduction (SVD, PCA, k-means)          | Regression (linear, polynomial); tree-based methods     |
++--------------+-----------------------------------------------------------------+---------------------------------------------------------+
+| Categorical  | Association analysis (Apriori, FP-growth); hidden Markov models | Classification (kNN, trees, logistic, naive Bayes, SVM) |
++--------------+-----------------------------------------------------------------+---------------------------------------------------------+
 
 : Major method families, organized by output type (continuous or categorical) and by whether the problem is supervised or unsupervised. {#tbl-intro-method-families}
 
 ### What kind of data are you working with?
 
-Before choosing a method it helps to recognize what form your data take, because that often dictates the preprocessing you will need. Data come in three broad forms. Structured data live in neat tables of rows and columns, the kind you can load straight into a data frame. Semi-structured data carry some organizing markup but are not a flat table (e.g., XML, JSON, and HTML). Unstructured data have no built-in tabular form and must be turned into features before most models can use them; these include text, images (photos and videos), and networks such as social graphs.
+Before choosing a method it helps to recognize what form your data take, because that often dictates the preprocessing you will need. Data come in three broad forms. Structured data live in neat tables of rows and columns, the kind you can load straight into a data frame. Semi-structured data carry some organizing markup but are not a flat table; XML, JSON, and HTML are typical examples. Unstructured data have no built-in tabular form and must be turned into features before most models can use them; these include text, images (photos and videos), and networks such as social graphs.
 
 ### What does it mean for a machine to "learn"?
 
@@ -107,7 +107,7 @@ Every method in this book carries an implicit assumption that the training set a
 
 We can now place the algorithms on a finer map. Supervised learning works with labeled pairs $\{ X_n \in R^d, y_n \in R\}^N_{n=1}$ and is used for prediction, splitting into classification when the output is a discrete label and regression when it is a real value. Unsupervised learning works with inputs alone, $\{ X_n \in R^d\}^N_{n=1}$, and covers clustering, estimating a probability distribution, finding associations among features, and dimension reduction. Reinforcement learning (@sec-rl-foundations) is a third basic mode, in which an agent learns to make a sequence of decisions (as in a robot or a chess engine) from feedback rather than from labeled examples. Beyond these, the book devotes an entire part to many further paradigms, among them semi-supervised learning (@sec-semi-supervised-learning), which mixes a small amount of labeled data with a large amount of unlabeled data, self-supervised, active, weakly-supervised, few-shot and zero-shot, meta-learning, transfer and multi-task, online, federated, continual, and adversarial learning.
 
-<br>
+------------------------------------------------------------------------
 
 ## General Framework
 
@@ -125,7 +125,7 @@ where
 
 The error term $\epsilon$ captures everything that affects $Y$ but is not in $X$: unmeasured variables, measurement error, and inherent randomness. We assume it averages to zero and is independent of the inputs.
 
-For prediction we do not need to understand $f$ at all; we just need a good estimate of it, $\hat{f}$, which we treat as a black box that turns inputs into a prediction,
+For prediction, we do not need to understand $f$ at all. We just need a good estimate of it, $\hat{f}$, which we treat as a black box that turns inputs into a prediction,
 
 $$
 \hat{Y} = \hat{f}(X)
@@ -147,6 +147,24 @@ E(Y - \hat{Y})^2 &= E[f(X) + \epsilon - \hat{f}(X)]^2 \\
 \end{aligned}
 $$
 
+The jump from the first line to the second is just expanding the square. Group the deterministic part as $A = f(X) - \hat{f}(X)$, so the bracket is $(A + \epsilon)^2$. Expanding gives three terms:
+
+$$
+E[(A + \epsilon)^2] = \underbrace{E(A^2)}_{\text{(i)}} + \underbrace{2\,E(A\epsilon)}_{\text{(ii)}} + \underbrace{E(\epsilon^2)}_{\text{(iii)}}
+$$
+
+and each one simplifies because of the assumptions we placed on $\epsilon$:
+
+-   **(i)** At a fixed input, $f(X)$ and $\hat{f}(X)$ are treated as constants, so $A$ is not random and $E(A^2) = A^2 = [f(X) - \hat{f}(X)]^2$. This is the reducible piece.
+
+-   **(ii)** The cross term vanishes. Because $\epsilon$ is independent of the inputs (and so of $A$) and has mean zero, $E(A\epsilon) = A \cdot E(\epsilon) = A \cdot 0 = 0$. This is the key cancellation that makes the decomposition clean: the noise neither helps nor hurts our model on average.
+
+-   **(iii)** Since $E(\epsilon) = 0$, we have $E(\epsilon^2) = \operatorname{var}(\epsilon)$ by definition of variance. This is the irreducible piece.
+
+Adding the surviving terms (i) and (iii) gives the second line.
+
+One subtlety: this decomposition holds the fitted model $\hat{f}$ fixed at the test point, which is why the reducible term is a single squared gap $[f(X) - \hat{f}(X)]^2$. Once we also treat $\hat{f}$ as random (it changes with the training sample), that one term splits further into a bias and a variance piece. That is exactly the fuller decomposition we develop in @sec-intro-bias-variance, and the two are consistent: the reducible error here is what later separates into bias$^2$ + variance.
+
 ::: {.callout-important title="Key idea"}
 No model, however sophisticated, can do better than the irreducible error $var(\epsilon)$. This sets a hard floor on accuracy and is a useful sanity check: if your goal sits below that floor, the answer is to collect better inputs, not to fit a fancier model.
 :::
@@ -167,13 +185,13 @@ The nonparametric approach makes no such commitment and lets the data determine 
 
 This choice exposes a tradeoff between prediction accuracy and model interpretability, summarized in @tbl-intro-restrictive-flexible. A restrictive model is easier to interpret and better suited to inference, while a flexible model usually predicts better but is harder to explain.
 
-+--------------------+-----------------+
-| Restrictive Model  | Flexible Model  |
-+====================+=================+
-| More inference     | More prediction |
-|                    |                 |
-| More interpretable |                 |
-+--------------------+-----------------+
+| Dimension          | Restrictive model        | Flexible model            |
+|--------------------|--------------------------|---------------------------|
+| Best suited for    | Inference                | Prediction                |
+| Interpretability   | High — easy to explain   | Low — often a black box   |
+| Typical accuracy   | Lower                    | Higher                    |
+| Bias vs. variance  | More bias, less variance | Less bias, more variance  |
+| Data required      | Less                     | More                      |
 
 : Restrictive versus flexible models and the tradeoff between interpretability for inference and accuracy for prediction. {#tbl-intro-restrictive-flexible}
 
@@ -185,7 +203,7 @@ If your stakeholders need to understand and trust the "why" (a regulator, a clin
 
 We cannot improve what we cannot measure, so before studying any specific method we need ways to score how well a fitted model matches reality. The right score depends on whether the output is continuous or categorical.
 
-### Continuous output: Mean squared error (MSE)
+### Continuous output: Mean squared error (MSE) {#sec-intro-bias-variance}
 
 For a continuous output the natural score is the mean squared error, the average squared gap between the observed values and the model's predictions:
 
@@ -201,11 +219,33 @@ $$
 \begin{aligned}
 E(MSE) &= E(y_0 - \hat{f}(x_0))^2\\
 &= var(\hat{f}(x_0)) + [bias(\hat{f}(x_0))]^2 + var(\epsilon) \\
-&= \text{variance} + \text{bias} + \text{irreducible noise}
+&= \text{variance} + \text{bias}^2 + \text{irreducible noise}
 \end{aligned}
 $$
 
-where $0$ subscript means training data set. Reading this equation term by term tells the whole story:
+where the $0$ subscript marks a fixed test point $x_0$, and the expectation is taken over the randomness in the training set (which makes $\hat{f}$ random) and the noise $\epsilon$ in $y_0 = f(x_0) + \epsilon$.
+
+The move from the first line to the second happens in two steps. **First, peel off the noise.** Substitute $y_0 = f(x_0) + \epsilon$ and group the deterministic part as before:
+
+$$
+E[(f(x_0) + \epsilon - \hat{f}(x_0))^2] = E[(f(x_0) - \hat{f}(x_0))^2] + \operatorname{var}(\epsilon)
+$$
+
+This is the exact same cancellation we used in the reducible/irreducible split earlier: the cross term dies because $\epsilon$ has mean zero and is independent of $\hat{f}$, and $E(\epsilon^2) = \operatorname{var}(\epsilon)$. What is new is the second step.
+
+**Second, split the reducible part into bias and variance.** The term $E[(f(x_0) - \hat{f}(x_0))^2]$ is no longer a single squared number, because $\hat{f}$ now varies from one training sample to the next. Add and subtract its average $E[\hat{f}(x_0)]$:
+
+$$
+\begin{aligned}
+E[(f(x_0) - \hat{f}(x_0))^2]
+&= E\big[\big((f(x_0) - E[\hat{f}(x_0)]) + (E[\hat{f}(x_0)] - \hat{f}(x_0))\big)^2\big] \\
+&= \underbrace{(f(x_0) - E[\hat{f}(x_0)])^2}_{[\text{bias}(\hat{f}(x_0))]^2} + \underbrace{E[(\hat{f}(x_0) - E[\hat{f}(x_0)])^2]}_{\operatorname{var}(\hat{f}(x_0))}
+\end{aligned}
+$$
+
+Here the cross term vanishes again: one factor, $f(x_0) - E[\hat{f}(x_0)]$, is a constant, and the other averages to zero because $E[E[\hat{f}(x_0)] - \hat{f}(x_0)] = 0$. The first surviving piece is how far the *average* prediction sits from the truth (bias), and the second is how much the prediction *jumps around* that average (variance). Putting the two steps together gives the three-term decomposition above.
+
+Reading this equation term by term tells the whole story:
 
 -   $E(MSE) \ge var(\epsilon)$ because $\epsilon$ is irreducible model error and serves as the lower bound on the quality of potential model fit
 
@@ -355,8 +395,8 @@ is known as the hat matrix, which projects orthogonally the $\mathbf{y}$ vector 
 The Gauss-Markov theorem tells us that OLS estimates are unbiased and have the smallest variance among all linear unbiased estimates. That sounds like the end of the story, but it is not, and the reason is the bias-variance tradeoff again. For any estimator $\tilde{\beta}$, the mean squared error decomposes as
 
 $$
-MSE(\tilde{\beta}) = E(\tilde{\beta} - \beta)^2 = var(\tilde{\beta} + [E(\tilde{\beta}) - \beta]^2 \\
- = variance + bias ^2
+MSE(\tilde{\beta}) = E(\tilde{\beta} - \beta)^2 = var(\tilde{\beta}) + [E(\tilde{\beta}) - \beta]^2 \\
+ = \text{variance} + \text{bias}^2
 $$
 
 Since OLS is an unbiased estimator, $\tilde{\beta} = \hat{\beta}$.

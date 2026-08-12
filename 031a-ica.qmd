@@ -210,7 +210,7 @@ It is worth stating the contrast with @sec-dimension-reduction sharply, because 
 
 A careful user should keep the following in mind.
 
-- **Independence and non-Gaussianity are load-bearing.** If two or more sources are Gaussian, those sources occupy a subspace that ICA can identify but cannot resolve internally (the rotation within it is free, by @eq-ica-gauss-rotation). At most one Gaussian source is allowed.
+- **Independence and non-Gaussianity are load-bearing.** If two or more sources are Gaussian, those sources occupy a subspace that ICA can identify but cannot resolve internally (the rotation within it is free, by @eq-ica-gauss-rotation). At most one Gaussian source is allowed. These are assumptions about the world, not about the algorithm, and they can be tested; @sec-ica-validity does so.
 - **Sign, scale, and order are unidentifiable.** A recovered component can be flipped, rescaled, or relabelled relative to the true source. Downstream interpretation must account for this.
 - **Square, noiseless model by default.** The basic model assumes as many mixtures as sources ($\mathbf{A}$ square and invertible) and no additive noise. Overcomplete ICA (more sources than sensors) and noisy ICA require richer estimators and are genuinely harder.
 - **Complexity.** Whitening costs $O(nm^2 + m^3)$. Each FastICA iteration over $m$ components is $O(nm^2)$, and the fixed point typically converges in a handful of iterations, so ICA scales comfortably to large $n$ and moderate $m$.
@@ -221,6 +221,359 @@ A careful user should keep the following in mind.
 ICA assumes instantaneous linear mixing. Real audio in a room involves echoes and delays (convolutive mixing), which the basic model does not capture; convolutive ICA or time-frequency methods are needed there. ICA also gives no inherent ranking of components, so do not expect the first recovered component to be the most important one.
 :::
 
+## Testing Whether the Independent Component Model Holds {#sec-ica-validity}
+
+Everything in this chapter so far has *assumed* the model of @eq-ica-mixing and @eq-ica-indep. FastICA will happily return an unmixing matrix for any data you hand it, including data for which no linear unmixing into independent components exists. The recovered "sources" are then an artefact of the contrast function rather than a discovery about the world. @sec-ica-properties called the independence and non-Gaussianity assumptions load-bearing without saying how to check them; this section supplies the check, following @Hallin2026.
+
+The difficulty is specific and worth naming. We cannot simply feed the estimated components $\hat{\mathbf{s}}$ to an off-the-shelf independence test, because $\hat{\mathbf{s}}$ was *chosen* to look as independent as possible. The estimation step has already used the data, so the null distribution of any naive statistic is wrong, and it is wrong in a way that depends both on which ICA estimator was used and on the unknown source distributions. @sec-ica-validity-reestimate shows by simulation just how wrong, because the effect is much larger than intuition suggests.
+
+### The null hypothesis {#sec-ica-validity-null}
+
+We are not testing whether a *particular* estimated unmixing is correct. We are testing whether the independent component model is true *at all*, that is, whether some linear representation of the observed vector into independent coordinates exists:
+
+$$
+\mathcal{H}_0:\quad \mathbf{x} = \boldsymbol{\mu} + \mathbf{A}\,\mathbf{s}
+\ \ \text{for some } \boldsymbol{\mu} \in \mathbb{R}^m \text{ and invertible } \mathbf{A},
+\ \text{with } s_1, \dots, s_m \text{ mutually independent.}
+$$ {#eq-ica-null}
+
+This is a statement about the *existence* of $(\boldsymbol{\mu}, \mathbf{A})$, which is what makes it the right null: it is exactly the modelling assumption of @sec-ica-model, no more and no less. The alternative $\mathcal{H}_1$ is that no such pair exists, so that whatever FastICA returns cannot be a set of independent sources.
+
+Two assumptions are needed, and both are mild.
+
+**Assumption 1 (absolutely continuous observations).** The distribution of $\mathbf{x}$ is absolutely continuous with respect to Lebesgue measure on $\mathbb{R}^m$.
+
+*Reading.* No atoms, and no component confined to a lower-dimensional subspace. This is what gives the rank-based version below a tie-free null distribution. It is violated by discrete or heavily rounded measurements, and by data in which one variable is an exact linear function of the others.
+
+**Assumption 2 (affine-equivariant unmixing estimator).** The estimator $\hat{\mathbf{W}}_n$ is affine equivariant: if the data are replaced by $\mathbf{B}\mathbf{x}_j + \mathbf{c}$ for invertible $\mathbf{B}$, the estimated components change only by permutation and sign.
+
+*Reading.* The estimator must not care about the units, centring, or orientation of the input. FOBI, JADE, and symmetric FastICA satisfy this; the deflation FastICA of @sec-ica-deflation does not exactly, because the extraction order depends on the starting values. This is the assumption most likely to be broken by a hand-rolled pipeline, and breaking it costs the invariance of @sec-ica-validity-invariance rather than the validity of the test.
+
+### The test statistic {#sec-ica-validity-stat}
+
+The statistic compares the joint distribution of the estimated components against the product of their marginals, and it does the comparison on characteristic functions rather than densities, which avoids having to choose a bandwidth for a density estimate.
+
+Write the estimated components as $\hat{\mathbf{s}}_j = \hat{\mathbf{W}}_n(\mathbf{x}_j - \bar{\mathbf{x}})$ for $j = 1, \dots, n$, with $\hat{s}_{j\ell}$ the $\ell$th coordinate. Their joint empirical characteristic function and its $m$ marginals are
+
+$$
+\hat{\varphi}(\mathbf{t}) = \frac{1}{n}\sum_{j=1}^n e^{\,\mathrm{i}\,\mathbf{t}^\top \hat{\mathbf{s}}_j},
+\qquad
+\hat{\varphi}_\ell(t_\ell) = \frac{1}{n}\sum_{j=1}^n e^{\,\mathrm{i}\,t_\ell \hat{s}_{j\ell}} .
+$$ {#eq-ica-ecf}
+
+Mutual independence of the coordinates is equivalent to the joint characteristic function factorizing into the product of the marginals at *every* $\mathbf{t}$ — this is the characteristic-function restatement of @eq-ica-indep, and it is an if-and-only-if, which is what makes the resulting test consistent. So the natural discrepancy is
+
+$$
+D_n(\mathbf{t}) = \hat{\varphi}(\mathbf{t}) - \prod_{\ell=1}^m \hat{\varphi}_\ell(t_\ell),
+$$ {#eq-ica-discrepancy}
+
+and the test statistic integrates its squared modulus against a weight:
+
+$$
+T_n = n \int_{\mathbb{R}^m} \big|D_n(\mathbf{t})\big|^2\, W(\mathbf{t})\, \mathrm{d}\mathbf{t},
+\qquad
+W(\mathbf{t}) = \prod_{\ell=1}^m w(t_\ell),
+$$ {#eq-ica-Tn}
+
+where $w$ is a symmetric probability density on $\mathbb{R}$. Large values of $T_n$ are evidence against @eq-ica-null. The weight is not a nuisance to be tolerated but the tuning knob of the procedure: it decides which frequencies $\mathbf{t}$ the test listens to, and hence which kinds of dependence it is most sensitive to. Taking $w$ with characteristic function
+
+$$
+\mathcal{C}(u) = \int_{\mathbb{R}} e^{\,\mathrm{i}\,u t}\,w(t)\,\mathrm{d}t = e^{-\gamma u^{2}}, \qquad \gamma > 0,
+$$ {#eq-ica-weight}
+
+is the Gaussian member of the stable family used by @Hallin2026; small $\gamma$ spreads weight over high frequencies and picks up fine, local dependence, large $\gamma$ concentrates on low frequencies and picks up broad, global dependence.
+
+### From an integral to a computable formula {#sec-ica-validity-closedform}
+
+@eq-ica-Tn is an integral over $\mathbb{R}^m$, which looks unusable. It is not: the product structure of $W$ collapses it to a double sum. Expanding the squared modulus,
+
+$$
+\big|D_n(\mathbf{t})\big|^2
+= \big|\hat{\varphi}(\mathbf{t})\big|^2
+- 2\,\mathrm{Re}\Big[\hat{\varphi}(\mathbf{t}) \textstyle\prod_{\ell}\overline{\hat{\varphi}_\ell(t_\ell)}\Big]
++ \textstyle\prod_{\ell}\big|\hat{\varphi}_\ell(t_\ell)\big|^2,
+$$ {#eq-ica-expand}
+
+and each of the three pieces integrates in closed form. Write $\hat{s}_{jk,\ell} = \hat{s}_{j\ell} - \hat{s}_{k\ell}$ for the pairwise difference in coordinate $\ell$. For the first piece,
+
+$$
+n\!\int \big|\hat{\varphi}(\mathbf{t})\big|^2 W(\mathbf{t})\,\mathrm{d}\mathbf{t}
+= \frac{1}{n}\sum_{j,k=1}^n \int e^{\,\mathrm{i}\,\mathbf{t}^\top(\hat{\mathbf{s}}_j - \hat{\mathbf{s}}_k)} \prod_\ell w(t_\ell)\,\mathrm{d}\mathbf{t}
+= \frac{1}{n}\sum_{j,k=1}^n \prod_{\ell=1}^m \mathcal{C}\big(\hat{s}_{jk,\ell}\big),
+$$ {#eq-ica-term1}
+
+because the integral factorizes across coordinates and each factor is, by @eq-ica-weight, the characteristic function of $w$ evaluated at the difference. The third piece factorizes coordinate by coordinate from the start, giving $n\prod_{\ell}\big[n^{-2}\sum_{j,k}\mathcal{C}(\hat{s}_{jk,\ell})\big] = n^{1-2m}\prod_\ell \sum_{j,k}\mathcal{C}(\hat{s}_{jk,\ell})$. The cross piece separates the $j$ sum from $m$ inner $k$ sums, giving $-2n^{-m}\sum_j \prod_\ell \sum_k \mathcal{C}(\hat{s}_{jk,\ell})$; no real part survives because $w$ is symmetric, so $\mathcal{C}$ is real and even. Collecting the three,
+
+$$
+T_n
+= \frac{1}{n}\sum_{j,k=1}^n \prod_{\ell=1}^m \mathcal{C}\big(\hat{s}_{jk,\ell}\big)
+\;+\; \frac{1}{n^{2m-1}}\prod_{\ell=1}^m \sum_{j,k=1}^n \mathcal{C}\big(\hat{s}_{jk,\ell}\big)
+\;-\; \frac{2}{n^{m}}\sum_{j=1}^n \prod_{\ell=1}^m \sum_{k=1}^n \mathcal{C}\big(\hat{s}_{jk,\ell}\big).
+$$ {#eq-ica-Tn-closed}
+
+Everything on the right is a sum over pairs of observations of a smooth kernel. Computationally this is $O(n^2 m)$, the same order as a distance-covariance statistic, and it involves no numerical integration, no density estimation, and no tuning beyond $\gamma$.
+
+::: {.callout-note title="Why the statistic cannot go negative"}
+@eq-ica-Tn-closed is an algebraic identity for a quantity *defined* as $n$ times the integral of a squared modulus against a non-negative weight. So $T_n \ge 0$ always, with equality only if the joint empirical characteristic function factorizes exactly. If a from-scratch implementation ever returns a negative value, the error is in the powers of $n$.
+:::
+
+### Affine invariance {#sec-ica-validity-invariance}
+
+The test does not depend on the arbitrary choices of location, scale, and orientation in the data, and it is worth seeing where that comes from, because it is why Assumption 2 is stated as it is.
+
+Location drops out first. If the components are estimated from uncentred data, every $\hat{\mathbf{s}}_j$ picks up a common shift $\mathbf{a}$, so every empirical characteristic function in @eq-ica-ecf is multiplied by $e^{\mathrm{i}\mathbf{t}^\top \mathbf{a}}$; both terms of @eq-ica-discrepancy pick up the *same* unit-modulus factor, and $|D_n(\mathbf{t})|$ is unchanged. This is why no estimate of $\boldsymbol{\mu}$ appears anywhere in @eq-ica-Tn-closed.
+
+Scale and rotation drop out second, and here Assumption 2 does the work. Replace $\mathbf{x}_j$ by $\mathbf{B}\mathbf{x}_j + \mathbf{c}$. An affine-equivariant estimator returns the *same* components up to a permutation and a sign flip — the two ambiguities of @sec-ica-model, which we already know are unavoidable. Because $W$ in @eq-ica-Tn is a product of identical factors, permuting coordinates permutes the factors and leaves the product alone; and flipping a sign leaves $\mathcal{C}(u) = e^{-\gamma u^2}$ alone because it is even. So $T_n$ is exactly unchanged. The test gives the same answer whether the microphones were calibrated in volts or millivolts, which is what one wants from a diagnostic for a model that is itself identified only up to scale and order.
+
+### Calibration by permutation {#sec-ica-validity-perm}
+
+The asymptotic null distribution of $T_n$ is an infinite weighted sum of $\chi^2_1$ variables whose weights depend on the unknown source densities *and* on which ICA estimator was used. It is not usable, so @Hallin2026 calibrates by resampling instead.
+
+The first observation is that permuting *observations* does nothing: $T_n$ in @eq-ica-Tn-closed is symmetric in $j$, so shuffling rows returns the observed value exactly. What must be permuted is each *component* separately across observations. Fix coordinate $1$ and draw independent permutations $\sigma_2, \dots, \sigma_m$ of $\{1, \dots, n\}$, then form
+
+$$
+\hat{\mathbf{s}}^{*}_j = \big(\hat{s}_{j1},\, \hat{s}_{\sigma_2(j)2},\, \dots,\, \hat{s}_{\sigma_m(j)m}\big)^\top .
+$$ {#eq-ica-perm}
+
+This destroys any dependence *between* coordinates while leaving each marginal empirical distribution exactly intact, so $\hat{\mathbf{s}}^{*}$ is a sample from the product of the estimated marginals — a valid draw from $\mathcal{H}_0$.
+
+The second observation is the one that is easy to miss, and @sec-ica-validity-reestimate shows what it costs to miss it. The permuted sample is a draw from the null *for the components*, but the observed statistic was computed on components that had been **estimated**. To compare like with like, each permuted sample must be passed back through the same estimator before the statistic is recomputed:
+
+$$
+T_n^{*} = T_n\big(\hat{\mathbf{W}}^{*}\hat{\mathbf{s}}^{*}\big),
+\qquad \hat{\mathbf{W}}^{*} = \text{the unmixing estimated from } \hat{\mathbf{s}}^{*} .
+$$ {#eq-ica-perm-reest}
+
+Repeating for $B$ permutations gives the $p$-value
+
+$$
+\hat{p} = \frac{1 + \#\{b : T_n^{*(b)} \ge T_n\}}{B + 1},
+$$ {#eq-ica-pvalue}
+
+which is valid at any level of the form $\lfloor \alpha(B+1)\rfloor/(B+1)$ without asymptotics and without knowing the source distributions.
+
+A rank-scored variant strengthens this further. Replace each estimated component by a score of its within-column rank,
+
+$$
+\tilde{s}_{j\ell} = J\!\left(\frac{R_{j\ell}}{n+1}\right),
+\qquad R_{j\ell} = \text{rank of } \hat{s}_{j\ell} \text{ among } \hat{s}_{1\ell}, \dots, \hat{s}_{n\ell},
+$$ {#eq-ica-ranks}
+
+with a score function $J$ — the normal-quantile (van der Waerden) score $J = \Phi^{-1}$ is the default — and compute @eq-ica-Tn-closed from $\tilde{s}$. Ranks strip away the marginal distributions entirely, so the null distribution no longer depends on them, and the statistic inherits the robustness to heavy tails that @sec-ica-kurtosis warned ICA contrasts otherwise lack. The conventional expectation is that this costs power, since information in the marginals is discarded; @tbl-ica-validity-power shows that on this data-generating process it does not, which is a reminder that the trade is not automatic.
+
+### Consistency {#sec-ica-validity-consistency}
+
+Let $D(\mathbf{t})$ be the population analogue of @eq-ica-discrepancy, built from the characteristic function of the components at the estimator's probability limit. Under $\mathcal{H}_1$ no affine map makes the coordinates independent, so $D(\mathbf{t}) \not\equiv 0$; since $D$ is continuous and $W$ is strictly positive on all of $\mathbb{R}^m$, the integral $\int |D(\mathbf{t})|^2 W(\mathbf{t})\,\mathrm{d}\mathbf{t}$ is strictly positive. Because $n^{-1}T_n$ converges in probability to that integral, $T_n \to \infty$ while the permutation critical values stay bounded in probability, so the test rejects with probability tending to one. That is the "consistent" of the paper's title, and it is a strong statement: no dependence structure, however exotic, escapes detection given enough data. The strict positivity of $W$ is what buys it, which is the technical reason the weight must be a density with full support rather than a compactly supported kernel.
+
+::: {.callout-important title="Key idea"}
+The estimation step is not corrected for; it is absorbed. Because the statistic is affine-invariant and the critical values come from re-running the whole estimate-then-test pipeline on permuted components, the test is valid *whatever* the ICA estimator did, provided that estimator was affine equivariant.
+:::
+
+### Implementation {#sec-ica-validity-code}
+
+We implement @eq-ica-Tn-closed and the calibration of @eq-ica-perm-reest from scratch, in the same spirit as the from-scratch fixed point of @sec-ica-fastica.
+
+The unmixing estimator has to satisfy Assumption 2, so we use FOBI rather than the deflation FastICA built earlier: FOBI whitens and then diagonalizes the fourth-order scatter matrix $\mathbb{E}\big[\|\tilde{\mathbf{x}}\|^2\,\tilde{\mathbf{x}}\tilde{\mathbf{x}}^\top\big]$ in closed form, which is affine equivariant by construction and has no starting values to worry about.
+
+```{r}
+#| label: ica-validity-setup
+
+## --- FOBI: a closed-form, affine-equivariant ICA estimator --------------
+fobi_unmix <- function(X) {
+  X  <- scale(X, center = TRUE, scale = FALSE)
+  e  <- eigen(cov(X), symmetric = TRUE)
+  V  <- e$vectors %*% diag(1 / sqrt(e$values), nrow(e$vectors)) %*% t(e$vectors)
+  Xw <- X %*% V                                        # whitened (eq. ica-whitener)
+  B  <- crossprod(Xw * sqrt(rowSums(Xw^2))) / nrow(Xw) # E[||x||^2 x x^T]
+  scale(Xw %*% eigen(B, symmetric = TRUE)$vectors, TRUE, TRUE)
+}
+
+## --- van der Waerden scores of eq. ica-ranks ---------------------------
+vdw <- function(Z) apply(Z, 2, function(z) qnorm(rank(z) / (length(z) + 1)))
+
+## --- the statistic of eq. ica-Tn-closed --------------------------------
+icm_stat <- function(Z, gamma = 1) {
+  n <- nrow(Z); m <- ncol(Z)
+  M <- lapply(seq_len(m), function(l) exp(-gamma * outer(Z[, l], Z[, l], "-")^2))
+  sum(Reduce(`*`, M)) / n +
+    prod(vapply(M, sum, 0)) / n^(2 * m - 1) -
+    2 * sum(Reduce(`*`, lapply(M, rowSums))) / n^m
+}
+
+## --- comparator: distance covariance (m = 2) ---------------------------
+dcov_stat <- function(Z) {
+  dcen <- function(v) {
+    D <- abs(outer(v, v, "-"))
+    D - rowMeans(D)[row(D)] - colMeans(D)[col(D)] + mean(D)
+  }
+  sum(dcen(Z[, 1]) * dcen(Z[, 2]))
+}
+
+## --- permutation of components, eq. ica-perm ---------------------------
+perm_cols <- function(Z) {
+  for (l in 2:ncol(Z)) Z[, l] <- Z[sample.int(nrow(Z)), l]
+  Z
+}
+
+## --- correct calibration: permute, RE-ESTIMATE, recompute (eq. ica-perm-reest)
+perm_test <- function(Z, stat, B = 99, ranks = FALSE) {
+  T0 <- stat(if (ranks) vdw(Z) else Z)
+  Tp <- replicate(B, {
+    Zp <- fobi_unmix(perm_cols(Z))          # <- the re-estimation step
+    stat(if (ranks) vdw(Zp) else Zp)
+  })
+  (1 + sum(Tp >= T0)) / (B + 1)
+}
+
+## --- naive calibration: permute the estimated components and stop ------
+naive_test <- function(Z, stat, B = 99) {
+  T0 <- stat(Z)
+  Tp <- replicate(B, stat(perm_cols(Z)))
+  (1 + sum(Tp >= T0)) / (B + 1)
+}
+```
+
+The comparator deserves a word. @Hallin2026 benchmarks against a distance-covariance test in the spirit of @Matteson2017, which measures dependence through pairwise distances rather than characteristic functions. We give it the *same* calibration, so that the only thing being compared is the dependence measure itself.
+
+For the data-generating process we need components that are independent under the null, dependent under the alternative in a way no linear map can remove, and — a requirement that turns out to matter a great deal, see @sec-ica-validity-pitfalls — of clearly *different* kurtosis, so that FOBI's fourth-order eigenvalues are separated and the unmixing is identified. A Clayton copula with one exponential margin (excess kurtosis $+6$) and one uniform margin (excess kurtosis $-1.2$) does all three. The copula parameter $\theta$ indexes the violation: at $\theta = 0$ the components are independent and $\mathcal{H}_0$ holds exactly, and for $\theta > 0$ the dependence grows.
+
+```{r}
+#| label: ica-validity-dgp
+
+A_mix <- matrix(c(1, 1, 0.5, 2), nrow = 2, byrow = TRUE)   # as in fig-ica-signals
+
+gen_clayton <- function(n, theta) {
+  u1 <- runif(n); w <- runif(n)
+  u2 <- if (theta <= 0) runif(n) else                      # theta = 0 is independence
+    (u1^(-theta) * (w^(-theta / (1 + theta)) - 1) + 1)^(-1 / theta)
+  cbind(qexp(u1) - 1, u2 - 0.5) %*% t(A_mix)               # kurtoses +6 and -1.2
+}
+```
+
+### Why the components must be re-estimated {#sec-ica-validity-reestimate}
+
+Before looking at power, it is worth paying for the lesson that the re-estimation step in @eq-ica-perm-reest is not a technicality. We compare the two calibrations on data where $\mathcal{H}_0$ holds exactly, so both should reject $5\%$ of the time.
+
+```{r}
+#| label: tbl-ica-validity-calibration
+#| tbl-cap: "Empirical size at the 5% level under the null (theta = 0), 100 replications, B = 99. The naive calibration permutes the estimated components and stops; the correct one passes each permuted sample back through FOBI before recomputing the statistic. The naive test is badly anti-conservative, and gets worse as n grows."
+
+set.seed(99)
+R <- 100; B <- 99; alpha <- 0.05
+
+calib <- do.call(rbind, lapply(c(150, 300), function(n) {
+  s <- replicate(R, {
+    Z <- fobi_unmix(gen_clayton(n, 0))
+    c(naive_test(Z, icm_stat, B), perm_test(Z, icm_stat, B))
+  })
+  data.frame(n = n,
+             naive = mean(s[1, ] <= alpha),
+             `re-estimated` = mean(s[2, ] <= alpha),
+             check.names = FALSE)
+}))
+knitr::kable(calib, row.names = FALSE)
+```
+
+@tbl-ica-validity-calibration is worth staring at. The naive test rejects far more often than it should, and the problem *worsens* with the sample size rather than washing out. The reason is that FOBI recovers the unmixing with an error of order $n^{-1/2}$, so each estimated component is a slight blend of both true sources; blending two independent sources makes the estimates genuinely dependent, by an amount of order $n^{-1/2}$. Since @eq-ica-Tn multiplies by $n$, that contribution is $O(1)$ and never vanishes. The permuted samples, which are never passed through the estimator, carry no such blending, so the observed statistic sits systematically above them. Re-estimating inside the loop puts the same blending into every replicate, and the size comes back to nominal up to Monte Carlo error — with $R = 100$ replications the standard error at a true $5\%$ is about $2$ percentage points.
+
+### Size and power {#sec-ica-validity-sim}
+
+Now the study proper: 100 replications at each of two sample sizes and four values of $\theta$, with $B = 99$ permutations and a nominal level of $5\%$. The $\theta = 0$ rows are size; the rest is power. (This chunk is a genuine Monte Carlo study and takes some minutes to run.)
+
+```{r}
+#| label: tbl-ica-validity-power
+#| tbl-cap: "Rejection rates at the 5% level over 100 replications, B = 99. CF is the characteristic-function test of eq. ica-Tn-closed, CF-rank its van der Waerden version, dCov the distance-covariance comparator; all three use the re-estimating calibration of eq. ica-perm-reest. The theta = 0 rows are empirical size, the rest power against Clayton dependence that no linear unmixing can remove."
+
+set.seed(2026)
+R <- 100; B <- 99; alpha <- 0.05
+grid <- expand.grid(n = c(150, 300), theta = c(0, 0.5, 1, 2))
+
+power_tab <- do.call(rbind, lapply(seq_len(nrow(grid)), function(i) {
+  n <- grid$n[i]; th <- grid$theta[i]
+  p <- replicate(R, {
+    Z <- fobi_unmix(gen_clayton(n, th))
+    c(perm_test(Z, icm_stat, B),
+      perm_test(Z, icm_stat, B, ranks = TRUE),
+      perm_test(Z, dcov_stat, B))
+  })
+  data.frame(theta = th, n = n,
+             CF        = mean(p[1, ] <= alpha),
+             `CF-rank` = mean(p[2, ] <= alpha),
+             dCov      = mean(p[3, ] <= alpha),
+             check.names = FALSE)
+}))
+knitr::kable(power_tab[order(power_tab$theta, power_tab$n), ], row.names = FALSE)
+```
+
+Read the $\theta = 0$ rows first. The raw characteristic-function test and the distance-covariance comparator both sit at the nominal $5\%$, which is the calibration of @eq-ica-perm-reest doing its job even though the components were estimated from the same data. The rank version runs a little liberal; with $R = 100$ replications the Monte Carlo standard error at a true $5\%$ is about $2$ percentage points, so this is at the edge of what the noise explains, and its power numbers below should be read with that in mind.
+
+Then read down the $\theta$ column: power rises with the strength of the violation and with $n$, and by $\theta = 2$ all three tests are essentially certain to catch a model that does not hold. Between $\theta = 0.5$ and $\theta = 1$ the differences are large, and this is where the honest result of the exercise sits.
+
+::: {.callout-note title="What this simulation does not reproduce"}
+@Hallin2026 reports that the characteristic-function statistic substantially outperforms the distance-covariance test of @Matteson2017. **On this data-generating process it does not.** Distance covariance beats the plain characteristic-function test at every alternative here, and the van der Waerden version beats it too.
+
+That disagreement is a fact about this one experiment, not a refutation of the paper, and the reasons are worth being explicit about. We fix a single dependence structure (a Clayton copula on two coordinates), a single weight function, and a single untuned $\gamma = 1$, whereas the published study varies the weight family and its parameter, the dependence structure, the dimension, and the ICA estimator; and $\gamma$ is exactly the knob that decides which frequencies the statistic listens to (@sec-ica-validity-stat), so a fixed choice can easily be mismatched to a particular alternative. The lesson to carry away is the practical one from @sec-ica-validity-practice: the characteristic-function test buys consistency, affine invariance, and a valid finite-sample level, but its *power* depends on a weight you have to choose, and against a specific alternative a tuning-free competitor may well do better.
+:::
+
+### Where the test does not help {#sec-ica-validity-failure}
+
+Two limits are worth seeing, and the second is the more important.
+
+The first is ordinary: against a weak violation at a small sample size the test has little power, as the $\theta = 0.5$, $n = 150$ row of @tbl-ica-validity-power shows. Failing to reject is not evidence that the model holds.
+
+The second is structural, and no amount of data removes it. Suppose the sources really are independent but *both Gaussian*. Then $\mathcal{H}_0$ of @eq-ica-null is true — independent components do exist — so the test should reject only at the nominal rate, and it does. But by @eq-ica-gauss-rotation those components are not identified: every rotation of them is an equally valid set of independent Gaussian sources, and FOBI returns an essentially arbitrary one.
+
+```{r}
+#| label: ica-validity-gaussian
+
+set.seed(7)
+gauss_rej <- mean(replicate(100, {
+  X <- matrix(rnorm(2 * 300), ncol = 2) %*% t(A_mix)   # two Gaussian sources
+  perm_test(fobi_unmix(X), icm_stat, B = 99)
+}) <= 0.05)
+
+data.frame(n = 300, replications = 100, rejection_rate = gauss_rej)
+```
+
+The test passes the Gaussian data, correctly, because the independent component *model* is true. What it cannot tell you is that the components it passed are meaningless: no rotation of them is any more the "right" one than any other. A model can be valid and its estimate still carry no information.
+
+::: {.callout-warning title="A pass is not a licence to interpret"}
+The test validates the *model* of @eq-ica-null, not the *estimate*. Two or more Gaussian sources sail through it while leaving the recovered components completely unidentified (@eq-ica-gauss-rotation). Always pair the test with a check that at most one component is close to Gaussian — a normality test, or a glance at the estimated kurtoses of @eq-ica-kurtosis — before attaching meaning to any individual component.
+:::
+
+### Practical guidance {#sec-ica-validity-practice}
+
+- **Where it belongs.** Run it as step 5 of @sec-ica-howto, after fitting and before interpreting.
+- **Cost.** The statistic is $O(n^2 m)$ and the calibration re-runs the estimator $B$ times, so a test costs roughly $B$ times one fit plus $B$ statistic evaluations. That is seconds at $n$ in the hundreds and worth budgeting for at $n$ in the tens of thousands.
+- **Software.** The CRAN package `TICM` [@TICM] implements the full family — several weight functions, both permutation and bootstrap calibration, and the rank versions — with the unmixing supplied by `JADE` or `fICA`. Its main function is also called `icm_test`; the from-scratch code above is deliberately named `perm_test` and `icm_stat` to keep the two apart, and covers only the Gaussian weight with $m = 2$.
+
+```{r}
+#| label: ica-validity-ticm
+#| eval: false
+
+# install.packages("TICM")
+library(TICM)
+
+# X is the n x m matrix of observed mixtures.
+res <- icm_test(X, n.rep = 200, weight = "Gauss", ica = "JADE")
+plot(res)   # scatterplot matrix of the estimated components
+
+# ind_test() is the companion that tests independence of raw coordinates with
+# no unmixing step. See ?icm_test for the score, weight, and strategy options.
+```
+
+- **Choosing $\gamma$.** Report more than one. The test is valid for any fixed $\gamma > 0$, so the honest practice is to run a small grid, say $\gamma \in \{0.5, 1, 2\}$, and report the range of $p$-values rather than searching for the $\gamma$ that rejects.
+- **Number of permutations.** $B = 99$ suffices for a decision at $5\%$; use $B = 999$ if you intend to report the $p$-value itself, and remember @eq-ica-pvalue cannot return anything below $1/(B+1)$.
+- **Dimension.** The statistic is a product over $m$ coordinates, and products of many numbers in $(0,1)$ underflow. Beyond moderate $m$, work on the log scale or reduce dimension with PCA first, as step 2 of @sec-ica-howto already recommends.
+
+### Pitfalls {#sec-ica-validity-pitfalls}
+
+- **Skipping the re-estimation.** The costliest error, and invisible unless you check the size: see @tbl-ica-validity-calibration.
+- **Permuting rows instead of columns.** $T_n$ is symmetric in $j$, so shuffling observations returns the observed value every time and the $p$-value collapses to $1$. Permute each component separately, as in @eq-ica-perm.
+- **Sources with equal kurtosis.** FOBI separates components by the *eigenvalues* of the fourth-order scatter matrix, so two sources with the same kurtosis leave those eigenvalues tied and the rotation unidentified — FOBI then returns an arbitrary blend, and the test rejects a model that is perfectly true. This is a defect of the estimator, not of the test, and it is why the simulation above pairs an exponential margin with a uniform one. JADE, which uses the full set of fourth-order cumulant matrices, is more robust here; if you suspect near-equal kurtoses, use it.
+- **Using a non-equivariant estimator.** Deflation FastICA with random restarts breaks Assumption 2, and the test then answers a question about your starting values as well as about the data.
+- **Reading non-rejection as confirmation.** With the Gaussian case above as the extreme illustration, the test is a filter that removes clearly invalid applications, not a certificate of validity.
+
 ## Practical How-To {#sec-ica-howto}
 
 A reliable ICA workflow looks like this.
@@ -229,7 +582,8 @@ A reliable ICA workflow looks like this.
 2. **Choose the number of components.** With noise or many sensors, first reduce dimension with PCA (@sec-dimension-reduction), keeping the leading components, then run ICA on that subspace. This both denoises and sets $m$.
 3. **Whiten** using @eq-ica-whitener.
 4. **Run FastICA** with a robust nonlinearity ($\tanh$ by default), using the symmetric orthogonalization (@sec-ica-deflation) and several random initializations.
-5. **Interpret with care.** Fix signs and an ordering by a convention that suits the application (for example, order by the variance the component explains in the original data, or by kurtosis), and remember these choices are arbitrary.
+5. **Test the model before you trust it.** Run the validity test of @sec-ica-validity. If it rejects, no linear unmixing into independent components exists and the output of step 4 is an artefact of the contrast function rather than a set of recovered sources.
+6. **Interpret with care.** Fix signs and an ordering by a convention that suits the application (for example, order by the variance the component explains in the original data, or by kurtosis), and remember these choices are arbitrary.
 
 In R the `fastICA` package implements all of this. For transparency the demonstration below also includes a from-scratch fixed-point implementation so the mechanics of @eq-ica-fastica-update are fully visible.
 

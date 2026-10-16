@@ -13,13 +13,13 @@ The second book in the Data Analysis series by [Mike Nguyen](https://mikenguyen.
 [![Made with R](https://img.shields.io/badge/Made%20with-R-276DC3?logo=r&logoColor=white)](https://www.r-project.org)
 [![License: CC BY 4.0](https://img.shields.io/badge/License-CC%20BY%204.0-lightgrey.svg)](LICENSE)
 
-[**📖 Read online**](https://advanced-data-analysis.netlify.app) · [**📘 Companion: *A Guide on Data Analysis***](https://bookdown.org/mike/data_analysis/) · [**✍️ Author**](https://mikenguyen.netlify.app)
+[**📖 Read online**](https://advanced-data-analysis.netlify.app) · [**📘 Companion: *A Guide on Data Analysis***](https://mike-data-analysis.share.connect.posit.cloud/) · [**✍️ Author**](https://mikenguyen.netlify.app)
 
 </div>
 
 ---
 
-Where the first book, [*A Guide on Data Analysis*](https://bookdown.org/mike/data_analysis/), focuses on **interpretation and causal inference** — understanding *why* and estimating effects we can defend — this book turns to the other half of the discipline: **prediction**. It is written for data scientists, data analysts, data engineers, and AI/ML engineers who work in R, and every method is taught the same way: **intuition first, then the math, then runnable R code, then interpretation**, with figures and tables cross-referenced throughout.
+Where the first book, [*A Guide on Data Analysis*](https://mike-data-analysis.share.connect.posit.cloud/), focuses on **interpretation and causal inference** — understanding *why* and estimating effects we can defend — this book turns to the other half of the discipline: **prediction**. It is written for data scientists, data analysts, data engineers, and AI/ML engineers who work in R, and every method is taught the same way: **intuition first, then the math, then runnable R code, then interpretation**, with figures and tables cross-referenced throughout.
 
 ## What it covers
 
